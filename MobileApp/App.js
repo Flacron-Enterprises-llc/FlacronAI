@@ -12,6 +12,7 @@ import {
   Alert,
   Image,
   Modal,
+  BackHandler,
   RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,6 +120,51 @@ export default function App() {
     checkSavedSession();
   }, []);
 
+  // Handle Android back button
+  useEffect(() => {
+    let backPressCount = 0;
+    let backPressTimer = null;
+
+    const backAction = () => {
+      // If on auth screen, exit directly
+      if (!user) {
+        BackHandler.exitApp();
+        return true;
+      }
+
+      // If on home/dashboard page
+      if (currentPage === 'home') {
+        if (backPressCount === 0) {
+          backPressCount = 1;
+          Alert.alert('Exit App', 'Do you want to close this app?', [
+            { text: 'Cancel', style: 'cancel', onPress: () => { backPressCount = 0; } },
+            { text: 'Yes', onPress: () => BackHandler.exitApp() }
+          ]);
+          
+          // Reset counter after 2 seconds
+          backPressTimer = setTimeout(() => {
+            backPressCount = 0;
+          }, 2000);
+          return true;
+        }
+      } else {
+        // Navigate back to home on first press
+        setCurrentPage('home');
+        return true;
+      }
+
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+
+    return () => {
+      backHandler.remove();
+      if (backPressTimer) clearTimeout(backPressTimer);
+    };
+  }, [user, currentPage]);
+
+
   const checkSavedSession = async () => {
     try {
       const savedToken = await AsyncStorage.getItem('authToken');
@@ -159,17 +205,23 @@ export default function App() {
   const fetchReports = async (authToken = token) => {
     if (!authToken) return;
 
+    console.log('📋 Fetching reports from API...');
     setLoadingReports(true);
     try {
       const response = await fetch(`${API_URL}/reports`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
+      console.log('   Response status:', response.status);
       const data = await response.json();
+      console.log('   Data received:', data.success ? `${data.reports?.length || 0} reports` : 'Failed');
       if (data.success) {
         setMyReports(data.reports || []);
+        console.log('   ✅ Reports loaded successfully');
+      } else {
+        console.log('   ❌ Failed to fetch reports:', data.error);
       }
     } catch (error) {
-      console.log('Error fetching reports:', error);
+      console.log('   ❌ Error fetching reports:', error);
     } finally {
       setLoadingReports(false);
       setRefreshing(false);
