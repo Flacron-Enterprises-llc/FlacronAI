@@ -1019,12 +1019,11 @@ const getStyles = (COLORS) => StyleSheet.create({
   },
   reportModalContent: {
     flex: 1,
+  },
+  reportModalContentContainer: {
     padding: 24,
     paddingTop: 20,
     paddingBottom: 20,
-  },
-  reportModalPreview: {
-    flex: 1,
   },
   reportModalPreviewTitle: {
     fontSize: normalize(17),
@@ -1038,7 +1037,6 @@ const getStyles = (COLORS) => StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    minHeight: 200,
   },
   reportModalText: {
     fontSize: normalize(14),
@@ -2614,12 +2612,13 @@ export default function App() {
             </View>
 
             {/* Report Preview */}
-            <ScrollView style={styles.reportModalContent}>
-              <View style={styles.reportModalPreview}>
-                <Text style={styles.reportModalPreviewTitle}>Preview</Text>
-                <View style={styles.reportModalBox}>
-                  <Text style={styles.reportModalText}>{generatedReport}</Text>
-                </View>
+            <ScrollView
+              style={styles.reportModalContent}
+              contentContainerStyle={styles.reportModalContentContainer}
+            >
+              <Text style={styles.reportModalPreviewTitle}>Preview</Text>
+              <View style={styles.reportModalBox}>
+                <Text style={styles.reportModalText}>{generatedReport}</Text>
               </View>
             </ScrollView>
 
