@@ -979,105 +979,105 @@ const getStyles = (COLORS) => StyleSheet.create({
   // Report Preview Modal
   reportModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 16,
   },
   reportModalContainer: {
     backgroundColor: COLORS.background,
-    borderRadius: 20,
+    borderRadius: 16,
     width: '100%',
-    maxHeight: '85%',
+    maxHeight: '90%',
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
   },
   reportModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.background,
   },
   reportModalTitle: {
-    fontSize: normalize(22),
+    fontSize: normalize(20),
     fontWeight: '700',
     color: COLORS.text,
   },
   reportModalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  reportModalContent: {
+  reportModalBody: {
     flex: 1,
-    backgroundColor: 'transparent',
-  },
-  reportModalContentContainer: {
-    padding: 24,
-    paddingTop: 20,
-    paddingBottom: 20,
-    flexGrow: 1,
-  },
-  reportModalPreviewTitle: {
-    fontSize: normalize(17),
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 16,
-  },
-  reportModalBox: {
     backgroundColor: COLORS.cardBackground,
-    borderRadius: 14,
+    margin: 16,
+    borderRadius: 12,
     padding: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  reportModalScrollView: {
+    flex: 1,
+  },
   reportModalText: {
     fontSize: normalize(14),
     color: COLORS.text,
-    lineHeight: normalize(24),
-    fontWeight: '400',
+    lineHeight: normalize(22),
   },
-  reportModalActions: {
+  reportModalFooter: {
     flexDirection: 'row',
-    padding: 24,
-    paddingTop: 20,
-    gap: 16,
+    padding: 16,
+    gap: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    backgroundColor: COLORS.background,
   },
-  reportModalButton: {
+  reportModalButtonPDF: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18,
-    borderRadius: 14,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  reportModalButtonPDF: {
-    backgroundColor: COLORS.error,
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+    backgroundColor: '#DC2626',
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   reportModalButtonDOCX: {
-    backgroundColor: COLORS.info,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+    backgroundColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   reportModalButtonText: {
     color: '#ffffff',
     fontSize: normalize(15),
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 
@@ -2614,42 +2614,39 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {/* Report Preview */}
-            <ScrollView
-              style={styles.reportModalContent}
-              contentContainerStyle={styles.reportModalContentContainer}
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled={true}
-            >
-              <Text style={styles.reportModalPreviewTitle}>Preview</Text>
-              <View style={styles.reportModalBox}>
+            {/* Report Content */}
+            <View style={styles.reportModalBody}>
+              <ScrollView
+                style={styles.reportModalScrollView}
+                showsVerticalScrollIndicator={true}
+              >
                 <Text style={styles.reportModalText}>{generatedReport}</Text>
-              </View>
-            </ScrollView>
+              </ScrollView>
+            </View>
 
             {/* Download Buttons */}
-            <View style={styles.reportModalActions}>
+            <View style={styles.reportModalFooter}>
               <TouchableOpacity
-                style={[styles.reportModalButton, styles.reportModalButtonPDF]}
+                style={styles.reportModalButtonPDF}
                 onPress={() => {
                   if (currentGeneratedReport) {
                     handleDownloadReport(currentGeneratedReport, 'pdf');
                   }
                 }}
               >
-                <Ionicons name="document-text" size={20} color="#ffffff" />
+                <Ionicons name="document-text" size={22} color="#ffffff" />
                 <Text style={styles.reportModalButtonText}>Download PDF</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.reportModalButton, styles.reportModalButtonDOCX]}
+                style={styles.reportModalButtonDOCX}
                 onPress={() => {
                   if (currentGeneratedReport) {
                     handleDownloadReport(currentGeneratedReport, 'docx');
                   }
                 }}
               >
-                <Ionicons name="document" size={20} color="#ffffff" />
+                <Ionicons name="document" size={22} color="#ffffff" />
                 <Text style={styles.reportModalButtonText}>Download DOCX</Text>
               </TouchableOpacity>
             </View>
