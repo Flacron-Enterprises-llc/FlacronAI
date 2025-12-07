@@ -995,6 +995,8 @@ const getStyles = (COLORS) => StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 20,
     elevation: 20,
+    display: 'flex',
+    flexDirection: 'column',
   },
   reportModalHeader: {
     flexDirection: 'row',
@@ -1005,6 +1007,7 @@ const getStyles = (COLORS) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.background,
+    flexShrink: 0,
   },
   reportModalTitle: {
     fontSize: normalize(20),
@@ -1020,13 +1023,18 @@ const getStyles = (COLORS) => StyleSheet.create({
     alignItems: 'center',
   },
   reportModalBody: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
     backgroundColor: COLORS.cardBackground,
-    margin: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
     borderRadius: 12,
     padding: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 200,
+    maxHeight: 500,
   },
   reportModalScrollView: {
     flex: 1,
@@ -1043,6 +1051,7 @@ const getStyles = (COLORS) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
+    flexShrink: 0,
   },
   reportModalButtonPDF: {
     flex: 1,
