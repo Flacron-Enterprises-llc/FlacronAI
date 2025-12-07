@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
+const { sendVerificationEmail } = require('../services/emailService');
 const admin = require('firebase-admin');
 const jwt = require('jsonwebtoken');
 
@@ -60,13 +61,24 @@ router.post('/register', async (req, res) => {
     const verificationLink = await getAuth().generateEmailVerificationLink(email);
 
     console.log(`✅ User registered: ${email}`);
-    console.log(`📧 Email verification link: ${verificationLink}`);
+
+    // Send verification email
+    const emailResult = await sendVerificationEmail(email, verificationLink);
+    if (emailResult.success) {
+      console.log(`📧 Verification email sent to: ${email}`);
+    } else {
+      console.log(`⚠️ Could not send email. Link: ${verificationLink}`);
+    }
 
     res.json({
       success: true,
-      message: 'Account created successfully! Please verify your email before logging in.',
+      message: emailResult.success
+        ? 'Account created successfully! Please check your email to verify your account.'
+        : 'Account created! Please check the verification link.',
       userId: userRecord.uid,
-      verificationLink: verificationLink // In production, send this via email
+      emailSent: emailResult.success,
+      // Only include link if email failed (for development)
+      ...(emailResult.success ? {} : { verificationLink: verificationLink })
     });
 
   } catch (error) {
@@ -403,16 +415,22 @@ router.post('/resend-verification', async (req, res) => {
     // Generate new verification link
     const verificationLink = await getAuth().generateEmailVerificationLink(email);
 
-    console.log(`📧 Resent verification email to: ${email}`);
-    console.log(`📧 Verification link: ${verificationLink}`);
-
-    // In production, send this via email service (SendGrid, etc.)
-    // For now, we'll log it
+    // Send verification email
+    const emailResult = await sendVerificationEmail(email, verificationLink);
+    if (emailResult.success) {
+      console.log(`📧 Verification email resent to: ${email}`);
+    } else {
+      console.log(`⚠️ Could not send email. Link: ${verificationLink}`);
+    }
 
     res.json({
       success: true,
-      message: 'Verification email sent! Please check your inbox and spam folder.',
-      verificationLink: verificationLink // Remove in production
+      message: emailResult.success
+        ? 'Verification email sent! Please check your inbox and spam folder.'
+        : 'Could not send email. Please try again later.',
+      emailSent: emailResult.success,
+      // Only include link if email failed (for development)
+      ...(emailResult.success ? {} : { verificationLink: verificationLink })
     });
 
   } catch (error) {
