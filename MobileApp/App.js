@@ -976,6 +976,98 @@ const getStyles = (COLORS) => StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
   },
+  // Report Preview Modal
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  reportModalContainer: {
+    backgroundColor: COLORS.background,
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  reportModalTitle: {
+    fontSize: normalize(20),
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reportModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reportModalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  reportModalPreview: {
+    flex: 1,
+  },
+  reportModalPreviewTitle: {
+    fontSize: normalize(16),
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+  },
+  reportModalBox: {
+    backgroundColor: COLORS.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportModalText: {
+    fontSize: normalize(14),
+    color: COLORS.text,
+    lineHeight: normalize(22),
+  },
+  reportModalActions: {
+    flexDirection: 'row',
+    padding: 20,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  reportModalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  reportModalButtonPDF: {
+    backgroundColor: COLORS.error,
+  },
+  reportModalButtonDOCX: {
+    backgroundColor: COLORS.info,
+  },
+  reportModalButtonText: {
+    color: '#ffffff',
+    fontSize: normalize(15),
+    fontWeight: '600',
+  },
 });
 
 // ==================== MAIN APP ====================
@@ -1013,6 +1105,8 @@ export default function App() {
   const [photos, setPhotos] = useState([]);
   const [generatedReport, setGeneratedReport] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [currentGeneratedReport, setCurrentGeneratedReport] = useState(null);
 
   // My Reports state
   const [myReports, setMyReports] = useState([]);
@@ -1659,7 +1753,8 @@ export default function App() {
       if (data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setGeneratedReport(data.report.content);
-        Alert.alert('Success', 'Report generated successfully!');
+        setCurrentGeneratedReport(data.report);
+        setShowReportModal(true);
 
         fetchUsageStats();
         fetchReports();
@@ -2197,14 +2292,6 @@ export default function App() {
             )}
           </TouchableOpacity>
 
-          {generatedReport && (
-            <View style={styles.reportPreview}>
-              <Text style={styles.reportPreviewTitle}>Generated Report</Text>
-              <ScrollView style={styles.reportPreviewContent} nestedScrollEnabled>
-                <Text style={styles.reportText}>{generatedReport}</Text>
-              </ScrollView>
-            </View>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -2495,6 +2582,66 @@ export default function App() {
           ]}>Profile</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Report Preview Modal */}
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={styles.reportModalOverlay}>
+          <View style={styles.reportModalContainer}>
+            {/* Modal Header */}
+            <View style={styles.reportModalHeader}>
+              <Text style={styles.reportModalTitle}>Report Generated ✓</Text>
+              <TouchableOpacity
+                onPress={() => setShowReportModal(false)}
+                style={styles.reportModalCloseButton}
+              >
+                <Ionicons name="close" size={28} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Report Preview */}
+            <ScrollView style={styles.reportModalContent}>
+              <View style={styles.reportModalPreview}>
+                <Text style={styles.reportModalPreviewTitle}>Preview</Text>
+                <View style={styles.reportModalBox}>
+                  <Text style={styles.reportModalText}>{generatedReport}</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Download Buttons */}
+            <View style={styles.reportModalActions}>
+              <TouchableOpacity
+                style={[styles.reportModalButton, styles.reportModalButtonPDF]}
+                onPress={() => {
+                  if (currentGeneratedReport) {
+                    handleDownloadReport(currentGeneratedReport, 'pdf');
+                  }
+                }}
+              >
+                <Ionicons name="document-text" size={20} color="#ffffff" />
+                <Text style={styles.reportModalButtonText}>Download PDF</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.reportModalButton, styles.reportModalButtonDOCX]}
+                onPress={() => {
+                  if (currentGeneratedReport) {
+                    handleDownloadReport(currentGeneratedReport, 'docx');
+                  }
+                }}
+              >
+                <Ionicons name="document" size={20} color="#ffffff" />
+                <Text style={styles.reportModalButtonText}>Download DOCX</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
