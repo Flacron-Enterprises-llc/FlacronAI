@@ -113,7 +113,6 @@ Format the report professionally with clear sections and detailed analysis. Be s
     const textGenParams = {
       input: prompt,
       modelId: process.env.WATSONX_MODEL || 'ibm/granite-13b-chat-v2',
-      projectId: process.env.WATSONX_PROJECT_ID || undefined, // Optional
       parameters: {
         max_new_tokens: 2048,
         temperature: 0.3,
@@ -123,7 +122,19 @@ Format the report professionally with clear sections and detailed analysis. Be s
       },
     };
 
+    // Add projectId or spaceId if available (optional)
+    if (process.env.WATSONX_PROJECT_ID) {
+      textGenParams.projectId = process.env.WATSONX_PROJECT_ID;
+    }
+    if (process.env.WATSONX_SPACE_ID) {
+      textGenParams.spaceId = process.env.WATSONX_SPACE_ID;
+    }
+
     console.log('🔵 Calling WatsonX AI for report generation...');
+    console.log('   Model:', textGenParams.modelId);
+    console.log('   Project ID:', textGenParams.projectId || 'Not set');
+    console.log('   Space ID:', textGenParams.spaceId || 'Not set');
+
     const response = await client.generateText(textGenParams);
 
     if (!response || !response.result || !response.result.results || response.result.results.length === 0) {
