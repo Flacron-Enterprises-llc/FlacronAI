@@ -10,6 +10,7 @@ const watsonxConfig = require('../config/watsonx');
  */
 async function generateInsuranceReport(reportData) {
   try {
+    // Try WatsonX first, fallback to OpenAI if it fails
     console.log('🔵 Generating report with IBM WatsonX AI (Enterprise)...');
     console.log('Report data:', {
       claimNumber: reportData.claimNumber,
@@ -17,34 +18,57 @@ async function generateInsuranceReport(reportData) {
       lossType: reportData.lossType
     });
 
-    const reportText = await watsonxConfig.generateReport(reportData);
+    try {
+      const reportText = await watsonxConfig.generateReport(reportData);
+      console.log('✅ Report generated successfully with WatsonX, length:', reportText?.length || 0);
 
-    console.log('✅ Report generated successfully with WatsonX, length:', reportText?.length || 0);
+      return {
+        success: true,
+        content: reportText,
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          provider: 'IBM WatsonX AI',
+          model: process.env.WATSONX_MODEL || 'ibm/granite-13b-chat-v2',
+          reportType: reportData.reportType,
+          claimNumber: reportData.claimNumber
+        }
+      };
+    } catch (watsonError) {
+      console.warn('⚠️ WatsonX failed, falling back to OpenAI:', watsonError.message);
 
-    return {
-      success: true,
-      content: reportText,
-      metadata: {
-        generatedAt: new Date().toISOString(),
-        provider: 'IBM WatsonX AI',
-        model: process.env.WATSONX_MODEL || 'ibm/granite-13b-chat-v2',
-        reportType: reportData.reportType,
-        claimNumber: reportData.claimNumber
-      }
-    };
+      // Fallback to OpenAI
+      const prompt = `Generate a professional insurance claim report for:
+Claim Number: ${reportData.claimNumber}
+Insured Name: ${reportData.insuredName}
+Loss Type: ${reportData.lossType}
+Loss Date: ${reportData.lossDate || 'Not provided'}
+Property Address: ${reportData.propertyAddress || 'Not provided'}
+
+Include: Executive Summary, Claim Information, Property Details, Loss Description, Damage Assessment, and Recommendations.`;
+
+      const reportText = await openaiConfig.generateContent(prompt);
+      console.log('✅ Report generated successfully with OpenAI (fallback), length:', reportText?.length || 0);
+
+      return {
+        success: true,
+        content: reportText,
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          provider: 'OpenAI (Fallback)',
+          model: 'gpt-4-turbo-preview',
+          reportType: reportData.reportType,
+          claimNumber: reportData.claimNumber,
+          note: 'WatsonX unavailable, used OpenAI'
+        }
+      };
+    }
   } catch (error) {
-    console.error('❌ WatsonX report generation failed:', error);
+    console.error('❌ Report generation failed completely:', error);
     console.error('Error stack:', error.stack);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      statusCode: error.statusCode,
-      body: error.body
-    });
     return {
       success: false,
-      error: `WatsonX Error: ${error.message}`,
-      provider: 'IBM WatsonX AI',
+      error: `Report generation failed: ${error.message}`,
+      provider: 'None',
       details: error.code || 'Unknown error code'
     };
   }
