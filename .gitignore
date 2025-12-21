@@ -10,6 +10,8 @@ yarn.lock
 # Firebase credentials
 *firebase*.json
 serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
 
 # Generated files
 dist/
