@@ -35,10 +35,17 @@ async function generateInsuranceReport(reportData) {
   } catch (error) {
     console.error('❌ WatsonX report generation failed:', error);
     console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      statusCode: error.statusCode,
+      body: error.body
+    });
     return {
       success: false,
-      error: error.message,
-      provider: 'IBM WatsonX AI'
+      error: `WatsonX Error: ${error.message}`,
+      provider: 'IBM WatsonX AI',
+      details: error.code || 'Unknown error code'
     };
   }
 }
