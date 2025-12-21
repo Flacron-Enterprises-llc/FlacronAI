@@ -6,9 +6,10 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-// Initialize Firebase and Gemini
+// Initialize Firebase and AI providers
 const { initializeFirebase } = require('./config/firebase');
-const { initializeGemini } = require('./config/gemini');
+const { initializeOpenAI } = require('./config/openai');
+const { initializeWatsonX } = require('./config/watsonx');
 
 // Import routes
 const reportsRouter = require('./routes/reports');
@@ -196,8 +197,22 @@ async function startServer() {
     // Initialize Firebase
     initializeFirebase();
 
-    // Initialize Gemini AI
-    initializeGemini();
+    // Initialize AI providers
+    console.log('\n📡 Initializing AI Providers...');
+
+    try {
+      initializeOpenAI();
+      console.log('   🟢 OpenAI: Ready for general features');
+    } catch (error) {
+      console.warn('   ⚠️ OpenAI: Not configured -', error.message);
+    }
+
+    try {
+      initializeWatsonX();
+      console.log('   🔵 WatsonX AI: Ready for enterprise reports');
+    } catch (error) {
+      console.warn('   ⚠️ WatsonX AI: Not configured -', error.message);
+    }
 
     // Start Express server
     app.listen(PORT, () => {
@@ -207,7 +222,7 @@ async function startServer() {
 ║               🔥 FLACRONAI SERVER 🔥                  ║
 ║                                                       ║
 ║  AI-powered Insurance Report Generator               ║
-║  Powered by Google Gemini AI                         ║
+║  Dual-AI: OpenAI + IBM WatsonX                       ║
 ║                                                       ║
 ╠═══════════════════════════════════════════════════════╣
 ║                                                       ║
@@ -216,6 +231,7 @@ async function startServer() {
 ║  Health:    http://localhost:${PORT}/health              ║
 ║  Domain:    https://flacronai.com                     ║
 ║                                                       ║
+║  AI:        OpenAI (General) + WatsonX (Reports)     ║
 ║  Status:    ✅ Running                                ║
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝

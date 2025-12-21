@@ -68,6 +68,12 @@ export const reportService = {
     });
     return response.data;
   },
+
+  // Get AI providers status
+  getAIStatus: async () => {
+    const response = await api.get('/reports/ai-status');
+    return response.data;
+  },
 };
 
 export default reportService;

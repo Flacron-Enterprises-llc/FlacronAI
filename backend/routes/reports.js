@@ -1,7 +1,8 @@
 // Report Routes for FlacronAI API
 const express = require('express');
 const router = express.Router();
-const { generateInsuranceReport, analyzeDamageImages } = require('../services/geminiService');
+// Updated to use dual-AI strategy
+const { generateInsuranceReport, analyzeDamageImages, getAIStatus } = require('../services/aiService');
 const { createReport, getReportById, getUserReports, updateReport, deleteReport, checkUserLimits, trackReportUsage } = require('../services/reportService');
 const { uploadImage, uploadReportDocument } = require('../config/storage');
 const { generateDOCX, generatePDF, generateHTML } = require('../utils/documentGenerator');
@@ -20,6 +21,29 @@ const upload = multer({
     } else {
       cb(new Error('Only image files are allowed'));
     }
+  }
+});
+
+/**
+ * GET /api/reports/ai-status
+ * Check AI providers health and availability
+ */
+router.get('/ai-status', async (req, res) => {
+  try {
+    console.log('🔍 Checking AI providers status...');
+    const status = await getAIStatus();
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      providers: status
+    });
+  } catch (error) {
+    console.error('❌ AI status check error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
