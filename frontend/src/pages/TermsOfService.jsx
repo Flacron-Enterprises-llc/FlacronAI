@@ -34,7 +34,7 @@ const TermsOfService = () => {
           <section>
             <h2>2. Description of Service</h2>
             <p>
-              FlacronAI is an AI-powered insurance report generation platform that uses Google Gemini AI technology to help
+              FlacronAI is an AI-powered insurance report generation platform that uses IBM WatsonX AI and OpenAI technology to help
               insurance professionals create comprehensive, accurate reports. Our services include:
             </p>
             <ul>
@@ -159,7 +159,7 @@ const TermsOfService = () => {
           <section>
             <h2>7. AI-Generated Content Disclaimer</h2>
             <p>
-              <strong>IMPORTANT:</strong> Our services use Google Gemini AI to generate report content. While we strive
+              <strong>IMPORTANT:</strong> Our services use IBM WatsonX AI and OpenAI to generate report content. While we strive
               for accuracy, AI-generated content may contain errors, inaccuracies, or inconsistencies. You are solely
               responsible for:
             </p>
@@ -201,7 +201,7 @@ const TermsOfService = () => {
               <li>Warranties of merchantability or fitness for a particular purpose</li>
               <li>Warranties of accuracy, reliability, or completeness</li>
               <li>Warranties of uninterrupted or error-free service</li>
-              <li>Warranties regarding third-party services (Google Gemini AI, Firebase, Stripe)</li>
+              <li>Warranties regarding third-party services (IBM WatsonX AI and OpenAI, Firebase, Stripe)</li>
             </ul>
           </section>
 
@@ -237,7 +237,7 @@ const TermsOfService = () => {
               Our Platform integrates with third-party services, including:
             </p>
             <ul>
-              <li><strong>Google Gemini AI:</strong> For AI-powered content generation</li>
+              <li><strong>IBM WatsonX AI and OpenAI:</strong> For AI-powered content generation</li>
               <li><strong>Firebase:</strong> For authentication and data storage</li>
               <li><strong>Stripe:</strong> For payment processing</li>
             </ul>

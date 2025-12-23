@@ -27,7 +27,7 @@ async function generateInsuranceReport(reportData) {
     };
   } catch (error) {
     console.error('WatsonX report generation failed:', error);
-    throw new Error(`Failed to generate report: ${error.message}`);
+    throw new Error(`Failed to generate report with WatsonX: ${error.message}`);
   }
 }
 

@@ -1,29 +1,52 @@
-# FlacronAI - AI-Powered Insurance Report Generator
+# 🔥 FlacronAI - AI-Powered Insurance Claim Reporting Platform
 
-<div align="center">
-  <img src="logo.png" alt="FlacronAI Logo" width="200"/>
+> **Professional insurance inspection reports powered by IBM WatsonX AI & OpenAI**
 
-  <p><strong>Transform hours of work into minutes with AI-powered insurance reports</strong></p>
-
-  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
-  [![React](https://img.shields.io/badge/react-18.3.1-blue)](https://reactjs.org)
-</div>
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18+-blue.svg)](https://reactjs.org/)
+[![React Native](https://img.shields.io/badge/React%20Native-Expo-purple.svg)](https://expo.dev/)
 
 ---
 
-## 🌟 Features
+## 📋 Overview
 
-- **AI Document Generator** - Generate CRU-style or custom templates instantly using Google Gemini AI
-- **Structured Input Forms** - Capture claim numbers, property data, damages, and contacts efficiently
-- **Multiple Export Formats** - Export reports in DOCX, PDF, and HTML formats
-- **Photo Integration** - Upload site photos and get AI-powered damage analysis
-- **Map & GPS** - Automatically includes inspection site maps in reports
-- **Quality Checker** - AI ensures reports have no missing key fields
-- **Multi-User Access** - Role-based access control for teams and agencies
-- **Multi-Language** - Generate reports in English, French, and Spanish
-- **CRM Integration** - Manage clients, claims, and appointments
-- **Subscription Tiers** - Flexible pricing from free to enterprise
+**FlacronAI** is an enterprise-grade platform that revolutionizes insurance claim processing by combining AI-powered report generation with professional document management. Built for insurance adjusters, claim processors, and property inspectors.
+
+### Why FlacronAI?
+
+- ⚡ **10x Faster**: Generate comprehensive reports in minutes, not hours
+- 🤖 **AI-Powered**: Dual-AI strategy using IBM WatsonX for enterprise reports and OpenAI for general features
+- 📱 **Multi-Platform**: Web dashboard + Native mobile app (iOS/Android)
+- 📄 **Professional Output**: Export reports as PDF, DOCX, or HTML
+- 🔒 **Enterprise Security**: Firebase Authentication + JWT tokens
+- 💳 **Monetization Ready**: Integrated Stripe subscription tiers
+
+---
+
+## ✨ Key Features
+
+- **🤖 Dual-AI Strategy**: IBM WatsonX AI (Granite-3-8b) for structured reports + OpenAI (GPT-4) for summaries & image analysis
+- **📊 Professional Reports**: CRU GROUP standard format with beautiful PDF/DOCX/HTML export
+- **👤 Multi-Tier System**: Free (3 reports/month) → Professional ($39.99) → Agency ($99.99) → Enterprise ($499)
+- **🔐 Secure Authentication**: Email/Password, Google Sign-In, Apple Sign-In via Firebase
+- **📱 Native Mobile App**: React Native + Expo for iOS/Android with offline capability
+- **💳 Stripe Payments**: Subscription management with auto-renewal
+- **📸 Image Analysis**: AI-powered damage assessment from photos
+- **🗺️ GPS Integration**: Auto-populate property locations
+
+---
+
+## 🛠 Tech Stack
+
+**Frontend (Web)**: React 18 + Vite + React Router
+**Frontend (Mobile)**: React Native + Expo SDK 51+
+**Backend**: Node.js 18 + Express + Firebase Admin
+**AI**: IBM WatsonX AI (Granite-3-8b-instruct) + OpenAI (GPT-4)
+**Database**: Firebase Firestore + Firebase Storage
+**Payments**: Stripe API
+**Auth**: Firebase Authentication
+**Hosting**: Render.com (backend) + Netlify/Vercel (frontend)
 
 ---
 
@@ -31,75 +54,47 @@
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
-- npm or yarn
-- Firebase account
-- Stripe account (for payments)
-- Google Gemini API key
+- Node.js 18+ | npm/yarn | Git
+- Firebase Account | IBM Cloud Account | OpenAI API Key | Stripe Account
 
-### Installation
+### 1. Clone Repository
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/flacronai.git
-cd flacronai
-
-# Install frontend dependencies
-cd frontend
-npm install
-
-# Install backend dependencies
-cd ../backend
-npm install
+git clone https://github.com/RODRIGUEFOKA/FlacronAI.git
+cd FlacronAI
 ```
 
-### Environment Setup
-
-#### Frontend (.env)
-```env
-VITE_API_URL=http://localhost:3000/api
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-```
-
-#### Backend (.env)
-```env
-GEMINI_API_KEY=your_gemini_api_key
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_PRIVATE_KEY_ID=your_private_key_id
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
-FIREBASE_CLIENT_ID=your_client_id
-PORT=3000
-NODE_ENV=development
-FRONTEND_URL=http://localhost:5173
-STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
-STRIPE_PRICE_PROFESSIONAL=price_xxxxxxxxxxxxx
-STRIPE_PRICE_AGENCY=price_xxxxxxxxxxxxx
-STRIPE_PRICE_ENTERPRISE=price_xxxxxxxxxxxxx
-```
-
-### Running Locally
+### 2. Backend Setup
 
 ```bash
-# Start backend server
 cd backend
+npm install
+cp .env.example .env
+# Edit .env with your credentials
 npm start
+```
 
-# In a new terminal, start frontend
+Backend: `http://localhost:3000`
+
+### 3. Frontend Setup
+
+```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-The application will be available at:
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3000
-- API Health: http://localhost:3000/health
+Frontend: `http://localhost:5173`
+
+### 4. Mobile App Setup
+
+```bash
+cd MobileApp
+npm install
+npx expo start
+```
+
+Scan QR code with Expo Go app
 
 ---
 
@@ -107,249 +102,210 @@ The application will be available at:
 
 ```
 FlacronAI/
-├── frontend/                 # React + Vite frontend
-│   ├── public/              # Static assets
-│   │   ├── logo.png        # FlacronAI logo
-│   │   └── favicon.svg     # Favicon
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── pages/          # Page components
-│   │   │   ├── Home.jsx    # Landing page
-│   │   │   ├── Auth.jsx    # Login/Register
-│   │   │   ├── Dashboard.jsx  # Main dashboard
-│   │   │   ├── CRM.jsx     # CRM features
-│   │   │   └── Checkout.jsx   # Payment page
-│   │   ├── context/        # React context (Auth)
-│   │   ├── styles/         # CSS files
-│   │   ├── utils/          # Utility functions
-│   │   ├── config/         # Configuration files
-│   │   └── App.jsx         # Main app component
-│   └── package.json
-│
-├── backend/                 # Node.js + Express backend
-│   ├── config/             # Configuration
-│   │   ├── firebase.js     # Firebase setup
-│   │   ├── gemini.js       # Gemini AI setup
-│   │   └── tiers.js        # Subscription tiers
-│   ├── routes/             # API routes
-│   │   ├── auth.js         # Authentication
-│   │   ├── users.js        # User management
-│   │   ├── reports.js      # Report generation
-│   │   ├── payment.js      # Stripe integration
-│   │   └── crm.js          # CRM features
-│   ├── services/           # Business logic
-│   │   ├── geminiService.js   # AI report generation
-│   │   ├── reportService.js   # Report management
-│   │   ├── crmService.js      # CRM logic
-│   │   └── storageService.js  # File storage
-│   ├── middleware/         # Express middleware
-│   │   └── auth.js         # JWT authentication
-│   ├── utils/              # Utility functions
-│   │   └── documentGenerator.js  # PDF/DOCX generation
-│   ├── uploads/            # Generated files storage
-│   ├── server.js           # Main server file
-│   └── package.json
-│
-├── logo.png                # Project logo
-├── DEPLOYMENT_GUIDE.md     # Complete deployment guide
-└── README.md               # This file
+├── backend/                    # Node.js Express API
+│   ├── config/                 # Firebase, WatsonX, OpenAI configs
+│   ├── routes/                 # API endpoints
+│   ├── services/               # Business logic
+│   ├── utils/                  # PDF/DOCX generators
+│   └── server.js               # Entry point
+├── frontend/                   # React web app
+│   ├── src/pages/              # Dashboard, Checkout, etc.
+│   ├── src/services/           # API clients
+│   └── vite.config.js
+├── MobileApp/                  # React Native app
+│   ├── screens/                # Login, Signup, etc.
+│   ├── services/               # Auth, social login
+│   └── App.js
+├── SETUP_GUIDES/               # Setup documentation
+│   ├── FIREBASE_SETUP.md
+│   ├── WATSONX_SETUP.md
+│   └── BUILD_APK_GUIDE.md
+└── README.md                   # This file
 ```
 
 ---
 
-## 🏗️ Tech Stack
+## 🔐 Environment Variables
 
-### Frontend
-- **React 18** - UI library
-- **Vite** - Build tool
-- **React Router** - Navigation
-- **Firebase Auth** - Authentication
-- **Stripe.js** - Payment processing
+### Backend (.env)
 
-### Backend
-- **Node.js** - Runtime
-- **Express** - Web framework
-- **Firebase Admin** - Database & auth
-- **Google Gemini AI** - Report generation
-- **Stripe** - Payment processing
-- **PDFKit** - PDF generation
-- **Docx** - DOCX generation
+```env
+# AI Providers
+OPENAI_API_KEY=sk-proj-your-key
+WATSONX_API_KEY=your-key
+WATSONX_PROJECT_ID=your-project-id
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+WATSONX_MODEL=ibm/granite-3-8b-instruct
 
-### Database & Services
-- **Firestore** - NoSQL database
-- **Firebase Authentication** - User auth
-- **Stripe** - Subscription management
-- **Google Gemini 1.5** - AI text generation
+# Firebase
+FIREBASE_PROJECT_ID=your-project
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_your-key
+STRIPE_WEBHOOK_SECRET=whsec_your-secret
+STRIPE_PRICE_PROFESSIONAL=price_xxx
+STRIPE_PRICE_AGENCY=price_xxx
+STRIPE_PRICE_ENTERPRISE=price_xxx
+
+# Server
+PORT=3000
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+```
+
+See `backend/.env.example` for complete template.
+
+### Frontend (.env)
+
+```env
+VITE_API_URL=http://localhost:3000/api
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your-key
+```
+
+### Mobile (app.json)
+
+```json
+{
+  "expo": {
+    "extra": {
+      "apiUrl": "https://your-backend.onrender.com/api",
+      "firebaseApiKey": "your-key",
+      "googleWebClientId": "your-web-client-id"
+    }
+  }
+}
+```
 
 ---
 
-## 💳 Subscription Tiers
+## 📚 Documentation
 
-| Tier | Price | Reports/Month | Features |
-|------|-------|---------------|----------|
-| **Starter** | Free | 1 | Basic reports, PDF export |
-| **Professional** | $39.99/mo | 20 | All report types, PDF & DOCX, No watermark, Custom logo |
-| **Agency** | $99.99/mo | 100 | 5 users, Agency dashboard, Custom branding, Priority support |
-| **Enterprise** | $499/mo | Unlimited | Unlimited users, API access, White-label, Dedicated support |
-
----
-
-## 📖 API Documentation
-
-### Health Check
-```
-GET /health
-```
-Returns server health status
-
-### Authentication
-```
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/verify
-POST /api/auth/logout
-```
-
-### Reports
-```
-POST /api/reports/generate      # Generate AI report
-GET /api/reports                # Get all user reports
-GET /api/reports/:id            # Get specific report
-POST /api/reports/:id/export    # Export report (PDF/DOCX/HTML)
-DELETE /api/reports/:id         # Delete report
-```
-
-### Users
-```
-GET /api/users/profile          # Get user profile
-PUT /api/users/profile          # Update profile
-GET /api/users/usage            # Get usage statistics
-GET /api/users/tiers            # Get available tiers
-POST /api/users/upgrade         # Upgrade tier
-```
-
-### Payments
-```
-POST /api/payment/create-checkout-session    # Create Stripe checkout
-GET /api/payment/subscriptions               # Get all subscriptions
-POST /api/payment/webhook                    # Stripe webhook endpoint
-```
-
-### CRM
-```
-POST /api/crm/clients                    # Create client
-GET /api/crm/clients                     # Get all clients
-GET /api/crm/clients/:id                 # Get specific client
-PUT /api/crm/clients/:id                 # Update client
-DELETE /api/crm/clients/:id              # Delete client
-
-POST /api/crm/claims                     # Create claim
-GET /api/crm/claims                      # Get all claims
-PUT /api/crm/claims/:id/status           # Update claim status
-
-GET /api/crm/analytics/dashboard         # Get dashboard analytics
-```
+- **[Firebase Setup Guide](SETUP_GUIDES/FIREBASE_SETUP_GUIDE.md)** - Configure authentication & database
+- **[WatsonX AI Setup](SETUP_GUIDES/IBM_WATSONX_SETUP_GUIDE.md)** - Get IBM Cloud credentials
+- **[Mobile App Build Guide](SETUP_GUIDES/BUILD_APK_GUIDE.md)** - Build Android/iOS apps
+- **[Technical Documentation](TECHNICAL_DOCUMENTATION.md)** - Detailed architecture & API docs
 
 ---
 
 ## 🚀 Deployment
 
-For detailed deployment instructions, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+### Backend (Render.com)
 
-### Quick Deploy
+1. Create Web Service on Render
+2. Build: `cd backend && npm install`
+3. Start: `cd backend && npm start`
+4. Add environment variables
+5. Deploy!
 
-#### Frontend (Vercel)
+### Frontend (Netlify)
+
 ```bash
 cd frontend
-vercel --prod
+npm run build
+# Deploy dist/ folder
 ```
 
-#### Backend (Railway)
+### Mobile (EAS Build)
+
 ```bash
-# Use Railway dashboard or:
-railway up
+cd MobileApp
+npm install -g eas-cli
+eas login
+eas build --platform android --profile production
+eas submit --platform android
 ```
 
 ---
 
-## 🧪 Testing
+## 📖 API Examples
 
-### Run Frontend Tests
+### Register User
+
 ```bash
-cd frontend
-npm test
+POST /api/auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "displayName": "John Doe"
+}
 ```
 
-### Run Backend Tests
+### Generate Report
+
 ```bash
-cd backend
-npm test
+POST /api/reports/generate
+Authorization: Bearer <jwt-token>
+Content-Type: application/json
+
+{
+  "claimNumber": "CLM-123456",
+  "insuredName": "John Doe",
+  "lossType": "Water Damage",
+  "lossDescription": "Pipe burst in bathroom...",
+  "damages": "Water damage to walls, floor...",
+  "recommendations": "Immediate water extraction..."
+}
 ```
 
-### Manual Testing Checklist
-- [ ] User registration and login
-- [ ] Report generation
-- [ ] PDF/DOCX export
-- [ ] Stripe checkout
-- [ ] Webhook handling
-- [ ] CRM features
+### Export PDF
 
----
+```bash
+POST /api/reports/export/pdf
+Authorization: Bearer <jwt-token>
 
-## 🔒 Security
-
-- All sensitive data stored in environment variables
-- Firebase Security Rules enforced
-- JWT token-based authentication
-- Stripe webhook signature verification
-- HTTPS enforced in production
-- Rate limiting on API endpoints
-- CORS properly configured
+{
+  "reportId": "report-uuid"
+}
+```
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+1. Fork the repo
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit: `git commit -m 'Add amazing feature'`
+4. Push: `git push origin feature/amazing-feature`
+5. Open Pull Request
 
 ---
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file
 
 ---
 
-## 👥 Team
+## 👥 Support
 
-**Flacron Enterprises**
-- Website: https://flacronenterprises.com
-- Email: support@flacronenterprises.com
+- **Developer**: Rodrigue Foka
+- **Repository**: [github.com/RODRIGUEFOKA/FlacronAI](https://github.com/RODRIGUEFOKA/FlacronAI)
+- **Issues**: [GitHub Issues](https://github.com/RODRIGUEFOKA/FlacronAI/issues)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- Google Gemini AI for powerful text generation
-- Firebase for authentication and database
-- Stripe for payment processing
-- Vercel for seamless deployment
+- IBM WatsonX AI - Enterprise AI models
+- OpenAI - GPT-4 capabilities
+- Firebase - Authentication & database
+- Stripe - Payment processing
+- Expo - React Native platform
 
 ---
 
-## 📞 Support
+<div align="center">
 
-- **Email**: support@flacronenterprises.com
-- **Website**: https://flacronai.com
-- **Documentation**: See DEPLOYMENT_GUIDE.md
-- **Issues**: GitHub Issues
+**Made with ❤️ for Insurance Professionals**
 
----
+[Report Bug](https://github.com/RODRIGUEFOKA/FlacronAI/issues) · [Request Feature](https://github.com/RODRIGUEFOKA/FlacronAI/issues)
 
-**Built with ❤️ by Flacron Enterprises**
+**Status**: ✅ Production Ready
 
-*Powered by Google Gemini AI*
+</div>

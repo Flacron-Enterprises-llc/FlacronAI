@@ -241,7 +241,7 @@ async function generateDOCX(reportData, aiContent) {
           new Paragraph({ text: "", spacing: { after: 200 } }),
 
           new Paragraph({
-            children: [new TextRun({ text: "Powered by Google Gemini AI", italics: true, size: 18 })],
+            children: [new TextRun({ text: "Powered by IBM WatsonX AI & OpenAI", italics: true, size: 18 })],
             alignment: AlignmentType.CENTER
           })
         ]
@@ -499,47 +499,137 @@ function generatePDF(reportData, aiContent) {
         });
       });
 
-      // Header
-      doc.fontSize(26)
+      // Professional Header
+      doc.fontSize(28)
          .fillColor('#FF7C08')
          .font('Helvetica-Bold')
          .text('FLACRONAI', { align: 'center' });
 
-      doc.fontSize(16)
-         .fillColor('#000000')
+      doc.moveDown(0.3);
+
+      doc.fontSize(14)
+         .fillColor('#333333')
          .font('Helvetica')
          .text('Insurance Inspection Report', { align: 'center' });
 
-      doc.moveDown(1.5);
+      doc.moveDown(2);
 
-      // Report Information Box with better formatting
-      doc.fontSize(11)
+      // Report Information Section with Professional Layout
+      const infoBoxY = doc.y;
+      const boxWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+      // Draw background box for info section
+      doc.rect(doc.page.margins.left, infoBoxY, boxWidth, 150)
+         .fillAndStroke('#f8f9fa', '#dee2e6');
+
+      doc.fillColor('#000000');
+
+      // Reset position for text
+      doc.y = infoBoxY + 15;
+
+      doc.fontSize(12)
          .fillColor('#0d6efd')
          .font('Helvetica-Bold')
-         .text('REPORT INFORMATION', { underline: true });
+         .text('REPORT INFORMATION', doc.page.margins.left + 15, doc.y);
 
-      doc.moveDown(0.3);
+      doc.moveDown(0.8);
 
-      doc.fontSize(10)
+      // Format info in two columns
+      const leftCol = doc.page.margins.left + 15;
+      const rightCol = doc.page.margins.left + boxWidth / 2;
+      const startY = doc.y;
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Claim Number:', leftCol, startY);
+      doc.fontSize(9)
          .fillColor('#000000')
          .font('Helvetica')
-         .text(`Claim Number: ${reportData.claimNumber || 'N/A'}`)
-         .text(`Insured Name: ${reportData.insuredName || 'N/A'}`)
-         .text(`Property Address: ${reportData.propertyAddress || 'N/A'}`)
-         .text(`Loss Date: ${reportData.lossDate || 'N/A'}`)
-         .text(`Loss Type: ${reportData.lossType || 'N/A'}`)
-         .text(`Report Type: ${reportData.reportType || 'N/A'}`)
-         .text(`Report Date: ${new Date().toLocaleDateString()}`);
+         .text(reportData.claimNumber || 'N/A', leftCol + 85, startY);
 
-      doc.moveDown(1.5);
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Loss Date:', rightCol, startY);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(reportData.lossDate || 'N/A', rightCol + 60, startY);
 
-      // Content Section with better formatting
-      doc.fontSize(11)
+      doc.y = startY + 20;
+      const row2Y = doc.y;
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Insured Name:', leftCol, row2Y);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(reportData.insuredName || 'N/A', leftCol + 85, row2Y);
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Loss Type:', rightCol, row2Y);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(reportData.lossType || 'N/A', rightCol + 60, row2Y);
+
+      doc.y = row2Y + 20;
+      const row3Y = doc.y;
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Property Address:', leftCol, row3Y);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(reportData.propertyAddress || 'N/A', leftCol + 100, row3Y, { width: boxWidth / 2 - 115 });
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Report Type:', rightCol, row3Y);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(reportData.reportType || 'N/A', rightCol + 65, row3Y);
+
+      doc.y = row3Y + 35;
+      const row4Y = doc.y;
+
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .font('Helvetica-Bold')
+         .text('Report Date:', leftCol, row4Y);
+      doc.fontSize(9)
+         .fillColor('#000000')
+         .font('Helvetica')
+         .text(new Date().toLocaleDateString(), leftCol + 70, row4Y);
+
+      // Move past the info box
+      doc.y = infoBoxY + 160;
+      doc.moveDown(1);
+
+      // Content Section Header
+      doc.fontSize(12)
          .fillColor('#0d6efd')
          .font('Helvetica-Bold')
-         .text('REPORT CONTENT', { underline: true });
+         .text('REPORT CONTENT');
 
-      doc.moveDown(0.5);
+      // Draw underline
+      const lineY = doc.y + 5;
+      doc.moveTo(doc.page.margins.left, lineY)
+         .lineTo(doc.page.width - doc.page.margins.right, lineY)
+         .strokeColor('#dee2e6')
+         .lineWidth(1)
+         .stroke();
+
+      doc.moveDown(0.8);
 
       // Clean and format the content
       formatPDFContent(doc, aiContent);
@@ -550,7 +640,7 @@ function generatePDF(reportData, aiContent) {
          .fillColor('#888888')
          .font('Helvetica-Oblique')
          .text('Generated with FlacronAI - https://flacronai.com', { align: 'center' })
-         .text('Powered by Google Gemini AI', { align: 'center' });
+         .text('Powered by IBM WatsonX AI & OpenAI', { align: 'center' });
 
       doc.end();
     } catch (error) {
@@ -682,11 +772,15 @@ function formatPDFContent(doc, aiContent) {
 
     // Check if it's a major section header (without markdown)
     const cleanedForHeader = line.replace(/\*\*/g, '');
-    const isHeader = sectionHeaders.some(header =>
-      cleanedForHeader.toUpperCase() === header ||
-      cleanedForHeader.toUpperCase().startsWith(header + ':') ||
-      cleanedForHeader.toUpperCase().startsWith(header)
-    );
+
+    // Only match if line starts with ## (markdown h2) or is ALL CAPS section header
+    const isMarkdownHeader = line.startsWith('##');
+    const isAllCapsHeader = cleanedForHeader === cleanedForHeader.toUpperCase() &&
+                           cleanedForHeader.length > 3 &&
+                           !cleanedForHeader.includes(':') &&
+                           sectionHeaders.some(header => cleanedForHeader === header);
+
+    const isHeader = isMarkdownHeader || isAllCapsHeader;
 
     // Once we hit actual content, stop skipping
     if (isHeader || cleanedForHeader.match(/^[A-Z][A-Z\s]+:?$/)) {
@@ -694,22 +788,34 @@ function formatPDFContent(doc, aiContent) {
     }
 
     if (isHeader) {
-      doc.moveDown(0.5);
-      doc.fontSize(11)
-         .fillColor('#000000')
+      // Remove ## markdown symbols if present
+      const headerText = cleanedForHeader.replace(/^##\s*/, '');
+
+      doc.moveDown(0.7);
+      doc.fontSize(12)
+         .fillColor('#0d6efd')
          .font('Helvetica-Bold')
-         .text(cleanedForHeader);
-      doc.moveDown(0.3);
+         .text(headerText);
+
+      // Draw underline for major sections
+      const headerLineY = doc.y + 3;
+      doc.moveTo(doc.page.margins.left, headerLineY)
+         .lineTo(doc.page.width - doc.page.margins.right, headerLineY)
+         .strokeColor('#dee2e6')
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.moveDown(0.5);
     }
     // Check if it's a subsection (ends with :)
     else if (line.endsWith(':') && line.length < 80) {
       const cleanedSubsection = line.replace(/\*\*/g, '');
-      doc.moveDown(0.2);
+      doc.moveDown(0.4);
       doc.fontSize(10)
-         .fillColor('#000000')
+         .fillColor('#333333')
          .font('Helvetica-Bold')
          .text(cleanedSubsection);
-      doc.moveDown(0.1);
+      doc.moveDown(0.2);
     }
     // Regular paragraph with markdown parsing
     else {
@@ -869,7 +975,7 @@ function generateHTML(reportData, aiContent) {
 
         <div class="footer">
             <p>Generated with FlacronAI - <a href="https://flacronai.com">https://flacronai.com</a></p>
-            <p>Powered by Google Gemini AI</p>
+            <p>Powered by IBM WatsonX AI & OpenAI</p>
         </div>
     </div>
 </body>

@@ -67,7 +67,7 @@ const PrivacyPolicy = () => {
             <p>We use the collected information for the following purposes:</p>
             <ul>
               <li><strong>Service Delivery:</strong> To provide, maintain, and improve our AI-powered report generation services</li>
-              <li><strong>AI Processing:</strong> To generate insurance reports using Google Gemini AI based on your input data</li>
+              <li><strong>AI Processing:</strong> To generate insurance reports using IBM WatsonX AI and OpenAI based on your input data</li>
               <li><strong>Account Management:</strong> To create and manage your account, process payments, and provide customer support</li>
               <li><strong>Communications:</strong> To send you service updates, technical notices, and security alerts</li>
               <li><strong>Analytics:</strong> To understand how users interact with our platform and improve user experience</li>
@@ -81,7 +81,7 @@ const PrivacyPolicy = () => {
             <h3>4.1 Third-Party Service Providers</h3>
             <p>We share your information with trusted third-party service providers:</p>
             <ul>
-              <li><strong>Google Gemini AI:</strong> For AI-powered report generation</li>
+              <li><strong>IBM WatsonX AI and OpenAI:</strong> For AI-powered report generation</li>
               <li><strong>Firebase:</strong> For authentication and data storage</li>
               <li><strong>Stripe:</strong> For payment processing</li>
               <li><strong>Cloud Storage:</strong> For secure file storage</li>

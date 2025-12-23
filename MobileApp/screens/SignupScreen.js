@@ -18,7 +18,7 @@ import {
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
-import { signUpWithEmail, signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/authService';
+import { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/authService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,6 +34,7 @@ const SignupScreen = ({ navigation }) => {
   const [appleLoading, setAppleLoading] = useState(false);
   const [showGoogleButton, setShowGoogleButton] = useState(false);
   const [showAppleButton, setShowAppleButton] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   const blobScale = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -180,6 +181,42 @@ const SignupScreen = ({ navigation }) => {
       Alert.alert('Error', 'An unexpected error occurred during Apple sign-in.');
     } finally {
       setAppleLoading(false);
+    }
+  };
+
+  /**
+   * Handle Quick Demo Login
+   * Logs in with demo credentials (skip signup)
+   */
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+
+    // Demo credentials
+    const demoEmail = 'demo@flacronai.com';
+    const demoPassword = 'Demo123!';
+
+    try {
+      const result = await signInWithEmail(demoEmail, demoPassword);
+
+      if (result.success && result.token && result.user) {
+        // Store JWT token and user data
+        await AsyncStorage.setItem('authToken', result.token);
+        await AsyncStorage.setItem('userData', JSON.stringify(result.user));
+
+        console.log('✅ Demo login successful, navigating to Main app...');
+        navigation.replace('Main');
+      } else {
+        Alert.alert(
+          'Demo Account Info',
+          'Demo account credentials:\nEmail: demo@flacronai.com\nPassword: Demo123!\n\nYou can log in with these credentials or create your own account.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Demo login error:', error);
+      Alert.alert('Demo Login', 'Demo account is temporarily unavailable. Please create your own account.');
+    } finally {
+      setDemoLoading(false);
     }
   };
 
@@ -414,6 +451,23 @@ const SignupScreen = ({ navigation }) => {
                   </>
                 )}
 
+                {/* Quick Demo Button */}
+                <TouchableOpacity
+                  style={styles.demoButton}
+                  onPress={handleDemoLogin}
+                  disabled={demoLoading}
+                  activeOpacity={0.7}
+                >
+                  {demoLoading ? (
+                    <ActivityIndicator color="#FF6B35" size="small" />
+                  ) : (
+                    <>
+                      <MaterialIcons name="flash-on" size={20} color="#FF6B35" style={styles.demoIcon} />
+                      <Text style={styles.demoButtonText}>Try Quick Demo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
                 {/* Login link */}
                 <View style={styles.footer}>
                   <Text style={styles.footerText}>Already have an account? </Text>
@@ -595,6 +649,27 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  demoButton: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF5F0',
+    height: 50,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FF6B35',
+    borderStyle: 'dashed',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  demoIcon: {
+    marginRight: 8,
+  },
+  demoButtonText: {
+    color: '#FF6B35',
+    fontSize: 15,
+    fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',

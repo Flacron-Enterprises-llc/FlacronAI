@@ -51,7 +51,7 @@ const Home = () => {
               Reports in <span>Seconds</span>
             </h1>
             <p className="hero-description">
-              Professional AI-powered report generation using Google Gemini.
+              Professional AI-powered report generation using IBM WatsonX AI & OpenAI.
               Transform hours of work into minutes with accurate, consistent documentation.
             </p>
             <div className="hero-buttons">
@@ -117,7 +117,7 @@ const Home = () => {
                 </svg>
               </div>
               <h3>AI Document Generator</h3>
-              <p>Generates CRU-style or custom templates instantly using Google Gemini AI</p>
+              <p>Generates CRU-style or custom templates instantly using IBM WatsonX AI & OpenAI</p>
             </div>
 
             <div className="feature-card animate-on-scroll">
@@ -297,7 +297,7 @@ const Home = () => {
           <div className="footer-content">
             <div className="footer-section">
               <img src="/logo.png" alt="FlacronAI" style={{height: '50px', marginBottom: '1rem'}} />
-              <p>AI-powered insurance report generation using Google Gemini AI.</p>
+              <p>AI-powered insurance report generation using IBM WatsonX AI & OpenAI.</p>
             </div>
             <div className="footer-section">
               <h4>Product</h4>
@@ -324,7 +324,7 @@ const Home = () => {
           </div>
           <div className="footer-bottom">
             <p>&copy; 2025 Flacron Enterprises. All rights reserved.</p>
-            <p>Powered by Google Gemini AI</p>
+            <p>Powered by IBM WatsonX AI & OpenAI</p>
           </div>
         </div>
       </footer>

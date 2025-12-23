@@ -1,47 +1,101 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
+.pnp
+.pnp.js
 
-# Environment variables (keep .env.production as template with placeholders)
+# Environment variables
 .env
 .env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Firebase credentials
-*firebase*.json
+*-firebase-credentials.json
 serviceAccountKey.json
 google-services.json
 GoogleService-Info.plist
+firebase.json
+.firebaserc
 
-# Generated files
-dist/
-build/
+# Production builds
+/build
+/dist
+/.next/
+/out/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# Uploads and temporary files
-uploads/
-temp/
-*.tmp
-
-# IDE
+# IDEs and editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
-# OS
+# OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Reports (generated)
-reports/*.pdf
-reports/*.docx
-
-# Testing
-coverage/
-.nyc_output/
+# Mobile builds
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.keystore
+*.hprof
+android/
+ios/
 
 # Expo
 .expo/
 .expo-shared/
+web-build/
+dist/
+
+# Uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+temp/
+*.tmp
+*.temp
+
+# Reports (generated)
+reports/*.pdf
+reports/*.docx
+reports/*.html
+
+# Testing
+coverage/
+.nyc_output/
+*.test.js.snap
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# Misc
+.serverless/
+.dynamodb/
+.fusebox/
+.tern-project
+
+# Documentation temp files
+*.md.backup
+CLEANUP_PLAN.md

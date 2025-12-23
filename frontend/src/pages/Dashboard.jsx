@@ -1153,7 +1153,7 @@ const Dashboard = () => {
             <div className="footer-content">
               <div className="footer-section">
                 <h3>FLACRONAI</h3>
-                <p>AI-powered insurance report generation using Google Gemini AI.</p>
+                <p>AI-powered insurance report generation using IBM WatsonX AI & OpenAI.</p>
               </div>
               <div className="footer-section">
                 <h4>Product</h4>
@@ -1180,7 +1180,7 @@ const Dashboard = () => {
             </div>
             <div className="footer-bottom">
               <p>&copy; 2025 Flacron Enterprises. All rights reserved.</p>
-              <p>Powered by Google Gemini AI</p>
+              <p>Powered by IBM WatsonX AI & OpenAI</p>
             </div>
           </div>
         </footer>

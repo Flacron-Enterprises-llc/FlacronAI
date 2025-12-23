@@ -313,7 +313,7 @@ const Checkout = () => {
       <div className="checkout-footer">
         <h3>All plans include:</h3>
         <p>
-          <i className="fas fa-check" style={{ color: '#10b981', marginRight: '8px' }}></i> AI-powered report generation using Google Gemini<br/>
+          <i className="fas fa-check" style={{ color: '#10b981', marginRight: '8px' }}></i> AI-powered report generation using IBM WatsonX AI & OpenAI<br/>
           <i className="fas fa-check" style={{ color: '#10b981', marginRight: '8px' }}></i> Professional insurance report templates<br/>
           <i className="fas fa-check" style={{ color: '#10b981', marginRight: '8px' }}></i> Secure cloud storage<br/>
           <i className="fas fa-check" style={{ color: '#10b981', marginRight: '8px' }}></i> Regular updates and improvements<br/>

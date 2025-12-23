@@ -73,7 +73,7 @@ async function generateReport(reportData) {
     const client = getWatsonXClient();
 
     // Construct comprehensive prompt for CRU GROUP report template
-    const prompt = `You are a professional insurance adjuster creating a detailed insurance claim report.
+    const prompt = `You are a professional insurance adjuster writing the ACTUAL CONTENT for a detailed insurance claim report. Write the full report with complete paragraphs and analysis, not just an outline.
 
 CLAIM INFORMATION:
 - Claim Number: ${reportData.claimNumber}
@@ -95,19 +95,36 @@ ${reportData.damages || 'Not provided'}
 RECOMMENDATIONS:
 ${reportData.recommendations || 'Not provided'}
 
-Generate a comprehensive, professional insurance claim report following the CRU GROUP template structure. Include:
+Write a complete, comprehensive insurance claim report with the following sections. For EACH section, write detailed content with full sentences and paragraphs based on the information provided above:
 
-1. EXECUTIVE SUMMARY
-2. CLAIM INFORMATION
-3. PROPERTY DETAILS
-4. LOSS DESCRIPTION
-5. SCOPE OF DAMAGE
-6. DAMAGE ASSESSMENT
-7. COST ESTIMATE (if applicable)
-8. RECOMMENDATIONS
-9. CONCLUSION
+## EXECUTIVE SUMMARY
+Write a detailed executive summary (2-3 paragraphs) that provides an overview of this claim, including the loss type, key findings, and overall assessment.
 
-Format the report professionally with clear sections and detailed analysis. Be specific, factual, and thorough.`;
+## CLAIM INFORMATION
+Present the claim details in a professional format.
+
+## PROPERTY DETAILS
+Write detailed paragraphs describing the property, its condition before the loss, and relevant characteristics.
+
+## LOSS DESCRIPTION
+Write 2-3 detailed paragraphs explaining how the loss occurred, when it happened, and the immediate impact.
+
+## SCOPE OF DAMAGE
+Write detailed paragraphs describing all areas affected by the loss, the extent of damage to each area, and what was observed during inspection.
+
+## DAMAGE ASSESSMENT
+Provide a thorough analysis (3-4 paragraphs) of the damage severity, affected building systems, materials impacted, and professional assessment of the situation.
+
+## COST ESTIMATE
+If applicable, provide detailed cost breakdowns with explanations.
+
+## RECOMMENDATIONS
+Write specific, actionable recommendations (2-3 paragraphs) for remediation, repairs, and next steps.
+
+## CONCLUSION
+Write a concluding paragraph summarizing the report findings and recommendations.
+
+IMPORTANT: Write the ACTUAL REPORT CONTENT with full paragraphs, not a template or outline. Be specific, factual, and professional. Use the claim information provided to create realistic, detailed content for each section.`;
 
     // Generate text using WatsonX AI
     const textGenParams = {
