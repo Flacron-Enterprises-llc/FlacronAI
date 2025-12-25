@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { AIAssistantBubble } from '../components/AIAssistant';
 import AnimatedBlobBackground from '../components/AnimatedBlobBackground';
+import { reportService } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
