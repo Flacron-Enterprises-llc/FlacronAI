@@ -49,11 +49,17 @@ export default function ReportsScreen({ onShowAIAssistant }) {
 
   const fetchReports = async () => {
     setLoading(true);
-    // API call to fetch reports
-    setTimeout(() => {
+    try {
+      const result = await reportService.getMyReports();
+      if (result.success && result.reports) {
+        setReports(result.reports);
+      }
+    } catch (error) {
+      console.error('Error fetching reports:', error);
       setReports([]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const onRefresh = async () => {

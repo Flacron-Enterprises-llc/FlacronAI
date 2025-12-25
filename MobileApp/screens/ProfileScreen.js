@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AIAssistantBubble } from '../components/AIAssistant';
 import AnimatedBlobBackground from '../components/AnimatedBlobBackground';
+import { authService } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -51,7 +52,7 @@ export default function ProfileScreen({ userEmail, userName, onLogout, onShowAIA
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.removeItem('userToken');
+            await authService.logout();
             onLogout();
           },
         },
