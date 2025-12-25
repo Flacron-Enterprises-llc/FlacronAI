@@ -10,10 +10,15 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  Alert,
+  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AIAssistantBubble } from '../components/AIAssistant';
 import AnimatedBlobBackground from '../components/AnimatedBlobBackground';
 import { reportService } from '../services/api';
@@ -41,7 +46,6 @@ export default function ReportsScreen({ onShowAIAssistant }) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reports, setReports] = useState([]);
-  const [filter, setFilter] = useState('all'); // all, recent, archived
 
   useEffect(() => {
     fetchReports();
@@ -66,6 +70,126 @@ export default function ReportsScreen({ onShowAIAssistant }) {
     setRefreshing(true);
     await fetchReports();
     setRefreshing(false);
+  };
+
+  const downloadReport = async (reportId, format) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const token = await AsyncStorage.getItem('userToken');
+
+      if (!token) {
+        Alert.alert('Error', 'You must be logged in to download reports.');
+        return;
+      }
+
+      console.log('📥 Starting export:', { reportId, format });
+
+      // Step 1: Call export endpoint to generate the file
+      const exportUrl = `https://flacronai.onrender.com/api/reports/${reportId}/export`;
+      const exportResponse = await fetch(exportUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ format }),
+      });
+
+      const exportData = await exportResponse.json();
+      console.log('Export response:', exportData);
+
+      if (!exportResponse.ok || !exportData.success) {
+        throw new Error(exportData.error || 'Failed to export report');
+      }
+
+      if (!exportData.downloadUrl) {
+        throw new Error('No download URL provided');
+      }
+
+      // Step 2: Download the file from backend server
+      // The downloadUrl is a relative path, so prepend the API base URL
+      const fullDownloadUrl = exportData.downloadUrl.startsWith('http')
+        ? exportData.downloadUrl
+        : `https://flacronai.onrender.com${exportData.downloadUrl}`;
+
+      console.log('Downloading from:', fullDownloadUrl);
+
+      const fileResponse = await fetch(fullDownloadUrl);
+      if (!fileResponse.ok) {
+        throw new Error('Failed to download file from storage');
+      }
+
+      const blob = await fileResponse.blob();
+      console.log('Downloaded blob size:', blob.size);
+
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const base64Data = await base64Promise;
+      const base64String = base64Data.split(',')[1]; // Remove data:mime;base64, prefix
+
+      // Write to file system
+      const fileUri = FileSystem.documentDirectory + `report_${reportId}.${format}`;
+      await FileSystem.writeAsStringAsync(fileUri, base64String, {
+        encoding: 'base64',
+      });
+
+      console.log('File saved to:', fileUri);
+
+      // Verify file was saved
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      console.log('File info:', fileInfo);
+
+      if (!fileInfo.exists || fileInfo.size === 0) {
+        throw new Error('Failed to save file');
+      }
+
+      // Step 3: Share the downloaded file
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          dialogTitle: `Share ${format.toUpperCase()} Report`,
+        });
+      } else {
+        Alert.alert('Success', `Report saved to ${fileUri}`);
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Download error:', error);
+      console.error('Error details:', error.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        'Download Failed',
+        `Could not download ${format.toUpperCase()} file. ${error.message || 'Please try again.'}`
+      );
+    }
+  };
+
+  const shareReport = async (report) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const shareMessage = `Report: ${report.claimNumber}\nInsured: ${report.insuredName}\nType: ${report.lossType}\nDate: ${report.date}`;
+
+      await Share.share({
+        message: shareMessage,
+        title: `Insurance Report - ${report.claimNumber}`,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+      Alert.alert('Error', 'Failed to share report');
+    }
   };
 
   const ReportCard = ({ report }) => (
@@ -107,15 +231,24 @@ export default function ReportsScreen({ onShowAIAssistant }) {
       </View>
 
       <View style={styles.reportActions}>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => downloadReport(report.id, 'pdf')}
+        >
           <Ionicons name="download-outline" size={18} color={COLORS.primary} />
           <Text style={styles.actionButtonText}>PDF</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => downloadReport(report.id, 'docx')}
+        >
           <Ionicons name="document-outline" size={18} color={COLORS.info} />
           <Text style={styles.actionButtonText}>DOCX</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => shareReport(report)}
+        >
           <Ionicons name="share-outline" size={18} color={COLORS.success} />
           <Text style={styles.actionButtonText}>Share</Text>
         </TouchableOpacity>
@@ -131,47 +264,6 @@ export default function ReportsScreen({ onShowAIAssistant }) {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.pageTitle}>My Reports</Text>
-      </View>
-
-      {/* Filter Chips */}
-      <View style={styles.filterContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
-        >
-          {[
-            { key: 'all', label: 'All Reports', icon: 'list' },
-            { key: 'recent', label: 'Recent', icon: 'time' },
-            { key: 'archived', label: 'Archived', icon: 'archive' },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.filterChip,
-                filter === item.key && styles.filterChipActive,
-              ]}
-              onPress={() => {
-                setFilter(item.key);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-            >
-              <Ionicons
-                name={item.icon}
-                size={16}
-                color={filter === item.key ? '#FFFFFF' : COLORS.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filter === item.key && styles.filterChipTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
 
       {/* Reports List */}
@@ -227,8 +319,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 60,
-    paddingBottom: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 16,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     zIndex: 10,
   },
@@ -236,37 +328,6 @@ const styles = StyleSheet.create({
     fontSize: normalize(28),
     fontWeight: '800',
     color: COLORS.text,
-  },
-  filterContainer: {
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  filterScroll: {
-    paddingHorizontal: 20,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginRight: 10,
-    backgroundColor: '#f9fafb',
-    gap: 6,
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  filterChipText: {
-    fontSize: normalize(14),
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
   },
   content: {
     flex: 1,

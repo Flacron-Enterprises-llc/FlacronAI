@@ -10,6 +10,7 @@ import {
   StatusBar,
   Dimensions,
   Alert,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,8 +40,26 @@ const normalize = (size) => {
 };
 
 export default function ProfileScreen({ userEmail, userName, onLogout, onShowAIAssistant, navigation }) {
-  const [notifications, setNotifications] = useState(true);
+  const [notifications, setNotifications] = useState({
+    reportGenerated: true,
+    usageAlerts: true,
+    generalUpdates: false,
+    dailyReminders: false,
+  });
   const [darkMode, setDarkMode] = useState(false);
+
+  const toggleNotification = async (key) => {
+    const newValue = !notifications[key];
+    setNotifications(prev => ({ ...prev, [key]: newValue }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Persist to AsyncStorage
+    try {
+      await AsyncStorage.setItem('notificationSettings', JSON.stringify({ ...notifications, [key]: newValue }));
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -111,75 +130,75 @@ export default function ProfileScreen({ userEmail, userName, onLogout, onShowAIA
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.menuCard}>
             <MenuItem
-              icon="person-outline"
-              title="Edit Profile"
-              subtitle="Update your personal information"
-              iconColor={COLORS.primary}
-              iconBg="#fff7ed"
-              onPress={() => Alert.alert('Coming Soon', 'Profile editing feature coming soon!')}
-            />
-            <MenuItem
               icon="lock-closed-outline"
               title="Change Password"
               subtitle="Update your password"
               iconColor="#3b82f6"
               iconBg="#eff6ff"
-              onPress={() => Alert.alert('Coming Soon', 'Password change feature coming soon!')}
-            />
-            <MenuItem
-              icon="shield-checkmark-outline"
-              title="Security"
-              subtitle="Two-factor authentication"
-              iconColor="#10b981"
-              iconBg="#ecfdf5"
-              onPress={() => Alert.alert('Coming Soon', 'Security features coming soon!')}
+              onPress={() => navigation.navigate('ForgotPassword')}
             />
           </View>
         </View>
 
-        {/* Settings Section */}
+        {/* Notification Settings Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <Text style={styles.sectionTitle}>Notification Settings</Text>
           <View style={styles.menuCard}>
-            <MenuItem
-              icon="notifications-outline"
-              title="Notifications"
-              subtitle="Manage your notifications"
-              iconColor="#f59e0b"
-              iconBg="#fffbeb"
-              onPress={() => navigation.navigate('NotificationSettings')}
-              rightElement={
-                <Switch
-                  value={notifications}
-                  onValueChange={(value) => {
-                    setNotifications(value);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
-                  thumbColor="#FFFFFF"
-                />
-              }
-            />
-            <MenuItem
-              icon="moon-outline"
-              title="Dark Mode"
-              subtitle="Switch to dark theme"
-              iconColor="#6366f1"
-              iconBg="#eef2ff"
-              onPress={() => {}}
-              rightElement={
-                <Switch
-                  value={darkMode}
-                  onValueChange={(value) => {
-                    setDarkMode(value);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    Alert.alert('Coming Soon', 'Dark mode coming soon!');
-                  }}
-                  trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
-                  thumbColor="#FFFFFF"
-                />
-              }
-            />
+            <View style={styles.notificationItem}>
+              <View style={styles.notificationInfo}>
+                <Text style={styles.notificationTitle}>Report Generated</Text>
+                <Text style={styles.notificationSubtitle}>Get notified when your report is ready</Text>
+              </View>
+              <Switch
+                value={notifications.reportGenerated}
+                onValueChange={() => toggleNotification('reportGenerated')}
+                trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#e5e7eb"
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.notificationItem}>
+              <View style={styles.notificationInfo}>
+                <Text style={styles.notificationTitle}>Usage Alerts</Text>
+                <Text style={styles.notificationSubtitle}>Alerts when approaching your limit</Text>
+              </View>
+              <Switch
+                value={notifications.usageAlerts}
+                onValueChange={() => toggleNotification('usageAlerts')}
+                trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#e5e7eb"
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.notificationItem}>
+              <View style={styles.notificationInfo}>
+                <Text style={styles.notificationTitle}>General Updates</Text>
+                <Text style={styles.notificationSubtitle}>News and feature updates</Text>
+              </View>
+              <Switch
+                value={notifications.generalUpdates}
+                onValueChange={() => toggleNotification('generalUpdates')}
+                trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#e5e7eb"
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.notificationItem}>
+              <View style={styles.notificationInfo}>
+                <Text style={styles.notificationTitle}>Daily Reminders</Text>
+                <Text style={styles.notificationSubtitle}>Daily productivity reminders</Text>
+              </View>
+              <Switch
+                value={notifications.dailyReminders}
+                onValueChange={() => toggleNotification('dailyReminders')}
+                trackColor={{ false: '#e5e7eb', true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#e5e7eb"
+              />
+            </View>
           </View>
         </View>
 
@@ -189,10 +208,13 @@ export default function ProfileScreen({ userEmail, userName, onLogout, onShowAIA
           <View style={styles.menuCard}>
             <MenuItem
               icon="help-circle-outline"
-              title="Help Center"
+              title="Help & Support"
               iconColor="#8b5cf6"
               iconBg="#f5f3ff"
-              onPress={() => Alert.alert('Help Center', 'Contact support@flacronai.com')}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Linking.openURL('https://flacronenterprises.com');
+              }}
             />
             <MenuItem
               icon="document-text-outline"
@@ -242,12 +264,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 60,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 16,
     paddingHorizontal: 20,
   },
   profileHeader: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 20,
   },
   avatarGradient: {
     width: 100,
@@ -278,7 +300,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: normalize(18),
@@ -347,5 +369,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: normalize(16),
     fontWeight: '700',
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  notificationInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  notificationTitle: {
+    fontSize: normalize(15),
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  notificationSubtitle: {
+    fontSize: normalize(13),
+    color: COLORS.textMuted,
+    lineHeight: 18,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 16,
   },
 });

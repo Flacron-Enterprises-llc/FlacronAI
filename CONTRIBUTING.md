@@ -177,8 +177,7 @@ describe('generateReport', () => {
 ## 📋 Pull Request Process
 
 1. Update documentation with details of changes
-2. Update the README.md with new environment variables, dependencies, etc.
-3. The PR will be merged once you have approval from maintainers
+2. Update the README.md with new environment variables, depe 
 
 ## ❓ Questions?
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { AIAssistantBubble } from '../components/AIAssistant';
 import AnimatedBlobBackground from '../components/AnimatedBlobBackground';
 import { reportService } from '../services/api';
@@ -43,6 +44,7 @@ const normalize = (size) => {
 export default function GenerateReportScreen({ onShowAIAssistant, onTabChange }) {
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [formData, setFormData] = useState({
     claimNumber: '',
     insuredName: '',
@@ -52,8 +54,38 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
     lossDescription: '',
   });
 
+  const scrollViewRef = useRef(null);
+  const inputRefs = useRef({});
+
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const quickFill = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const testData = {
+      claimNumber: `CLM-${Date.now().toString().slice(-6)}`,
+      insuredName: 'John Smith',
+      lossDate: new Date().toISOString().split('T')[0],
+      lossType: 'Fire',
+      propertyAddress: '123 Main Street, Springfield, IL 62701',
+      lossDescription: 'Kitchen fire caused by electrical malfunction in the stove. Fire spread to cabinets and ceiling. Smoke damage throughout first floor. Fire department responded and extinguished flames within 30 minutes.',
+    };
+
+    setFormData(testData);
+    Alert.alert('Form Filled', 'Test data has been added to all fields', [{ text: 'OK' }]);
+  };
+
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+      updateField('lossDate', formattedDate);
+    }
   };
 
   const pickImage = async () => {
@@ -70,16 +102,26 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
   };
 
   const generateReport = async () => {
-    if (!formData.claimNumber || !formData.insuredName) {
-      Alert.alert('Missing Information', 'Please fill in all required fields');
+    if (!formData.claimNumber || !formData.insuredName || !formData.lossType) {
+      Alert.alert('Missing Information', 'Please fill in Claim Number, Insured Name, and Loss Type');
       return;
     }
+
+    console.log('📝 Generating report with data:', formData);
 
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const result = await reportService.generateReport(formData, photos);
+      // Add reportType to the data (required by backend)
+      const reportDataWithType = {
+        ...formData,
+        reportType: 'insurance-claim',
+      };
+
+      console.log('📤 Sending report data:', reportDataWithType);
+
+      const result = await reportService.generateReport(reportDataWithType, photos);
 
       if (result.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -122,17 +164,25 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
       <AnimatedBlobBackground />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={styles.content}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
         >
-          <Text style={styles.pageTitle}>Generate New Report</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.pageTitle}>Generate New Report</Text>
+            <TouchableOpacity style={styles.quickFillButton} onPress={quickFill}>
+              <Ionicons name="flash" size={16} color={COLORS.primary} />
+              <Text style={styles.quickFillText}>Quick Fill</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Claim Information Card */}
           <View style={styles.card}>
@@ -140,30 +190,58 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
 
             <Text style={styles.label}>Claim Number *</Text>
             <TextInput
+              ref={(ref) => inputRefs.current['claimNumber'] = ref}
               style={styles.input}
               placeholder="Enter claim number"
               value={formData.claimNumber}
               onChangeText={(value) => updateField('claimNumber', value)}
+              onFocus={() => inputRefs.current['claimNumber']?.measure((fx, fy, width, height, px, py) => {
+                scrollViewRef.current?.scrollTo({ y: py - 100, animated: true });
+              })}
               placeholderTextColor={COLORS.textMuted}
             />
 
             <Text style={styles.label}>Insured Name *</Text>
             <TextInput
+              ref={(ref) => inputRefs.current['insuredName'] = ref}
               style={styles.input}
               placeholder="Enter insured name"
               value={formData.insuredName}
               onChangeText={(value) => updateField('insuredName', value)}
+              onFocus={() => inputRefs.current['insuredName']?.measure((fx, fy, width, height, px, py) => {
+                scrollViewRef.current?.scrollTo({ y: py - 100, animated: true });
+              })}
               placeholderTextColor={COLORS.textMuted}
             />
 
             <Text style={styles.label}>Loss Date</Text>
-            <TextInput
+            <TouchableOpacity
               style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={formData.lossDate}
-              onChangeText={(value) => updateField('lossDate', value)}
-              placeholderTextColor={COLORS.textMuted}
-            />
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={formData.lossDate ? styles.inputText : styles.inputPlaceholder}>
+                {formData.lossDate || 'Select date'}
+              </Text>
+              <Ionicons name="calendar-outline" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={formData.lossDate ? new Date(formData.lossDate) : new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+
+            {Platform.OS === 'ios' && showDatePicker && (
+              <View style={styles.datePickerActions}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.datePickerButton}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <Text style={styles.label}>Loss Type</Text>
             <View style={styles.lossTypeContainer}>
@@ -198,10 +276,14 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
 
             <Text style={styles.label}>Property Address</Text>
             <TextInput
+              ref={(ref) => inputRefs.current['propertyAddress'] = ref}
               style={styles.input}
               placeholder="Enter property address"
               value={formData.propertyAddress}
               onChangeText={(value) => updateField('propertyAddress', value)}
+              onFocus={() => inputRefs.current['propertyAddress']?.measure((fx, fy, width, height, px, py) => {
+                scrollViewRef.current?.scrollTo({ y: py - 100, animated: true });
+              })}
               multiline
               numberOfLines={2}
               placeholderTextColor={COLORS.textMuted}
@@ -209,10 +291,14 @@ export default function GenerateReportScreen({ onShowAIAssistant, onTabChange })
 
             <Text style={styles.label}>Loss Description</Text>
             <TextInput
+              ref={(ref) => inputRefs.current['lossDescription'] = ref}
               style={[styles.input, styles.textArea]}
               placeholder="Describe the loss or damage"
               value={formData.lossDescription}
               onChangeText={(value) => updateField('lossDescription', value)}
+              onFocus={() => inputRefs.current['lossDescription']?.measure((fx, fy, width, height, px, py) => {
+                scrollViewRef.current?.scrollTo({ y: py - 50, animated: true });
+              })}
               multiline
               numberOfLines={4}
               placeholderTextColor={COLORS.textMuted}
@@ -297,19 +383,41 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 60,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   pageTitle: {
     fontSize: normalize(28),
     fontWeight: '800',
     color: COLORS.text,
-    marginBottom: 24,
+    flex: 1,
+  },
+  quickFillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: 4,
+  },
+  quickFillText: {
+    fontSize: normalize(13),
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: '#000',
@@ -340,6 +448,28 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: normalize(15),
     color: COLORS.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputText: {
+    fontSize: normalize(15),
+    color: COLORS.text,
+  },
+  inputPlaceholder: {
+    fontSize: normalize(15),
+    color: COLORS.textMuted,
+  },
+  datePickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingVertical: 10,
+  },
+  datePickerButton: {
+    fontSize: normalize(16),
+    fontWeight: '600',
+    color: COLORS.primary,
+    paddingHorizontal: 20,
   },
   textArea: {
     minHeight: 100,

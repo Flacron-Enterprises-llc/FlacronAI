@@ -11,10 +11,11 @@ const {
 } = require('../config/openai');
 
 /**
- * Generate insurance report using WatsonX AI
+ * Generate insurance report using WatsonX AI with OpenAI fallback
  */
 async function generateInsuranceReport(reportData) {
   try {
+    console.log('🤖 Attempting to generate report with WatsonX...');
     const content = await generateWatsonXReport(reportData);
     return {
       success: true,
@@ -26,8 +27,27 @@ async function generateInsuranceReport(reportData) {
       }
     };
   } catch (error) {
-    console.error('WatsonX report generation failed:', error);
-    throw new Error(`Failed to generate report with WatsonX: ${error.message}`);
+    console.error('❌ WatsonX report generation failed:', error.message);
+    console.log('🔄 Falling back to OpenAI for report generation...');
+
+    // Fallback to OpenAI
+    try {
+      const { generateReportWithOpenAI } = require('../config/openai');
+      const content = await generateReportWithOpenAI(reportData);
+      return {
+        success: true,
+        content,
+        metadata: {
+          provider: 'OpenAI (Fallback)',
+          model: 'gpt-4-turbo-preview',
+          generatedAt: new Date().toISOString(),
+          note: 'WatsonX unavailable, used OpenAI as fallback'
+        }
+      };
+    } catch (openaiError) {
+      console.error('❌ OpenAI fallback also failed:', openaiError.message);
+      throw new Error(`Failed to generate report: WatsonX (${error.message}) and OpenAI fallback (${openaiError.message}) both failed`);
+    }
   }
 }
 

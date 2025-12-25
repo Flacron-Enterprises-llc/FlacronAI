@@ -21,8 +21,13 @@ export const signInWithGoogle = async () => {
     let result;
 
     if (Platform.OS === 'web') {
-      // Web: Use popup or redirect
-      result = await auth.signInWithPopup(googleProvider);
+      // Disable social auth on web - it's a mobile-only feature
+      console.log('⚠️ Google Sign-In not available on web platform');
+      return {
+        success: false,
+        error: 'Google Sign-In is only available on mobile devices (iOS/Android). Please use Email/Password login on web.',
+        platform: 'web'
+      };
     } else {
       // Mobile: Try to use Google Sign-In SDK, fallback to Firebase web auth if not available
       let useNativeGoogleSignIn = false;
@@ -138,21 +143,18 @@ export const signInWithApple = async () => {
   try {
     console.log('\n🍎 APPLE SIGN-IN ATTEMPT:');
 
-    // Check if Apple Sign-In is available (iOS 13+ or Web)
-    if (Platform.OS === 'android') {
-      return {
-        success: false,
-        error: 'Apple Sign-In is not available on Android devices'
-      };
-    }
-
     let result;
 
     if (Platform.OS === 'web') {
-      // Web: Use popup
-      result = await auth.signInWithPopup(appleProvider);
-    } else if (Platform.OS === 'ios') {
-      // iOS: Try native Apple Sign-In, fallback to web if not available
+      // Disable social auth on web - it's a mobile-only feature
+      console.log('⚠️ Apple Sign-In not available on web platform');
+      return {
+        success: false,
+        error: 'Apple Sign-In is only available on mobile devices (iOS/Android). Please use Email/Password login on web.',
+        platform: 'web'
+      };
+    } else if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      // Mobile: Try native Apple Sign-In, fallback if not available
       let useNativeAppleSignIn = false;
       let appleAuth = null;
 
@@ -322,7 +324,10 @@ async function registerOrLoginWithBackend(userData) {
  * Check if Google Sign-In is available
  */
 export const isGoogleSignInAvailable = () => {
-  // Google Sign-In is always available - we support both native and web-based auth
+  // Disable on web - mobile only feature
+  if (Platform.OS === 'web') {
+    return false;
+  }
   return true;
 };
 
@@ -330,13 +335,11 @@ export const isGoogleSignInAvailable = () => {
  * Check if Apple Sign-In is available
  */
 export const isAppleSignInAvailable = () => {
-  if (Platform.OS === 'android') {
-    return false; // Apple Sign-In not available on Android
+  // Disable on web - mobile only feature
+  if (Platform.OS === 'web') {
+    return false;
   }
-
-  // For web and iOS, always show the button
-  // Web uses Firebase popup authentication
-  // iOS will use native if available, otherwise fallback to web
+  // Available on both iOS and Android
   return true;
 };
 

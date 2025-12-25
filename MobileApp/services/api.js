@@ -49,12 +49,24 @@ export const authService = {
       body: JSON.stringify({ email, password }),
     });
 
+    console.log('🔐 Login response:', JSON.stringify(data, null, 2));
+
     if (data.success && data.token) {
+      const tier = data.user.tier || 'starter';
+      console.log('💾 Storing user data:', {
+        email: data.user.email,
+        displayName: data.user.displayName,
+        userId: data.user.userId,
+        tier: tier
+      });
+
       await AsyncStorage.setItem('userToken', data.token);
       await AsyncStorage.setItem('userEmail', data.user.email);
       await AsyncStorage.setItem('userName', data.user.displayName || '');
       await AsyncStorage.setItem('userId', data.user.userId);
-      await AsyncStorage.setItem('userTier', data.user.tier || 'professional');
+      await AsyncStorage.setItem('userTier', tier);
+
+      console.log('✅ User data stored successfully');
     }
 
     return data;
@@ -78,47 +90,64 @@ export const authService = {
 // Report Services
 export const reportService = {
   generateReport: async (reportData, photos = []) => {
-    const formData = new FormData();
-
-    // Add report data
-    Object.keys(reportData).forEach(key => {
-      formData.append(key, reportData[key]);
-    });
-
-    // Add photos
-    if (photos && photos.length > 0) {
-      photos.forEach((photo, index) => {
-        const uriParts = photo.uri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
-
-        formData.append('photos', {
-          uri: photo.uri,
-          name: `photo_${index}.${fileType}`,
-          type: `image/${fileType}`,
-        });
-      });
-    }
-
-    const token = await getAuthToken();
-    const response = await fetch(`${API_URL}/reports/generate`, {
+    // Step 1: Generate the report with JSON (same as web app)
+    const reportResponse = await apiCall('/reports/generate', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
+      body: JSON.stringify({
+        ...reportData,
+        photos: null // Photos will be uploaded separately
+      }),
     });
 
-    const data = await response.json();
+    console.log('📄 Report generated:', reportResponse);
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to generate report');
+    if (!reportResponse.success) {
+      throw new Error(reportResponse.error || 'Failed to generate report');
     }
 
-    return data;
+    // Step 2: Upload photos if any (same as web app)
+    if (photos && photos.length > 0 && reportResponse.reportId) {
+      try {
+        const formData = new FormData();
+
+        photos.forEach((photo, index) => {
+          const uriParts = photo.uri.split('.');
+          const fileType = uriParts[uriParts.length - 1];
+
+          formData.append('images', {
+            uri: photo.uri,
+            name: `photo_${index}.${fileType}`,
+            type: `image/${fileType}`,
+          });
+        });
+
+        const token = await getAuthToken();
+        const uploadResponse = await fetch(`${API_URL}/reports/${reportResponse.reportId}/images`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        const uploadData = await uploadResponse.json();
+
+        if (uploadData.success) {
+          console.log(`📸 Uploaded ${uploadData.uploaded} photo(s) successfully`);
+        } else {
+          console.warn('⚠️ Photo upload failed:', uploadData.error);
+        }
+      } catch (uploadError) {
+        console.error('Photo upload error:', uploadError);
+        // Don't fail the whole operation if photo upload fails
+      }
+    }
+
+    return reportResponse;
   },
 
   getMyReports: async () => {
-    return await apiCall('/reports/my-reports', {
+    return await apiCall('/reports', {
       method: 'GET',
     });
   },
@@ -148,38 +177,51 @@ export const reportService = {
 // User Services
 export const userService = {
   getStats: async () => {
-    // Get stats from stored user data and reports
+    // Use the same endpoint as web app to ensure consistency
     try {
-      const tier = await AsyncStorage.getItem('userTier') || 'professional';
+      const data = await apiCall('/users/usage', {
+        method: 'GET',
+      });
 
-      // Fetch reports to calculate stats
-      const reportsData = await reportService.getMyReports();
+      console.log('📊 Usage stats from backend:', JSON.stringify(data, null, 2));
 
-      const totalReports = reportsData.reports?.length || 0;
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
+      if (data.success && data.usage) {
+        // Update stored tier to match backend
+        await AsyncStorage.setItem('userTier', data.usage.tier);
 
-      const reportsThisMonth = reportsData.reports?.filter(report => {
-        const reportDate = new Date(report.createdAt);
-        return reportDate.getMonth() === currentMonth && reportDate.getFullYear() === currentYear;
-      }).length || 0;
+        return {
+          success: true,
+          stats: {
+            reportsGenerated: data.usage.periodUsage || 0,
+            totalReports: data.usage.totalReports || 0,
+            tier: data.usage.tier,
+            tierName: data.usage.tierName,
+            limit: data.usage.limit,
+            remaining: data.usage.remaining,
+            percentage: data.usage.percentage,
+          }
+        };
+      }
 
+      // Fallback
       return {
-        success: true,
-        stats: {
-          reportsGenerated: reportsThisMonth,
-          totalReports: totalReports,
-          tier: tier,
-        }
+        success: false,
+        error: 'Failed to fetch usage stats'
       };
     } catch (error) {
       console.error('Error getting stats:', error);
+      // Return fallback data
+      const fallbackTier = await AsyncStorage.getItem('userTier') || 'starter';
       return {
-        success: false,
+        success: true,
         stats: {
           reportsGenerated: 0,
           totalReports: 0,
-          tier: 'professional',
+          tier: fallbackTier,
+          tierName: 'Starter',
+          limit: 1,
+          remaining: 1,
+          percentage: 0,
         }
       };
     }

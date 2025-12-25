@@ -18,7 +18,8 @@ import {
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
-import { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/authService';
+import { signUpWithEmail, signInWithEmail } from '../services/authService';
+import { signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/socialAuthService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -450,23 +451,6 @@ const SignupScreen = ({ navigation }) => {
                     </View>
                   </>
                 )}
-
-                {/* Quick Demo Button */}
-                <TouchableOpacity
-                  style={styles.demoButton}
-                  onPress={handleDemoLogin}
-                  disabled={demoLoading}
-                  activeOpacity={0.7}
-                >
-                  {demoLoading ? (
-                    <ActivityIndicator color="#FF6B35" size="small" />
-                  ) : (
-                    <>
-                      <MaterialIcons name="flash-on" size={20} color="#FF6B35" style={styles.demoIcon} />
-                      <Text style={styles.demoButtonText}>Try Quick Demo</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
 
                 {/* Login link */}
                 <View style={styles.footer}>

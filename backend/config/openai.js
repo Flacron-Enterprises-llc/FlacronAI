@@ -214,6 +214,38 @@ Provide a brief quality assessment and list of improvements needed.`;
   });
 }
 
+/**
+ * Generate full insurance report using OpenAI (fallback for WatsonX)
+ */
+async function generateReportWithOpenAI(reportData) {
+  const prompt = `Generate a comprehensive insurance inspection report based on the following information:
+
+Claim Number: ${reportData.claimNumber}
+Insured Name: ${reportData.insuredName}
+Loss Date: ${reportData.lossDate || 'Not specified'}
+Loss Type: ${reportData.lossType}
+Property Address: ${reportData.propertyAddress || 'Not specified'}
+Loss Description: ${reportData.lossDescription || 'Not specified'}
+
+Generate a professional insurance inspection report with the following sections:
+1. EXECUTIVE SUMMARY
+2. CLAIM INFORMATION
+3. PROPERTY DETAILS
+4. LOSS DESCRIPTION
+5. DAMAGE ASSESSMENT
+6. FINDINGS AND OBSERVATIONS
+7. RECOMMENDATIONS
+8. CONCLUSION
+
+Use professional insurance industry language and include all standard CRU report formatting.`;
+
+  return await generateContent(prompt, {
+    systemPrompt: 'You are an expert insurance adjuster generating detailed inspection reports. Use professional language and standard CRU (Combined Reporting Unit) format.',
+    temperature: 0.7,
+    maxTokens: 4096
+  });
+}
+
 module.exports = {
   initializeOpenAI,
   getOpenAIClient,
@@ -222,5 +254,6 @@ module.exports = {
   generateExecutiveSummary,
   enhanceReportInput,
   generateScopeOfWork,
-  qualityCheckReport
+  qualityCheckReport,
+  generateReportWithOpenAI
 };

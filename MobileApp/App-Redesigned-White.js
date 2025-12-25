@@ -10,8 +10,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AIAssistantPanel } from './components/AIAssistant';
+import { authService } from './services/api';
 
 // Import screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -48,10 +49,15 @@ export default function MainApp({ navigation }) {
 
   const loadUserData = async () => {
     try {
-      const email = await AsyncStorage.getItem('userEmail');
-      const name = await AsyncStorage.getItem('userName');
-      if (email) setUserEmail(email);
-      if (name) setUserName(name);
+      const userData = await authService.getUserData();
+      console.log('📱 Loading user data in App:', userData);
+      if (userData.email) setUserEmail(userData.email);
+      if (userData.name) {
+        console.log('📱 Setting userName to:', userData.name);
+        setUserName(userData.name);
+      } else {
+        console.log('⚠️ No userName found in storage');
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
     }
@@ -59,7 +65,7 @@ export default function MainApp({ navigation }) {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName']);
+      await authService.logout();
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' }],
@@ -117,13 +123,11 @@ export default function MainApp({ navigation }) {
             end={{ x: 1, y: 1 }}
             style={styles.activeTabGradient}
           >
-            <Ionicons name={activeIcon || icon} size={22} color="#FFFFFF" />
-            <Text style={styles.activeTabLabel}>{label}</Text>
+            <Ionicons name={activeIcon || icon} size={26} color="#FFFFFF" />
           </LinearGradient>
         ) : (
           <View style={styles.inactiveTab}>
-            <Ionicons name={icon} size={24} color={COLORS.textMuted} />
-            <Text style={styles.inactiveTabLabel}>{label}</Text>
+            <Ionicons name={icon} size={26} color={COLORS.textMuted} />
           </View>
         )}
       </TouchableOpacity>
@@ -131,19 +135,20 @@ export default function MainApp({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Main Content */}
-      <View style={styles.content}>
-        {renderContent()}
-      </View>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <View style={styles.container}>
+        {/* Main Content */}
+        <View style={styles.content}>
+          {renderContent()}
+        </View>
 
-      {/* Modern Bottom Tab Bar */}
-      <View style={styles.tabBarContainer}>
-        <LinearGradient
-          colors={['#FFFFFF', '#FFFFFF']}
-          style={styles.tabBarGradient}
-        >
-          <View style={styles.tabBar}>
+        {/* Modern Bottom Tab Bar */}
+        <View style={styles.tabBarContainer}>
+          <LinearGradient
+            colors={['#FFFFFF', '#FFFFFF']}
+            style={styles.tabBarGradient}
+          >
+            <View style={styles.tabBar}>
             <TabButton
               tab="dashboard"
               icon="home-outline"
@@ -172,16 +177,21 @@ export default function MainApp({ navigation }) {
         </LinearGradient>
       </View>
 
-      {/* AI Assistant Panel */}
-      <AIAssistantPanel
-        visible={showAIAssistant}
-        onClose={() => setShowAIAssistant(false)}
-      />
-    </View>
+        {/* AI Assistant Panel */}
+        <AIAssistantPanel
+          visible={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -190,11 +200,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabBarContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
@@ -220,29 +226,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 16,
-    gap: 6,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     shadowColor: '#FF7C08',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  activeTabLabel: {
-    color: '#FFFFFF',
-    fontSize: normalize(13),
-    fontWeight: '700',
-  },
   inactiveTab: {
     alignItems: 'center',
-    paddingVertical: 8,
-  },
-  inactiveTabLabel: {
-    color: COLORS.textMuted,
-    fontSize: normalize(11),
-    marginTop: 4,
-    fontWeight: '500',
+    justifyContent: 'center',
+    width: 56,
+    height: 56,
   },
 });

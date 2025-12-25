@@ -40,6 +40,7 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
     monthlyLimit: 1,
     totalReports: 0,
   });
+  const [tierName, setTierName] = useState('Starter');
   const [recentReports, setRecentReports] = useState([]);
 
   useEffect(() => {
@@ -54,11 +55,29 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
         reportService.getMyReports(),
       ]);
 
-      if (statsData.success) {
+      console.log('📊 Dashboard - Stats data:', statsData);
+
+      if (statsData.success && statsData.stats) {
+        // Use limit directly from backend (matches web app exactly)
+        const monthlyLimit = typeof statsData.stats.limit === 'number'
+          ? statsData.stats.limit
+          : (statsData.stats.limit === 'Unlimited' ? 999 : 1);
+
         setStats({
           usedThisMonth: statsData.stats.reportsGenerated || 0,
-          monthlyLimit: getMonthlyLimit(statsData.stats.tier),
+          monthlyLimit: monthlyLimit,
           totalReports: statsData.stats.totalReports || 0,
+        });
+
+        // Set tier name for display (matches web app)
+        setTierName(statsData.stats.tierName || 'Starter');
+
+        console.log('📊 Dashboard - Final stats:', {
+          usedThisMonth: statsData.stats.reportsGenerated || 0,
+          monthlyLimit: monthlyLimit,
+          totalReports: statsData.stats.totalReports || 0,
+          tier: statsData.stats.tier,
+          tierName: statsData.stats.tierName,
         });
       }
 
@@ -70,16 +89,6 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
     } finally {
       setLoading(false);
     }
-  };
-
-  const getMonthlyLimit = (tier) => {
-    const limits = {
-      free: 10,
-      starter: 50,
-      professional: 200,
-      enterprise: 999,
-    };
-    return limits[tier?.toLowerCase()] || 1;
   };
 
   const onRefresh = async () => {
@@ -132,7 +141,7 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
             <Text style={styles.usageTitle}>Usage Overview</Text>
             <View style={styles.starterBadge}>
               <Ionicons name="trophy" size={14} color={COLORS.white} />
-              <Text style={styles.starterText}>Starter</Text>
+              <Text style={styles.starterText}>{tierName}</Text>
             </View>
           </View>
 
@@ -186,7 +195,7 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
               activeOpacity={0.9}
             >
               <View style={styles.actionIcon}>
-                <Ionicons name="add-circle" size={48} color={COLORS.white} />
+                <Ionicons name="add-circle" size={40} color={COLORS.white} />
               </View>
               <Text style={styles.actionTitle}>Generate Report</Text>
               <Text style={styles.actionSubtitle}>Create new inspection</Text>
@@ -202,7 +211,7 @@ export default function DashboardScreen({ userEmail, userName, onShowAIAssistant
               activeOpacity={0.9}
             >
               <View style={styles.actionIcon}>
-                <Ionicons name="folder-open" size={48} color={COLORS.white} />
+                <Ionicons name="folder-open" size={40} color={COLORS.white} />
               </View>
               <Text style={styles.actionTitle}>My Reports</Text>
               <Text style={styles.actionSubtitle}>View all reports</Text>
@@ -302,8 +311,8 @@ const styles = StyleSheet.create({
   usageCard: {
     backgroundColor: COLORS.white,
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 28,
+    padding: 18,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -314,7 +323,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 18,
   },
   usageTitle: {
     fontSize: 20,
@@ -377,7 +386,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.textDark,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   quickActionsGrid: {
     flexDirection: 'row',
@@ -386,8 +395,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.orange,
     borderRadius: 20,
-    padding: 24,
-    minHeight: 180,
+    padding: 20,
+    minHeight: 140,
     justifyContent: 'center',
     shadowColor: COLORS.orange,
     shadowOffset: { width: 0, height: 4 },
@@ -396,16 +405,16 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   actionIcon: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   actionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: COLORS.white,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   actionSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
   },

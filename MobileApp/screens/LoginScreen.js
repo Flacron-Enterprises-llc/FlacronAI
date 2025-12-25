@@ -16,9 +16,9 @@ import {
   Modal
 } from 'react-native';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
-import { signInWithEmail, signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/authService';
+import { authService } from '../services/api';
+import { signInWithGoogle, signInWithApple, isGoogleSignInAvailable, isAppleSignInAvailable } from '../services/socialAuthService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -72,13 +72,9 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      const result = await signInWithEmail(email.toLowerCase().trim(), password);
+      const result = await authService.login(email.toLowerCase().trim(), password);
 
-      if (result.success && result.token && result.user) {
-        // Store JWT token and user data
-        await AsyncStorage.setItem('authToken', result.token);
-        await AsyncStorage.setItem('userData', JSON.stringify(result.user));
-
+      if (result.success && result.token) {
         console.log('✅ Login successful, navigating to Main app...');
 
         // Clear form
@@ -89,19 +85,11 @@ const LoginScreen = ({ navigation }) => {
         navigation.replace('Main');
       } else {
         // Handle errors
-        if (result.emailVerified === false) {
-          Alert.alert(
-            'Email Not Verified',
-            'Please verify your email before logging in. Check your inbox for the verification link.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Login Error', result.error || 'Invalid email or password');
-        }
+        Alert.alert('Login Error', result.error || 'Invalid email or password');
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('Login Error', error.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -183,13 +171,9 @@ const LoginScreen = ({ navigation }) => {
     const demoPassword = 'Demo123!';
 
     try {
-      const result = await signInWithEmail(demoEmail, demoPassword);
+      const result = await authService.login(demoEmail, demoPassword);
 
-      if (result.success && result.token && result.user) {
-        // Store JWT token and user data
-        await AsyncStorage.setItem('authToken', result.token);
-        await AsyncStorage.setItem('userData', JSON.stringify(result.user));
-
+      if (result.success && result.token) {
         console.log('✅ Demo login successful, navigating to Main app...');
         navigation.replace('Main');
       } else {
@@ -370,23 +354,6 @@ const LoginScreen = ({ navigation }) => {
                     </View>
                   </>
                 )}
-
-                {/* Quick Demo Button */}
-                <TouchableOpacity
-                  style={styles.demoButton}
-                  onPress={handleDemoLogin}
-                  disabled={demoLoading}
-                  activeOpacity={0.7}
-                >
-                  {demoLoading ? (
-                    <ActivityIndicator color="#FF6B35" size="small" />
-                  ) : (
-                    <>
-                      <MaterialIcons name="flash-on" size={20} color="#FF6B35" style={styles.demoIcon} />
-                      <Text style={styles.demoButtonText}>Try Quick Demo</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
 
                 <View style={styles.footer}>
                   <Text style={styles.footerText}>Don't have an account? </Text>
