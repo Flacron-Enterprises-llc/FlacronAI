@@ -54,22 +54,24 @@ export const authService = {
       await AsyncStorage.setItem('userEmail', data.user.email);
       await AsyncStorage.setItem('userName', data.user.displayName || '');
       await AsyncStorage.setItem('userId', data.user.userId);
+      await AsyncStorage.setItem('userTier', data.user.tier || 'professional');
     }
 
     return data;
   },
 
   logout: async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId']);
+    await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userTier']);
   },
 
   getUserData: async () => {
-    const [email, name, userId] = await Promise.all([
+    const [email, name, userId, tier] = await Promise.all([
       AsyncStorage.getItem('userEmail'),
       AsyncStorage.getItem('userName'),
       AsyncStorage.getItem('userId'),
+      AsyncStorage.getItem('userTier'),
     ]);
-    return { email, name, userId };
+    return { email, name, userId, tier };
   },
 };
 
@@ -116,7 +118,7 @@ export const reportService = {
   },
 
   getMyReports: async () => {
-    return await apiCall('/reports', {
+    return await apiCall('/reports/my-reports', {
       method: 'GET',
     });
   },
@@ -146,15 +148,49 @@ export const reportService = {
 // User Services
 export const userService = {
   getStats: async () => {
-    return await apiCall('/user/stats', {
-      method: 'GET',
-    });
+    // Get stats from stored user data and reports
+    try {
+      const tier = await AsyncStorage.getItem('userTier') || 'professional';
+
+      // Fetch reports to calculate stats
+      const reportsData = await reportService.getMyReports();
+
+      const totalReports = reportsData.reports?.length || 0;
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+
+      const reportsThisMonth = reportsData.reports?.filter(report => {
+        const reportDate = new Date(report.createdAt);
+        return reportDate.getMonth() === currentMonth && reportDate.getFullYear() === currentYear;
+      }).length || 0;
+
+      return {
+        success: true,
+        stats: {
+          reportsGenerated: reportsThisMonth,
+          totalReports: totalReports,
+          tier: tier,
+        }
+      };
+    } catch (error) {
+      console.error('Error getting stats:', error);
+      return {
+        success: false,
+        stats: {
+          reportsGenerated: 0,
+          totalReports: 0,
+          tier: 'professional',
+        }
+      };
+    }
   },
 
   getProfile: async () => {
-    return await apiCall('/user/profile', {
-      method: 'GET',
-    });
+    const userData = await authService.getUserData();
+    return {
+      success: true,
+      user: userData
+    };
   },
 };
 
