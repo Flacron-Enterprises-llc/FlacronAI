@@ -75,10 +75,19 @@
   left: 0;
   right: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.85) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--white-10);
+}
+
+.navbar-redesign,
+.navbar-redesign * {
+  color: var(--white) !important;
+}
+
+.navbar-redesign .nav-cta-redesign {
+  color: var(--black) !important;
 }
 
 .navbar-content-redesign {
@@ -161,13 +170,26 @@
    ============================================ */
 .hero-redesign {
   min-height: 100vh;
-  background: var(--black);
+  background: var(--black) !important;
   position: relative;
   overflow: hidden;
   display: flex;
   align-items: center;
   padding-top: 140px; /* INCREASED to avoid navbar overlap */
   padding-bottom: 80px;
+}
+
+.hero-redesign * {
+  color: var(--white) !important;
+}
+
+.hero-redesign .highlight-orange {
+  color: var(--orange) !important;
+}
+
+.hero-redesign .cta-primary-redesign {
+  background: var(--orange) !important;
+  color: var(--black) !important;
 }
 
 /* Massive Orange Glows */
@@ -554,8 +576,16 @@
    ============================================ */
 .features-elite {
   padding: 8rem 0;
-  background: var(--white);
+  background: var(--white) !important;
   position: relative;
+}
+
+.features-elite * {
+  color: var(--black) !important;
+}
+
+.features-elite .feature-icon-elite svg {
+  stroke: var(--orange) !important;
 }
 
 .section-title-elite {
@@ -678,9 +708,22 @@
    ============================================ */
 .pricing-elite {
   padding: 8rem 0;
-  background: var(--black);
+  background: var(--black) !important;
   position: relative;
   overflow: hidden;
+}
+
+.pricing-elite * {
+  color: var(--white) !important;
+}
+
+.pricing-elite .plan-price {
+  color: var(--orange) !important;
+}
+
+.pricing-elite .cta-plan {
+  background: var(--orange) !important;
+  color: var(--black) !important;
 }
 
 .pricing-elite::before {
@@ -885,10 +928,18 @@
    FOOTER
    ============================================ */
 .footer-elite {
-  background: var(--black);
-  color: var(--white);
+  background: var(--black) !important;
+  color: var(--white) !important;
   padding: 4rem 0 2rem;
   border-top: 1px solid var(--white-10);
+}
+
+.footer-elite * {
+  color: var(--white) !important;
+}
+
+.footer-elite a:hover {
+  color: var(--orange) !important;
 }
 
 .footer-grid-elite {
