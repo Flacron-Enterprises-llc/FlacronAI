@@ -980,6 +980,57 @@
   color: var(--orange) !important;
 }
 
+/* ============================================
+   TESTIMONIALS / REVIEWS - Force White Text
+   ============================================ */
+.marquee-3d-container {
+  background: var(--black) !important;
+}
+
+.marquee-3d-title {
+  color: var(--white) !important;
+}
+
+.marquee-3d-subtitle {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.review-card-3d h1,
+.review-card-3d h2,
+.review-card-3d h3,
+.review-card-3d h4,
+.review-card-3d p,
+.reviewer-name,
+.reviewer-role,
+.reviewer-company,
+.review-text {
+  color: var(--white) !important;
+}
+
+.reviewer-role {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.reviewer-company {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.review-text {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.review-use-case {
+  color: rgba(255, 124, 8, 0.8) !important;
+}
+
+.review-date {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.ai-verified-tag {
+  color: var(--orange) !important;
+}
+
 .footer-grid-elite {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
