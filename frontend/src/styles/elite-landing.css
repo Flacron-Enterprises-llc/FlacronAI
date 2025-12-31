@@ -1031,6 +1031,65 @@
   color: var(--orange) !important;
 }
 
+/* ============================================
+   AUTH PAGE - LOGIN/SIGNUP SIDE PANEL
+   ============================================ */
+.auth-showcase-section {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%) !important;
+}
+
+.auth-showcase-section * {
+  color: var(--white) !important;
+}
+
+.showcase-content {
+  color: var(--white) !important;
+}
+
+.showcase-logo {
+  color: var(--white) !important;
+}
+
+.showcase-logo span {
+  color: var(--orange) !important;
+}
+
+.showcase-tagline {
+  color: var(--orange) !important;
+}
+
+.showcase-description {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.showcase-features li {
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.showcase-features li span {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.showcase-features i {
+  color: var(--orange) !important;
+}
+
+.stat-item {
+  color: var(--white) !important;
+}
+
+.stat-number {
+  color: var(--orange) !important;
+}
+
+.stat-label {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* ============================================
+   FOOTER SECTION
+   ============================================ */
 .footer-grid-elite {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
