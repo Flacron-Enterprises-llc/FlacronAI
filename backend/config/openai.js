@@ -220,30 +220,81 @@ Provide a brief quality assessment and list of improvements needed.`;
 async function generateReportWithOpenAI(reportData) {
   const prompt = `Generate a comprehensive insurance inspection report based on the following information:
 
-Claim Number: ${reportData.claimNumber}
-Insured Name: ${reportData.insuredName}
-Loss Date: ${reportData.lossDate || 'Not specified'}
-Loss Type: ${reportData.lossType}
-Property Address: ${reportData.propertyAddress || 'Not specified'}
-Loss Description: ${reportData.lossDescription || 'Not specified'}
+CLAIM INFORMATION:
+- Claim Number: ${reportData.claimNumber}
+- Insured Name: ${reportData.insuredName}
+- Loss Date: ${reportData.lossDate || 'Not specified'}
+- Loss Type: ${reportData.lossType}
+- Property Address: ${reportData.propertyAddress || 'Not specified'}
+- Report Type: ${reportData.reportType || 'Inspection Report'}
+
+PROPERTY DETAILS:
+${reportData.propertyDetails || 'Not provided'}
+
+LOSS DESCRIPTION:
+${reportData.lossDescription || 'Not specified'}
+
+DAMAGES OBSERVED:
+${reportData.damages || 'Not provided'}
+
+RECOMMENDATIONS:
+${reportData.recommendations || 'Not provided'}
+
+FORMATTING REQUIREMENTS:
+- Use markdown formatting (## for section headers, **text** for bold, bullets with - or *)
+- Start each main section with ## followed by the section name
+- Use **bold** for important terms and subsection headings
+- Use bullet points for lists
+- Write in complete, professional paragraphs
 
 Generate a professional insurance inspection report with the following sections:
-1. EXECUTIVE SUMMARY
-2. CLAIM INFORMATION
-3. PROPERTY DETAILS
-4. LOSS DESCRIPTION
-5. DAMAGE ASSESSMENT
-6. FINDINGS AND OBSERVATIONS
-7. RECOMMENDATIONS
-8. CONCLUSION
 
-Use professional insurance industry language and include all standard CRU report formatting.`;
+## EXECUTIVE SUMMARY
+Write a detailed executive summary (2-3 paragraphs) that provides an overview of this claim.
 
-  return await generateContent(prompt, {
-    systemPrompt: 'You are an expert insurance adjuster generating detailed inspection reports. Use professional language and standard CRU (Combined Reporting Unit) format.',
+## CLAIM INFORMATION
+Present the claim details in a professional format.
+
+## PROPERTY DETAILS
+Write detailed paragraphs describing the property and its condition.
+
+## LOSS DESCRIPTION
+Write 2-3 detailed paragraphs explaining how the loss occurred.
+
+## SCOPE OF DAMAGE
+Write detailed paragraphs describing all areas affected by the loss.
+
+## DAMAGE ASSESSMENT
+Provide a thorough analysis (3-4 paragraphs) of the damage severity.
+
+## COST ESTIMATE
+If applicable, provide detailed cost breakdowns with explanations.
+
+## RECOMMENDATIONS
+Write specific, actionable recommendations (2-3 paragraphs) for remediation.
+
+## CONCLUSION
+Write a concluding paragraph summarizing the report findings.
+
+IMPORTANT:
+- Write ACTUAL REPORT CONTENT with full paragraphs, not a template
+- Use markdown formatting (##, **, bullets)
+- Be specific, factual, and professional
+- Use the claim information provided to create realistic, detailed content`;
+
+  console.log('🔄 Generating report with OpenAI as fallback...');
+
+  const content = await generateContent(prompt, {
+    systemPrompt: 'You are an expert insurance adjuster generating detailed inspection reports. Use professional language, markdown formatting, and standard CRU (Combined Reporting Unit) format. Always use ## for section headers and **bold** for subsection headers.',
     temperature: 0.7,
     maxTokens: 4096
   });
+
+  console.log('✅ OpenAI fallback report generated successfully');
+  console.log('   Content length:', content.length, 'characters');
+  console.log('   Word count:', content.split(/\s+/).length, 'words');
+
+  return content;
 }
 
 module.exports = {

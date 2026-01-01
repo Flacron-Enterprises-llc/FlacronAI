@@ -6,7 +6,7 @@ const { getTier, hasExceededLimit, getReportsLimit } = require('../config/tiers'
 /**
  * Create new report record in database
  */
-async function createReport(userId, reportData, aiContent) {
+async function createReport(userId, reportData, aiContent, aiMetadata = null) {
   try {
     const db = getFirestore();
     const reportId = uuidv4();
@@ -26,7 +26,10 @@ async function createReport(userId, reportData, aiContent) {
       updatedAt: new Date().toISOString(),
       metadata: {
         wordCount: aiContent.split(' ').length,
-        generatedBy: 'gemini-2.5-pro'
+        generatedBy: aiMetadata?.provider || 'IBM WatsonX AI',
+        model: aiMetadata?.model || 'ibm/granite-13b-chat-v2',
+        generatedAt: aiMetadata?.generatedAt || new Date().toISOString(),
+        ...(aiMetadata?.note && { note: aiMetadata.note })
       }
     };
 

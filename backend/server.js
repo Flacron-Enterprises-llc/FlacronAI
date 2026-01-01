@@ -126,7 +126,7 @@ app.get('/api', (req, res) => {
     service: 'FlacronAI API',
     version: '1.0.0',
     description: 'AI-powered Insurance Inspection Report Generator',
-    powered_by: 'Google Gemini AI',
+    powered_by: 'IBM WatsonX AI & OpenAI',
     endpoints: {
       reports: {
         generate: 'POST /api/reports/generate',

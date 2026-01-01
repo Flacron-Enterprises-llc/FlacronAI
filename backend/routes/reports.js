@@ -73,7 +73,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
       });
     }
 
-    // Generate report with Gemini AI
+    // Generate report with WatsonX AI (OpenAI fallback)
     console.log('Generating report for claim:', reportData.claimNumber);
     const aiResult = await generateInsuranceReport(reportData);
 
@@ -84,8 +84,8 @@ router.post('/generate', authenticateToken, async (req, res) => {
       });
     }
 
-    // Save report to database
-    const saveResult = await createReport(userId, reportData, aiResult.content);
+    // Save report to database with AI metadata
+    const saveResult = await createReport(userId, reportData, aiResult.content, aiResult.metadata);
 
     if (!saveResult.success) {
       return res.status(500).json({

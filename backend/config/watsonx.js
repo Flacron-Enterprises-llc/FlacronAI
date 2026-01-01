@@ -170,10 +170,18 @@ IMPORTANT:
     }
 
     const generatedText = response.result.results[0].generated_text;
+
+    // Validate that we have meaningful content
+    if (!generatedText || generatedText.trim().length < 100) {
+      throw new Error('WatsonX returned insufficient content (less than 100 characters)');
+    }
+
     // DO NOT strip markdown - preserve formatting for document generators
     // const cleanedText = stripMarkdown(generatedText);
 
-    console.log('✅ WatsonX report generated, length:', generatedText.length);
+    console.log('✅ WatsonX report generated successfully');
+    console.log('   Content length:', generatedText.length, 'characters');
+    console.log('   Word count:', generatedText.split(/\s+/).length, 'words');
 
     return generatedText;
   } catch (error) {
