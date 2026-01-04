@@ -82,10 +82,10 @@ async function generateDOCX(reportData, aiContent) {
         properties: {
           page: {
             margin: {
-              top: 720,  // 0.5 inch
-              right: 720,
-              bottom: 720,
-              left: 720
+              top: 360,  // 0.25 inch - minimal margin
+              right: 360,  // 0.25 inch
+              bottom: 360,  // 0.25 inch
+              left: 360  // 0.25 inch - no visible gap
             }
           }
         },
@@ -484,7 +484,7 @@ function generatePDF(reportData, aiContent) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        margin: 40,  // Reduced to 0.56 inch (40px) for maximum horizontal space
+        margin: 20,  // Minimal 0.28 inch (20px) margin - no visible gap
         size: 'LETTER',
         bufferPages: true  // Enable page numbering
       });
@@ -527,7 +527,7 @@ function generatePDF(reportData, aiContent) {
       const infoBoxY = doc.y;
       const pageWidth = doc.page.width;
       const boxWidth = pageWidth - (doc.page.margins.left + doc.page.margins.right);
-      const contentPadding = 10;  // Reduced padding for more content space
+      const contentPadding = 5;  // Minimal padding - no visible gap
 
       // Draw background box for info section
       doc.rect(doc.page.margins.left, infoBoxY, boxWidth, 150)
