@@ -321,7 +321,9 @@ function isPreambleText(text) {
     'avoid subjective',
     'focus on factual',
     'maintain objectivity',
-    'be objective'
+    'be objective',
+    'assume you have',
+    'assume that you'
   ];
   const lower = text.toLowerCase();
   return preamblePhrases.some(phrase => lower.includes(phrase));
@@ -490,7 +492,7 @@ function generatePDF(reportData, aiContent) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        margin: 10,  // Ultra-minimal 0.14 inch (10px) margin - maximum content space
+        margin: 5,  // Absolute minimum 5px margin - NO visible gap
         size: 'LETTER',
         bufferPages: true  // Enable page numbering
       });
