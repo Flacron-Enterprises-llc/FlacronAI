@@ -106,7 +106,8 @@
       "Bash(./gradlew.bat signingReport:*)",
       "Bash(./gradlew.bat:*)",
       "Bash(del \"frontend\\\\src\\\\styles\\\\modern-dashboard-clean.css\" \"frontend\\\\src\\\\styles\\\\modern-dashboard-temp.css\")",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git remote:*)"
     ],
     "deny": [],
     "ask": []
