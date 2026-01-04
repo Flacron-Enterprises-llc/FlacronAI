@@ -956,11 +956,46 @@ function renderMarkdownTextPDF(doc, text, options = {}) {
 }
 
 /**
+ * Strip sections that are already rendered elsewhere to prevent duplication
+ */
+function stripAlreadyRenderedSections(aiContent) {
+  const forbiddenSections = [
+    'EXECUTIVE SUMMARY',
+    'COST ESTIMATE',
+    'ESTIMATED COST',
+    'CLAIM INFORMATION',
+    'REPORT INFORMATION'
+  ];
+
+  const lines = aiContent.split('\n');
+  let cleaned = [];
+  let skip = false;
+
+  for (const line of lines) {
+    const upper = line.trim().toUpperCase();
+
+    if (forbiddenSections.some(h => upper.startsWith(h))) {
+      skip = true;
+      continue;
+    }
+
+    if (skip && upper.match(/^[A-Z][A-Z\s]+:?$/)) {
+      skip = false;
+    }
+
+    if (!skip) cleaned.push(line);
+  }
+
+  return cleaned.join('\n');
+}
+
+/**
  * Format PDF content with proper headings, bullets, and formatting
  */
 function formatPDFContent(doc, aiContent) {
-  // Don't clean markdown - preserve formatting
-  const lines = aiContent.split('\n');
+  // Strip already-rendered sections to prevent duplication
+  const safeAIContent = stripAlreadyRenderedSections(aiContent);
+  const lines = safeAIContent.split('\n');
 
   const sectionHeaders = [
     'REMARKS', 'RISK', 'ITV', 'OCCURRENCE', 'COVERAGE', 'DWELLING DAMAGE',
@@ -1003,9 +1038,9 @@ function formatPDFContent(doc, aiContent) {
       skipPreamble = false;
       const bulletText = bulletMatch[1];
       doc.fontSize(10).fillColor('#000000').font('Helvetica');
-      doc.text('• ', { continued: false });
-      renderMarkdownTextPDF(doc, bulletText, { indent: 15, lineGap: 1 });
-      doc.moveDown(0.05);  // Reduced from 0.1 to 0.05 for tighter bullet spacing
+      doc.text('• ', { continued: true });  // Changed to true for inline rendering
+      renderMarkdownTextPDF(doc, bulletText, { indent: 0, lineGap: 1 });  // No indent needed when inline
+      doc.moveDown(0.05);
       continue;
     }
 
@@ -1036,13 +1071,20 @@ function formatPDFContent(doc, aiContent) {
            .text(badge.text, doc.page.margins.left + 5, badgeY + 4, { width: 75, align: 'center' });
 
         doc.y = badgeY;
-        doc.fontSize(10).fillColor('#000000').font('Helvetica');
-        doc.text(`${number}. `, doc.page.margins.left + 95, doc.y, { continued: false });
-        renderMarkdownTextPDF(doc, listText, { indent: 115, lineGap: 1 });
+        doc.fontSize(10).fillColor('#000000')
+           .font('Helvetica-Bold')
+           .text(`${number}. `, doc.page.margins.left + 95, doc.y, { continued: true });
+
+        doc.font('Helvetica');
+        renderMarkdownTextPDF(doc, listText, { indent: 0, lineGap: 1 });
       } else {
-        doc.fontSize(10).fillColor('#000000').font('Helvetica');
-        doc.text(`${number}. `, { continued: false });
-        renderMarkdownTextPDF(doc, listText, { indent: 20, lineGap: 1 });
+        // Carrier-grade inline numbering
+        doc.fontSize(10).fillColor('#000000')
+           .font('Helvetica-Bold')
+           .text(`${number}. `, { continued: true });
+
+        doc.font('Helvetica');
+        renderMarkdownTextPDF(doc, listText, { indent: 0, lineGap: 1 });
       }
 
       doc.moveDown(0.05);  // Reduced from 0.1 to 0.05 for tighter list spacing
