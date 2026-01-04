@@ -648,24 +648,7 @@ function generatePDF(reportData, aiContent) {
 
       doc.moveDown(0.8);
 
-      // Extract and display Executive Summary first (if exists)
-      const executiveSummary = extractExecutiveSummary(aiContent);
-      if (executiveSummary) {
-        drawExecutiveSummary(doc, executiveSummary);
-      }
-
-      // Parse and display Cost Estimate table
-      const { costItems, totalCost } = parseCostEstimate(aiContent);
-      if (costItems.length > 0) {
-        doc.fontSize(11)
-           .fillColor('#0d6efd')
-           .font('Helvetica-Bold')
-           .text('COST ESTIMATE');
-        doc.moveDown(0.5);
-        drawCostEstimateTable(doc, costItems, totalCost);
-      }
-
-      // Clean and format the content
+      // Just render the content simply - no fancy boxes or tables
       formatPDFContent(doc, aiContent);
 
       // Add page numbers and headers to all pages
@@ -994,10 +977,6 @@ function formatPDFContent(doc, aiContent) {
 
   let skipPreamble = true;
   const renderedSections = new Set();  // Track which sections we've already rendered to prevent duplicates
-
-  // Pre-mark sections that are rendered elsewhere (Executive Summary in blue box, Claim Info already shown)
-  renderedSections.add('EXECUTIVE SUMMARY');
-  renderedSections.add('CLAIM INFORMATION');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
