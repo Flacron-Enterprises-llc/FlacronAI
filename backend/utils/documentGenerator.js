@@ -498,7 +498,7 @@ function generatePDF(reportData, aiContent) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        margin: 5,  // Absolute minimum 5px margin - NO visible gap
+        margin: 0,  // Zero margin to maximize content space
         size: 'LETTER',
         bufferPages: true  // Enable page numbering
       });
