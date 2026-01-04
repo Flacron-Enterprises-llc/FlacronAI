@@ -315,10 +315,16 @@ function isPreambleText(text) {
     'i have created',
     'i\'ve created',
     'this is the',
-    'as requested'
+    'as requested',
+    'do not include',
+    'stick to the facts',
+    'avoid subjective',
+    'focus on factual',
+    'maintain objectivity',
+    'be objective'
   ];
   const lower = text.toLowerCase();
-  return preamblePhrases.some(phrase => lower.startsWith(phrase));
+  return preamblePhrases.some(phrase => lower.includes(phrase));
 }
 
 /**
@@ -985,6 +991,7 @@ function formatPDFContent(doc, aiContent) {
   ];
 
   let skipPreamble = true;
+  const renderedSections = new Set();  // Track which sections we've already rendered to prevent duplicates
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -996,8 +1003,8 @@ function formatPDFContent(doc, aiContent) {
     }
 
     // Skip lines that start with # (markdown headings that are decorative)
-    if (line.match(/^#+\s*[A-Z\s]+$/)) {
-      continue;  // Skip standalone markdown headings like "# INSURANCE CLAIM REPORT"
+    if (line.match(/^#+\s*/)) {
+      continue;  // Skip ALL markdown headings like "# INSURANCE CLAIM REPORT" or "## Executive Summary"
     }
 
     // Skip preamble text
@@ -1077,6 +1084,30 @@ function formatPDFContent(doc, aiContent) {
     if (isHeader) {
       // Remove ## markdown symbols if present
       const headerText = cleanedForHeader.replace(/^##\s*/, '');
+      const normalizedHeader = headerText.toUpperCase().trim();
+
+      // Skip duplicate sections (like duplicate "Executive Summary" or "Claim Information")
+      if (renderedSections.has(normalizedHeader)) {
+        // Skip until we find the next section header
+        let skipUntilNextSection = true;
+        while (i < lines.length - 1 && skipUntilNextSection) {
+          i++;
+          const nextLine = lines[i].trim();
+          const nextCleaned = nextLine.replace(/\*\*/g, '');
+          const nextIsHeader = nextLine.startsWith('##') ||
+                              (nextCleaned === nextCleaned.toUpperCase() &&
+                               nextCleaned.length > 3 &&
+                               sectionHeaders.some(h => nextCleaned === h));
+          if (nextIsHeader) {
+            i--; // Go back one so the next iteration processes this header
+            skipUntilNextSection = false;
+          }
+        }
+        continue;
+      }
+
+      // Mark this section as rendered
+      renderedSections.add(normalizedHeader);
 
       doc.moveDown(0.4);  // Reduced from 0.7 to 0.4 for tighter spacing before section headers
       doc.fontSize(12)
