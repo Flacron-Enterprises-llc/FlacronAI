@@ -1030,9 +1030,43 @@ function formatPDFContent(doc, aiContent) {
       continue;
     }
 
-    // Skip lines that start with # (markdown headings that are decorative)
-    if (line.match(/^#+\s*/)) {
-      continue;  // Skip ALL markdown headings like "# INSURANCE CLAIM REPORT" or "## Executive Summary"
+    // Convert markdown headings to section headers (but skip generic ones like "# INSURANCE CLAIM REPORT")
+    const markdownHeadingMatch = line.match(/^(#+)\s+(.+)$/);
+    if (markdownHeadingMatch) {
+      const headingText = markdownHeadingMatch[2].trim();
+      const upperHeading = headingText.toUpperCase();
+
+      // Skip generic report title headings
+      if (upperHeading === 'INSURANCE CLAIM REPORT' || upperHeading === 'INSPECTION REPORT') {
+        continue;
+      }
+
+      // Convert to section header
+      const normalizedHeader = upperHeading;
+
+      // Skip duplicate sections
+      if (renderedSections.has(normalizedHeader)) {
+        continue;
+      }
+
+      renderedSections.add(normalizedHeader);
+      skipPreamble = false;
+
+      doc.moveDown(0.4);
+      doc.fontSize(12)
+         .fillColor('#0d6efd')
+         .font('Helvetica-Bold')
+         .text(headingText);
+
+      const headerLineY = doc.y + 3;
+      doc.moveTo(doc.page.margins.left, headerLineY)
+         .lineTo(doc.page.width - doc.page.margins.right, headerLineY)
+         .strokeColor('#dee2e6')
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.moveDown(0.3);
+      continue;
     }
 
     // Skip preamble text
