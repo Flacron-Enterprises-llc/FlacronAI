@@ -4,7 +4,7 @@
  * This service integrates with the existing backend for user profile creation
  */
 
-import { auth, googleProvider, appleProvider } from '../config/firebase';
+import { auth, googleProvider, appleProvider, firebase } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
 
@@ -46,20 +46,31 @@ export const signInWithGoogle = async () => {
         try {
           // Configure Google Sign In
           GoogleSignin.configure({
-            webClientId: '924587706021-eec9131d64c8ee0f81ef4c.apps.googleusercontent.com',
+            webClientId: '773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com',
           });
 
           // Check if device supports Google Play services
           await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
           // Get Google ID token
-          const { idToken } = await GoogleSignin.signIn();
+          const userInfo = await GoogleSignin.signIn();
+          console.log('📱 Google Sign-In userInfo:', JSON.stringify(userInfo, null, 2));
 
-          // Create Google credential
-          const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+          // Extract idToken from the response - it's nested in data property
+          const idToken = userInfo.data?.idToken || userInfo.idToken;
+          console.log('📱 idToken:', idToken);
+          console.log('📱 idToken type:', typeof idToken);
+
+          // Create Google credential using the correct Firebase method
+          console.log('🔐 Creating Firebase credential...');
+          console.log('🔐 firebase.auth.GoogleAuthProvider:', firebase.auth.GoogleAuthProvider);
+          const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+          console.log('🔐 Credential created:', credential);
 
           // Sign in with credential
-          result = await auth.signInWithCredential(googleCredential);
+          console.log('🔥 Signing in with credential...');
+          result = await auth.signInWithCredential(credential);
+          console.log('✅ Sign-in successful!');
         } catch (nativeError) {
           console.error('Native Google Sign-In error:', nativeError);
           throw nativeError;
@@ -95,9 +106,22 @@ export const signInWithGoogle = async () => {
     });
 
     if (backendResponse.success) {
-      // Store auth data
-      await AsyncStorage.setItem('authToken', backendResponse.token);
-      await AsyncStorage.setItem('userData', JSON.stringify(backendResponse.user));
+      // Store auth data in the same format as regular login
+      const tier = backendResponse.user.tier || 'starter';
+      console.log('💾 Storing user data:', {
+        email: backendResponse.user.email,
+        displayName: backendResponse.user.displayName,
+        userId: backendResponse.user.userId,
+        tier: tier
+      });
+
+      await AsyncStorage.setItem('userToken', backendResponse.token);
+      await AsyncStorage.setItem('userEmail', backendResponse.user.email);
+      await AsyncStorage.setItem('userName', backendResponse.user.displayName || '');
+      await AsyncStorage.setItem('userId', backendResponse.user.userId);
+      await AsyncStorage.setItem('userTier', tier);
+
+      console.log('✅ User data stored successfully');
 
       return {
         success: true,
@@ -178,10 +202,10 @@ export const signInWithApple = async () => {
           const { identityToken, nonce } = appleAuthRequestResponse;
 
           // Create Apple credential
-          const appleCredential = auth.AppleAuthProvider.credential(identityToken);
-          if (nonce) {
-            appleCredential.nonce = nonce;
-          }
+          const appleCredential = firebase.auth.OAuthProvider.credential({
+            idToken: identityToken,
+            rawNonce: nonce,
+          });
 
           // Sign in with credential
           result = await auth.signInWithCredential(appleCredential);
@@ -228,9 +252,22 @@ export const signInWithApple = async () => {
     });
 
     if (backendResponse.success) {
-      // Store auth data
-      await AsyncStorage.setItem('authToken', backendResponse.token);
-      await AsyncStorage.setItem('userData', JSON.stringify(backendResponse.user));
+      // Store auth data in the same format as regular login
+      const tier = backendResponse.user.tier || 'starter';
+      console.log('💾 Storing user data:', {
+        email: backendResponse.user.email,
+        displayName: backendResponse.user.displayName,
+        userId: backendResponse.user.userId,
+        tier: tier
+      });
+
+      await AsyncStorage.setItem('userToken', backendResponse.token);
+      await AsyncStorage.setItem('userEmail', backendResponse.user.email);
+      await AsyncStorage.setItem('userName', backendResponse.user.displayName || '');
+      await AsyncStorage.setItem('userId', backendResponse.user.userId);
+      await AsyncStorage.setItem('userTier', tier);
+
+      console.log('✅ User data stored successfully');
 
       return {
         success: true,

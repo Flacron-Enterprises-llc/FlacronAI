@@ -24,8 +24,7 @@
         "NSPhotoLibraryUsageDescription": "This app requires photo library access to select inspection photos.",
         "NSLocationWhenInUseUsageDescription": "This app requires location access to include property location in reports.",
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "googleServicesFile": "./GoogleService-Info.plist"
+      }
     },
     "android": {
       "icon": "./assets/android/res/mipmap-xxxhdpi/Flacron-Build.png",
@@ -43,8 +42,7 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.INTERNET"
-      ],
-      "googleServicesFile": "./google-services.json"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -58,7 +56,7 @@
       "firebaseMessagingSenderId": "773892679617",
       "firebaseAppId": "1:773892679617:web:daa3f6b5e3774501957140",
       "firebaseMeasurementId": "G-NB7SZYH1KS",
-      "googleWebClientId": "773892679617-eec9131d64c8ee0f81ef4c.apps.googleusercontent.com",
+      "googleWebClientId": "773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com",
       "eas": {
         "projectId": "a0b88065-78ef-491d-8781-48bceb8385e2"
       }

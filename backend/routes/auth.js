@@ -664,8 +664,22 @@ router.post('/social-login', async (req, res) => {
       });
     }
 
-    // Get or create user in Firestore
+    // Check if an email-password account already exists with this email
     const db = getFirestore();
+    const existingUserQuery = await db.collection('users')
+      .where('email', '==', email.toLowerCase())
+      .where('provider', '==', 'email')
+      .get();
+
+    if (!existingUserQuery.empty) {
+      console.log('❌ Email-password account already exists with this email');
+      return res.status(409).json({
+        success: false,
+        error: 'An account with this email already exists. Please sign in using email and password instead.'
+      });
+    }
+
+    // Get or create user in Firestore
     const userRef = db.collection('users').doc(firebaseUid);
     const userDoc = await userRef.get();
 

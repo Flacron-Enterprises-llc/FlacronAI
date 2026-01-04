@@ -97,7 +97,15 @@
       "Bash(git checkout:*)",
       "Bash(timeout:*)",
       "Bash(del \"C:\\\\Users\\\\pc\\\\Desktop\\\\FlacronCV\\\\upgrade_ui.py\")",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npx eas-cli@latest build:*)",
+      "Bash(./gradlew assembleRelease:*)",
+      "Bash(gradlew.bat:*)",
+      "Bash(./gradlew.bat --stop)",
+      "Bash(keytool -list:*)",
+      "Bash(./gradlew.bat signingReport:*)",
+      "Bash(./gradlew.bat:*)",
+      "Bash(del \"frontend\\\\src\\\\styles\\\\modern-dashboard-clean.css\" \"frontend\\\\src\\\\styles\\\\modern-dashboard-temp.css\")"
     ],
     "deny": [],
     "ask": []

@@ -2,15 +2,15 @@ import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
 
-// Firebase configuration - matches backend
+// Firebase configuration - matches backend and google-services.json
 const firebaseConfig = {
-  apiKey: "AIzaSyAx1ltcGH7j5R8YeuuuTMn3wxJT17-LJxQ",
+  apiKey: "AIzaSyDqKPNYgIvFOASOyjBB9VkNowtBhp1O06k",
   authDomain: "flacronai-c8dab.firebaseapp.com",
   projectId: "flacronai-c8dab",
   storageBucket: "flacronai-c8dab.firebasestorage.app",
-  messagingSenderId: "924587706021",
-  appId: "1:924587706021:web:eec9131d64c8ee0f81ef4c",
-  measurementId: "G-0NYRHLSYMQ"
+  messagingSenderId: "773892679617",
+  appId: "1:773892679617:web:daa3f6b5e3774501957140",
+  measurementId: "G-NB7SZYH1KS"
 };
 
 if (!firebase.apps.length) {
