@@ -817,7 +817,7 @@ function drawCostEstimateTable(doc, costItems, totalCost) {
      .text(`$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
            costX + 10, currentY + 8, { width: 80, align: 'right' });
 
-  doc.y = currentY + rowHeight + 15;
+  doc.y = currentY + rowHeight + 8;  // Reduced from 15 to 8 for tighter spacing after table
 }
 
 /**
@@ -860,7 +860,7 @@ function drawExecutiveSummary(doc, summaryText) {
        lineGap: 3
      });
 
-  doc.y = boxY + boxHeight + 15;
+  doc.y = boxY + boxHeight + 8;  // Reduced from 15 to 8 for tighter spacing after summary box
 }
 
 /**
@@ -991,7 +991,7 @@ function formatPDFContent(doc, aiContent) {
 
     // Skip empty lines
     if (!line || line === '---' || line === '___') {
-      doc.moveDown(0.3);
+      doc.moveDown(0.15);  // Reduced from 0.3 to 0.15 for tighter spacing
       continue;
     }
 
@@ -1007,8 +1007,8 @@ function formatPDFContent(doc, aiContent) {
       const bulletText = bulletMatch[1];
       doc.fontSize(10).fillColor('#000000').font('Helvetica');
       doc.text('• ', { continued: false });
-      renderMarkdownTextPDF(doc, bulletText, { indent: 15, lineGap: 2 });
-      doc.moveDown(0.1);
+      renderMarkdownTextPDF(doc, bulletText, { indent: 15, lineGap: 1 });
+      doc.moveDown(0.05);  // Reduced from 0.1 to 0.05 for tighter bullet spacing
       continue;
     }
 
@@ -1041,14 +1041,14 @@ function formatPDFContent(doc, aiContent) {
         doc.y = badgeY;
         doc.fontSize(10).fillColor('#000000').font('Helvetica');
         doc.text(`${number}. `, doc.page.margins.left + 95, doc.y, { continued: false });
-        renderMarkdownTextPDF(doc, listText, { indent: 115, lineGap: 2 });
+        renderMarkdownTextPDF(doc, listText, { indent: 115, lineGap: 1 });
       } else {
         doc.fontSize(10).fillColor('#000000').font('Helvetica');
         doc.text(`${number}. `, { continued: false });
-        renderMarkdownTextPDF(doc, listText, { indent: 20, lineGap: 2 });
+        renderMarkdownTextPDF(doc, listText, { indent: 20, lineGap: 1 });
       }
 
-      doc.moveDown(0.1);
+      doc.moveDown(0.05);  // Reduced from 0.1 to 0.05 for tighter list spacing
       continue;
     }
 
@@ -1073,7 +1073,7 @@ function formatPDFContent(doc, aiContent) {
       // Remove ## markdown symbols if present
       const headerText = cleanedForHeader.replace(/^##\s*/, '');
 
-      doc.moveDown(0.7);
+      doc.moveDown(0.4);  // Reduced from 0.7 to 0.4 for tighter spacing before section headers
       doc.fontSize(12)
          .fillColor('#0d6efd')
          .font('Helvetica-Bold')
@@ -1087,21 +1087,21 @@ function formatPDFContent(doc, aiContent) {
          .lineWidth(0.5)
          .stroke();
 
-      doc.moveDown(0.5);
+      doc.moveDown(0.3);  // Reduced from 0.5 to 0.3 for tighter spacing after section headers
     }
     // Check if it's a subsection (ends with :)
     else if (line.endsWith(':') && line.length < 80) {
       const cleanedSubsection = line.replace(/\*\*/g, '');
-      doc.moveDown(0.4);
+      doc.moveDown(0.25);  // Reduced from 0.4 to 0.25 for tighter spacing before subsections
       doc.fontSize(10)
          .fillColor('#333333')
          .font('Helvetica-Bold')
          .text(cleanedSubsection);
-      doc.moveDown(0.2);
+      doc.moveDown(0.15);  // Reduced from 0.2 to 0.15 for tighter spacing after subsections
     }
     // Regular paragraph with markdown parsing
     else {
-      renderMarkdownTextPDF(doc, line, { lineGap: 2 });
+      renderMarkdownTextPDF(doc, line, { lineGap: 1 });  // Reduced from 2 to 1 for tighter line spacing
     }
   }
 }
