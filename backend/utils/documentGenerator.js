@@ -484,8 +484,9 @@ function generatePDF(reportData, aiContent) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        margin: 72,  // 1 inch margins
-        size: 'LETTER'
+        margin: 50,  // Reduced to 0.69 inch for more horizontal space
+        size: 'LETTER',
+        bufferPages: true  // Enable page numbering
       });
       const chunks = [];
 
@@ -499,24 +500,34 @@ function generatePDF(reportData, aiContent) {
         });
       });
 
-      // Professional Header
+      // Professional Header - Centered with Claim Number
       doc.fontSize(28)
          .fillColor('#FF7C08')
          .font('Helvetica-Bold')
          .text('FLACRONAI', { align: 'center' });
 
-      doc.moveDown(0.3);
+      doc.moveDown(0.2);
 
       doc.fontSize(14)
          .fillColor('#333333')
          .font('Helvetica')
          .text('Insurance Inspection Report', { align: 'center' });
 
-      doc.moveDown(2);
+      doc.moveDown(0.3);
+
+      // Claim Number prominently displayed in header
+      doc.fontSize(11)
+         .fillColor('#0d6efd')
+         .font('Helvetica-Bold')
+         .text(`Claim #: ${reportData.claimNumber || 'N/A'}`, { align: 'center' });
+
+      doc.moveDown(1.5);
 
       // Report Information Section with Professional Layout
       const infoBoxY = doc.y;
-      const boxWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      const pageWidth = doc.page.width;
+      const boxWidth = pageWidth - (doc.page.margins.left + doc.page.margins.right);
+      const contentPadding = 20;  // Standard professional padding
 
       // Draw background box for info section
       doc.rect(doc.page.margins.left, infoBoxY, boxWidth, 150)
@@ -524,19 +535,19 @@ function generatePDF(reportData, aiContent) {
 
       doc.fillColor('#000000');
 
-      // Reset position for text
+      // Reset position for text with proper padding
       doc.y = infoBoxY + 15;
 
       doc.fontSize(12)
          .fillColor('#0d6efd')
          .font('Helvetica-Bold')
-         .text('REPORT INFORMATION', doc.page.margins.left + 15, doc.y);
+         .text('REPORT INFORMATION', doc.page.margins.left + contentPadding, doc.y);
 
       doc.moveDown(0.8);
 
-      // Format info in two columns
-      const leftCol = doc.page.margins.left + 15;
-      const rightCol = doc.page.margins.left + boxWidth / 2;
+      // Format info in two columns with proper spacing
+      const leftCol = doc.page.margins.left + contentPadding;
+      const rightCol = doc.page.margins.left + (boxWidth / 2) + contentPadding;
       const startY = doc.y;
 
       doc.fontSize(9)
@@ -631,16 +642,70 @@ function generatePDF(reportData, aiContent) {
 
       doc.moveDown(0.8);
 
+      // Extract and display Executive Summary first (if exists)
+      const executiveSummary = extractExecutiveSummary(aiContent);
+      if (executiveSummary) {
+        drawExecutiveSummary(doc, executiveSummary);
+      }
+
+      // Parse and display Cost Estimate table
+      const { costItems, totalCost } = parseCostEstimate(aiContent);
+      if (costItems.length > 0) {
+        doc.fontSize(11)
+           .fillColor('#0d6efd')
+           .font('Helvetica-Bold')
+           .text('COST ESTIMATE');
+        doc.moveDown(0.5);
+        drawCostEstimateTable(doc, costItems, totalCost);
+      }
+
       // Clean and format the content
       formatPDFContent(doc, aiContent);
 
-      // Footer
-      doc.moveDown(2);
-      doc.fontSize(8)
-         .fillColor('#888888')
-         .font('Helvetica-Oblique')
-         .text('Generated with FlacronAI - https://flacronai.com', { align: 'center' })
-         .text('Powered by IBM WatsonX AI & OpenAI', { align: 'center' });
+      // Add page numbers and headers to all pages
+      const pageCount = doc.bufferedPageRange().count;
+      for (let i = 0; i < pageCount; i++) {
+        doc.switchToPage(i);
+
+        // Header on every page (except first)
+        if (i > 0) {
+          doc.fontSize(9)
+             .fillColor('#FF7C08')
+             .font('Helvetica-Bold')
+             .text('FLACRONAI', 50, 30, { align: 'left' });
+
+          doc.fontSize(8)
+             .fillColor('#0d6efd')
+             .font('Helvetica')
+             .text(`Claim #: ${reportData.claimNumber || 'N/A'}`, 50, 45, { align: 'left' });
+
+          // Draw header line
+          doc.moveTo(50, 60)
+             .lineTo(doc.page.width - 50, 60)
+             .strokeColor('#dee2e6')
+             .lineWidth(0.5)
+             .stroke();
+        }
+
+        // Footer with page numbers on every page
+        const footerY = doc.page.height - 50;
+
+        doc.fontSize(8)
+           .fillColor('#888888')
+           .font('Helvetica')
+           .text(`Page ${i + 1} of ${pageCount}`, 50, footerY, {
+             align: 'center',
+             width: doc.page.width - 100
+           });
+
+        doc.fontSize(7)
+           .fillColor('#888888')
+           .font('Helvetica-Oblique')
+           .text('Generated with FlacronAI - https://flacronai.com', 50, footerY + 12, {
+             align: 'center',
+             width: doc.page.width - 100
+           });
+      }
 
       doc.end();
     } catch (error) {
@@ -651,6 +716,196 @@ function generatePDF(reportData, aiContent) {
       });
     }
   });
+}
+
+/**
+ * Parse cost estimate data from AI content
+ */
+function parseCostEstimate(aiContent) {
+  const costItems = [];
+  const lines = aiContent.split('\n');
+  let inCostSection = false;
+  let totalCost = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Detect cost estimate section
+    if (trimmed.match(/cost estimate|estimated cost|repair costs/i)) {
+      inCostSection = true;
+      continue;
+    }
+
+    // Exit cost section on next major heading
+    if (inCostSection && trimmed.match(/^[A-Z][A-Z\s]+:?$/) && !trimmed.match(/cost/i)) {
+      inCostSection = false;
+    }
+
+    // Parse cost items (e.g., "- Shingle replacement: $2,500" or "Roof repair - $1,200")
+    if (inCostSection) {
+      const costMatch = trimmed.match(/^[\-\*]?\s*(.+?)[\:\-]\s*\$?([\d,]+\.?\d*)/);
+      if (costMatch) {
+        const item = costMatch[1].trim();
+        const cost = parseFloat(costMatch[2].replace(/,/g, ''));
+        costItems.push({ item, cost });
+        totalCost += cost;
+      }
+    }
+
+    // Also look for total cost
+    if (trimmed.match(/total.*cost.*\$?([\d,]+)/i)) {
+      const totalMatch = trimmed.match(/\$?([\d,]+\.?\d*)/);
+      if (totalMatch && totalCost === 0) {
+        totalCost = parseFloat(totalMatch[1].replace(/,/g, ''));
+      }
+    }
+  }
+
+  return { costItems, totalCost };
+}
+
+/**
+ * Draw cost estimate table in PDF
+ */
+function drawCostEstimateTable(doc, costItems, totalCost) {
+  if (!costItems || costItems.length === 0) return;
+
+  const tableTop = doc.y;
+  const itemX = doc.page.margins.left;
+  const costX = doc.page.width - doc.page.margins.right - 100;
+  const rowHeight = 25;
+  const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+  // Table header
+  doc.rect(itemX, tableTop, tableWidth, rowHeight)
+     .fillAndStroke('#0d6efd', '#0d6efd');
+
+  doc.fontSize(10)
+     .fillColor('#ffffff')
+     .font('Helvetica-Bold')
+     .text('Item Description', itemX + 10, tableTop + 8, { width: tableWidth - 120 })
+     .text('Cost', costX + 10, tableTop + 8, { width: 80, align: 'right' });
+
+  doc.fillColor('#000000');
+
+  // Table rows with alternating colors
+  let currentY = tableTop + rowHeight;
+  costItems.forEach((item, index) => {
+    const bgColor = index % 2 === 0 ? '#ffffff' : '#f8f9fa';
+
+    doc.rect(itemX, currentY, tableWidth, rowHeight)
+       .fillAndStroke(bgColor, '#dee2e6');
+
+    doc.fontSize(9)
+       .fillColor('#333333')
+       .font('Helvetica')
+       .text(item.item, itemX + 10, currentY + 8, { width: tableWidth - 120 })
+       .text(`$${item.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+             costX + 10, currentY + 8, { width: 80, align: 'right' });
+
+    currentY += rowHeight;
+  });
+
+  // Total row
+  doc.rect(itemX, currentY, tableWidth, rowHeight)
+     .fillAndStroke('#fff3cd', '#ffc107');
+
+  doc.fontSize(10)
+     .fillColor('#000000')
+     .font('Helvetica-Bold')
+     .text('Total Estimated Cost', itemX + 10, currentY + 8)
+     .text(`$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+           costX + 10, currentY + 8, { width: 80, align: 'right' });
+
+  doc.y = currentY + rowHeight + 15;
+}
+
+/**
+ * Draw Executive Summary call-out box
+ */
+function drawExecutiveSummary(doc, summaryText) {
+  if (!summaryText) return;
+
+  const boxY = doc.y;
+  const boxWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const contentPadding = 15;
+
+  // Measure text height
+  const textHeight = doc.heightOfString(summaryText, {
+    width: boxWidth - (contentPadding * 2),
+    align: 'left'
+  });
+
+  const boxHeight = textHeight + 50;
+
+  // Draw call-out box with distinct styling
+  doc.rect(doc.page.margins.left, boxY, boxWidth, boxHeight)
+     .fillAndStroke('#e7f3ff', '#0d6efd');
+
+  // Add "Executive Summary" label
+  doc.fontSize(11)
+     .fillColor('#0d6efd')
+     .font('Helvetica-Bold')
+     .text('EXECUTIVE SUMMARY', doc.page.margins.left + contentPadding, boxY + contentPadding);
+
+  doc.moveDown(0.5);
+
+  // Add summary content
+  doc.fontSize(9)
+     .fillColor('#000000')
+     .font('Helvetica')
+     .text(summaryText, doc.page.margins.left + contentPadding, doc.y, {
+       width: boxWidth - (contentPadding * 2),
+       align: 'left',
+       lineGap: 3
+     });
+
+  doc.y = boxY + boxHeight + 15;
+}
+
+/**
+ * Extract Executive Summary from AI content
+ */
+function extractExecutiveSummary(aiContent) {
+  const lines = aiContent.split('\n');
+  let inSummary = false;
+  let summaryLines = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.match(/executive summary|key findings|summary/i) && trimmed.match(/^[A-Z#]/)) {
+      inSummary = true;
+      continue;
+    }
+
+    if (inSummary && trimmed.match(/^[A-Z][A-Z\s]+:?$/) && !trimmed.match(/summary/i)) {
+      break;
+    }
+
+    if (inSummary && trimmed && !trimmed.match(/^[\-\*#]/)) {
+      summaryLines.push(trimmed);
+    }
+  }
+
+  return summaryLines.join(' ').slice(0, 500);  // Limit to 500 chars for call-out
+}
+
+/**
+ * Add status badge for recommendations
+ */
+function getRecommendationBadge(text) {
+  const lower = text.toLowerCase();
+
+  if (lower.match(/urgent|immediate|critical|emergency/)) {
+    return { text: 'URGENT', color: '#dc3545', bgColor: '#f8d7da' };
+  } else if (lower.match(/high priority|important|required/)) {
+    return { text: 'HIGH PRIORITY', color: '#fd7e14', bgColor: '#fff3cd' };
+  } else if (lower.match(/medium|moderate|recommend/)) {
+    return { text: 'RECOMMENDED', color: '#0d6efd', bgColor: '#cfe2ff' };
+  } else {
+    return { text: 'STANDARD', color: '#6c757d', bgColor: '#e2e3e5' };
+  }
 }
 
 /**
@@ -763,9 +1018,36 @@ function formatPDFContent(doc, aiContent) {
       skipPreamble = false;
       const number = numberMatch[1];
       const listText = numberMatch[2];
-      doc.fontSize(10).fillColor('#000000').font('Helvetica');
-      doc.text(`${number}. `, { continued: false });
-      renderMarkdownTextPDF(doc, listText, { indent: 20, lineGap: 2 });
+
+      // Check if this is in a Recommendation section
+      const isRecommendation = i > 0 && lines.slice(Math.max(0, i - 10), i).some(prevLine =>
+        prevLine.trim().match(/RECOMMENDATION|ACTION PLAN|WORK TO BE COMPLETED/i)
+      );
+
+      if (isRecommendation) {
+        // Add status badge for recommendations
+        const badge = getRecommendationBadge(listText);
+        const badgeY = doc.y;
+
+        // Draw badge
+        doc.roundedRect(doc.page.margins.left, badgeY, 85, 16, 3)
+           .fillAndStroke(badge.bgColor, badge.color);
+
+        doc.fontSize(7)
+           .fillColor(badge.color)
+           .font('Helvetica-Bold')
+           .text(badge.text, doc.page.margins.left + 5, badgeY + 4, { width: 75, align: 'center' });
+
+        doc.y = badgeY;
+        doc.fontSize(10).fillColor('#000000').font('Helvetica');
+        doc.text(`${number}. `, doc.page.margins.left + 95, doc.y, { continued: false });
+        renderMarkdownTextPDF(doc, listText, { indent: 115, lineGap: 2 });
+      } else {
+        doc.fontSize(10).fillColor('#000000').font('Helvetica');
+        doc.text(`${number}. `, { continued: false });
+        renderMarkdownTextPDF(doc, listText, { indent: 20, lineGap: 2 });
+      }
+
       doc.moveDown(0.1);
       continue;
     }
