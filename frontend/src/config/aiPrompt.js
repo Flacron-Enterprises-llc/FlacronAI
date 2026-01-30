@@ -24,8 +24,21 @@ The report must include these main sections in this exact order:
 4. **Introductory Paragraph**:
    "This will serve as our [Choose report type: First Report/Interim Report/Final Report] report on the above captioned property. We completed our inspection on [Inspection Date] and met with [Who was present]."
 
-5. **ESTIMATED LOSS TABLE** with these exact 7 columns:
-   | Description | Quantity | Unit Cost | Total | Depreciation | ACV | RCV |
+5. **ESTIMATED LOSS / RESERVE SUMMARY** - Generate realistic reserve estimates based on the loss type and damages described:
+
+   ESTIMATED LOSS
+   | Coverage | Limit | Prior Reserve | Change +/- | Remaining Reserve |
+   |----------|-------|---------------|------------|-------------------|
+   | Dwelling | $[estimated based on property] | $0.00 | $[estimate repair costs] | $[change amount] |
+   | Other Structures | $[10% of dwelling] | $0.00 | $[if applicable] | $[change amount] |
+   | Personal Property | $[50% of dwelling] | $0.00 | $[if applicable] | $[change amount] |
+   | Total | $[sum] | $[sum] | $[sum] | $[sum] |
+
+   **IMPORTANT: You MUST estimate realistic dollar amounts based on:**
+   - Loss type (Water damage typically $5,000-$50,000, Fire $20,000-$200,000+, Wind $2,000-$30,000)
+   - Property size and type described
+   - Severity of damages described
+   - Use whole dollar amounts like $15,000.00, not ranges
 
 6. **Property Description**:
    - Building type, construction, age, square footage

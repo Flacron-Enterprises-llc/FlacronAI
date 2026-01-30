@@ -2,7 +2,28 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-export const exportReport = async (reportId, format, authToken) => {
+/**
+ * Helper function to trigger file download
+ */
+const triggerFileDownload = (url, fileName) => {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+/**
+ * Helper function to construct full URL from relative path
+ */
+const constructFullUrl = (url) => {
+  if (!url) return null;
+  return url.startsWith('http') ? url : `${API_BASE_URL.replace('/api', '')}${url}`;
+};
+
+export const exportReport = async (reportId, format, authToken, triggerDownload = true) => {
   try {
     const exportUrl = `${API_BASE_URL}/reports/${reportId}/export`;
     console.log('📤 Exporting report:', { reportId, format, exportUrl, hasToken: !!authToken });
@@ -25,28 +46,23 @@ export const exportReport = async (reportId, format, authToken) => {
     }
 
     if (format === 'html') {
-      // Open HTML in new window
-      const newWindow = window.open();
-      if (newWindow) {
-        newWindow.document.write(result.html);
-        newWindow.document.close();
+      if (triggerDownload) {
+        // Open HTML in new window
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(result.html);
+          newWindow.document.close();
+        }
       }
     } else {
       // Download file (DOCX or PDF)
       if (result.url) {
-        // Construct full URL with backend base
-        const fullUrl = result.url.startsWith('http')
-          ? result.url
-          : `${API_BASE_URL.replace('/api', '')}${result.url}`;
+        const fullUrl = constructFullUrl(result.url);
+        result.fullUrl = fullUrl;
 
-        // Create a temporary link element to trigger download
-        const link = document.createElement('a');
-        link.href = fullUrl;
-        link.download = result.fileName || `report.${format}`;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (triggerDownload) {
+          triggerFileDownload(fullUrl, result.fileName || `report.${format}`);
+        }
       }
     }
 
@@ -57,9 +73,40 @@ export const exportReport = async (reportId, format, authToken) => {
   }
 };
 
-export const exportAsDocx = (reportId, authToken) => exportReport(reportId, 'docx', authToken);
-export const exportAsPdf = (reportId, authToken) => exportReport(reportId, 'pdf', authToken);
-export const exportAsHtml = (reportId, authToken) => exportReport(reportId, 'html', authToken);
+/**
+ * Export report as DOCX and automatically download the converted PDF as well
+ * The PDF is an exact conversion of the DOCX (same content, layout, styling)
+ */
+export const exportAsDocx = async (reportId, authToken, triggerDownload = true) => {
+  try {
+    const result = await exportReport(reportId, 'docx', authToken, false);
+
+    if (triggerDownload && result.success) {
+      // Download DOCX
+      if (result.url) {
+        const docxUrl = constructFullUrl(result.url);
+        triggerFileDownload(docxUrl, result.fileName || 'report.docx');
+      }
+
+      // Also download the PDF conversion (identical to DOCX, just converted)
+      if (result.hasPdfConversion && result.pdfUrl) {
+        const pdfUrl = constructFullUrl(result.pdfUrl);
+        // Small delay to ensure both downloads trigger properly
+        setTimeout(() => {
+          triggerFileDownload(pdfUrl, result.pdfFileName || 'report.pdf');
+        }, 500);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Export DOCX error:', error);
+    throw error;
+  }
+};
+
+export const exportAsPdf = (reportId, authToken, triggerDownload = true) => exportReport(reportId, 'pdf', authToken, triggerDownload);
+export const exportAsHtml = (reportId, authToken, triggerDownload = true) => exportReport(reportId, 'html', authToken, triggerDownload);
 
 export default {
   exportReport,
