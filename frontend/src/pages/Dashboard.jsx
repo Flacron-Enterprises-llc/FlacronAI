@@ -13,6 +13,7 @@ import {
 } from '../utils/uxEnhancements';
 import { getReportPrompt } from '../config/aiPrompt';
 import DragDropUpload from '../components/dashboard/DragDropUpload';
+import ContactSalesModal from '../components/common/ContactSalesModal';
 import '../styles/command-center.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -38,6 +39,7 @@ const Dashboard = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [reportViewMode, setReportViewMode] = useState('preview'); // 'preview' or 'editor'
+  const [showContactModal, setShowContactModal] = useState(false);
 
   // Fetch data when token is available
   useEffect(() => {
@@ -1374,7 +1376,7 @@ const Dashboard = () => {
                           </li>
                         ))}
                       </ul>
-                      <button className="cc-btn cc-btn-secondary" style={{ width: '100%' }} onClick={() => handleUpgradeCheckout('enterprise')} disabled={loading || usageStats?.tier === 'enterprise'}>
+                      <button className="cc-btn cc-btn-secondary" style={{ width: '100%' }} onClick={() => usageStats?.tier !== 'enterprise' && setShowContactModal(true)} disabled={usageStats?.tier === 'enterprise'}>
                         {usageStats?.tier === 'enterprise' ? 'Current Plan' : 'Contact Sales'}
                       </button>
                     </div>
@@ -1505,6 +1507,12 @@ const Dashboard = () => {
           <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
         </svg>
       </button>
+
+      {/* Contact Sales Modal */}
+      <ContactSalesModal
+        isOpen={showContactModal}
+        onClose={() => setShowContactModal(false)}
+      />
     </div>
   );
 };

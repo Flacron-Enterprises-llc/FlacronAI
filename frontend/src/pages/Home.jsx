@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { initScrollAnimations, addRippleEffect } from '../utils/scrollAnimations';
 
+// Import layout components
+import { Navbar, Footer } from '../components/layout';
+import ContactSalesModal from '../components/common/ContactSalesModal';
+
 // Import custom high-end components
-import AnimatedGridPattern from '../components/ui/AnimatedGridPattern';
 import RainbowButton from '../components/ui/RainbowButton';
 import ShimmerButton from '../components/ui/ShimmerButton';
 import SmoothCursor from '../components/ui/SmoothCursor';
@@ -26,14 +29,21 @@ const Home = () => {
   // Count up animation for stats
   const [stats, setStats] = useState({ reports: 0, clients: 0, accuracy: 0 });
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
 
   useEffect(() => {
     document.title = 'FlacronAI - AI-Powered Insurance Report Generator';
+
+    // Add landing-page class to body to prevent dark overlays
+    document.body.classList.add('landing-page');
 
     const animations = initScrollAnimations();
     addRippleEffect();
 
     return () => {
+      // Remove landing-page class when component unmounts
+      document.body.classList.remove('landing-page');
+
       if (animations && animations.disconnect) {
         animations.disconnect();
       }
@@ -86,7 +96,7 @@ const Home = () => {
       { threshold: 0.5 }
     );
 
-    const statsElement = document.querySelector('.hero-stats-redesign');
+    const statsElement = document.querySelector('.hero-stats-split');
     if (statsElement) {
       observer.observe(statsElement);
     }
@@ -99,159 +109,166 @@ const Home = () => {
       {/* Smooth Custom Cursor */}
       <SmoothCursor />
 
-      {/* Animated Grid Pattern Background */}
-      <AnimatedGridPattern />
+      <Navbar />
 
-      {/* Fixed Floating Navigation */}
-      <motion.header
-        className="navbar-redesign"
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-      >
-        <div className="container">
-          <div className="navbar-content-redesign">
-            <motion.div
-              className="logo-redesign"
-              whileHover={{ scale: 1.05 }}
-              transition={{ type: "spring", stiffness: 400 }}
-            >
-              <img src="/logo.png" alt="FlacronAI" className="logo-img-redesign" />
-            </motion.div>
-            <nav className="nav-redesign">
-              <a href="#home" className="nav-link-redesign">Home</a>
-              <a href="#features" className="nav-link-redesign">Features</a>
-              <a href="#pricing" className="nav-link-redesign">Pricing</a>
-              <Link to="/auth" className="nav-cta-redesign">
-                Get Started
-              </Link>
-            </nav>
-          </div>
-        </div>
-      </motion.header>
-
-      {/* Hero Section - Centered Commanding Layout */}
+      {/* Hero Section - Split Layout */}
       <motion.section
         className="hero-redesign"
         id="home"
-        style={{ y: heroY }}
       >
-        {/* Massive Background Glow */}
-        <div className="hero-glow-massive"></div>
-        <div className="hero-glow-secondary"></div>
-
-        {/* Interactive 3D Globe (lazy loaded) */}
-        <Suspense fallback={null}>
-          <InteractiveGlobe />
-        </Suspense>
-
         <div className="container">
-          <div className="hero-centered-layout">
-            {/* Top Badge - Centered */}
-            <motion.div
-              className="badge-top-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.6 }}
-            >
-              <svg className="badge-icon-redesign" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" fill="#FF7C08"/>
-              </svg>
-              <span>Powered by IBM WatsonX AI & Microsoft</span>
-            </motion.div>
-
-            {/* Commanding Centered Title */}
-            <motion.div
-              className="hero-title-commanding"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.8 }}
-            >
-              <h1>
-                Generate Insurance<br />
-                Reports in <span className="highlight-orange">Seconds</span>
-              </h1>
-            </motion.div>
-
-            {/* Centered Description */}
-            <motion.p
-              className="hero-description-commanding"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7, duration: 0.6 }}
-            >
-              Professional AI-powered report generation using IBM WatsonX AI & Microsoft.<br />
-              Transform hours of work into minutes with accurate, consistent documentation.
-            </motion.p>
-
-            {/* CTA Buttons with Custom Components */}
-            <motion.div
-              className="cta-buttons-commanding"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9, duration: 0.6 }}
-            >
-              <RainbowButton to="/auth">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <div className="hero-split-layout">
+            <div className="hero-content-left">
+              {/* Top Badge */}
+              <motion.div
+                className="badge-top-left"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+              >
+                <svg className="badge-icon-redesign" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" fill="#FF7C08"/>
                 </svg>
-                Start Free Trial
-              </RainbowButton>
+                <span>Powered by AI</span>
+              </motion.div>
 
-              <ShimmerButton href="#features">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                  <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                Learn More
-              </ShimmerButton>
-            </motion.div>
+              {/* Main Title */}
+              <motion.h1
+                className="hero-title-split"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.7 }}
+              >
+                Generate Insurance Reports in <span className="highlight-orange">Seconds</span>
+              </motion.h1>
 
-            {/* Stats Below - Centered */}
+              {/* Description */}
+              <motion.p
+                className="hero-description-split"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.6 }}
+              >
+                Professional AI-powered report generation using IBM WatsonX AI & Microsoft. Transform hours of work into minutes with accurate, consistent documentation.
+              </motion.p>
+
+              {/* Feature Checklist */}
+              <motion.ul
+                className="hero-features-list"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6, duration: 0.6 }}
+              >
+                <li>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13L9 17L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Generate complete reports in under 60 seconds
+                </li>
+                <li>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13L9 17L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  99% accuracy with AI-powered analysis
+                </li>
+                <li>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13L9 17L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Export to PDF, DOCX, and multiple formats
+                </li>
+              </motion.ul>
+
+              {/* CTA Buttons */}
+              <motion.div
+                className="cta-buttons-split"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8, duration: 0.6 }}
+              >
+                <Link to="/auth" className="btn-primary-cta">
+                  Start Free Trial
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </Link>
+                <a href="#features" className="btn-secondary-cta">
+                  Watch Demo
+                </a>
+              </motion.div>
+
+              {/* Stats Row */}
+              <motion.div
+                className="hero-stats-split"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.9, duration: 0.6 }}
+              >
+                <div className="stat-item-split">
+                  <div className="stat-number-split">{stats.reports >= 10000 ? '10,000+' : stats.reports.toLocaleString()}</div>
+                  <div className="stat-label-split">Reports Generated</div>
+                </div>
+                <div className="stat-divider-split"></div>
+                <div className="stat-item-split">
+                  <div className="stat-number-split">{stats.accuracy}%</div>
+                  <div className="stat-label-split">Accuracy Rate</div>
+                </div>
+                <div className="stat-divider-split"></div>
+                <div className="stat-item-split">
+                  <div className="stat-number-split">{stats.clients >= 500 ? '500+' : stats.clients}</div>
+                  <div className="stat-label-split">Happy Clients</div>
+                </div>
+              </motion.div>
+            </div>
+
             <motion.div
-              className="hero-stats-redesign"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.2, duration: 0.6 }}
+              className="hero-visual-right"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4, duration: 0.8 }}
             >
-              <div className="stat-item-redesign">
-                <div className="stat-number-redesign">{stats.reports >= 10000 ? '10K+' : stats.reports.toLocaleString()}</div>
-                <div className="stat-label-redesign">Reports Generated</div>
+              <div className="hero-mockup-container">
+                <img src="https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&h=900&fit=crop&q=80" alt="Professional Insurance Report" className="hero-mockup-img" />
               </div>
-              <div className="stat-divider-redesign"></div>
-              <div className="stat-item-redesign">
-                <div className="stat-number-redesign">{stats.clients >= 500 ? '500+' : stats.clients}</div>
-                <div className="stat-label-redesign">Happy Clients</div>
-              </div>
-              <div className="stat-divider-redesign"></div>
-              <div className="stat-item-redesign">
-                <div className="stat-number-redesign">{stats.accuracy}%</div>
-                <div className="stat-label-redesign">Accuracy Rate</div>
-              </div>
-            </motion.div>
-
-            {/* Brand Logo Marquee - Integrated in Hero */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.1, duration: 0.8 }}
-              style={{ marginTop: '5rem' }}
-            >
-              <BrandLogoMarquee />
-            </motion.div>
-
-            {/* Velocity Scroll Text - Bottom of Hero */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.3, duration: 1 }}
-              style={{ marginTop: '4rem' }}
-            >
-              <VelocityScroll />
             </motion.div>
           </div>
         </div>
       </motion.section>
+
+      {/* Trust / Credibility Section */}
+      <section className="trust-section">
+        <div className="container">
+          <motion.div
+            className="trust-content"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <p className="trust-title">Trusted by Insurance Professionals</p>
+            <div className="trust-badges">
+              <div className="trust-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="#FF7C08" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span>IBM Watson Partner</span>
+              </div>
+              <div className="trust-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="#FF7C08" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span>Microsoft Certified</span>
+              </div>
+              <div className="trust-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#FF7C08" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span>Enterprise Security</span>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
 
       {/* Features Section - Bento Grid */}
       <section className="features-elite" id="features">
@@ -334,8 +351,131 @@ const Home = () => {
         </div>
       </section>
 
+      {/* How It Works Section */}
+      <section className="how-it-works-section">
+        <div className="container">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="section-title-hiw">Generate Reports in 3 Simple Steps</h2>
+            <p className="section-subtitle-hiw">From data upload to export in minutes</p>
+          </motion.div>
+
+          <div className="steps-grid">
+            {[
+              {
+                number: "01",
+                icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" strokeLinecap="round" strokeLinejoin="round"/>,
+                title: "Upload Your Data",
+                description: "Add claim details, property information, damage notes, and site photos through our intuitive form"
+              },
+              {
+                number: "02",
+                icon: <><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/><path d="M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" strokeLinecap="round" strokeLinejoin="round"/></>,
+                title: "AI Generates Report",
+                description: "IBM Watson AI analyzes your data and creates a professional, CRU-compliant report in seconds"
+              },
+              {
+                number: "03",
+                icon: <><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/><path d="M13 3v6a1 1 0 001 1h6" strokeLinecap="round" strokeLinejoin="round"/></>,
+                title: "Export & Share",
+                description: "Download your report in PDF, DOCX, or HTML format with your custom logo and branding"
+              }
+            ].map((step, index) => (
+              <motion.div
+                key={index}
+                className="step-card"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.15, duration: 0.6 }}
+              >
+                <div className="step-number">{step.number}</div>
+                <div className="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {step.icon}
+                  </svg>
+                </div>
+                <h3>{step.title}</h3>
+                <p>{step.description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* 3D Reviews Marquee Section */}
       <Marquee3D />
+
+      {/* Use Cases Section */}
+      <section className="use-cases-section">
+        <div className="container">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="section-title-uc">Built for Insurance Professionals</h2>
+            <p className="section-subtitle-uc">Tailored solutions for every role in the insurance industry</p>
+          </motion.div>
+
+          <div className="use-cases-grid">
+            {[
+              {
+                icon: <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round"/>,
+                title: "Independent Adjusters",
+                description: "Fast, professional reporting tools designed for solo adjusters handling multiple claims efficiently",
+                link: "#"
+              },
+              {
+                icon: <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" strokeLinecap="round" strokeLinejoin="round"/>,
+                title: "Adjusting Firms",
+                description: "Team collaboration features, shared templates, and quality control for multi-adjuster operations",
+                link: "#"
+              },
+              {
+                icon: <><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" strokeLinecap="round" strokeLinejoin="round"/></>,
+                title: "Enterprise Insurers",
+                description: "White-label solutions, API access, custom integrations, and dedicated support for large organizations",
+                link: "#"
+              },
+              {
+                icon: <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>,
+                title: "Catastrophe Teams",
+                description: "Handle high-volume claim reporting during CAT events with rapid deployment and scalability",
+                link: "#"
+              }
+            ].map((useCase, index) => (
+              <motion.div
+                key={index}
+                className="use-case-card"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1, duration: 0.6 }}
+              >
+                <div className="use-case-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {useCase.icon}
+                  </svg>
+                </div>
+                <h3>{useCase.title}</h3>
+                <p>{useCase.description}</p>
+                <a href={useCase.link} className="use-case-link">
+                  Learn More
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </a>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Pricing Section - High-End Glassmorphic Redesign */}
       <section className="pricing-elite" id="pricing">
@@ -353,17 +493,17 @@ const Home = () => {
           {/* Pricing Cards Grid */}
           <div className="pricing-grid-premium">
             <PricingCard
-              name="Starter"
-              price="0"
+              name="Professional"
+              price="39.99"
               period="/month"
-              description="Perfect for individuals getting started"
+              description="Perfect for individual adjusters"
               features={[
-                { text: "1 report per month", available: true },
-                { text: "All report types", available: true },
-                { text: "PDF export", available: true },
-                { text: "No watermark", available: false },
-                { text: "Custom logo", available: false },
-                { text: "Priority support", available: false }
+                { text: "20 reports per month", available: true },
+                { text: "AI-powered generation", available: true },
+                { text: "PDF & DOCX export", available: true },
+                { text: "No watermark", available: true },
+                { text: "Custom logo", available: true },
+                { text: "Email support", available: true }
               ]}
               link="/auth"
               isFeatured={false}
@@ -372,17 +512,17 @@ const Home = () => {
             />
 
             <PricingCard
-              name="Pro"
-              price="39.99"
+              name="Agency"
+              price="99.99"
               period="/month"
-              description="Most popular for small businesses"
+              description="Ideal for growing agencies"
               features={[
-                { text: "20 reports per month", available: true },
-                { text: "All report types", available: true },
-                { text: "PDF & DOCX export", available: true },
-                { text: "No watermark", available: true },
-                { text: "Custom logo", available: true },
-                { text: "Email support", available: true }
+                { text: "100 reports per month", available: true },
+                { text: "5 user accounts", available: true },
+                { text: "All export formats", available: true },
+                { text: "Agency dashboard", available: true },
+                { text: "Custom branding", available: true },
+                { text: "Priority support", available: true }
               ]}
               link="/auth"
               isFeatured={true}
@@ -392,9 +532,9 @@ const Home = () => {
 
             <PricingCard
               name="Enterprise"
-              price="Custom"
-              period=""
-              description="Advanced features for large teams"
+              price="499"
+              period="/month"
+              description="For large organizations"
               features={[
                 { text: "Unlimited reports", available: true },
                 { text: "Unlimited users", available: true },
@@ -403,7 +543,7 @@ const Home = () => {
                 { text: "Custom integration", available: true },
                 { text: "Dedicated support", available: true }
               ]}
-              link="/auth"
+              onClick={() => setShowContactModal(true)}
               isFeatured={false}
               isAnnual={false}
               index={2}
@@ -415,43 +555,35 @@ const Home = () => {
       {/* Chatbot FAQ */}
       <ChatbotFAQ />
 
-      {/* Footer */}
-      <footer className="footer-elite">
+      {/* Final CTA Section */}
+      <section className="final-cta-section">
         <div className="container">
-          <div className="footer-grid-elite">
-            <div className="footer-section-elite">
-              <img src="/logo.png" alt="FlacronAI" className="footer-logo-elite" />
-              <p>AI-powered insurance report generation using IBM WatsonX AI & Microsoft.</p>
-            </div>
-            <div className="footer-section-elite">
-              <h4>Product</h4>
-              <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
-              <Link to="/dashboard">Dashboard</Link>
-              <a href="#">API Docs</a>
-            </div>
-            <div className="footer-section-elite">
-              <h4>Company</h4>
-              <a href="https://flacronenterprises.com/about-us/" target="_blank" rel="noopener noreferrer">About</a>
-              <a href="https://flacronenterprises.com/contact-us/" target="_blank" rel="noopener noreferrer">Contact</a>
-              <Link to="/privacy-policy">Privacy Policy</Link>
-              <Link to="/terms-of-service">Terms of Service</Link>
-            </div>
-            <div className="footer-section-elite">
-              <h4>Connect</h4>
-              <a href="https://www.tiktok.com/@flacronenterprises" target="_blank" rel="noopener noreferrer">TikTok</a>
-              <a href="https://www.linkedin.com/company/flacronenterprisesllc/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
-              <a href="https://www.instagram.com/flacronenterprisesllc/" target="_blank" rel="noopener noreferrer">Instagram</a>
-              <a href="https://www.facebook.com/people/Flacron-Enterprises/61579538447653/" target="_blank" rel="noopener noreferrer">Facebook</a>
-              <a href="mailto:support@flacronenterprises.com">Support</a>
-            </div>
-          </div>
-          <div className="footer-bottom-elite">
-            <p>&copy; 2025 Flacron Enterprises. All rights reserved.</p>
-            <p className="footer-powered">Powered by IBM WatsonX AI & Microsoft</p>
-          </div>
+          <motion.div
+            className="final-cta-content"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2>Ready to Transform Your Reporting Workflow?</h2>
+            <p>Join 500+ insurance professionals using FlacronAI to generate professional reports in seconds</p>
+            <Link to="/auth" className="btn-final-cta">
+              Start Free Trial - No Credit Card Required
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12H19M19 12L12 5M19 12L12 19" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </Link>
+            <p className="final-cta-note">14-day free trial • Cancel anytime • No obligations</p>
+          </motion.div>
         </div>
-      </footer>
+      </section>
+
+      <Footer />
+
+      <ContactSalesModal
+        isOpen={showContactModal}
+        onClose={() => setShowContactModal(false)}
+      />
     </>
   );
 };
