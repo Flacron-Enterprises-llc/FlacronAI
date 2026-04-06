@@ -22,10 +22,21 @@ const generateDOCX = async (report, options = {}) => {
     const flushDocxTable = () => {
       if (tableRows.length === 0) return;
       const cols = tableRows[0].length;
-      const colWidthDxa = Math.floor(8640 / Math.max(cols, 1));
+
+      // Fixed widths for 3-col tables: Category 25% / Description 50% / Cost 25% of 8640 dxa
+      let colWidths;
+      if (cols === 3) {
+        colWidths = [2160, 4320, 2160];
+      } else {
+        const w = Math.floor(8640 / Math.max(cols, 1));
+        colWidths = Array(cols).fill(w);
+        colWidths[cols - 1] = 8640 - w * (cols - 1);
+      }
+
       let tblXml = `<w:tbl>
         <w:tblPr>
           <w:tblW w:w="8640" w:type="dxa"/>
+          <w:tblLayout w:type="fixed"/>
           <w:tblBorders>
             <w:top w:val="single" w:sz="4" w:color="E2E8F0"/>
             <w:left w:val="single" w:sz="4" w:color="E2E8F0"/>
@@ -39,15 +50,28 @@ const generateDOCX = async (report, options = {}) => {
         const isHeader = ri === 0;
         const isTotal = row[0] && row[0].replace(/\*/g, '').trim().toUpperCase().startsWith('TOTAL');
         const fillColor = isHeader ? 'F97316' : isTotal ? 'FFF7ED' : (ri % 2 === 0 ? 'F8FAFC' : 'FFFFFF');
-        tblXml += `<w:tr>`;
-        row.forEach(cell => {
+        tblXml += `<w:tr>
+          <w:trPr>
+            <w:cantSplit/>
+            ${isHeader ? '<w:tblHeader/>' : ''}
+          </w:trPr>`;
+        row.forEach((cell, ci) => {
           const cellText = cell.trim().replace(/\*\*(.*?)\*\*/g, '$1');
           tblXml += `<w:tc>
             <w:tcPr>
-              <w:tcW w:w="${colWidthDxa}" w:type="dxa"/>
+              <w:tcW w:w="${colWidths[ci]}" w:type="dxa"/>
               <w:shd w:val="clear" w:color="auto" w:fill="${fillColor}"/>
             </w:tcPr>
-            <w:p><w:r><w:rPr>${isHeader || isTotal ? '<w:b/>' : ''}<w:color w:val="${isHeader ? 'FFFFFF' : '1E293B'}"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(cellText)}</w:t></w:r></w:p>
+            <w:p>
+              <w:r>
+                <w:rPr>
+                  ${isHeader || isTotal ? '<w:b/>' : ''}
+                  <w:color w:val="${isHeader ? 'FFFFFF' : '1E293B'}"/>
+                  <w:sz w:val="18"/>
+                </w:rPr>
+                <w:t xml:space="preserve">${escapeXml(cellText)}</w:t>
+              </w:r>
+            </w:p>
           </w:tc>`;
         });
         tblXml += `</w:tr>`;
