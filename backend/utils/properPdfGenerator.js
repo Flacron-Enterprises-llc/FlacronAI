@@ -63,29 +63,64 @@ const generatePDF = async (report, options = {}) => {
       const flushTable = () => {
         if (tableRows.length === 0) return;
         const cols = tableRows[0].length;
-        const colW  = contentWidth / Math.max(cols, 1);
-        tableRows.forEach((row, ri) => {
-          ensureSpace(28);
-          const rowH  = 24;
-          const rowY  = doc.y;
+
+        // Fixed column widths: 3-col tables get Category 25% / Description 50% / Cost 25%
+        let colWidths;
+        if (cols === 3) {
+          const q = Math.floor(contentWidth * 0.25);
+          colWidths = [q, contentWidth - q * 2, q];
+        } else {
+          const w = Math.floor(contentWidth / Math.max(cols, 1));
+          colWidths = Array(cols).fill(w);
+          colWidths[cols - 1] = contentWidth - w * (cols - 1);
+        }
+
+        const calcRowHeight = (row) => {
+          doc.fontSize(9);
+          let h = 28;
+          row.forEach((cell, ci) => {
+            const cellH = doc.heightOfString(stripMd(cell.trim()), { width: colWidths[ci] - 8 }) + 14;
+            if (cellH > h) h = cellH;
+          });
+          return h;
+        };
+
+        const drawRow = (row, ri, rowY) => {
           const isTotalRow = ri > 0 && row.some(c => /total/i.test(c));
-          const bg    = ri === 0 ? accentHex : isTotalRow ? '#1e293b' : (ri % 2 === 0 ? '#f8fafc' : 'white');
-          // Draw row background
+          const bg = ri === 0 ? accentHex : isTotalRow ? '#1e293b' : (ri % 2 === 0 ? '#f8fafc' : 'white');
+          const rowH = calcRowHeight(row);
           doc.rect(margin, rowY, contentWidth, rowH).fill(bg);
-          // Draw cell text with absolute y positioning
           doc.fontSize(9)
             .fillColor(ri === 0 || isTotalRow ? 'white' : '#1e293b')
             .font(ri === 0 || isTotalRow ? 'Helvetica-Bold' : 'Helvetica');
+          let xPos = margin;
           row.forEach((cell, ci) => {
-            doc.text(
-              stripMd(cell.trim()),
-              margin + ci * colW + 4,
-              rowY + 7,
-              { width: colW - 8, ellipsis: true, lineBreak: false }
-            );
+            doc.text(stripMd(cell.trim()), xPos + 4, rowY + 7, { width: colWidths[ci] - 8 });
+            xPos += colWidths[ci];
           });
-          doc.y = rowY + rowH;
+          return rowH;
+        };
+
+        const headerRow = tableRows[0];
+
+        tableRows.forEach((row, ri) => {
+          const rowH = calcRowHeight(row);
+          // Page break check — never split a row across pages
+          if (doc.y + rowH > pageHeight - 32 - 8) {
+            addPage();
+            // Repeat header on new page for non-header rows
+            if (ri > 0) {
+              const hdrH = calcRowHeight(headerRow);
+              const hdrY = doc.y;
+              drawRow(headerRow, 0, hdrY);
+              doc.y = hdrY + hdrH;
+            }
+          }
+          const rowY = doc.y;
+          const rowH2 = drawRow(row, ri, rowY);
+          doc.y = rowY + rowH2;
         });
+
         doc.y += 6;
         tableRows = [];
         inTable   = false;
