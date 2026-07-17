@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.8 pricing consistency — done; awaiting next prompt)
-- **Next up (client priorities, 2026-07-18):** soften unverifiable claims (T-1.1 follow-up: "~60s", "CRU GROUP-standard"), test-account walkthrough of app/admin with real screenshots, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
+- **Now working on:** — (T-1.1b claims-softening + Blog deletion — done; awaiting next prompt)
+- **Next up (client priorities, 2026-07-18):** test-account walkthrough of app/admin with real screenshots, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -78,6 +78,19 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-1.1b — Soften unverifiable claims + delete fabricated Blog (client directive)
+- **Status:** DONE
+- **Directive (2026-07-18):** "Remove or soften any claims that cannot be verified — report generation time, industry standards, accuracy %, certifications, customer statistics. Everything must be factual and verifiable."
+- **What changed (served pages):**
+  - **Generation-time claims removed:** Home features "…full CRU GROUP-standard reports in 60 seconds" → "drafts complete, consistently structured inspection reports in minutes — ready for your review"; how-it-works step 2 "Full report in ~60 seconds" → "assembles a structured draft report in minutes"; hero product-mock badge "Report ready in ~60 seconds" → "Draft ready / for your review"; Developers API step "typically takes 15–60 seconds" → "time depends on the number of photos submitted". Kept the softer, client-approved "in minutes" (vague/approximate, not a hard number).
+  - **"CRU GROUP-standard" removed** from Home feature card and Footer tagline (unverifiable industry-standard claim). Footer now: "Draft professional reports in minutes — reviewed and approved by you."
+  - **"Custom domain" → "custom subdomain"** in Home White-Label feature (backend supports subdomains only — Rule #4; matches the T-1.8 pricing fix).
+  - **Deleted `Blog.jsx` + `BlogPost.jsx`** — unrouted dead pages that were the repo's biggest concentration of fabrication (invented "90-day study" with 82%/76%/91% accuracy figures, fake "70% time reduction" stats, CRU GROUP guideline claims, $299.99 stale price). Fully unreferenced (grep-confirmed), so deletion is user-invisible; recoverable from git history if a real blog is built later. Resolves the long-standing keep/delete open question in the direction the directive points.
+- **Files touched:** frontend/src/pages/Home.jsx, frontend/src/components/Footer.jsx, frontend/src/pages/Developers.jsx; deleted frontend/src/pages/Blog.jsx, BlogPost.jsx.
+- **QA done:** grep sweep of all served pages → no residual hard generation-time / CRU / carrier-compliant / accuracy-% claims (only "API keys revoked instantly" remains — a true UI behavior, not a marketing claim); Home features screenshot verifies softened copy; build passes (no broken Blog ref); lint 0 errors (warnings 36→32, Blog removed); Vitest 2/2.
+- **Left / follow-ups:** if the client can supply REAL measured avg generation time, a factual speed claim can be reintroduced (still an open question). Dashboard/EnterpriseDashboard sample claim data uses definitive verdict language (Rule #2) — that's Phase 2 (aiService prompt + generator) scope, not marketing copy.
+- **Golden-rule check:** #1 upheld and materially advanced (biggest fabrication source deleted; hard claims softened to verifiable statements).
 
 ### [2026-07-18] — T-1.8 — Pricing display + site-wide consistency
 - **Status:** DONE
@@ -281,7 +294,7 @@ Template for each entry — copy this block:
 - [ ] **Is production AI currently working?** Both OpenAI model IDs in code are retired (`gpt-4-vision-preview`, `gpt-4-turbo-preview`) — image analysis and the WatsonX-fallback path should be failing. Is WatsonX alone carrying prod today? Which models should we target when we fix this?
 - [ ] **Are production uploads being lost?** Render has no persistent disk and files are stored locally — every deploy wipes uploads/exports. Should we plan a move to cloud storage (Firebase Storage / S3) as an early task, and is any user data already dangling?
 - [x] **Public `/uploads` exposure:** → **RESOLVED 2026-07-18 (T-3.10a).** Client escalated; claim photos + exports no longer publicly served (only branding logos). NOTE still open: files remain on Render's ephemeral disk (see the "uploads being lost" item) — durable cloud storage + at-rest encryption is the remaining part of T-3.10.
-- [ ] Blog pages (`Blog.jsx`, `BlogPost.jsx`) are built but never routed — keep + fix content (currently has fabricated study data) or delete?
+- [x] Blog pages (`Blog.jsx`, `BlogPost.jsx`) — **DELETED 2026-07-18 (T-1.1b).** Unrouted dead code full of fabricated studies/stats; removed per the "everything must be factual" directive. Recoverable from git if a real, factual blog is wanted later.
 - [ ] **Real testimonials wanted (T-1.9 shipped hidden):** the home-page testimonials section now renders only from `frontend/src/data/testimonials.js` (empty). Please collect genuine customer feedback WITH written permission (name or initials, role, quote, date; carrier names only with authorization) and it can go live by filling that file.
 - [x] **Test account for authed baselines:** → **APPROVED 2026-07-18.** Client granted permission to create a test account and use it to review dashboard, admin, settings, and all workflows with real screenshots. (To do.)
 - [x] **Pricing conflict:** → **RESOLVED 2026-07-18.** Client confirmed the correct monthly prices are **Starter $0 / Professional $39.99 / Agency $99.99 / Enterprise $499** (screenshot). Directive: **every page must match the prices configured in Stripe — no inconsistencies anywhere.** So the Pricing-page outliers ($149.99, $299.99) are the bug to fix (T-1.8, now unblocked). Report counts already aligned to `tiers.js` 5/50/200/unlimited in T-1.1.

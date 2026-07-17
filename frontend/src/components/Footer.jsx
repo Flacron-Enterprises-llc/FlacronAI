@@ -89,7 +89,7 @@ const Footer = () => {
               <span className="font-bold text-lg text-gray-900">FlacronAI</span>
             </Link>
             <p className="text-gray-500 text-sm leading-relaxed mb-5 max-w-xs">
-              AI-powered insurance inspection reports. Generate professional CRU GROUP-standard reports in minutes.
+              AI-powered insurance inspection reports. Draft professional reports in minutes — reviewed and approved by you.
             </p>
             {/* Powered by badges */}
             <div className="flex items-center gap-2 flex-wrap">

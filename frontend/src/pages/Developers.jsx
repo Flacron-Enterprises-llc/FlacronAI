@@ -51,7 +51,7 @@ export FLACRON_API_KEY="flac_live_xxxxxxxxxxxx"`,
   {
     step: '03',
     title: 'Handle the Response',
-    desc: 'The API returns a structured report object with the AI-generated content, quality score, and metadata. Generation typically takes 15–60 seconds depending on the number of photos.',
+    desc: 'The API returns a structured report object with the AI-generated content, quality score, and metadata. Generation time depends on the number of photos submitted.',
     code: RESPONSE_EXAMPLE,
     icon: Code,
   },

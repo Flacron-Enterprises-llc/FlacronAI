@@ -325,8 +325,8 @@ const DashboardMock = () => {
           <CheckCircle className="w-4 h-4 text-green-500" />
         </div>
         <div>
-          <p className="text-[10px] text-gray-400">Report ready in</p>
-          <p className="text-xs font-bold text-gray-800">~60 seconds</p>
+          <p className="text-[10px] text-gray-400">Draft ready</p>
+          <p className="text-xs font-bold text-gray-800">for your review</p>
         </div>
       </motion.div>
     </div>
@@ -353,17 +353,17 @@ const Counter = ({ end, suffix = '' }) => {
 };
 
 const features = [
-  { icon: Zap, title: 'AI Report Generation', desc: 'FlacronAI generates full CRU GROUP-standard reports in 60 seconds.', color: 'from-orange-500 to-amber-500' },
+  { icon: Zap, title: 'AI Report Generation', desc: 'FlacronAI drafts complete, consistently structured inspection reports in minutes — ready for your review.', color: 'from-orange-500 to-amber-500' },
   { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.', color: 'from-orange-500 to-cyan-500' },
   { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. AI Vision analyzes each one and integrates findings into the report.', color: 'from-emerald-500 to-teal-500' },
   { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.', color: 'from-orange-500 to-amber-500' },
-  { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with custom domain, logo, colors, and report footer.', color: 'from-pink-500 to-rose-500' },
+  { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with a custom subdomain, logo, colors, and report footer.', color: 'from-pink-500 to-rose-500' },
   { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.', color: 'from-violet-500 to-orange-500' },
 ];
 
 const steps = [
   { num: '01', title: 'Upload & Fill Details', desc: 'Enter claim information and upload up to 100 damage photos. Takes less than 2 minutes.' },
-  { num: '02', title: 'AI Generates Report', desc: 'FlacronAI analyzes your inputs and processes each photo. Full report in ~60 seconds.' },
+  { num: '02', title: 'AI Generates Draft', desc: 'FlacronAI analyzes your inputs and each photo, then assembles a structured draft report in minutes.' },
   { num: '03', title: 'Export & Share', desc: 'Download as PDF with your logo, export to DOCX, or share a secure link. Watermark-free on paid plans.' },
 ];
 
