@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.3 done, awaiting next prompt)
-- **Next up:** T-1.4 (hero rebuild)
+- **Now working on:** — (T-1.4 done, awaiting next prompt)
+- **Next up:** T-1.5 (bigger product screenshot / demo)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -27,7 +27,7 @@
 | T-1.1 | Remove unverified claims | DONE | 2026-07-17 — all fake stats/testimonials/certs stripped from live pages; Blog.jsx (dead page) pending open question |
 | T-1.2 | Define brand tokens (color/type/spacing) | DONE | 2026-07-17 — tokens in tailwind.config.js from logo colors (#FD4403/#002A64) + Space Grotesk/Inter pairing |
 | T-1.3 | Logo update + favicon set | DONE | 2026-07-17 — FA mark extracted from client PNG; favicons + apple-touch + og-image generated; Zap placeholder gone. Vector originals still wanted (see Open Questions) |
-| T-1.4 | Hero section rebuild | TODO | |
+| T-1.4 | Hero section rebuild | DONE | 2026-07-17 — new H1/positioning/CTAs/trust line; "View Sample Report" CTA deferred to T-1.6 |
 | T-1.5 | Bigger product screenshot / demo | TODO | |
 | T-1.6 | Sample report preview + download | TODO | |
 | T-1.7 | CTAs + trust bar | TODO | |
@@ -76,6 +76,21 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.4 — Hero rebuild
+- **Status:** DONE
+- **What changed (all in `frontend/src/pages/Home.jsx`):**
+  - **H1** → "Generate Professional Insurance Inspection Reports in Minutes" (the TASKS.md default headline; gradient on "in Minutes"; sized down one step to fit the longer copy).
+  - **Sub-line** now carries the AI-assist + human-review positioning and names the audience: "…assembles a structured draft report… you review, refine, and approve the final report. Built for independent adjusters, agencies, and TPA teams."
+  - **CTAs:** primary → "Generate My First Report Free" (navigates to `/auth?mode=signup`, click-tested). Secondary stays "See How It Works" (→ `#how-it-works`) — **"View Sample Report" deliberately deferred to T-1.6**: there is no sample report to view yet, and a dead CTA would violate the "actually functional" rule. Badge copy "Powered by FlacronAI" (self-referential) → "AI-assisted reporting for insurance professionals".
+  - **Trust line:** now "No credit card required · 5 reports free/month · You approve every report · PDF & DOCX export · Cancel anytime". Deliberately did NOT include TASKS.md's suggested "secure upload" chip — uploads are currently world-readable on the backend (known Golden-Rule-#6 issue), so that claim would be false today; add it only after T-3.x locks storage down.
+  - **Empty space reduced:** hero no longer `min-h-screen` (was forcing a full viewport with dead space below the fold on tall screens); tightened paddings/gaps; removed the bouncing scroll-indicator chevron. Stats bar is now visible within the first viewport on 1440×900.
+  - **Rule #2 sample copy fixed in the hero mock:** demo report lines no longer state definitive verdicts ("Supply line failure caused…" → "Conditions appear consistent with… plumber confirmation recommended"; structural line now recommends professional assessment; loss table titled "ESTIMATED LOSS SUMMARY (DRAFT)").
+  - Hero badge migrated from raw `orange-*` to `brand-*` tokens while touched.
+- **Files touched:** frontend/src/pages/Home.jsx.
+- **QA done:** desktop (1440×900) + mobile (390×844) screenshots verified (E:/claude-scratch/t14-qa/); primary CTA click lands on `/auth?mode=signup`; H1 unique (all other headings h2/h3); 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** secondary CTA swaps to "View Sample Report" in T-1.6; product mock gets bigger/richer in T-1.5; "~60 seconds" chip in the mock still pending the open question on verified timing.
+- **Golden-rule check:** #1 upheld (no new claims; removed "instantly"); #2 improved (mock copy now cautious); "secure upload" claim consciously withheld (#6).
 
 ### [2026-07-17] — T-1.3 — Logo + favicon
 - **Status:** DONE

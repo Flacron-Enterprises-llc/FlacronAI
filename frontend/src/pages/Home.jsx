@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  ChevronDown, Play, BarChart3,
+  Play, BarChart3,
   CheckCircle, Download, Eye, Cpu, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
@@ -13,10 +13,10 @@ import Footer from '../components/Footer.jsx';
 const REPORT_LINES = [
   { type: 'h2', text: 'SECTION 5: DAMAGE ASSESSMENT' },
   { type: 'h3', text: 'Master Bathroom' },
-  { type: 'p',  text: 'Saturated subfloor beneath tile; visible buckling across 38 sq ft. Supply line failure caused prolonged water exposure.' },
+  { type: 'p',  text: 'Visible buckling of subfloor beneath tile across approx. 38 sq ft. Conditions appear consistent with prolonged water exposure near the supply line — plumber confirmation recommended.' },
   { type: 'h3', text: 'Kitchen Ceiling' },
-  { type: 'p',  text: 'Complete drywall collapse — 40 sq ft section fallen. Structural joist exposure noted; secondary water staining.' },
-  { type: 'h2', text: 'SECTION 7: ESTIMATED LOSS SUMMARY' },
+  { type: 'p',  text: 'Partial drywall collapse — approx. 40 sq ft section fallen. Joists visible with secondary water staining; professional structural assessment recommended.' },
+  { type: 'h2', text: 'SECTION 7: ESTIMATED LOSS SUMMARY (DRAFT)' },
   { type: 'table', rows: [
     ['Category', 'Description', 'Cost'],
     ['Demo / Removal', 'Saturated materials', '$1,850'],
@@ -379,7 +379,7 @@ const Home = () => {
       <Navbar transparent />
 
       {/* Hero */}
-      <section className="relative min-h-screen flex items-center overflow-hidden pt-16">
+      <section className="relative flex items-center overflow-hidden pt-16">
         {/* Background blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-blob" />
@@ -390,23 +390,23 @@ const Home = () => {
         {/* Grid */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(249,115,22,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-600 text-sm font-medium mb-6">
                 <Zap className="w-3.5 h-3.5" />
-                Powered by FlacronAI
+                AI-assisted reporting for insurance professionals
               </div>
-              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-black text-gray-900 leading-tight tracking-tight mb-6">
-                Generate Insurance Reports in{' '}
-                <span className="gradient-text">Minutes with AI</span>
+              <h1 className="text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 leading-tight tracking-tight mb-6">
+                Generate Professional Insurance Inspection Reports{' '}
+                <span className="gradient-text">in Minutes</span>
               </h1>
               <p className="text-xl text-gray-600 leading-relaxed mb-8 max-w-lg">
-                Stop spending hours writing reports. FlacronAI uses enterprise AI to generate professional, CRU GROUP-standard inspection reports instantly — complete with damage photo analysis.
+                FlacronAI assembles a structured draft report from your claim details and damage photos — you review, refine, and approve the final report. Built for independent adjusters, agencies, and TPA teams.
               </p>
               <div className="flex flex-wrap gap-4 mb-10">
                 <Link to="/auth?mode=signup" className="btn-primary flex items-center gap-2">
-                  Start Free — No Credit Card
+                  Generate My First Report Free
                   <ArrowRight className="w-4 h-4" />
                 </Link>
                 <a href="#how-it-works" className="btn-secondary flex items-center gap-2">
@@ -414,8 +414,8 @@ const Home = () => {
                   See How It Works
                 </a>
               </div>
-              <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
-                {['Free to start', '5 reports free/month', 'No setup required', 'Cancel anytime'].map(item => (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500">
+                {['No credit card required', '5 reports free/month', 'You approve every report', 'PDF & DOCX export', 'Cancel anytime'].map(item => (
                   <span key={item} className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-emerald-500" />
                     {item}
@@ -436,14 +436,6 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Scroll indicator */}
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-gray-600"
-        >
-          <ChevronDown className="w-6 h-6" />
-        </motion.div>
       </section>
 
       {/* Stats Bar */}
