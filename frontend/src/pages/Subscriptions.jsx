@@ -8,22 +8,23 @@ import ProtectedRoute from '../components/ProtectedRoute';
 import TierBadge from '../components/TierBadge';
 import { useAuth } from '../context/AuthContext';
 import { paymentAPI } from '../services/api';
+import { PLAN_PRICING } from '../data/plans.js';
 
 const TIER_INFO = {
   starter: {
-    name: 'Starter', price: 0, icon: Zap, color: 'text-gray-600', bg: 'bg-gray-500/10',
-    features: ['5 reports/month', 'PDF export', 'Basic AI generation', 'Email support', 'FlacronAI watermark on reports'],
+    name: 'Starter', price: PLAN_PRICING.starter.monthly, icon: Zap, color: 'text-gray-600', bg: 'bg-gray-500/10',
+    features: ['5 reports/month', 'PDF export', 'AI report generation', 'Email support', 'FlacronAI watermark on reports'],
   },
   professional: {
-    name: 'Professional', price: 39.99, icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10',
-    features: ['50 reports/month', 'No watermarks', 'PDF, DOCX, HTML export', 'Advanced AI analysis', 'Priority email support'],
+    name: 'Professional', price: PLAN_PRICING.professional.monthly, icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10',
+    features: ['50 reports/month', 'No watermarks', 'PDF, DOCX, HTML export', 'API access', 'Priority email support'],
   },
   agency: {
-    name: 'Agency', price: 99.99, icon: Users, color: 'text-amber-400', bg: 'bg-amber-500/10',
+    name: 'Agency', price: PLAN_PRICING.agency.monthly, icon: Users, color: 'text-amber-400', bg: 'bg-amber-500/10',
     features: ['200 reports/month', 'Full CRM suite', 'API access', 'Client management', 'Priority support'],
   },
   enterprise: {
-    name: 'Enterprise', price: 499, icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10',
+    name: 'Enterprise', price: PLAN_PRICING.enterprise.monthly, icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10',
     features: ['Unlimited reports', 'White-label portal', 'Custom subdomain', 'Full API access', 'Dedicated support manager'],
   },
 };

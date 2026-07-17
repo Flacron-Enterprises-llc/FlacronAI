@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-3.10a security: public uploads locked down — done; awaiting next prompt)
-- **Next up (client priorities, 2026-07-18):** T-1.8 pricing consistency (UNBLOCKED — prices confirmed), then soften unverifiable claims (T-1.1 follow-up), test-account walkthrough of app/admin, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
+- **Now working on:** — (T-1.8 pricing consistency — done; awaiting next prompt)
+- **Next up (client priorities, 2026-07-18):** soften unverifiable claims (T-1.1 follow-up: "~60s", "CRU GROUP-standard"), test-account walkthrough of app/admin with real screenshots, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -31,7 +31,7 @@
 | T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
 | T-1.6 | Sample report preview + download | DONE | 2026-07-17 — cautious-language sample PDF; hero CTA swapped to "View Sample Report"; regenerable via backend/scripts/make-sample-report.js |
 | T-1.7 | CTAs + trust bar | DONE | 2026-07-17 — broken /api-docs CTA fixed; all internal links verified; honest security strip added (no badges) |
-| T-1.8 | Pricing display rebuild | TODO | UNBLOCKED 2026-07-18 — prices confirmed $0/$39.99/$99.99/$499; fix Pricing-page outliers ($149.99→$99.99, $299.99→$499) + annual math; make every page consistent |
+| T-1.8 | Pricing display rebuild | DONE | 2026-07-18 — single source src/data/plans.js; Pricing/Home/Subscriptions consistent at $0/$39.99/$99.99/$499; annual = 20% off; Developers text fixed |
 | T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
@@ -78,6 +78,20 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-1.8 — Pricing display + site-wide consistency
+- **Status:** DONE
+- **Client-confirmed prices (2026-07-18):** Starter $0 / Professional $39.99 / Agency $99.99 / Enterprise $499 monthly; annual billed yearly at 20% off.
+- **What changed:**
+  - **New single source of truth `frontend/src/data/plans.js`** — `PLAN_PRICING` (monthly + computed annual-per-month at 20% off) + `priceLabel()`. Directive was "no pricing inconsistencies anywhere," so prices now come from ONE place; changing Stripe pricing = editing this file only.
+  - **Pricing.jsx (the main bug):** Agency $149.99 → **$99.99**, Enterprise $299.99 → **$499**; the wrong hardcoded annual figures (39.17 / 119.17 / 239.17) now derive from the source → **$31.99 / $79.99 / $399.20 per month** (Save $96 / $240 / $1,198 a year). The $31.99 annual now matches the FAQ's own example (previously contradicted it).
+  - **Home.jsx pricing preview** + **Subscriptions.jsx** now read `PLAN_PRICING` (values unchanged, but no longer independently hardcoded).
+  - **Consistency fixes:** Home Enterprise "Custom domain" → "Custom subdomain" (backend has subdomains only — Rule #4); Developers.jsx "$99/mo" → "$99.99/mo" and corrected which tiers include API access (Professional+); Subscriptions "Basic/Advanced AI" → "AI report generation" / "API access" (no fake tier split).
+  - Admin pages (AdminTierUpdate, AdminDashboard) already showed correct $39.99/$99.99/$499 — left as-is (internal, consistent).
+- **Files touched:** frontend/src/data/plans.js (new), frontend/src/pages/{Pricing,Home,Subscriptions,Developers}.jsx, PROGRESS.md.
+- **QA done:** computed values printed from the source (31.99/79.99/399.20, savings 96/240/1198 ✓); Pricing page screenshotted monthly ($0/$39.99/$99.99/$499.00) AND annual (toggled: $31.99/$79.99/$399.20 + Save/year) — E:/claude-scratch/t18-qa/; Home preview screenshot confirms $0/$39.99/$99.99/$499 + "Custom subdomain"; 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** Blog.jsx still contains "$299.99" but it's dead/unrouted (pending keep-delete decision) — not "on the website", left flagged. "Unlimited" (Enterprise) is genuinely uncapped server-side (`tiers.js` -1), so shown as plain "Unlimited reports" with no invented fair-use policy — if the client wants a fair-use clause it needs to be added to ToS AND enforced first. Prices are hardcoded to match Stripe by hand; a future task could fetch live Stripe prices at build/runtime to guarantee parity automatically.
+- **Golden-rule check:** #4 upheld (displayed prices/features match server + Stripe; removed the nonexistent custom-domain + AI-tier claims).
 
 ### [2026-07-18] — T-3.10a — Security: lock down public uploads (client-escalated, pulled forward)
 - **Status:** DONE

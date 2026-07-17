@@ -8,11 +8,12 @@ import Footer from '../components/Footer';
 import { paymentAPI, salesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Seo from '../components/Seo.jsx';
+import { PLAN_PRICING } from '../data/plans.js';
 
 const PLANS = [
   {
     id: 'starter', name: 'Starter', icon: Zap,
-    monthly: 0, annual: 0,
+    ...PLAN_PRICING.starter,
     description: 'Perfect for independent adjusters getting started',
     color: 'gray',
     features: [
@@ -30,7 +31,7 @@ const PLANS = [
   },
   {
     id: 'professional', name: 'Professional', icon: Star,
-    monthly: 39.99, annual: 39.17,
+    ...PLAN_PRICING.professional,
     description: 'For active adjusters who need more power',
     color: 'blue', popular: true,
     features: [
@@ -48,7 +49,7 @@ const PLANS = [
   },
   {
     id: 'agency', name: 'Agency', icon: Users,
-    monthly: 149.99, annual: 119.17,
+    ...PLAN_PRICING.agency,
     description: 'For agencies managing multiple adjusters',
     color: 'purple',
     features: [
@@ -66,7 +67,7 @@ const PLANS = [
   },
   {
     id: 'enterprise', name: 'Enterprise', icon: Crown,
-    monthly: 299.99, annual: 239.17,
+    ...PLAN_PRICING.enterprise,
     description: 'Custom solutions for large organizations',
     color: 'amber',
     features: [

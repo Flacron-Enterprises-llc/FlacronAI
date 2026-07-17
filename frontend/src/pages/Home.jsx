@@ -9,6 +9,7 @@ import {
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
 import TESTIMONIALS from '../data/testimonials.js';
+import { PLAN_PRICING } from '../data/plans.js';
 import Seo from '../components/Seo.jsx';
 
 // ── Mock Dashboard UI ──────────────────────────────────────────────────────
@@ -608,10 +609,10 @@ const Home = () => {
 
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           {[
-            { tier: 'Starter', price: 0, reports: 5, features: ['5 reports/month', 'PDF export', 'Watermarked'], highlight: false },
-            { tier: 'Professional', price: 39.99, reports: 50, features: ['50 reports/month', 'PDF, DOCX + HTML export', 'No watermark', 'Priority support'], highlight: true },
-            { tier: 'Agency', price: 99.99, reports: 200, features: ['200 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
-            { tier: 'Enterprise', price: 499, reports: '∞', features: ['Unlimited reports', 'White-label portal', 'Custom domain', 'Dedicated support'], highlight: false },
+            { tier: 'Starter', price: PLAN_PRICING.starter.monthly, reports: 5, features: ['5 reports/month', 'PDF export', 'Watermarked'], highlight: false },
+            { tier: 'Professional', price: PLAN_PRICING.professional.monthly, reports: 50, features: ['50 reports/month', 'PDF, DOCX + HTML export', 'No watermark', 'Priority support'], highlight: true },
+            { tier: 'Agency', price: PLAN_PRICING.agency.monthly, reports: 200, features: ['200 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
+            { tier: 'Enterprise', price: PLAN_PRICING.enterprise.monthly, reports: '∞', features: ['Unlimited reports', 'White-label portal', 'Custom subdomain', 'Dedicated support'], highlight: false },
           ].map((plan, i) => (
             <motion.div
               key={plan.tier}
