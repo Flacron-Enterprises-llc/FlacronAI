@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.1 done, awaiting next prompt)
-- **Next up:** T-1.2 (brand design tokens)
+- **Now working on:** — (T-1.2 done, awaiting next prompt)
+- **Next up:** T-1.3 (logo + favicon — needs transparent/SVG/icon-only assets from client, see Open Questions)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -25,7 +25,7 @@
 | Task | Title | Status | Notes |
 |------|-------|--------|-------|
 | T-1.1 | Remove unverified claims | DONE | 2026-07-17 — all fake stats/testimonials/certs stripped from live pages; Blog.jsx (dead page) pending open question |
-| T-1.2 | Define brand tokens (color/type/spacing) | TODO | |
+| T-1.2 | Define brand tokens (color/type/spacing) | DONE | 2026-07-17 — tokens in tailwind.config.js from logo colors (#FD4403/#002A64) + Space Grotesk/Inter pairing |
 | T-1.3 | Logo update + favicon set | TODO | client HAS final logo files — collect them |
 | T-1.4 | Hero section rebuild | TODO | |
 | T-1.5 | Bigger product screenshot / demo | TODO | |
@@ -76,6 +76,18 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.2 — Brand design tokens
+- **Status:** DONE
+- **What changed:**
+  - **`frontend/tailwind.config.js` is now the single design-token source.** Brand color scales sampled programmatically from the client's logo PNGs with sharp: `brand` (orange, 500 = `#FD4403`) and `navy` (800 = `#002A64`), full 50–950 scales. Semantic aliases: `primary` / `primary-hover` / `primary-soft` / `ink` (+ existing `bg`/`surface`/`border` kept). Radius tokens `rounded-btn` (0.75rem) / `rounded-card` (1rem); shadow tokens `shadow-btn` / `shadow-btn-hover` (brand-orange glow) / `shadow-card` (navy-tinted).
+  - **Type pairing:** Space Grotesk for headings (`font-display`, applied to h1–h4 in `@layer base`) over Inter body — distinct from the default template look. Font loaded in `index.html` (weights 500–700 only).
+  - **`src/index.css`** — shared component classes now consume tokens: `.btn-primary` → `bg-primary`/`shadow-btn`, `.card` → `bg-surface border-border rounded-card`, `.input` focus → `primary`, `.gradient-text` → `from-brand-400 to-brand-500` (was generic orange/amber). `:root` mirrors `--brand-orange`/`--brand-navy` for raw-CSS spots (scrollbar hover, checkbox accent). Body styles converted to `@apply` tokens.
+  - **`index.html`** — `theme-color` `#0a0a0f` (dark-theme relic) → brand navy `#002A64`; Space Grotesk added to the Google Fonts link.
+- **Files touched:** frontend/tailwind.config.js, frontend/src/index.css, frontend/index.html.
+- **QA done (acceptance criteria verified):** `npm run build` passes; **token-flip test: set `primary` to green → CTA button rendered green after dev-server restart; reverted → brand orange back** (screenshots in E:/claude-scratch/t12-qa/); lint 0 errors (36 warnings, unchanged); Vitest 2/2; 0 console errors on home. Gotcha discovered: Tailwind JIT reads the config at startup — config edits need a dev-server restart, and killing `npm run dev` on Windows orphans the Vite child holding the port (killed 2 zombies; noted in CLAUDE.md + memory).
+- **Left / follow-ups:** tokens exist but most page-level JSX still uses raw `orange-500`/`amber-*` Tailwind classes — migrate per-component as T-1.4/T-1.10 touch them (grep `orange-` to find stragglers). Headings site-wide now render in Space Grotesk automatically.
+- **Golden-rule check:** none violated (visual tokens only; colors match the client's real logo).
 
 ### [2026-07-17] — T-1.1 — Remove unverified claims (Golden Rule #1)
 - **Status:** DONE

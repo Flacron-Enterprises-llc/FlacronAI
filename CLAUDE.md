@@ -145,7 +145,7 @@ If something is ambiguous or a Golden Rule is at risk → do NOT guess. Write th
 ## 6. Design & Brand direction — FILL/REFINE DURING Phase 1
 
 - "Not AI-looking" means: intentional layout, real content, consistent spacing system, a distinct brand palette + type pairing, custom illustrations/screenshots over generic stock, no default template gradients/emoji-icons. See TASKS.md T-1.x.
-- Brand tokens (colors, fonts, spacing, radius): _TBD — define in T-1.2, then reuse everywhere_
+- Brand tokens (defined T-1.2): **single source of truth = `frontend/tailwind.config.js`** (scales `brand` = logo orange `#FD4403`, `navy` = logo navy `#002A64` — both sampled from the client's logo PNGs; semantic aliases `primary`/`primary-hover`/`primary-soft`/`ink`/`bg`/`surface`/`border`; radii `rounded-btn`/`rounded-card`; shadows `shadow-btn`/`shadow-card`). Type pairing: **Space Grotesk** (`font-display`, applied to h1–h4 globally) + **Inter** body (`font-sans`), loaded in `index.html`. Raw-CSS consumers use `--brand-orange`/`--brand-navy` vars in `src/index.css :root` (keep in sync with config). Shared component classes (`btn-primary`, `card`, `input`, `gradient-text`, …) consume tokens — new components must use tokens, not raw hex. NOTE: Tailwind config changes need a dev-server restart (JIT reads config at startup).
 - Logo files location: **no logo image files exist in the repo** — current "logo" is an inline lucide `Zap` icon in a gradient box (`frontend/src/components/Navbar.jsx:62`, `Footer.jsx`), and the favicon referenced by `index.html` (`/favicon.svg`) is missing (no `frontend/public/` folder). Client has final logo files — collect for T-1.3.
 
 ## 7. SEO baseline (applies to every page — checklist)
