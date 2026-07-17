@@ -3,11 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  BarChart3, Lock, KeyRound, CreditCard, ServerCog,
+  BarChart3, Lock, KeyRound, CreditCard, ServerCog, Star,
   CheckCircle, Download, Eye, Cpu, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
+import TESTIMONIALS from '../data/testimonials.js';
 
 // ── Mock Dashboard UI ──────────────────────────────────────────────────────
 const REPORT_LINES = [
@@ -650,6 +651,60 @@ const Home = () => {
           </Link>
         </div>
       </section>
+
+      {/* Testimonials — renders ONLY when real, approved feedback exists (Golden Rule #1) */}
+      {TESTIMONIALS.length > 0 && (
+        <section className="py-24 bg-[#f8f8f8]/30">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-16"
+            >
+              <h2 className="text-4xl font-black text-gray-900 mb-4">What Customers Say</h2>
+            </motion.div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {TESTIMONIALS.map((t, i) => (
+                <motion.div
+                  key={`${t.name}-${t.date}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="card p-6"
+                >
+                  {t.rating > 0 && (
+                    <div className="flex items-center gap-1 mb-4">
+                      {[...Array(t.rating)].map((_, j) => (
+                        <Star key={j} className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.benefit}"</p>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-gray-900 font-semibold text-sm">{t.name}</p>
+                      <p className="text-gray-500 text-xs">
+                        {t.role}
+                        {t.reportType ? ` · ${t.reportType} reports` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {t.verified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                          <CheckCircle className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                      {t.date && <p className="text-gray-400 text-[11px] mt-0.5">{t.date}</p>}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Trust & security — verifiable facts only, no compliance badges (Golden Rule #6) */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">

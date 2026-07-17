@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.7 done, awaiting next prompt)
-- **Next up:** T-1.8 (pricing display — needs the price-conflict open question answered: Agency $99.99 vs $149.99, Enterprise $499 vs $299.99)
+- **Now working on:** — (T-1.9 done; T-1.8 skipped, BLOCKED on price answer)
+- **Next up:** T-1.10 (de-AI pass) or T-1.12+ (SEO); T-1.8 unblocks when the client confirms real prices (Agency $99.99 vs $149.99, Enterprise $499 vs $299.99)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -31,8 +31,8 @@
 | T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
 | T-1.6 | Sample report preview + download | DONE | 2026-07-17 — cautious-language sample PDF; hero CTA swapped to "View Sample Report"; regenerable via backend/scripts/make-sample-report.js |
 | T-1.7 | CTAs + trust bar | DONE | 2026-07-17 — broken /api-docs CTA fixed; all internal links verified; honest security strip added (no badges) |
-| T-1.8 | Pricing display rebuild | TODO | |
-| T-1.9 | Testimonials/social proof (real only) | TODO | |
+| T-1.8 | Pricing display rebuild | BLOCKED | waiting on client: which prices are live in Stripe (see Open Questions) |
+| T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
 | T-1.12 | SEO: per-page meta + headings | TODO | |
@@ -76,6 +76,16 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.9 — Testimonials (real only) — done out of order; T-1.8 blocked
+- **Status:** DONE (T-1.8 skipped — BLOCKED on the price-conflict open question)
+- **What changed:**
+  - **`frontend/src/data/testimonials.js` (new):** single data source for testimonials, currently an **empty array**, with the schema documented in comments (name/initials, role, reportType, benefit verbatim, `verified` only when written approval is on file, date, optional rating) and an explicit Golden-Rule-#1 warning. No carrier names without written authorization.
+  - **`Home.jsx`:** "What Customers Say" section renders **only when the array has entries** — with zero real testimonials today, the section is completely absent from the DOM (acceptance's "hide the section" path). Card layout supports every schema field: star rating (optional), quote, name, role · report type, green "Verified" label, date.
+- **Files touched:** frontend/src/data/testimonials.js (new), frontend/src/pages/Home.jsx.
+- **QA done:** empty array → section absent from DOM (verified programmatically); temp QA entry added locally → card renders all fields correctly (screenshot E:/claude-scratch/t19-qa/) → **temp entry reverted before commit** (grep-verified); 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** **client to collect real, written-approved customer feedback** — added to Open Questions. When entries land, consider showing the section on Pricing too.
+- **Golden-rule check:** #1 ✓ — zero invented people; section invisible until real data exists.
 
 ### [2026-07-17] — T-1.7 — CTAs + trust/security strip
 - **Status:** DONE
@@ -218,6 +228,7 @@ Template for each entry — copy this block:
 - [ ] **Are production uploads being lost?** Render has no persistent disk and files are stored locally — every deploy wipes uploads/exports. Should we plan a move to cloud storage (Firebase Storage / S3) as an early task, and is any user data already dangling?
 - [ ] **Public `/uploads` exposure:** claim photos are world-readable at guessable URLs today (Golden Rule #6 risk in production NOW). OK to prioritize locking this down ahead of the normal Phase 3 order?
 - [ ] Blog pages (`Blog.jsx`, `BlogPost.jsx`) are built but never routed — keep + fix content (currently has fabricated study data) or delete?
+- [ ] **Real testimonials wanted (T-1.9 shipped hidden):** the home-page testimonials section now renders only from `frontend/src/data/testimonials.js` (empty). Please collect genuine customer feedback WITH written permission (name or initials, role, quote, date; carrier names only with authorization) and it can go live by filling that file.
 - [ ] **Test account for authed baselines:** provide test login credentials (or approve creating a dedicated test account) so dashboard/subscriptions/settings/CRM/admin/enterprise pages can be baselined. Signup sends a real verification email via Brevo and writes to the live Firebase project, so I didn't create one unilaterally.
 - [ ] **Pricing PRICE conflict (report counts now fixed):** report counts were aligned to the server-enforced `tiers.js` values (5/50/200/unlimited) in T-1.1. But **prices still disagree**: Agency is **$99.99/mo** on Home, FAQs, Subscriptions, AdminTierUpdate and in `tiers.js`, yet **$149.99/mo** on the Pricing page; Enterprise is **$499/mo** everywhere except the Pricing page's **$299.99/mo**. The real charge comes from the Stripe Price IDs in env (not visible in the repo). Which prices are live in Stripe? (Blocks final numbers for T-1.8; I did NOT touch any displayed price.)
 - [ ] **"~60 seconds" generation-time claim:** Home features/how-it-works say a full report takes ~60s. Plausible but unmeasured — keep only if we can verify with real timings (could measure in T-2.x once AI models are fixed).
