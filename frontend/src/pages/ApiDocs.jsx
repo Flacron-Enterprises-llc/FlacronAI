@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const METHOD_COLORS = {
   GET: 'bg-green-500/20 text-green-400 border border-green-500/30',
@@ -448,6 +449,7 @@ export default function ApiDocs() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="API Documentation — FlacronAI" description="Full FlacronAI REST API reference: authentication, report generation, exports, rate limits, and code examples in cURL, JavaScript, and Python." path="/docs/api" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-7xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

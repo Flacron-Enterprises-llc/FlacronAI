@@ -4,13 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const FAQS = [
   // General
   {
     category: 'General',
     q: 'What is FlacronAI?',
-    a: 'FlacronAI is an AI-powered insurance claim report generation platform. It analyzes damage photos and generates professional, carrier-compliant claim reports in minutes rather than hours.',
+    a: 'FlacronAI is an AI-powered insurance claim report generation platform. It analyzes damage photos and drafts professional, consistently structured claim reports in minutes rather than hours — ready for your review and approval.',
   },
   {
     category: 'General',
@@ -64,7 +65,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'What AI models does FlacronAI use?',
-    a: 'FlacronAI uses proprietary AI models for image analysis, narrative generation, and compliance structuring. The result is visually accurate and professionally compliant output that meets carrier standards.',
+    a: 'FlacronAI uses enterprise AI models — IBM watsonx for report drafting with OpenAI as fallback and for image analysis — combined with FlacronAI\'s own report structuring. Every draft is designed to be reviewed and approved by a professional before use.',
   },
   {
     category: 'Technical',
@@ -74,7 +75,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'How long does report generation take?',
-    a: 'Report generation typically takes 15–60 seconds depending on the number of photos uploaded and current AI service load. Reports with 50+ photos may take up to 2 minutes. You will receive an email notification when your report is ready.',
+    a: 'Generation time depends on the number of photos uploaded and current AI service load — typically well under a few minutes. The report appears in your dashboard as soon as it is ready.',
   },
   {
     category: 'Technical',
@@ -101,12 +102,12 @@ const FAQS = [
   {
     category: 'API',
     q: 'Are there rate limits on the API?',
-    a: 'Yes. Agency plans are limited to 60 requests/minute and 2,000 requests/day. Enterprise plans allow 200 requests/minute with unlimited daily requests. Custom limits are negotiable for Enterprise customers with very high volume needs.',
+    a: 'Yes. All API traffic shares a fair-use limit of 100 requests per 15 minutes, and AI generation endpoints are limited to 10 requests per minute. Responses include standard rate-limit headers so your integration can back off gracefully.',
   },
   {
     category: 'API',
     q: 'Is there a white-label option for the platform?',
-    a: 'Yes. Enterprise plan customers can configure full white-labeling: custom subdomain, company logo and colors, branded report headers and footers, custom email sender name and address, watermark configuration, and the option to remove FlacronAI branding entirely. Custom domain (your own domain) setup with SSL is also supported.',
+    a: 'Yes. Enterprise plan customers can configure white-labeling: a branded subdomain, company logo and colors, branded report headers and footers, watermark configuration, and the option to hide FlacronAI branding in the portal.',
   },
   {
     category: 'API',
@@ -152,6 +153,7 @@ export default function FAQs() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how AI-assisted insurance report drafting works." path="/faqs" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-3xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

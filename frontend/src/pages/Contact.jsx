@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { salesAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import Seo from '../components/Seo.jsx';
 
 const SUBJECTS = [
   'General Inquiry',
@@ -47,6 +48,7 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Contact FlacronAI — Sales and Support" description="Talk to the FlacronAI team about plans, Enterprise white-label options, or support. We answer every message." path="/contact" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-6xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

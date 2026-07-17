@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const SECTIONS = [
   {
@@ -129,6 +130,7 @@ If you are not satisfied with our response, you have the right to lodge a compla
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Privacy Policy — FlacronAI" description="How FlacronAI collects, uses, stores, and protects your data, and the rights you have over it." path="/privacy-policy" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

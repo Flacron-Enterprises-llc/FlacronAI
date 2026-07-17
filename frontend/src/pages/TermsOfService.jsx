@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const SECTIONS = [
   {
@@ -151,6 +152,7 @@ FlacronAI reserves the right to assume exclusive defense and control of any matt
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Terms of Service — FlacronAI" description="The terms that govern your use of FlacronAI, including AI-assisted drafting, human review requirements, and subscriptions." path="/terms-of-service" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

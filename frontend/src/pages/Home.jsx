@@ -9,6 +9,7 @@ import {
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
 import TESTIMONIALS from '../data/testimonials.js';
+import Seo from '../components/Seo.jsx';
 
 // ── Mock Dashboard UI ──────────────────────────────────────────────────────
 const REPORT_LINES = [
@@ -377,6 +378,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo title="FlacronAI — AI-Assisted Insurance Inspection Reports" description="Draft professional insurance inspection reports in minutes. AI assembles the draft from your claim details and damage photos — you review and approve. Start free." path="/" />
       <Navbar transparent />
 
       {/* Hero */}

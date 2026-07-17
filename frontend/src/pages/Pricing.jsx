@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { paymentAPI, salesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import Seo from '../components/Seo.jsx';
 
 const PLANS = [
   {
@@ -249,6 +250,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Pricing — FlacronAI" description="Start free with 5 reports a month. Professional, Agency, and Enterprise plans with PDF, DOCX and HTML export, CRM, API access, and white-label options." path="/pricing" />
       <Navbar />
       <div className="pt-24 pb-20 px-4">
         <div className="max-w-7xl mx-auto">

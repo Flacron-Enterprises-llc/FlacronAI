@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Cookie, Shield, Settings, BarChart3, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
+import Seo from '../components/Seo.jsx';
 
 const SECTIONS = [
   {
@@ -285,6 +286,7 @@ const AccordionSection = ({ section }) => {
 export default function CookiesPolicy() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Cookies Policy — FlacronAI" description="Which cookies FlacronAI uses, why, and how to control them in your browser." path="/cookies-policy" />
       <Navbar />
 
       {/* Header */}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Zap, Target, Shield, Smile, Building2, Heart } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const VALUES = [
   {
@@ -40,6 +41,7 @@ const VALUES = [
 export default function About() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="About FlacronAI — Give Adjusters Their Time Back" description="FlacronAI, a Flacron Enterprises LLC product, removes the documentation bottleneck in insurance claims: AI drafts the report, a licensed adjuster reviews and approves." path="/about" />
       <Navbar />
 
       {/* Hero */}

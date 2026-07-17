@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
 import { authAPI, paymentAPI } from '../services/api.js';
 import { auth } from '../config/firebase.js';
+import Seo from '../components/Seo.jsx';
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -187,6 +188,7 @@ const Auth = () => {
   if (authState === 'verifying' || authState === 'processing') {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first AI-assisted insurance inspection report." path="/auth" noindex />
         {/* Background */}
         <div className="absolute inset-0">
           <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/8 rounded-full blur-3xl" />
@@ -265,6 +267,8 @@ const Auth = () => {
       </div>
 
       <div className="relative w-full max-w-md">
+        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first AI-assisted insurance inspection report." path="/auth" noindex />
+        <h1 className="sr-only">Sign in or create your FlacronAI account</h1>
         {/* Logo */}
         <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
           <img src="/logo-mark.png" alt="FlacronAI logo" className="w-10 h-10 object-contain" />

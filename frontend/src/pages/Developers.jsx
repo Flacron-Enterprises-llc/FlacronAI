@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Code, Key, Zap, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield, BarChart2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const CURL_EXAMPLE = `curl -X POST https://api.flacronai.com/api/reports/generate \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
@@ -119,6 +120,7 @@ export default function Developers() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Developer API — FlacronAI" description="Integrate AI-assisted insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
       <Navbar />
 
       {/* Hero */}

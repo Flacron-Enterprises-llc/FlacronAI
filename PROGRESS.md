@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.9 done; T-1.8 skipped, BLOCKED on price answer)
-- **Next up:** T-1.10 (de-AI pass) or T-1.12+ (SEO); T-1.8 unblocks when the client confirms real prices (Agency $99.99 vs $149.99, Enterprise $499 vs $299.99)
+- **Now working on:** — (T-1.12 done, awaiting next prompt)
+- **Next up:** T-1.13 (sitemap.xml, robots.txt, 404 handling); T-1.8 still BLOCKED on price answer
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -35,7 +35,7 @@
 | T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
-| T-1.12 | SEO: per-page meta + headings | TODO | |
+| T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
 | T-1.13 | SEO: sitemap, robots, canonical | TODO | |
 | T-1.14 | SEO: structured data (JSON-LD) | TODO | |
 | T-1.15 | SEO: performance + image optimization | TODO | |
@@ -76,6 +76,18 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.12 — SEO on-page (per page)
+- **Status:** DONE
+- **What changed:**
+  - **`frontend/src/components/Seo.jsx` (new):** dependency-free per-page SEO component (no react-helmet — avoided a new npm dep on this flaky network). Sets: `document.title`, meta description, `robots` (index/follow or noindex for auth/app pages), canonical link (`https://flacronai.com` + path), full OG set (site_name/type/title/description/url/image → the T-1.3 `og-image.png`), Twitter card tags. Upserts tags so SPA navigation always overwrites the previous page's values.
+  - **Mounted on all 13 public pages** with unique, honest titles + descriptions: Home, Pricing, About, Contact, FAQs, Developers, ApiDocs, Auth (noindex), the 3 legal pages, EnterpriseOnboarding (noindex), AcceptInvite (noindex).
+  - **H1 fixes:** Auth had zero h1 → added an `sr-only` h1 (visible design unchanged). All other pages already had exactly one.
+  - **Bonus Rule #1/#4 copy fixes found while editing FAQs** (missed by T-1.1's keyword grep): removed nonexistent "email notification when your report is ready"; replaced invented per-tier API rate limits (60/min + 2,000/day / 200/min) with the real ones (100 per 15 min global, 10/min AI); "proprietary AI models" → truthful IBM watsonx + OpenAI description; removed unsupported "custom domain with SSL" white-label claim (backend supports subdomains only); "carrier-compliant" → "consistently structured… ready for your review".
+- **Files touched:** frontend/src/components/Seo.jsx (new), all 13 public page files (Seo mount), FAQs.jsx (copy), Auth.jsx (h1 + Seo placement fix — first insert landed in the verify-email branch only).
+- **QA done:** automated audit over the 11 crawlable pages — unique title ✓, unique description ✓, correct canonical ✓, exactly one h1 ✓, zero imgs missing alt ✓, auth correctly `noindex` ✓ ("ALL SEO CHECKS PASS" after the /auth fix); lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** SPA caveat — tags are set client-side; Google renders JS fine but other crawlers may not. If social-share previews matter per-page, consider prerendering or moving og tags server-side later. Sitemap/robots = T-1.13; JSON-LD = T-1.14.
+- **Golden-rule check:** #1/#4 improved further (five more false claims removed); no new claims introduced.
 
 ### [2026-07-17] — T-1.9 — Testimonials (real only) — done out of order; T-1.8 blocked
 - **Status:** DONE (T-1.8 skipped — BLOCKED on the price-conflict open question)
