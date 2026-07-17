@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  Star, ChevronDown, Play, Shield, Clock, BarChart3,
+  ChevronDown, Play, BarChart3,
   CheckCircle, Download, Eye, Cpu, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
@@ -366,12 +366,6 @@ const steps = [
   { num: '03', title: 'Export & Share', desc: 'Download as PDF with your logo, export to DOCX, or share a secure link. Watermark-free on paid plans.' },
 ];
 
-const testimonials = [
-  { name: 'Marcus Johnson', role: 'Senior Insurance Adjuster, Nationwide', text: 'I used to spend 3-4 hours writing each report. FlacronAI cuts it to 10 minutes while producing more detailed, professional output than I wrote manually.', rating: 5 },
-  { name: 'Sarah Chen', role: 'Claims Director, Hartford TPA Group', text: 'We white-labeled FlacronAI for our 40-person adjusting team. The enterprise portal looks completely branded — clients think it\'s our own software.', rating: 5 },
-  { name: 'David Rodriguez', role: 'Independent Adjuster, Texas', text: 'The API integration let us connect FlacronAI to our claim management system in a weekend. Starter to Agency upgrade was worth every penny.', rating: 5 },
-];
-
 const Home = () => {
   const location = useLocation();
 
@@ -423,7 +417,7 @@ const Home = () => {
                 </a>
               </div>
               <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
-                {['Free to start', '1 report free/month', 'No setup required', 'Cancel anytime'].map(item => (
+                {['Free to start', '5 reports free/month', 'No setup required', 'Cancel anytime'].map(item => (
                   <span key={item} className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-emerald-500" />
                     {item}
@@ -458,12 +452,13 @@ const Home = () => {
       <section className="border-y border-[#e5e7eb] bg-[#f8f8f8]/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {/* Product facts only — verifiable from the codebase (Golden Rule #1) */}
             {[
-              { label: 'Faster Reports', value: 10, suffix: 'x', icon: Clock },
-              { label: 'Reports Generated', value: 50000, suffix: '+', icon: FileText },
-              { label: 'Subscription Tiers', value: 4, suffix: '', icon: BarChart3 },
-              { label: 'AI Accuracy', value: 98, suffix: '%', icon: Shield },
-            ].map(({ label, value, suffix, icon: Icon }) => (
+              { label: 'Damage Photos per Report', value: 100, suffix: '' },
+              { label: 'Report Sections per Draft', value: 9, suffix: '' },
+              { label: 'Export Formats', value: 3, suffix: '' },
+              { label: 'Subscription Tiers', value: 4, suffix: '' },
+            ].map(({ label, value, suffix }) => (
               <div key={label} className="text-center">
                 <div className="flex items-center justify-center gap-1 text-3xl font-black text-gray-900 mb-1">
                   <Counter end={value} suffix={suffix} />
@@ -572,9 +567,9 @@ const Home = () => {
 
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           {[
-            { tier: 'Starter', price: 0, reports: 1, features: ['1 report/month', 'PDF export', 'Watermarked'], highlight: false },
-            { tier: 'Professional', price: 39.99, reports: 20, features: ['20 reports/month', 'PDF + DOCX export', 'No watermark', 'Priority support'], highlight: true },
-            { tier: 'Agency', price: 99.99, reports: 100, features: ['100 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
+            { tier: 'Starter', price: 0, reports: 5, features: ['5 reports/month', 'PDF export', 'Watermarked'], highlight: false },
+            { tier: 'Professional', price: 39.99, reports: 50, features: ['50 reports/month', 'PDF, DOCX + HTML export', 'No watermark', 'Priority support'], highlight: true },
+            { tier: 'Agency', price: 99.99, reports: 200, features: ['200 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
             { tier: 'Enterprise', price: 499, reports: '∞', features: ['Unlimited reports', 'White-label portal', 'Custom domain', 'Dedicated support'], highlight: false },
           ].map((plan, i) => (
             <motion.div
@@ -618,44 +613,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="py-24 bg-[#f8f8f8]/30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl font-black text-gray-900 mb-4">Trusted by Insurance Professionals</h2>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <motion.div
-                key={t.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="card p-6"
-              >
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(t.rating)].map((_, j) => (
-                    <Star key={j} className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  ))}
-                </div>
-                <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.text}"</p>
-                <div>
-                  <p className="text-gray-900 font-semibold text-sm">{t.name}</p>
-                  <p className="text-gray-500 text-xs">{t.role}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA Banner */}
       <section className="py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
@@ -671,7 +628,7 @@ const Home = () => {
                   Ready to Transform Your Workflow?
                 </h2>
                 <p className="text-gray-600 text-lg mb-8">
-                  Join thousands of insurance professionals using AI to generate better reports faster.
+                  Draft professional inspection reports with AI — you review and approve every finding before it ships.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link to="/auth?mode=signup" className="btn-primary flex items-center justify-center gap-2">

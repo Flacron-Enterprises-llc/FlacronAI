@@ -66,25 +66,25 @@ const FEATURES = [
   {
     icon: Key,
     title: 'API Keys',
-    desc: 'Create multiple named API keys for different environments (dev, staging, production). Revoke keys instantly from the dashboard. Per-key usage tracking.',
+    desc: 'Create multiple named API keys for different environments (dev, staging, production). Keys are stored hashed and can be revoked instantly from the dashboard.',
     color: 'text-amber-400 bg-amber-500/10',
   },
   {
     icon: BarChart2,
     title: 'Rate Limiting',
-    desc: 'Fair-use rate limits per plan tier. Agency: 60 req/min. Enterprise: 200 req/min. 429 responses include Retry-After headers for graceful backoff handling.',
+    desc: 'Fair-use limits keep the platform responsive: 100 requests per 15 minutes API-wide and 10 per minute on AI generation endpoints, with standard rate-limit headers on every response.',
     color: 'text-orange-400 bg-orange-500/10',
   },
   {
     icon: Webhook,
-    title: 'Webhooks',
-    desc: 'Subscribe to events like report.completed, report.failed, and subscription.updated. Configure your endpoint URL in the dashboard for real-time push notifications.',
+    title: 'Multi-Format Export',
+    desc: 'Generate a report once, export it as PDF, DOCX, or HTML through the export endpoint — the same formats available in the dashboard.',
     color: 'text-green-400 bg-green-500/10',
   },
   {
     icon: Shield,
     title: 'Secure by Design',
-    desc: 'All API traffic over HTTPS/TLS 1.3. Firebase Authentication or API key auth on every request. Data encrypted at rest. SOC 2 compliant infrastructure.',
+    desc: 'All API traffic runs over HTTPS. Every request is authenticated with Firebase Auth or an API key, and stored keys are SHA-256 hashed — never kept in plain text.',
     color: 'text-amber-400 bg-amber-500/10',
   },
   {
@@ -146,11 +146,12 @@ export default function Developers() {
         {/* Stats */}
         <motion.div className="flex flex-wrap justify-center gap-8 mt-16"
           initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          {/* Verifiable product facts only (Golden Rule #1) */}
           {[
-            { label: 'API Endpoints', value: '20+' },
-            { label: 'Avg Response Time', value: '<2s' },
-            { label: 'Uptime SLA', value: '99.9%' },
-            { label: 'API Versions', value: 'v1 stable' },
+            { label: 'Auth Methods', value: '2' },
+            { label: 'Export Formats', value: '3' },
+            { label: 'Photos per Report', value: '100' },
+            { label: 'Response Format', value: 'JSON' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <p className="text-2xl font-bold text-gray-900">{s.value}</p>

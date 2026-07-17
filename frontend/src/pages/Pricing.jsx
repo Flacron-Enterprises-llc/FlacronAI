@@ -16,10 +16,10 @@ const PLANS = [
     color: 'gray',
     features: [
       { label: '5 reports/month', included: true },
-      { label: 'Basic AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'PDF export', included: true },
       { label: 'Email support', included: true },
-      { label: 'FlacronAI watermark on reports', included: false },
+      { label: 'Watermark-free reports', included: false },
       { label: 'DOCX/HTML export', included: false },
       { label: 'API access', included: false },
       { label: 'CRM features', included: false },
@@ -34,7 +34,7 @@ const PLANS = [
     color: 'blue', popular: true,
     features: [
       { label: '50 reports/month', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'PDF, DOCX, HTML export', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Priority email support', included: true },
@@ -52,7 +52,7 @@ const PLANS = [
     color: 'purple',
     features: [
       { label: '200 reports/month', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },
@@ -60,7 +60,7 @@ const PLANS = [
       { label: 'Client management', included: true },
       { label: 'Priority support', included: true },
       { label: 'White-label portal', included: false },
-      { label: 'Custom AI training', included: false },
+      { label: 'Custom subdomain', included: false },
     ],
   },
   {
@@ -70,7 +70,7 @@ const PLANS = [
     color: 'amber',
     features: [
       { label: 'Unlimited reports', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },
@@ -78,14 +78,13 @@ const PLANS = [
       { label: 'White-label portal', included: true },
       { label: 'Custom subdomain', included: true },
       { label: 'Dedicated success manager', included: true },
-      { label: 'Custom AI training', included: true },
+      { label: 'Team member management', included: true },
     ],
   },
 ];
 
 const COMPARISON_FEATURES = [
   { label: 'Reports per month', starter: '5', professional: '50', agency: '200', enterprise: 'Unlimited' },
-  { label: 'AI Model', starter: 'Standard', professional: 'Advanced', agency: 'Advanced', enterprise: 'Advanced' },
   { label: 'Export formats', starter: 'PDF', professional: 'PDF, DOCX, HTML', agency: 'All', enterprise: 'All' },
   { label: 'Watermarks', starter: 'Yes', professional: 'No', agency: 'No', enterprise: 'No' },
   { label: 'CRM', starter: false, professional: false, agency: true, enterprise: true },

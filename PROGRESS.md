@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (Phase 0 complete, awaiting next prompt)
-- **Next up:** Phase 1 (T-1.1 remove unverified claims is first)
+- **Now working on:** — (T-1.1 done, awaiting next prompt)
+- **Next up:** T-1.2 (brand design tokens)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -24,7 +24,7 @@
 ### Phase 1 — Website & Conversion + Brand + SEO
 | Task | Title | Status | Notes |
 |------|-------|--------|-------|
-| T-1.1 | Remove unverified claims | TODO | Golden Rule #1 |
+| T-1.1 | Remove unverified claims | DONE | 2026-07-17 — all fake stats/testimonials/certs stripped from live pages; Blog.jsx (dead page) pending open question |
 | T-1.2 | Define brand tokens (color/type/spacing) | TODO | |
 | T-1.3 | Logo update + favicon set | TODO | client HAS final logo files — collect them |
 | T-1.4 | Hero section rebuild | TODO | |
@@ -77,6 +77,22 @@ Template for each entry — copy this block:
 - **Golden-rule check:** confirmed none violated
 -->
 
+### [2026-07-17] — T-1.1 — Remove unverified claims (Golden Rule #1)
+- **Status:** DONE
+- **What changed (all on live, routed pages):**
+  - **Home.jsx** — stats bar's fake counters (10x faster / 50,000+ reports / 98% AI accuracy) replaced with verifiable product facts (100 photos per report — multer cap; 9 report sections — AI prompt; 3 export formats — tiers.js; 4 subscription tiers). Deleted the entire fabricated-testimonials section (3 invented people + fake 5-star ratings + "Trusted by Insurance Professionals" heading). CTA "Join thousands of insurance professionals" → honest review-first copy. Hero trust line "1 report free/month" → "5 reports free/month" and pricing-preview counts 1/20/100 → 5/50/200 (matches server-enforced `tiers.js`).
+  - **About.jsx** — deleted fabricated TEAM (Alex Morgan/Sarah Chen/Marcus Davis) and STATS (50,000+/1,200+/99.9%/Founded 2023); replaced the invented Brooklyn origin story (fake people, fake 3.8h metric, fake launch date) with an honest "Why FlacronAI Exists" section; removed SOC 2 claim, SLA-guarantee claim, "trained on thousands of real claims"; H1 "Built by Adjusters, For Adjusters" (unverifiable) → "Give Adjusters Their Time Back"; "four steps" → five (matches the actual wizard).
+  - **Developers.jsx** — removed SOC 2 claim; fake stats (20+ endpoints, <2s response, 99.9% uptime SLA) → verifiable facts (2 auth methods, 3 export formats, 100 photos, JSON); **Webhooks feature card removed** (advertised `report.completed` events that don't exist — Rule #4) → replaced with real Multi-Format Export card; rate-limit copy now states the real limits (100 req/15min global, 10 req/min AI); removed "per-key usage tracking" (broken — trackApiUsage never mounted).
+  - **FAQs.jsx** — security answer rewritten (was: MongoDB Atlas [not in stack] + SOC 2 Type II); removed Enterprise "custom AI training" (doesn't exist).
+  - **PrivacyPolicy.jsx** — removed SOC 2/ISO 27001 badges + MongoDB Atlas + "certificate pinning" + AES-256/TLS-1.3 specifics; now states only what's true (Firestore encrypted at rest by GCP, HTTPS in transit); dropped unverifiable employee-access-logging claim.
+  - **Pricing.jsx** — removed "Custom AI training" rows (fake feature) and the fake "AI Model: Standard vs Advanced" tier differentiation (all tiers use the same models); "Basic/Advanced AI report generation" → "AI report generation"; fixed inverted watermark row ("FlacronAI watermark ✗" implied starter had none — now "Watermark-free reports ✗").
+  - **Footer.jsx** — removed fake "Microsoft" powered-by badge and the hardcoded "All systems operational" status dot.
+  - **NOT touched:** displayed prices (conflicting $149.99/$299.99 vs $99.99/$499 — see Open Questions; Stripe env is the source of truth); Blog.jsx/BlogPost.jsx (dead, unrouted — pending keep/delete answer); sample claim data in Dashboard/EnterpriseDashboard (Rule #2 wording — Phase 2 scope).
+- **Files touched:** frontend/src/pages/{Home,About,Developers,FAQs,PrivacyPolicy,Pricing}.jsx, frontend/src/components/Footer.jsx.
+- **QA done:** grep for all banned numbers/phrases (50,000 / 98% / 10x / thousands / SOC 2 / ISO 27001 / MongoDB / Microsoft / testimonial names / 99.9 / "systems operational" / "custom AI training" / "Advanced AI") → clean outside dead Blog.jsx; ESLint 0 errors (warning count went down 37→36); Vitest 2/2 pass; app run locally, all routes screenshotted desktop+mobile with 0 console errors (QA shots in E:/claude-scratch/t11-qa/, baseline in docs/baseline/ left untouched as the "before" record); visually verified Home, About, Pricing.
+- **Left / follow-ups:** prices + "~60 seconds" + "CRU GROUP-standard" open questions (above); testimonials section removal leaves no social proof — T-1.9 will add real trust signals; Developers.jsx export card still uses the Webhook icon (cosmetic, T-1.10).
+- **Golden-rule check:** #1 is the task itself; #4 improved (fake features removed, displayed limits now match server enforcement); no rules broken.
+
 ### [2026-07-17] — T-0.3 — Tooling scaffold (lint / format / test)
 - **Status:** DONE
 - **What changed:** Added minimal lint/format/test tooling to both packages, no application code touched.
@@ -127,7 +143,9 @@ Template for each entry — copy this block:
 - [ ] **Public `/uploads` exposure:** claim photos are world-readable at guessable URLs today (Golden Rule #6 risk in production NOW). OK to prioritize locking this down ahead of the normal Phase 3 order?
 - [ ] Blog pages (`Blog.jsx`, `BlogPost.jsx`) are built but never routed — keep + fix content (currently has fabricated study data) or delete?
 - [ ] **Test account for authed baselines:** provide test login credentials (or approve creating a dedicated test account) so dashboard/subscriptions/settings/CRM/admin/enterprise pages can be baselined. Signup sends a real verification email via Brevo and writes to the live Firebase project, so I didn't create one unilaterally.
-- [ ] **Pricing copy conflict:** home preview says Professional = 20 reports/mo, Agency = 100; backend `tiers.js` says 50/200; README says 50/200. Which numbers are the intended offer? (Needed for T-1.8.)
+- [ ] **Pricing PRICE conflict (report counts now fixed):** report counts were aligned to the server-enforced `tiers.js` values (5/50/200/unlimited) in T-1.1. But **prices still disagree**: Agency is **$99.99/mo** on Home, FAQs, Subscriptions, AdminTierUpdate and in `tiers.js`, yet **$149.99/mo** on the Pricing page; Enterprise is **$499/mo** everywhere except the Pricing page's **$299.99/mo**. The real charge comes from the Stripe Price IDs in env (not visible in the repo). Which prices are live in Stripe? (Blocks final numbers for T-1.8; I did NOT touch any displayed price.)
+- [ ] **"~60 seconds" generation-time claim:** Home features/how-it-works say a full report takes ~60s. Plausible but unmeasured — keep only if we can verify with real timings (could measure in T-2.x once AI models are fixed).
+- [ ] **"CRU GROUP-standard" wording** (Home hero, feature card, footer tagline): is the report template actually built to a CRU Group standard, or is this aspirational? If unverifiable it should be reworded (Golden Rule #1).
 
 ---
 

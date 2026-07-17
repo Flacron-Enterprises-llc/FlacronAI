@@ -11,22 +11,22 @@ const VALUES = [
   },
   {
     icon: Target, title: 'Accuracy',
-    desc: 'Our AI is trained on thousands of real claims. We measure and improve output quality constantly, because a wrong report doesn\'t just waste time — it damages trust.',
+    desc: 'AI drafts are structured and consistent, and built for human review. We measure and improve output quality constantly, because a wrong report doesn\'t just waste time — it damages trust.',
     color: 'text-orange-400 bg-orange-500/10',
   },
   {
     icon: Shield, title: 'Security',
-    desc: 'Insurance data is sensitive. We use enterprise-grade encryption, SOC 2 compliant infrastructure, and privacy-first architecture. Your data stays yours.',
+    desc: 'Insurance data is sensitive. We encrypt traffic in transit, control access to your files, and never sell or share your data. Your data stays yours.',
     color: 'text-green-400 bg-green-500/10',
   },
   {
     icon: Smile, title: 'Simplicity',
-    desc: 'We built the product we wished existed — no bloat, no confusing workflows. From photo upload to generated report in four steps. That\'s it.',
+    desc: 'We built the product we wished existed — no bloat, no confusing workflows. From claim details to generated report in five guided steps. That\'s it.',
     color: 'text-pink-400 bg-pink-500/10',
   },
   {
     icon: Building2, title: 'Enterprise-Grade',
-    desc: 'Whether you\'re an independent adjuster or a national agency, the platform scales to your needs. Custom branding, dedicated infrastructure, and SLA guarantees.',
+    desc: 'Whether you\'re an independent adjuster or a national agency, the platform scales to your needs. Custom branding, white-label portals, and team management.',
     color: 'text-amber-400 bg-amber-500/10',
   },
   {
@@ -34,19 +34,6 @@ const VALUES = [
     desc: 'Our highest-priority features come from customer feedback. Our Enterprise clients get dedicated support and direct lines to our engineering team.',
     color: 'text-red-400 bg-red-500/10',
   },
-];
-
-const TEAM = [
-  { name: 'Alex Morgan', role: 'Co-Founder & CEO', bio: 'Former insurance tech executive with 12+ years in the industry. Alex led claim operations for a top-5 national carrier before founding FlacronAI.' },
-  { name: 'Sarah Chen', role: 'Co-Founder & CTO', bio: 'AI research background with expertise in computer vision and NLP. Sarah previously led ML teams at two enterprise SaaS companies before building the FlacronAI engine.' },
-  { name: 'Marcus Davis', role: 'Head of Product', bio: 'Licensed independent adjuster turned product builder. Marcus brings real-world adjusting experience to every product decision, ensuring we build for how adjusters actually work.' },
-];
-
-const STATS = [
-  { label: 'Founded', value: '2023' },
-  { label: 'Reports Generated', value: '50,000+' },
-  { label: 'Active Customers', value: '1,200+' },
-  { label: 'Platform Uptime', value: '99.9%' },
 ];
 
 export default function About() {
@@ -61,7 +48,7 @@ export default function About() {
             About Us
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight">
-            Built by Adjusters, <span className="gradient-text">For Adjusters</span>
+            Give Adjusters Their <span className="gradient-text">Time Back</span>
           </h1>
           <p className="text-gray-600 text-lg leading-relaxed">
             FlacronAI exists to eliminate the documentation bottleneck in insurance claims. We combine the latest AI technology with deep industry knowledge to give adjusters their time back.
@@ -69,32 +56,20 @@ export default function About() {
         </motion.div>
       </section>
 
-      {/* Stats */}
-      <section className="py-12 px-4 border-y border-[#e5e7eb] bg-[#f8f8f8]">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          {STATS.map((s, i) => (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-              <p className="text-3xl font-bold text-gray-900">{s.value}</p>
-              <p className="text-gray-600 text-sm mt-1">{s.label}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Our Story */}
+      {/* Why we exist */}
       <section className="py-20 px-4">
         <div className="max-w-3xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-3xl font-bold text-gray-900 mb-8">Our Story</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-8">Why FlacronAI Exists</h2>
             <div className="space-y-5 text-gray-600 leading-relaxed text-base">
               <p>
-                FlacronAI began in a home office in Brooklyn, New York, in late 2023. Marcus Davis — a licensed independent adjuster with over eight years in the field — was sitting at his kitchen table at 11 PM, still writing reports for claims he'd inspected that morning. He had done the math: across his 20-claim week, he was spending more hours writing than he was on site. Something was deeply wrong with that ratio.
+                Insurance inspection reporting has a ratio problem: adjusters routinely spend more time writing up a claim than they spent inspecting it. Photos get organized by hand, findings get retyped into templates, and formatting eats the rest of the evening.
               </p>
               <p>
-                Marcus reached out to his longtime friend Alex Morgan, who had spent a decade navigating the technology side of major insurance carriers, and Sarah Chen, who had been building machine learning systems for enterprise clients. The three of them agreed: the technology to fix this problem existed. It just hadn't been applied to this industry with the right domain depth.
+                FlacronAI, a product of Flacron Enterprises LLC, attacks that bottleneck directly. Upload your inspection photos and claim details, and the platform assembles a structured draft report — damage observations, photo documentation, and standard report sections — in a fraction of the time it takes to write one from scratch.
               </p>
               <p>
-                They spent six months building a proof of concept — combining AI-powered photo analysis with compliance structuring, wrapping it in an interface any adjuster could use without training. The first beta users reduced their per-report time from an average of 3.8 hours to under one hour. That data confirmed they were onto something real. FlacronAI launched publicly in February 2024 and has grown steadily through word-of-mouth within the adjusting community ever since.
+                The AI does the assembling; you stay the professional. Every draft is meant to be reviewed, edited, and approved by a qualified adjuster before it goes anywhere. We build tooling that makes your judgment faster to document — not a replacement for it.
               </p>
             </div>
           </motion.div>
@@ -122,29 +97,6 @@ export default function About() {
                 </motion.div>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* Team */}
-      <section className="py-20 px-4">
-        <div className="max-w-4xl mx-auto">
-          <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">The Team</h2>
-            <p className="text-gray-600">A small, focused team with deep insurance and AI expertise.</p>
-          </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {TEAM.map((member, i) => (
-              <motion.div key={member.name} className="card p-5 text-center"
-                initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                <div className="w-16 h-16 rounded-full bg-orange-500/20 flex items-center justify-center text-2xl font-bold text-orange-400 mx-auto mb-4">
-                  {member.name[0]}
-                </div>
-                <h3 className="text-gray-900 font-semibold">{member.name}</h3>
-                <p className="text-orange-400 text-xs font-medium mt-1 mb-3">{member.role}</p>
-                <p className="text-gray-600 text-sm leading-relaxed">{member.bio}</p>
-              </motion.div>
-            ))}
           </div>
         </div>
       </section>

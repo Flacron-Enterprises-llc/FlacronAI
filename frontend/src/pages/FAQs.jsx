@@ -36,7 +36,7 @@ const FAQS = [
   {
     category: 'Billing',
     q: 'What are the plan differences?',
-    a: 'Starter: 5 free reports/month with watermark. Professional ($39.99/mo): 50 reports, no watermark, all export formats, API access. Agency ($99.99/mo): 200 reports, full CRM suite, API access. Enterprise ($499/mo): Unlimited reports, white-label portal, dedicated support, custom AI training.',
+    a: 'Starter: 5 free reports/month with watermark. Professional ($39.99/mo): 50 reports, no watermark, all export formats, API access. Agency ($99.99/mo): 200 reports, full CRM suite, API access. Enterprise ($499/mo): Unlimited reports, white-label portal, dedicated support, team management.',
   },
   {
     category: 'Billing',
@@ -83,7 +83,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'Is my data stored securely?',
-    a: 'Yes. All data is encrypted at rest using AES-256 and in transit using TLS 1.3. We use Google Firebase infrastructure for authentication and MongoDB Atlas for data storage. Both platforms are SOC 2 Type II certified. Your report content and photos are never used to train AI models.',
+    a: 'Your account data and reports are stored in Google Cloud Firestore (via Firebase), which encrypts stored data at rest, and all traffic to the platform is encrypted in transit over HTTPS. Authentication is handled by Firebase Authentication. We do not use your report content or photos to train AI models.',
   },
 
   // API
