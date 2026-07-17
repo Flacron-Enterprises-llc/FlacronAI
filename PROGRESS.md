@@ -1,0 +1,110 @@
+# PROGRESS.md — Living Tracker
+
+> Update this after EVERY micro-task. This is your memory. Newest changelog entry goes on top.
+> Status values: `TODO` · `IN-PROGRESS` · `BLOCKED` · `QA` · `DONE`
+
+---
+
+## Current focus
+- **Now working on:** — (T-0.1 done, awaiting next prompt)
+- **Next up:** T-0.2 (run locally + baseline screenshots), then T-0.3, then Phase 1
+
+---
+
+## Status board
+
+### Phase 0 — Audit & Setup
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-0.1 | Full project audit + fill CLAUDE.md | DONE | 2026-07-17 — CLAUDE.md §4/§5/§6 filled; see changelog |
+| T-0.2 | Get app running locally + baseline screenshots | TODO | |
+| T-0.3 | Add lint/format/test scaffolding if missing | TODO | |
+
+### Phase 1 — Website & Conversion + Brand + SEO
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-1.1 | Remove unverified claims | TODO | Golden Rule #1 |
+| T-1.2 | Define brand tokens (color/type/spacing) | TODO | |
+| T-1.3 | Logo update + favicon set | TODO | client HAS final logo files — collect them |
+| T-1.4 | Hero section rebuild | TODO | |
+| T-1.5 | Bigger product screenshot / demo | TODO | |
+| T-1.6 | Sample report preview + download | TODO | |
+| T-1.7 | CTAs + trust bar | TODO | |
+| T-1.8 | Pricing display rebuild | TODO | |
+| T-1.9 | Testimonials/social proof (real only) | TODO | |
+| T-1.10 | "De-AI" pass on all landing pages | TODO | |
+| T-1.11 | Mobile layout pass (marketing) | TODO | |
+| T-1.12 | SEO: per-page meta + headings | TODO | |
+| T-1.13 | SEO: sitemap, robots, canonical | TODO | |
+| T-1.14 | SEO: structured data (JSON-LD) | TODO | |
+| T-1.15 | SEO: performance + image optimization | TODO | |
+| T-1.16 | Opt-in / lead-capture forms | TODO | consent-based |
+
+### Phase 2 — Core Reporting Platform
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-2.x | See TASKS.md | TODO | |
+
+### Phase 3 — Subscription & Operations
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-3.x | See TASKS.md | TODO | |
+
+### Phase 4 — Marketing & Growth Automation
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-4.x | See TASKS.md | TODO | |
+
+### Phase 5 — Enterprise & API
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-5.x | See TASKS.md | TODO | |
+
+---
+
+## Changelog (newest on top)
+
+<!--
+Template for each entry — copy this block:
+
+### [DATE] — T-X.Y — <title>
+- **Status:** DONE / BLOCKED / QA
+- **What changed:** short summary
+- **Files touched:** path/one, path/two
+- **QA done:** what you actually tested + result
+- **Left / follow-ups:** anything not finished
+- **Golden-rule check:** confirmed none violated
+-->
+
+### [2026-07-17] — T-0.1 — Full project audit
+- **Status:** DONE
+- **What changed:** Documentation only — no application code touched. Scanned the full repo (backend routes/services/middleware/config, all frontend pages/components, deploy configs). Filled CLAUDE.md §4 (Tech Stack: React 18 + Vite + Tailwind SPA on Vercel; Express 4 + Firestore on Render; Firebase Auth + custom-JWT fallback; **Stripe Checkout Sessions `mode: 'subscription'` with a signature-verified, idempotent webhook** handling checkout.session.completed / subscription.deleted / invoice.payment_failed / subscription.updated; WatsonX primary + OpenAI fallback with GPT-4-Vision image analysis via base64; local-disk file storage; Brevo email, no SMS; npm, **no lint/test tooling**), §5 (Project Map + full Known-issues list), §6 (logo: none exists — inline Zap icon, favicon 404s).
+- **Files touched:** CLAUDE.md, PROGRESS.md (docs only).
+- **QA done:** Re-read CLAUDE.md §4/§5 against agent findings; env-var names cross-checked between `.env.example`, README, and actual `process.env` usage (they disagree — code-truth recorded, discrepancies noted). All Golden-Rule violations recorded with file:line.
+- **Left / follow-ups:** Key findings for upcoming tasks:
+  - **Golden Rule #1 violations everywhere** (Home, About, Developers, FAQs, PrivacyPolicy, Footer, dead Blog): fake stats (50,000+ reports, 98% accuracy, 10x faster, 1,200+ customers, 99.9% uptime), 3 invented testimonials, invented team members, fake SOC 2 / ISO 27001 claims, "Microsoft" powered-by badge → T-1.1.
+  - **Golden Rule #2 violated by design**: AI prompt (`backend/services/aiService.js`) demands coverage determinations, cause-of-loss, real dollar amounts, and an AI-authored adjuster certification → Phase 2 (T-2.5).
+  - **Golden Rule #3 violated**: AI output saved as `status: 'completed'` with no accept/reject/edit gate → Phase 2 (T-2.6/2.7).
+  - **Security**: `/uploads` publicly served without auth (claim photos!); Render has no persistent disk (uploads lost on deploy); firestore.rules admin email points at wrong account → Phase 3 (T-3.10), but the public-uploads issue may deserve earlier attention.
+  - **Broken**: deprecated OpenAI model IDs (`gpt-4-vision-preview`, `gpt-4-turbo-preview`) — fallback + image analysis will fail; API-usage tracking never mounted (analytics always empty).
+- **Golden-rule check:** none violated by this task (audit only; violations found were documented, not shipped).
+
+---
+
+## Open Questions (ask the human — don't guess)
+
+- [x] Tech stack unknown until audit. → **Resolved 2026-07-17**: see CLAUDE.md §4.
+- [x] Logo/brand assets: **client has final logo files** — collect them before T-1.3 (need: SVG/PNG in light+dark, horizontal + icon-only marks, and preferred clear-space/color rules if any).
+- [x] Payment provider: **Stripe**. → **Resolved 2026-07-17**: Stripe **Checkout Sessions, `mode: 'subscription'`**; webhook wired + signature-verified + idempotent; events handled: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`, `customer.subscription.updated` (see CLAUDE.md §4).
+- [ ] Is there real usage data we ARE allowed to display (e.g. real avg generation time)?
+- [ ] **Admin email mismatch:** `firestore.rules` hardcodes `admin@flacronai.com`, but env/actual admin is `admin@flacronenterprises.com`. Which address is the real admin account? (Affects T-3.x fixes.)
+- [ ] **Is production AI currently working?** Both OpenAI model IDs in code are retired (`gpt-4-vision-preview`, `gpt-4-turbo-preview`) — image analysis and the WatsonX-fallback path should be failing. Is WatsonX alone carrying prod today? Which models should we target when we fix this?
+- [ ] **Are production uploads being lost?** Render has no persistent disk and files are stored locally — every deploy wipes uploads/exports. Should we plan a move to cloud storage (Firebase Storage / S3) as an early task, and is any user data already dangling?
+- [ ] **Public `/uploads` exposure:** claim photos are world-readable at guessable URLs today (Golden Rule #6 risk in production NOW). OK to prioritize locking this down ahead of the normal Phase 3 order?
+- [ ] Blog pages (`Blog.jsx`, `BlogPost.jsx`) are built but never routed — keep + fix content (currently has fabricated study data) or delete?
+
+---
+
+## Remaining / Nice-to-have backlog (not scheduled yet)
+
+- (add ideas here as they surface during work)
