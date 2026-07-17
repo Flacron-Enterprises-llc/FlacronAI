@@ -460,6 +460,47 @@ const Home = () => {
         </div>
       </section>
 
+      {/* Product showcase — real UI (T-1.5) */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <h2 className="text-4xl font-black text-gray-900 mb-4">The Actual Product, Not a Mockup</h2>
+            <p className="text-gray-600 text-lg max-w-2xl mx-auto">
+              A five-step guided wizard takes you from claim details and damage photos to a structured draft report ready for your review.
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="relative"
+          >
+            <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-transparent to-navy-500/10 rounded-3xl blur-xl pointer-events-none" />
+            <div className="relative rounded-card overflow-hidden border border-border shadow-card bg-white">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 bg-surface border-b border-border">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-3 text-xs text-gray-400 truncate">app.flacronai.com/dashboard</span>
+              </div>
+              <img
+                src="/product-generate-report.webp"
+                alt="FlacronAI dashboard showing the five-step Generate Report wizard with claim information filled in"
+                loading="lazy"
+                width="2400"
+                height="1500"
+                className="w-full h-auto"
+              />
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* Features */}
       <section id="features" className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <motion.div

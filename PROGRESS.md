@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.4 done, awaiting next prompt)
-- **Next up:** T-1.5 (bigger product screenshot / demo)
+- **Now working on:** — (T-1.5 done, awaiting next prompt)
+- **Next up:** T-1.6 (sample report preview + download; swaps hero secondary CTA to "View Sample Report")
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -28,7 +28,7 @@
 | T-1.2 | Define brand tokens (color/type/spacing) | DONE | 2026-07-17 — tokens in tailwind.config.js from logo colors (#FD4403/#002A64) + Space Grotesk/Inter pairing |
 | T-1.3 | Logo update + favicon set | DONE | 2026-07-17 — FA mark extracted from client PNG; favicons + apple-touch + og-image generated; Zap placeholder gone. Vector originals still wanted (see Open Questions) |
 | T-1.4 | Hero section rebuild | DONE | 2026-07-17 — new H1/positioning/CTAs/trust line; "View Sample Report" CTA deferred to T-1.6 |
-| T-1.5 | Bigger product screenshot / demo | TODO | |
+| T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
 | T-1.6 | Sample report preview + download | TODO | |
 | T-1.7 | CTAs + trust bar | TODO | |
 | T-1.8 | Pricing display rebuild | TODO | |
@@ -76,6 +76,18 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.5 — Product demo / bigger screenshot
+- **Status:** DONE
+- **What changed:**
+  - **Captured the REAL product UI** (per acceptance: "not generic mockup"): the actual `/dashboard` Generate-Report wizard, step 1 filled via the built-in Wind/Hail demo template, rendered at 1440×900 @2x retina. **Method:** no test account exists yet (open question), so the capture used a temporary local-only auth stub in `AuthContext.jsx` (demo user "Jordan Avery", professional tier) with all `/api/*` requests aborted at the browser level — **the stub was fully reverted immediately after capture** (`git checkout`, verified zero `TEMP-SCREENSHOT-STUB` markers remain); nothing auth-related was committed. Sample-data claim fields are the product's own QUICK_DEMOS template content.
+  - **Asset:** `frontend/public/product-generate-report.webp` — 2400×1500 WebP, **76 KB** (retina-sharp at up to ~1200 CSS px display width).
+  - **New "product showcase" section** on Home (after stats bar, before Features): heading "The Actual Product, Not a Mockup", browser-chrome frame, brand-token glow. Image has descriptive `alt`, explicit `width`/`height` (no CLS), and `loading="lazy"` (below the fold) — QA checklist items all satisfied. Visible on mobile (the hero's animated mock is desktop-only, so mobile users now see a product visual for the first time).
+  - Hero's animated DashboardMock kept — it demos the generating flow; the new section shows the real thing. T-1.10 may consolidate.
+- **Files touched:** frontend/src/pages/Home.jsx, frontend/public/product-generate-report.webp (new).
+- **QA done:** lazy/alt/naturalWidth verified programmatically; desktop + mobile section screenshots (E:/claude-scratch/t15-qa/); 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** re-capture the screenshot after future dashboard restyling (T-2.x review-gate UI will change the wizard); consider a short product video/animated capture later; mobile rendering of the screenshot is legible but small — revisit in T-1.11.
+- **Golden-rule check:** #1 upheld — the screenshot is the genuine UI with the product's own demo data; stats in the sidebar (12/50 reports) are plausible demo values shown as demo, not marketing claims about usage.
 
 ### [2026-07-17] — T-1.4 — Hero rebuild
 - **Status:** DONE
