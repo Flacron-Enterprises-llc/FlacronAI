@@ -132,6 +132,10 @@ If something is ambiguous or a Golden Rule is at risk → do NOT guess. Write th
 - Dead pages/components: `Blog.jsx`, `BlogPost.jsx`, `EmptyState.jsx`, `Modal.jsx`, `SkeletonLoader.jsx`, `ContactSalesModal.jsx`. Dead imports: `optionalAuth` in `users.js:8`, `whitelabel.js:9`.
 - `frontend/public/` doesn't exist: **no robots.txt, no sitemap.xml, and `/favicon.svg` referenced by index.html 404s**. No per-page meta (no react-helmet; `document.title` never set) — every page shares one static title/description.
 
+**Content bugs (found in T-0.2 baseline):**
+- Home pricing preview (`Home.jsx` pricing section) understates actual plans: shows Professional "20 reports/month" and Agency "100 reports/month", but `backend/config/tiers.js` grants 50 and 200. Rule #4-adjacent (displayed features must match reality) → fix in T-1.8.
+- Marketing sections use framer-motion `whileInView` — content is invisible (opacity 0) until scrolled into view; contributes to the "empty space" complaint and stats counters read "0x/0+/0%" until triggered.
+
 **Fragility / scaling:**
 - In-memory pagination over full collections: `reports.js:171`, `sales.js:77,159,200`, `crmService.js:8,137` — O(n) reads per request.
 - 24h download-link "expiry" advertised (`reports.js:349`) but never enforced.

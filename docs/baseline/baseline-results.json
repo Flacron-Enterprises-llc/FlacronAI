@@ -1,0 +1,210 @@
+[
+  {
+    "route": "/",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/pricing",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/pricing",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/about",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/about",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/contact",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/contact",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/faqs",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/faqs",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/developers",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/developers",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/docs/api",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/docs/api",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/auth",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/auth",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/privacy-policy",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/privacy-policy",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/terms-of-service",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/terms-of-service",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/cookies-policy",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/cookies-policy",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/this-route-does-not-exist",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/this-route-does-not-exist",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/dashboard",
+    "viewport": "desktop",
+    "status": "OK",
+    "finalUrl": "http://localhost:5173/auth",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/pricing",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/pricing",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/about",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/about",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/contact",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/contact",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/faqs",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/faqs",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/developers",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/developers",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/docs/api",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/docs/api",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/auth",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/auth",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/privacy-policy",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/privacy-policy",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/terms-of-service",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/terms-of-service",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/cookies-policy",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/cookies-policy",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/this-route-does-not-exist",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/this-route-does-not-exist",
+    "consoleErrors": [],
+    "failedRequests": []
+  },
+  {
+    "route": "/dashboard",
+    "viewport": "mobile",
+    "status": "HTTP 304",
+    "finalUrl": "http://localhost:5173/auth",
+    "consoleErrors": [],
+    "failedRequests": []
+  }
+]
