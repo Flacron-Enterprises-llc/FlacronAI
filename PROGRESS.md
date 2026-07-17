@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.13 done, awaiting next prompt)
-- **Next up:** T-1.14 (JSON-LD structured data); T-1.8 still BLOCKED on price answer
+- **Now working on:** — (T-3.10a security: public uploads locked down — done; awaiting next prompt)
+- **Next up (client priorities, 2026-07-18):** T-1.8 pricing consistency (UNBLOCKED — prices confirmed), then soften unverifiable claims (T-1.1 follow-up), test-account walkthrough of app/admin, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -31,7 +31,7 @@
 | T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
 | T-1.6 | Sample report preview + download | DONE | 2026-07-17 — cautious-language sample PDF; hero CTA swapped to "View Sample Report"; regenerable via backend/scripts/make-sample-report.js |
 | T-1.7 | CTAs + trust bar | DONE | 2026-07-17 — broken /api-docs CTA fixed; all internal links verified; honest security strip added (no badges) |
-| T-1.8 | Pricing display rebuild | BLOCKED | waiting on client: which prices are live in Stripe (see Open Questions) |
+| T-1.8 | Pricing display rebuild | TODO | UNBLOCKED 2026-07-18 — prices confirmed $0/$39.99/$99.99/$499; fix Pricing-page outliers ($149.99→$99.99, $299.99→$499) + annual math; make every page consistent |
 | T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
@@ -49,6 +49,8 @@
 ### Phase 3 — Subscription & Operations
 | Task | Title | Status | Notes |
 |------|-------|--------|-------|
+| T-3.10a | Security: lock down public uploads (pulled forward at client request) | DONE | 2026-07-18 — claim photos + exports no longer world-readable; only branding logos public; traversal-safe + tested |
+| T-3.10 | Security hardening (rest: at-rest encryption, signed URLs, MFA, audit logs, malware scan, persistent storage…) | TODO | ephemeral-disk + at-rest still open |
 | T-3.x | See TASKS.md | TODO | |
 
 ### Phase 4 — Marketing & Growth Automation
@@ -76,6 +78,20 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-3.10a — Security: lock down public uploads (client-escalated, pulled forward)
+- **Status:** DONE
+- **Why now:** client flagged public claim-photo access as high priority ("secure all uploaded files immediately").
+- **The hole:** `server.js` served the entire `uploads/` tree at `/uploads` with `express.static` and no auth. Claim/report photos (`uploads/{uid}/reports/{reportId}/…`) and generated exports (`…/exports/…`) — sensitive PII/claim evidence — were downloadable by anyone who knew or guessed the path (predictable: uid + reportId + timestamp-rand filename).
+- **What changed:**
+  - New `backend/middleware/uploadAccess.js` → `resolvePublicUpload(uploadDir, reqPath)`: **allows only branding assets** (`logos/`, `whitelabel/` — user logos shown in-app + white-label logos shown on the public `/enterprise/:subdomain` portal). Everything else (reports, exports) → denied (404, doesn't even confirm existence).
+  - It **resolves** the path before deciding, so traversal smuggling like `/<uid>/logos/../reports/<id>/photo.jpg` (raw and `%2e%2e`-encoded) is blocked, as are paths escaping the uploads root and malformed percent-encodings.
+  - `server.js` static mount now runs that guard first.
+  - Reports images were never fetched by the browser (server-side only: AI analysis + PDF embedding), and exports already have the authenticated ownership-checked `GET /api/reports/:id/download`, so **no app functionality is lost** — logos still load (verified).
+- **Files touched:** backend/server.js, backend/middleware/uploadAccess.js (new), backend/test/uploadAccess.test.js (new).
+- **QA done:** live curl matrix against running backend — logos/whitelabel 200; reports/exports 404 with no body leak; raw + encoded traversal 404 + no leak; root-escape 404. Extracted the guard and pinned it with **7 unit tests** (`npm test` → 13/13 pass incl. tiers). Lint 0 errors. Test fixtures created under `uploads/` then removed (uploads/ is gitignored — nothing committed).
+- **Left / follow-ups (rest of T-3.10, still open):** (1) **at-rest encryption / cloud storage** — files are still on Render's ephemeral local disk (lost every deploy; `imagePaths` go dangling) → should move to Firebase Storage/S3 with signed URLs; (2) if a future feature needs to SHOW claim photos in-browser, add an authenticated ownership-checked image endpoint (do NOT re-open public serving); (3) MFA, audit logs, malware scan, data-retention — later T-3.10 sub-items. Also update the Home trust strip with a storage card once (1) is done.
+- **Golden-rule check:** #6 upheld and materially advanced (claim data no longer world-readable).
 
 ### [2026-07-17] — T-1.13 — SEO technical base (sitemap / robots / 404)
 - **Status:** DONE
@@ -250,13 +266,14 @@ Template for each entry — copy this block:
 - [ ] **Admin email mismatch:** `firestore.rules` hardcodes `admin@flacronai.com`, but env/actual admin is `admin@flacronenterprises.com`. Which address is the real admin account? (Affects T-3.x fixes.)
 - [ ] **Is production AI currently working?** Both OpenAI model IDs in code are retired (`gpt-4-vision-preview`, `gpt-4-turbo-preview`) — image analysis and the WatsonX-fallback path should be failing. Is WatsonX alone carrying prod today? Which models should we target when we fix this?
 - [ ] **Are production uploads being lost?** Render has no persistent disk and files are stored locally — every deploy wipes uploads/exports. Should we plan a move to cloud storage (Firebase Storage / S3) as an early task, and is any user data already dangling?
-- [ ] **Public `/uploads` exposure:** claim photos are world-readable at guessable URLs today (Golden Rule #6 risk in production NOW). OK to prioritize locking this down ahead of the normal Phase 3 order?
+- [x] **Public `/uploads` exposure:** → **RESOLVED 2026-07-18 (T-3.10a).** Client escalated; claim photos + exports no longer publicly served (only branding logos). NOTE still open: files remain on Render's ephemeral disk (see the "uploads being lost" item) — durable cloud storage + at-rest encryption is the remaining part of T-3.10.
 - [ ] Blog pages (`Blog.jsx`, `BlogPost.jsx`) are built but never routed — keep + fix content (currently has fabricated study data) or delete?
 - [ ] **Real testimonials wanted (T-1.9 shipped hidden):** the home-page testimonials section now renders only from `frontend/src/data/testimonials.js` (empty). Please collect genuine customer feedback WITH written permission (name or initials, role, quote, date; carrier names only with authorization) and it can go live by filling that file.
-- [ ] **Test account for authed baselines:** provide test login credentials (or approve creating a dedicated test account) so dashboard/subscriptions/settings/CRM/admin/enterprise pages can be baselined. Signup sends a real verification email via Brevo and writes to the live Firebase project, so I didn't create one unilaterally.
-- [ ] **Pricing PRICE conflict (report counts now fixed):** report counts were aligned to the server-enforced `tiers.js` values (5/50/200/unlimited) in T-1.1. But **prices still disagree**: Agency is **$99.99/mo** on Home, FAQs, Subscriptions, AdminTierUpdate and in `tiers.js`, yet **$149.99/mo** on the Pricing page; Enterprise is **$499/mo** everywhere except the Pricing page's **$299.99/mo**. The real charge comes from the Stripe Price IDs in env (not visible in the repo). Which prices are live in Stripe? (Blocks final numbers for T-1.8; I did NOT touch any displayed price.)
-- [ ] **"~60 seconds" generation-time claim:** Home features/how-it-works say a full report takes ~60s. Plausible but unmeasured — keep only if we can verify with real timings (could measure in T-2.x once AI models are fixed).
-- [ ] **"CRU GROUP-standard" wording** (Home hero, feature card, footer tagline): is the report template actually built to a CRU Group standard, or is this aspirational? If unverifiable it should be reworded (Golden Rule #1).
+- [x] **Test account for authed baselines:** → **APPROVED 2026-07-18.** Client granted permission to create a test account and use it to review dashboard, admin, settings, and all workflows with real screenshots. (To do.)
+- [x] **Pricing conflict:** → **RESOLVED 2026-07-18.** Client confirmed the correct monthly prices are **Starter $0 / Professional $39.99 / Agency $99.99 / Enterprise $499** (screenshot). Directive: **every page must match the prices configured in Stripe — no inconsistencies anywhere.** So the Pricing-page outliers ($149.99, $299.99) are the bug to fix (T-1.8, now unblocked). Report counts already aligned to `tiers.js` 5/50/200/unlimited in T-1.1.
+- [x] **Marketing-claim softening:** → **DIRECTIVE 2026-07-18.** Client: "Remove or soften any claims that cannot be verified — report generation time, industry standards, accuracy %, certifications, customer statistics. Everything must be factual and verifiable." Applies to the **"~60 seconds"** claim, **"CRU GROUP-standard"** wording (Home hero/feature/footer), and any residual stats. (To do — T-1.1 follow-up pass.)
+- [x] **Canonical domain:** → **2026-07-18.** Both www and non-www serve; keeping non-www (`https://flacronai.com`) as the single canonical (already set in Seo + sitemap). No change needed.
+- [ ] Is there real usage data we ARE allowed to display (e.g. real avg generation time)? (Still open — needed before re-adding any timing claim.)
 
 ---
 

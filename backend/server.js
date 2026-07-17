@@ -81,12 +81,28 @@ app.use((req, res, next) => {
 });
 
 // ── STATIC FILES ──────────────────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+// SECURITY: only branding assets (user + white-label logos) are served publicly.
+// Claim/report photos and generated exports contain sensitive claim data and are
+// NEVER served over this static route — reports are used server-side only, and
+// exports are downloaded via the authenticated GET /api/reports/:id/download
+// endpoint (ownership-checked). This closes the world-readable-uploads hole.
+const { resolvePublicUpload } = require('./middleware/uploadAccess');
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    if (!resolvePublicUpload(UPLOAD_DIR, req.path)) {
+      return res.status(404).json({ success: false, error: 'Not found', code: 'NOT_FOUND' });
+    }
+    next();
   },
-}));
+  express.static(UPLOAD_DIR, {
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+    },
+  })
+);
 
 // ── HEALTH CHECKS ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
