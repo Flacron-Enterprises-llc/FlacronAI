@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.12 done, awaiting next prompt)
-- **Next up:** T-1.13 (sitemap.xml, robots.txt, 404 handling); T-1.8 still BLOCKED on price answer
+- **Now working on:** — (T-1.13 done, awaiting next prompt)
+- **Next up:** T-1.14 (JSON-LD structured data); T-1.8 still BLOCKED on price answer
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -36,7 +36,7 @@
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
 | T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
-| T-1.13 | SEO: sitemap, robots, canonical | TODO | |
+| T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
 | T-1.14 | SEO: structured data (JSON-LD) | TODO | |
 | T-1.15 | SEO: performance + image optimization | TODO | |
 | T-1.16 | Opt-in / lead-capture forms | TODO | consent-based |
@@ -76,6 +76,18 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.13 — SEO technical base (sitemap / robots / 404)
+- **Status:** DONE
+- **What changed:**
+  - **`frontend/public/robots.txt` (new):** allows crawl of all public pages; `Disallow`s every gated app/admin route (`/dashboard`, `/subscriptions`, `/settings`, `/crm`, `/white-label`, `/admin`, `/admin-tier-update`, `/enterprise-dashboard`, `/enterprise/`, `/invite/`, `/auth`); points to the sitemap.
+  - **`frontend/public/sitemap.xml` (new):** 10 indexable public URLs only (matches the `index,follow` set from T-1.12) with sensible priority/changefreq — Home 1.0, Pricing 0.9, Developers/ApiDocs 0.8, About/FAQs/Contact 0.6, legal 0.3. Excludes noindex/gated/dynamic routes.
+  - **Soft-404 fix (the real SEO issue in a SPA):** Vercel rewrites all paths → `index.html` with HTTP 200, so unknown URLs render the 404 view but return 200 ("soft 404"), which Google may index. Mounted `<Seo … path={null} noindex />` on the catch-all route: 404s now emit `robots: noindex,nofollow`. Enhanced the Seo component with a `path={null}` mode that **also removes any canonical** left over from the previously-viewed page (so a 404 reached from /pricing doesn't inherit /pricing's canonical).
+  - Static files verified to be copied into `dist/` by the Vite build; Vercel serves `public/` files ahead of the SPA rewrite, so `/robots.txt` and `/sitemap.xml` resolve in prod.
+- **Files touched:** frontend/public/robots.txt (new), frontend/public/sitemap.xml (new), frontend/src/components/Seo.jsx (path=null handling), frontend/src/App.jsx (Seo on 404).
+- **QA done:** dev server serves /robots.txt (text/plain 200) and /sitemap.xml (text/xml 200); sitemap parsed as valid XML with 10 `<url>` nodes; navigated /pricing → /(bad url) and confirmed 404 sets `noindex,nofollow` AND canonical was removed (was /pricing's); both files present in `dist/` after build; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** update `sitemap.xml` `lastmod` / add rows when new public pages ship (e.g. if Blog is revived); if a blog launches, consider a dynamic sitemap. Canonical domain assumed `https://flacronai.com` (confirm www vs non-www with client if it matters for canonicalization).
+- **Golden-rule check:** none applicable (technical SEO only).
 
 ### [2026-07-17] — T-1.12 — SEO on-page (per page)
 - **Status:** DONE

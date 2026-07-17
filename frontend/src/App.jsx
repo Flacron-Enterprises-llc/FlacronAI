@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-rou
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import Seo from './components/Seo.jsx';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -100,6 +101,7 @@ const App = () => {
         {/* 404 */}
         <Route path="*" element={
           <div className="min-h-screen bg-bg flex items-center justify-center text-center p-4">
+            <Seo title="Page Not Found — FlacronAI" description="The page you're looking for doesn't exist." path={null} noindex />
             <div>
               <h1 className="text-8xl font-black text-orange-500/20 mb-4">404</h1>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h2>

@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Application & account pages (gated, no SEO value)
+Disallow: /dashboard
+Disallow: /subscriptions
+Disallow: /settings
+Disallow: /crm
+Disallow: /white-label
+Disallow: /admin
+Disallow: /admin-tier-update
+Disallow: /enterprise-dashboard
+Disallow: /enterprise/
+Disallow: /invite/
+Disallow: /auth
+
+Sitemap: https://flacronai.com/sitemap.xml

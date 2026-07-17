@@ -33,11 +33,17 @@ const setLink = (rel, href) => {
 export default function Seo({ title, description, path = '/', noindex = false }) {
   useEffect(() => {
     document.title = title;
-    const url = `${SITE_URL}${path}`;
+    // path === null → a route with no canonical URL of its own (e.g. the 404 page)
+    const url = path == null ? SITE_URL : `${SITE_URL}${path}`;
 
     setMeta('name', 'description', description);
     setMeta('name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
-    setLink('canonical', url);
+    if (path != null) {
+      setLink('canonical', url);
+    } else {
+      // 404 / no-canonical route: drop any canonical left from a previous page
+      document.head.querySelector('link[rel="canonical"]')?.remove();
+    }
 
     setMeta('property', 'og:site_name', SITE_NAME);
     setMeta('property', 'og:type', 'website');
