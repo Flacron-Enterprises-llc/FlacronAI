@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  BarChart3,
+  BarChart3, Lock, KeyRound, CreditCard, ServerCog,
   CheckCircle, Download, Eye, Cpu, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
@@ -636,7 +636,7 @@ const Home = () => {
                   </li>
                 ))}
               </ul>
-              <Link to={plan.price === 0 ? '/auth?mode=signup' : '/pricing'} className={`block text-center text-sm py-2 rounded-lg font-medium transition-colors ${plan.highlight ? 'bg-orange-500 hover:bg-orange-600 text-gray-900' : 'bg-gray-100 hover:bg-gray-100 text-gray-900 border border-gray-200'}`}>
+              <Link to={plan.price === 0 ? '/auth?mode=signup' : '/pricing'} className={`block text-center text-sm py-2 rounded-lg font-medium transition-colors ${plan.highlight ? 'bg-primary hover:bg-primary-hover text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-200'}`}>
                 {plan.price === 0 ? 'Get Started Free' : 'Get Started'}
               </Link>
             </motion.div>
@@ -648,6 +648,46 @@ const Home = () => {
             View full pricing & feature comparison
             <ArrowRight className="w-4 h-4" />
           </Link>
+        </div>
+      </section>
+
+      {/* Trust & security — verifiable facts only, no compliance badges (Golden Rule #6) */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <h2 className="text-3xl font-black text-gray-900 mb-3">Security, Stated Plainly</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              No badge wall — just what the platform actually does today.
+            </p>
+          </motion.div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              { icon: Lock, title: 'Encrypted in Transit', desc: 'All traffic between your browser and FlacronAI runs over HTTPS.' },
+              { icon: KeyRound, title: 'Firebase Authentication', desc: 'Sign-in handled by Google’s Firebase Auth — email/password or Google account. Passwords are never stored by us.' },
+              { icon: CreditCard, title: 'Stripe-Hosted Payments', desc: 'Checkout and card handling happen on Stripe. Card numbers never touch FlacronAI servers.' },
+              { icon: ServerCog, title: 'Server-Side Plan Limits', desc: 'Report limits and plan features are enforced on the server, not in the browser — covered by automated tests.' },
+            ].map(({ icon: Icon, title, desc }, i) => (
+              <motion.div
+                key={title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.07 }}
+                className="bg-white border border-border rounded-card p-5"
+              >
+                <div className="w-10 h-10 rounded-xl bg-navy-800/5 border border-navy-800/10 flex items-center justify-center mb-4">
+                  <Icon className="w-5 h-5 text-navy-700" />
+                </div>
+                <h3 className="text-gray-900 font-semibold mb-1.5">{title}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">{desc}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 

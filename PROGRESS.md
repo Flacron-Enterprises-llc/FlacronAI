@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.6 done, awaiting next prompt)
-- **Next up:** T-1.7 (CTAs + trust/security strip)
+- **Now working on:** — (T-1.7 done, awaiting next prompt)
+- **Next up:** T-1.8 (pricing display — needs the price-conflict open question answered: Agency $99.99 vs $149.99, Enterprise $499 vs $299.99)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -30,7 +30,7 @@
 | T-1.4 | Hero section rebuild | DONE | 2026-07-17 — new H1/positioning/CTAs/trust line; "View Sample Report" CTA deferred to T-1.6 |
 | T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
 | T-1.6 | Sample report preview + download | DONE | 2026-07-17 — cautious-language sample PDF; hero CTA swapped to "View Sample Report"; regenerable via backend/scripts/make-sample-report.js |
-| T-1.7 | CTAs + trust bar | TODO | |
+| T-1.7 | CTAs + trust bar | DONE | 2026-07-17 — broken /api-docs CTA fixed; all internal links verified; honest security strip added (no badges) |
 | T-1.8 | Pricing display rebuild | TODO | |
 | T-1.9 | Testimonials/social proof (real only) | TODO | |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
@@ -76,6 +76,21 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.7 — CTAs + trust/security strip
+- **Status:** DONE
+- **What changed:**
+  - **CTA consistency + bug fixes:**
+    - `Developers.jsx` — **both "View API Docs" CTAs navigated to `/api-docs`, which doesn't exist (404)**; fixed to the real route `/docs/api` (click-tested). Also removed a leftover "webhooks" promise in the hero copy (feature doesn't exist — missed in T-1.1).
+    - `About.jsx` — "Get Started Free" was a plain `<a href="/auth">` (full page reload, landed on sign-IN); now a router `Link` to `/auth?mode=signup` like every other signup CTA.
+    - `FAQs.jsx` — "Contact Support" plain anchor → router `Link`.
+    - `Home.jsx` pricing-preview highlight button had raw `orange-500` + dark-on-orange text; now `bg-primary` tokens with white text (matches `btn-primary` everywhere else).
+    - Signup CTAs now uniformly route to `/auth?mode=signup`; plan CTAs to `/pricing`; sales CTAs to `/contact`.
+  - **New trust/security strip** on Home ("Security, Stated Plainly", before the CTA banner): four cards, each a verifiable fact — HTTPS in transit, Firebase Authentication (passwords never stored by FlacronAI), Stripe-hosted checkout (card data never touches our servers), server-side plan enforcement (noting it's covered by the T-0.3 automated tests). Subheading explicitly says "no badge wall". **Zero compliance badges** (Golden Rule #6). Deliberately says nothing about file/photo storage — that story isn't good yet (public /uploads, Phase 3).
+- **Files touched:** frontend/src/pages/{Home,About,Developers,FAQs}.jsx, PROGRESS.md.
+- **QA done:** automated link audit across 7 marketing pages — every internal href resolves to a real route ("ALL INTERNAL LINKS RESOLVE"); Developers CTA click-tested → lands on `/docs/api`; trust strip screenshot verified (E:/claude-scratch/t17-qa/); 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** trust strip could later gain a "how we store claim data" card once Phase 3 fixes storage; nav "Docs" dropdown wording could align with CTA labels in T-1.10.
+- **Golden-rule check:** #6 ✓ (no badges, only true facts); #1 ✓ (removed the lingering webhooks claim); #4 ✓ (no non-functional feature promised).
 
 ### [2026-07-17] — T-1.6 — Sample report preview + download
 - **Status:** DONE

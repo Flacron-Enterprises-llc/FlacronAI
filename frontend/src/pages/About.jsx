@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { Zap, Target, Shield, Smile, Building2, Heart } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -107,7 +108,7 @@ export default function About() {
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Ready to Try FlacronAI?</h2>
           <p className="text-gray-600 mb-6">Start free — no credit card required. Generate your first AI-powered claim report in minutes.</p>
-          <a href="/auth" className="btn-primary inline-flex items-center gap-2">Get Started Free</a>
+          <Link to="/auth?mode=signup" className="btn-primary inline-flex items-center gap-2">Get Started Free</Link>
         </motion.div>
       </section>
 

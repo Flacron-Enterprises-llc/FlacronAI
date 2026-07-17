@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
@@ -203,7 +204,7 @@ export default function FAQs() {
         <div className="mt-12 card p-6 text-center">
           <p className="text-gray-900 font-semibold mb-2">Still have questions?</p>
           <p className="text-gray-600 text-sm mb-4">Our support team is here to help with anything not covered above.</p>
-          <a href="/contact" className="btn-primary inline-flex items-center gap-2 text-sm py-2 px-6">Contact Support</a>
+          <Link to="/contact" className="btn-primary inline-flex items-center gap-2 text-sm py-2 px-6">Contact Support</Link>
         </div>
       </div>
       <Footer />

@@ -131,10 +131,10 @@ export default function Developers() {
             Build with the <span className="gradient-text">FlacronAI API</span>
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-10">
-            Integrate AI-powered insurance claim report generation directly into your applications. REST API, API keys, webhooks, and full documentation.
+            Integrate AI-powered insurance claim report generation directly into your applications. REST API, API keys, multi-format export, and full documentation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/api-docs')} className="btn-primary flex items-center gap-2">
+            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
               <BookOpen className="w-4 h-4" /> View API Docs <ArrowRight className="w-4 h-4" />
             </button>
             <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">
@@ -230,7 +230,7 @@ export default function Developers() {
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Build?</h2>
           <p className="text-gray-600 mb-8">API access is available on Agency ($99/mo) and Enterprise ($499/mo) plans. Start with the docs, upgrade when ready.</p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/api-docs')} className="btn-primary flex items-center gap-2">
+            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
               <BookOpen className="w-4 h-4" /> Read the Docs
             </button>
             <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">
