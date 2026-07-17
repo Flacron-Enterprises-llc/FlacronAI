@@ -60,9 +60,7 @@ const Navbar = ({ transparent = false }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/25 group-hover:shadow-orange-500/50 transition-shadow">
-              <Zap className="w-4 h-4 text-gray-900" fill="white" />
-            </div>
+            <img src="/logo-mark.png" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg text-gray-900 tracking-tight">FlacronAI</span>
           </Link>
 

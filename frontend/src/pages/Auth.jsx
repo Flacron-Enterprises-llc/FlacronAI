@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Zap, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -197,9 +197,7 @@ const Auth = () => {
         <div className="relative w-full max-w-md">
           {/* Logo */}
           <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
-              <Zap className="w-5 h-5 text-gray-900" fill="white" />
-            </div>
+            <img src="/logo-mark.png" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
             <span className="font-bold text-xl text-gray-900">FlacronAI</span>
           </Link>
 
@@ -269,9 +267,7 @@ const Auth = () => {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
-            <Zap className="w-5 h-5 text-gray-900" fill="white" />
-          </div>
+          <img src="/logo-mark.png" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
           <span className="font-bold text-xl text-gray-900">FlacronAI</span>
         </Link>
 

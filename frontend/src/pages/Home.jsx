@@ -91,9 +91,7 @@ const DashboardMock = () => {
         {/* App header */}
         <div className="bg-white border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-white" fill="white" />
-            </div>
+            <img src="/logo-mark.png" alt="" className="w-6 h-6 object-contain" />
             <span className="font-bold text-sm text-gray-900">FlacronAI</span>
           </div>
           <div className="flex items-center gap-2">

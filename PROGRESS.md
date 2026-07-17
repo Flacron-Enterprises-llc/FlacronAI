@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.2 done, awaiting next prompt)
-- **Next up:** T-1.3 (logo + favicon — needs transparent/SVG/icon-only assets from client, see Open Questions)
+- **Now working on:** — (T-1.3 done, awaiting next prompt)
+- **Next up:** T-1.4 (hero rebuild)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -26,7 +26,7 @@
 |------|-------|--------|-------|
 | T-1.1 | Remove unverified claims | DONE | 2026-07-17 — all fake stats/testimonials/certs stripped from live pages; Blog.jsx (dead page) pending open question |
 | T-1.2 | Define brand tokens (color/type/spacing) | DONE | 2026-07-17 — tokens in tailwind.config.js from logo colors (#FD4403/#002A64) + Space Grotesk/Inter pairing |
-| T-1.3 | Logo update + favicon set | TODO | client HAS final logo files — collect them |
+| T-1.3 | Logo update + favicon set | DONE | 2026-07-17 — FA mark extracted from client PNG; favicons + apple-touch + og-image generated; Zap placeholder gone. Vector originals still wanted (see Open Questions) |
 | T-1.4 | Hero section rebuild | TODO | |
 | T-1.5 | Bigger product screenshot / demo | TODO | |
 | T-1.6 | Sample report preview + download | TODO | |
@@ -76,6 +76,17 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.3 — Logo + favicon
+- **Status:** DONE
+- **What changed:**
+  - **Assets generated from the client's own logo PNG** (no redraw — cropped programmatically with sharp, white background converted to alpha): `frontend/public/logo-mark.png` (512² icon-only FA mark, transparent), `favicon-32.png` / `favicon-64.png`, `apple-touch-icon.png` (180², white bg per Apple convention), `og-image.png` (1200×630, full logo lockup on white, ready for T-1.12's og:image meta).
+  - **Old placeholder logo (lucide `Zap` in an orange gradient box) fully removed from every brand position:** Navbar, Footer, both Auth-page logo blocks, EnterpriseDashboard sidebar brand, the Home hero's product mock, and the Suspense `PageLoader` (which now shows the mark above the spinner). Unused `Zap` imports cleaned (Footer, Auth). Remaining `Zap` usages are feature/menu icons, not logos.
+  - **index.html**: dead `/favicon.svg` reference (404 since day one) replaced with real favicon-32/64 + apple-touch links.
+- **Files touched:** frontend/public/{logo-mark,favicon-32,favicon-64,apple-touch-icon,og-image}.png (new), frontend/index.html, frontend/src/App.jsx, frontend/src/components/{Navbar,Footer}.jsx, frontend/src/pages/{Auth,EnterpriseDashboard,Home}.jsx.
+- **QA done:** favicon-32/logo-mark served 200 on dev; navbar, auth page, and loading screen visually verified with new mark (screenshots in E:/claude-scratch/t13-qa/); lint 0 errors; Vitest 2/2; `npm run build` passes; 0 console errors.
+- **Left / follow-ups:** emails — Brevo templates (IDs 10–15) are managed in the Brevo dashboard, not the repo; the client should update the logo there (inline-HTML fallbacks in `emailService.js` are text-only, nothing to change). Vector/SVG originals + no-tagline horizontal lockup still wanted from client for crisper rendering (open question updated). Social-preview og:image meta tags land in T-1.12.
+- **Golden-rule check:** none violated (brand assets derive directly from the client's real logo).
 
 ### [2026-07-17] — T-1.2 — Brand design tokens
 - **Status:** DONE
@@ -146,7 +157,7 @@ Template for each entry — copy this block:
 ## Open Questions (ask the human — don't guess)
 
 - [x] Tech stack unknown until audit. → **Resolved 2026-07-17**: see CLAUDE.md §4.
-- [x] Logo/brand assets: **partially received 2026-07-17** — `frontend/public/logo-light.png` + `logo-dark.png` appeared in the working tree (client's "FA" mark, orange #F1531F-ish + navy, with taglines; committed in 5c5435a). Still needed for T-1.3: **SVG or transparent-background versions, an icon-only mark (for favicon/app icons), and a version without the tagline** — the dark PNG has a baked-in busy background that can't go in a header.
+- [x] Logo/brand assets: PNGs received 2026-07-17; T-1.3 shipped with derivatives extracted from them (icon-only mark, favicons, og-image). **Nice-to-have from client:** vector/SVG originals and an official horizontal no-tagline lockup — would render crisper at large sizes and replace the raster crops; also update the logo inside Brevo email templates (IDs 10–15, managed in the Brevo dashboard, not the repo).
 - [x] Payment provider: **Stripe**. → **Resolved 2026-07-17**: Stripe **Checkout Sessions, `mode: 'subscription'`**; webhook wired + signature-verified + idempotent; events handled: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`, `customer.subscription.updated` (see CLAUDE.md §4).
 - [ ] Is there real usage data we ARE allowed to display (e.g. real avg generation time)?
 - [ ] **Admin email mismatch:** `firestore.rules` hardcodes `admin@flacronai.com`, but env/actual admin is `admin@flacronenterprises.com`. Which address is the real admin account? (Affects T-3.x fixes.)

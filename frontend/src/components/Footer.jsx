@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Zap } from 'lucide-react';
 
 const TikTokIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -86,9 +85,7 @@ const Footer = () => {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link to="/" className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center">
-                <Zap className="w-4 h-4 text-white" fill="white" />
-              </div>
+              <img src="/logo-mark.png" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
               <span className="font-bold text-lg text-gray-900">FlacronAI</span>
             </Link>
             <p className="text-gray-500 text-sm leading-relaxed mb-5 max-w-xs">

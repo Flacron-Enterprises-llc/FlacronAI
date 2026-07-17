@@ -349,9 +349,7 @@ export default function EnterpriseDashboard() {
         {/* Logo */}
         <div className="p-5 border-b border-[#e5e7eb]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/25">
-              <Zap className="w-5 h-5 text-white" fill="white" />
-            </div>
+            <img src="/logo-mark.png" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
               <p className="text-sm font-black text-gray-900 leading-none">FlacronAI</p>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500 text-white uppercase tracking-wide">
