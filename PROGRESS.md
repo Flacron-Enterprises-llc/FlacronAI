@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.5 done, awaiting next prompt)
-- **Next up:** T-1.6 (sample report preview + download; swaps hero secondary CTA to "View Sample Report")
+- **Now working on:** — (T-1.6 done, awaiting next prompt)
+- **Next up:** T-1.7 (CTAs + trust/security strip)
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -29,7 +29,7 @@
 | T-1.3 | Logo update + favicon set | DONE | 2026-07-17 — FA mark extracted from client PNG; favicons + apple-touch + og-image generated; Zap placeholder gone. Vector originals still wanted (see Open Questions) |
 | T-1.4 | Hero section rebuild | DONE | 2026-07-17 — new H1/positioning/CTAs/trust line; "View Sample Report" CTA deferred to T-1.6 |
 | T-1.5 | Bigger product screenshot / demo | DONE | 2026-07-17 — real dashboard-wizard screenshot (WebP 76KB, retina) in new showcase section |
-| T-1.6 | Sample report preview + download | TODO | |
+| T-1.6 | Sample report preview + download | DONE | 2026-07-17 — cautious-language sample PDF; hero CTA swapped to "View Sample Report"; regenerable via backend/scripts/make-sample-report.js |
 | T-1.7 | CTAs + trust bar | TODO | |
 | T-1.8 | Pricing display rebuild | TODO | |
 | T-1.9 | Testimonials/social proof (real only) | TODO | |
@@ -76,6 +76,17 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-17] — T-1.6 — Sample report preview + download
+- **Status:** DONE
+- **What changed:**
+  - **`frontend/public/sample-report.pdf`** (10 KB, 5 pages) — a branded sample inspection report (Wind/Hail, same fictional claim as the T-1.5 screenshot for consistency). Structure mirrors the real generator's 9 sections (`properPdfGenerator.js`), but the content **models the post-Phase-2 target language**: every observation is cautious ("appears consistent with…", "cannot be assessed from photos", "technician evaluation recommended"), costs are preliminary ranges labeled "not a settlement recommendation", **coverage analysis is explicitly declared out of scope** ("a determination made by the carrier… not by this report or by FlacronAI"), and the auto-"Adjuster Certification" of the real generator is replaced by a **"Review & Approval" block** (licensed-adjuster signature). Every page carries a navy header bar + diagonal SAMPLE watermark + "fictional data" disclaimers.
+  - **Deliberately NOT generated via `aiService`/`properPdfGenerator`:** the live AI prompts still demand verdicts and the PDF generator hard-codes the certification page (both Phase-2 fixes) — running them would have produced a Golden-Rule-#2-violating sample. Instead: `backend/scripts/make-sample-report.js` (committed) builds the PDF with pdfkit mirroring the real layout; re-run it after content tweaks (`node scripts/make-sample-report.js` from `backend/`).
+  - **Home.jsx:** hero secondary CTA is now **"View Sample Report"** (opens PDF in new tab — completes the T-1.4 deferral); showcase section gained a "Download the sample report (PDF)" link with the `download` attribute. No opt-in gate (client hasn't requested one — revisit with T-1.16).
+- **Files touched:** frontend/public/sample-report.pdf (new), backend/scripts/make-sample-report.js (new), frontend/src/pages/Home.jsx.
+- **QA done:** PDF serves 200 (10,394 bytes); full 5-page content reviewed — zero verdict language, coverage exclusion present (Golden Rule #2 QA item ✓); CTA attrs verified programmatically (`target="_blank"` preview + `download` link); 0 console errors; lint 0 errors; Vitest 2/2; build passes.
+- **Left / follow-ups:** when Phase 2 fixes the real generator, regenerate the sample FROM the product for full authenticity; consider opt-in gating per client preference (T-1.16).
+- **Golden-rule check:** #1 ✓ (labeled fictional/sample everywhere); #2 ✓ (the sample demonstrates the compliant language the product itself must adopt in Phase 2); #5 ✓ (no forced email capture).
 
 ### [2026-07-17] — T-1.5 — Product demo / bigger screenshot
 - **Status:** DONE

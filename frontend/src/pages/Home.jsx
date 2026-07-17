@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  Play, BarChart3,
+  BarChart3,
   CheckCircle, Download, Eye, Cpu, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
@@ -409,9 +409,9 @@ const Home = () => {
                   Generate My First Report Free
                   <ArrowRight className="w-4 h-4" />
                 </Link>
-                <a href="#how-it-works" className="btn-secondary flex items-center gap-2">
-                  <Play className="w-4 h-4 fill-current" />
-                  See How It Works
+                <a href="/sample-report.pdf" target="_blank" rel="noopener" className="btn-secondary flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  View Sample Report
                 </a>
               </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500">
@@ -498,6 +498,13 @@ const Home = () => {
               />
             </div>
           </motion.div>
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Want to see the output?{' '}
+            <a href="/sample-report.pdf" download className="text-brand-600 font-medium hover:underline">
+              Download the sample report (PDF)
+            </a>{' '}
+            — fictional data, real structure and language.
+          </p>
         </div>
       </section>
 
