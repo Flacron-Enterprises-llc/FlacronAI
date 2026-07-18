@@ -6,8 +6,9 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-0.2b authed app walkthrough — done; awaiting next prompt)
-- **Next up (client priorities, 2026-07-18):** fix findings from the walkthrough (white-label custom-domain feature, admin stats loading), T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
+- **Now working on:** — (T-1.14 JSON-LD structured data — done; awaiting next prompt)
+- **Next up:** T-1.15 (perf + image optimization / Lighthouse), T-1.11 (marketing mobile pass), T-1.10 (de-AI polish); plus walkthrough findings (admin stats perf; white-label custom-domain needs client decision).
+- **Client confirmations (2026-07-18, Rodrige/CEO):** delete Blog → already done (T-1.1b); keep Enterprise "Unlimited Reports" as-is, no fair-use claim → matches current state, no change.
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -37,7 +38,7 @@
 | T-1.11 | Mobile layout pass (marketing) | TODO | |
 | T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
 | T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
-| T-1.14 | SEO: structured data (JSON-LD) | TODO | |
+| T-1.14 | SEO: structured data (JSON-LD) | DONE | 2026-07-18 — Organization (Home), SoftwareApplication+Offers (Pricing), FAQPage (FAQs); validated, prices from shared source |
 | T-1.15 | SEO: performance + image optimization | TODO | |
 | T-1.16 | Opt-in / lead-capture forms | TODO | consent-based |
 
@@ -78,6 +79,17 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-1.14 — SEO structured data (JSON-LD)
+- **Status:** DONE
+- **What changed:**
+  - **`Seo.jsx` gained a `jsonLd` prop** — injects a single managed `<script type="application/ld+json" data-seo-jsonld>` tag, replaced per page and **removed when a page passes no schema** (verified: /about has zero tags after visiting /pricing). Depends on the stringified schema so it doesn't thrash.
+  - **New `frontend/src/data/structuredData.js`:** `ORGANIZATION_JSONLD` (name, url, logo, parentOrganization = Flacron Enterprises LLC, `sameAs` = the 6 real social profiles from the footer), `PRODUCT_JSONLD` (SoftwareApplication + AggregateOffer with a per-plan Offer — **prices pulled from `data/plans.js`** so structured data can't drift from the visible pricing), and `buildFaqJsonLd()` (FAQPage from a Q/A list).
+  - **Wired:** Organization on Home, Product/Offers on Pricing, FAQPage on FAQs (built from the page's own `FAQS` array → 20 Q&A, always in sync).
+- **Files touched:** frontend/src/components/Seo.jsx, frontend/src/data/structuredData.js (new), frontend/src/pages/{Home,Pricing,FAQs}.jsx.
+- **QA done:** headless validation of all pages — Home=Organization ✓, Pricing=SoftwareApplication with offers Starter=$0/Professional=$39.99/Agency=$99.99/Enterprise=$499 ✓, FAQs=FAQPage 20 Q&A ✓, About=0 tags (cleanup works) ✓; each parses as valid JSON; build + lint (0 errors) + Vitest 2/2 pass.
+- **Left / follow-ups:** could add BreadcrumbList later; when real review ratings exist, an aggregateRating could be added to the Product (only with real data). SPA caveat from T-1.12 still applies (client-side injection; fine for Google).
+- **Golden-rule check:** #1 upheld — schemas contain only verifiable facts (real socials, real prices, real FAQ text); no ratings/counts invented.
 
 ### [2026-07-18] — T-0.2b — Authenticated app walkthrough (test account approved)
 - **Status:** DONE (review/QA task — no app code changed)

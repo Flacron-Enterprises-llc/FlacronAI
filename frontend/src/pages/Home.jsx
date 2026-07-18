@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
 import TESTIMONIALS from '../data/testimonials.js';
 import { PLAN_PRICING } from '../data/plans.js';
+import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
 import Seo from '../components/Seo.jsx';
 
 // ── Mock Dashboard UI ──────────────────────────────────────────────────────
@@ -379,7 +380,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="FlacronAI — AI-Assisted Insurance Inspection Reports" description="Draft professional insurance inspection reports in minutes. AI assembles the draft from your claim details and damage photos — you review and approve. Start free." path="/" />
+      <Seo title="FlacronAI — AI-Assisted Insurance Inspection Reports" description="Draft professional insurance inspection reports in minutes. AI assembles the draft from your claim details and damage photos — you review and approve. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar transparent />
 
       {/* Hero */}

@@ -30,7 +30,8 @@ const setLink = (rel, href) => {
  *   <Seo title="Pricing — FlacronAI" description="…" path="/pricing" />
  * `path` builds the canonical URL; pass `noindex` for auth/app/404 pages.
  */
-export default function Seo({ title, description, path = '/', noindex = false }) {
+export default function Seo({ title, description, path = '/', noindex = false, jsonLd = null }) {
+  const jsonLdStr = jsonLd ? JSON.stringify(jsonLd) : null;
   useEffect(() => {
     document.title = title;
     // path === null → a route with no canonical URL of its own (e.g. the 404 page)
@@ -56,7 +57,19 @@ export default function Seo({ title, description, path = '/', noindex = false })
     setMeta('name', 'twitter:title', title);
     setMeta('name', 'twitter:description', description);
     setMeta('name', 'twitter:image', DEFAULT_OG_IMAGE);
-  }, [title, description, path, noindex]);
+
+    // JSON-LD structured data — single managed tag, replaced per page (null clears it)
+    const existing = document.head.querySelector('script[data-seo-jsonld]');
+    if (jsonLdStr) {
+      const el = existing || document.createElement('script');
+      el.setAttribute('type', 'application/ld+json');
+      el.setAttribute('data-seo-jsonld', '');
+      el.textContent = jsonLdStr;
+      if (!existing) document.head.appendChild(el);
+    } else if (existing) {
+      existing.remove();
+    }
+  }, [title, description, path, noindex, jsonLdStr]);
 
   return null;
 }

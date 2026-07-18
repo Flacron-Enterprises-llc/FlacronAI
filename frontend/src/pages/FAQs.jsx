@@ -5,6 +5,7 @@ import { Search, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
+import { buildFaqJsonLd } from '../data/structuredData.js';
 
 const FAQS = [
   // General
@@ -117,6 +118,7 @@ const FAQS = [
 ];
 
 const CATEGORIES = ['All', 'General', 'Billing', 'Technical', 'API'];
+const FAQ_JSONLD = buildFaqJsonLd(FAQS);
 
 function FAQItem({ q, a }) {
   const [open, setOpen] = useState(false);
@@ -153,7 +155,7 @@ export default function FAQs() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how AI-assisted insurance report drafting works." path="/faqs" />
+      <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how AI-assisted insurance report drafting works." path="/faqs" jsonLd={FAQ_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-3xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
