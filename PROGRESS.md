@@ -6,8 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.1b claims-softening + Blog deletion — done; awaiting next prompt)
-- **Next up (client priorities, 2026-07-18):** test-account walkthrough of app/admin with real screenshots, T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
+- **Now working on:** — (T-0.2b authed app walkthrough — done; awaiting next prompt)
+- **Next up (client priorities, 2026-07-18):** fix findings from the walkthrough (white-label custom-domain feature, admin stats loading), T-1.14 JSON-LD, mobile/perf polish, full page-by-page QA.
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -78,6 +78,14 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-0.2b — Authenticated app walkthrough (test account approved)
+- **Status:** DONE (review/QA task — no app code changed)
+- **Method (repeatable; scripts in E:/claude-scratch):** client approved creating a test account. To avoid production writes / AI cost / Brevo emails, ran the whole flow **locally**: `qa-account.js create` provisions a verified enterprise-tier user via the Firebase Admin SDK (no signup email); backend started locally with `ADMIN_EMAIL=qa-review@example.com` inline override (dotenv doesn't overwrite preset env) so the admin panel authorizes; frontend `.env` temporarily pointed at `localhost:3000` + `VITE_ADMIN_EMAIL` set (backed up first, **restored after**); `qa-walkthrough.js` logs in through the real UI (submit via Enter — there are TWO "Sign In" buttons, the mode-tab and the submit) and screenshots each page (waits for the auth spinner to clear — profile re-fetches on every full reload). **Teardown done + verified:** test user deleted from Auth + Firestore (`auth/user-not-found` confirmed), `frontend/.env` restored to prod (`onrender` URL, no admin email). Test account was `qa-review@example.com` (example.com = reserved test domain), Firestore doc flagged `_qaTestAccount` with a delete-guard.
+- **Result:** all 8 gated pages load with the real auth flow, enterprise tier passing every `requireTier` gate, **0 console errors** on every page. Screenshots in E:/claude-scratch/qa-app/. Verified real, functional UI: **Dashboard** (5-step wizard, enterprise badge, unlimited limit), **Settings** (Profile/Security/API Keys/Notifications/Billing tabs, real profile data), **Subscriptions**, **CRM** (stat cards + activity/appointments), **White-Label Portal** (branding form + live preview + watermark), **Enterprise Dashboard** (polished overview, team, API keys), **Admin** (Overview/Customers/Leads tabs), **Admin Tier Update**.
+- **Findings logged to backlog (below):** (1) White-Label "Custom Domain" section is a **non-functional feature** — UI has CNAME setup + "Verify Domain", but backend `whitelabel.js` only supports subdomains (Rule #4, and it's the same "custom domain" claim removed from marketing). (2) **Admin stats cards never populated** (skeletons persisted ~20s) — likely the O(n) whole-collection reads flagged in the T-0.1 audit (`sales.js` admin/stats), or slow token verify; needs investigation. (3) White-Label default **primary color still `#f97316`** (old orange), not brand `#FD4403` — token drift in the white-label config default.
+- **Files touched:** PROGRESS.md only (walkthrough scripts live in scratch, not committed).
+- **Golden-rule check:** none violated — test account created under explicit client authorization, run locally, fully torn down and verified; no customer data exposed externally (screenshots stayed in local scratch).
 
 ### [2026-07-18] — T-1.1b — Soften unverifiable claims + delete fabricated Blog (client directive)
 - **Status:** DONE
@@ -296,7 +304,9 @@ Template for each entry — copy this block:
 - [x] **Public `/uploads` exposure:** → **RESOLVED 2026-07-18 (T-3.10a).** Client escalated; claim photos + exports no longer publicly served (only branding logos). NOTE still open: files remain on Render's ephemeral disk (see the "uploads being lost" item) — durable cloud storage + at-rest encryption is the remaining part of T-3.10.
 - [x] Blog pages (`Blog.jsx`, `BlogPost.jsx`) — **DELETED 2026-07-18 (T-1.1b).** Unrouted dead code full of fabricated studies/stats; removed per the "everything must be factual" directive. Recoverable from git if a real, factual blog is wanted later.
 - [ ] **Real testimonials wanted (T-1.9 shipped hidden):** the home-page testimonials section now renders only from `frontend/src/data/testimonials.js` (empty). Please collect genuine customer feedback WITH written permission (name or initials, role, quote, date; carrier names only with authorization) and it can go live by filling that file.
-- [x] **Test account for authed baselines:** → **APPROVED 2026-07-18.** Client granted permission to create a test account and use it to review dashboard, admin, settings, and all workflows with real screenshots. (To do.)
+- [x] **Test account for authed baselines:** → **APPROVED + DONE 2026-07-18 (T-0.2b).** Walkthrough complete; all authed pages render as real functional UI, 0 console errors. Test account created locally + fully torn down. Findings in the backlog below.
+- [x] **Marketing-claim softening** → **DONE 2026-07-18 (T-1.1b).**
+- [x] **Pricing conflict** → **DONE 2026-07-18 (T-1.8).**
 - [x] **Pricing conflict:** → **RESOLVED 2026-07-18.** Client confirmed the correct monthly prices are **Starter $0 / Professional $39.99 / Agency $99.99 / Enterprise $499** (screenshot). Directive: **every page must match the prices configured in Stripe — no inconsistencies anywhere.** So the Pricing-page outliers ($149.99, $299.99) are the bug to fix (T-1.8, now unblocked). Report counts already aligned to `tiers.js` 5/50/200/unlimited in T-1.1.
 - [x] **Marketing-claim softening:** → **DIRECTIVE 2026-07-18.** Client: "Remove or soften any claims that cannot be verified — report generation time, industry standards, accuracy %, certifications, customer statistics. Everything must be factual and verifiable." Applies to the **"~60 seconds"** claim, **"CRU GROUP-standard"** wording (Home hero/feature/footer), and any residual stats. (To do — T-1.1 follow-up pass.)
 - [x] **Canonical domain:** → **2026-07-18.** Both www and non-www serve; keeping non-www (`https://flacronai.com`) as the single canonical (already set in Seo + sitemap). No change needed.
@@ -306,4 +316,6 @@ Template for each entry — copy this block:
 
 ## Remaining / Nice-to-have backlog (not scheduled yet)
 
-- (add ideas here as they surface during work)
+- **[from T-0.2b walkthrough] White-Label "Custom Domain" is non-functional** — `WhiteLabelPortal.jsx` shows a Custom Domain section (CNAME setup, "Verify Domain" button, "reports.yourcompany.com") but `backend/routes/whitelabel.js` only supports subdomains. Either implement custom-domain + SSL (bigger infra task) or remove/mark "coming soon" (Rule #4). Ties to the marketing "custom domain → subdomain" fixes already shipped.
+- **[from T-0.2b walkthrough] Admin dashboard stats never populate** — the Overview stat cards stayed as skeletons for 20s+ with the test admin. Likely the O(n) whole-collection reads in `backend/routes/sales.js` (admin/stats reads all users/reports/salesLeads) — slow or timing out. Investigate + add Firestore aggregation/limits (relates to the audit's in-memory-pagination tech-debt list).
+- **[from T-0.2b walkthrough] White-Label default primary color is `#f97316`** (old orange), not brand `#FD4403` — update the default in the white-label config so new portals start on-brand.
