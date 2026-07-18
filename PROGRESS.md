@@ -39,7 +39,7 @@
 | T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
 | T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
 | T-1.14 | SEO: structured data (JSON-LD) | DONE | 2026-07-18 — Organization (Home), SoftwareApplication+Offers (Pricing), FAQPage (FAQs); validated, prices from shared source |
-| T-1.15 | SEO: performance + image optimization | TODO | |
+| T-1.15 | SEO: performance + image optimization | DONE | 2026-07-18 — logo-mark 512px/137KB → 160px/21KB (every page); confirmed lazy+sized images, route code-splitting, font-display swap |
 | T-1.16 | Opt-in / lead-capture forms | TODO | consent-based |
 
 ### Phase 2 — Core Reporting Platform
@@ -79,6 +79,15 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-1.15 — Performance + image optimization
+- **Status:** DONE
+- **What changed:** `logo-mark.png` was a **512×512 / 137 KB** PNG displayed at 24–48px in the navbar, footer, auth, loader, and hero mock — i.e. it shipped 137 KB for a tiny icon on **every page load**. Resized to **160×160 / 21 KB** (ample for retina at ≤48px); all references keep working (same filename), zero code change. ~85% smaller, on every route.
+- **Also verified (already good):** product screenshot is WebP 76 KB with `loading="lazy"` + explicit width/height (no CLS); route-level code splitting already in place (each page its own chunk, e.g. Home 32 KB / Dashboard 54 KB gzip-9–15 KB); Google Fonts load with `&display=swap` (no invisible-text block); hero LCP is text, not an image.
+- **Files touched:** frontend/public/logo-mark.png.
+- **QA done:** navbar logo screenshot confirms crisp at 32px @2× after downsizing; `npm run build` passes; Vitest 2/2. Recorded bundle sizes (largest = vendor `index` chunk 483 KB / 139 KB gzip, mostly Firebase + React).
+- **Left / follow-ups:** biggest remaining page-weight is the **483 KB vendor chunk** (Firebase SDK loaded app-wide via AuthContext) — could lazy-load Firebase or split `manualChunks`, but that's a larger/riskier change (deferred). `logo-light.png` (429 KB) + `logo-dark.png` (134 KB) are unused on-page source masters still shipped in `dist/` — move out of `public/` to trim deploy size. Couldn't run Lighthouse (would need a large install on this flaky network); optimizations are concrete + measured instead.
+- **Golden-rule check:** n/a (asset optimization).
 
 ### [2026-07-18] — T-3.3a — Fix admin stats hang + O(n) reads (walkthrough finding)
 - **Status:** DONE
