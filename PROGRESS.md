@@ -6,9 +6,14 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-1.14 JSON-LD structured data — done; awaiting next prompt)
-- **Next up:** T-1.15 (perf + image optimization / Lighthouse), T-1.11 (marketing mobile pass), T-1.10 (de-AI polish); plus walkthrough findings (admin stats perf; white-label custom-domain needs client decision).
-- **Client confirmations (2026-07-18, Rodrige/CEO):** delete Blog → already done (T-1.1b); keep Enterprise "Unlimited Reports" as-is, no fair-use claim → matches current state, no change.
+- **Now working on:** — (admin-email fix + Custom-Domain "Coming Soon" — done; awaiting next prompt)
+- **BIG NEW client-directed tasks (2026-07-18, batch 2) — not yet started, each substantial:**
+  1. **AI provider swap:** Claude API = PRIMARY, IBM watsonx = fallback, **remove ALL deprecated OpenAI models/code**. (Backend `aiService.js` rework; use `claude-api` skill for model IDs/SDK; needs `ANTHROPIC_API_KEY`.)
+  2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Finishes the durable-storage half of T-3.10.
+  3. **Email: drop Brevo → AWS SES.** Needs AWS creds + coordination; update `emailService.js` + templates + branding.
+  4. **Official SVG logo** — client asked for one; needs a designer or a careful vectorization.
+- **T-1.10 de-AI polish:** parked mid-start (rainbow gradient icons) — resume after the client-directed items.
+- **Client confirmations (2026-07-18):** Blog delete → already done (T-1.1b); Enterprise "Unlimited" stays → no change; testimonials stay hidden → matches T-1.9; performance numbers stay off → matches T-1.1b; pricing correct/match Stripe → done (T-1.8); canonical non-www → done (T-1.12/13).
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
 ---
@@ -79,6 +84,15 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — Client batch-2 quick wins: admin email + Custom Domain "Coming Soon"
+- **Status:** DONE (two focused commits)
+- **Admin account (T-3.10 sub-item):** client confirmed the official admin is **admin@flacronenterprises.com** and asked to update all references. Fixed `backend/firestore.rules` `isAdmin()` (was hardcoded `admin@flacronai.com` → the rules-level admin grants pointed at the wrong, non-existent account — a real security gap). Also corrected `backend/.env.example` and `frontend/.env.example` to the right address. Backend code already reads `process.env.ADMIN_EMAIL` (prod Render env must be set to this — flagged for the client). **firestore.rules must be redeployed to Firebase to take effect** (deploy step, client/devops).
+- **Custom Domain → "Coming Soon":** client said don't expose unimplemented functionality. Replaced the white-label portal's Custom Domain UI (CNAME instructions, "Your Domain" input, "Verify Domain" button, SSL status) with a clear "Coming Soon" card explaining subdomains work today. Removed the now-dead `handleVerifyDomain` handler, `verifyingDomain`/`domainStatus`/`cnamecopied` state, `cnamValue`, and unused `Shield`/`Copy` imports (client wants no dead code). Warnings back to baseline 32.
+- **Files touched:** backend/firestore.rules, backend/.env.example, frontend/.env.example, frontend/src/pages/WhiteLabelPortal.jsx, PROGRESS.md.
+- **QA done:** firestore.rules reviewed (single admin function, now correct); build passes; lint 0 errors / 32 warnings (baseline — dead code fully removed); Vitest 2/2. (Coming-Soon card is a static copy change; verified via build + code review rather than re-provisioning the test account.)
+- **Left / follow-ups:** the backend white-label `verifyDomain` endpoint still exists but is now unused by the UI — remove when custom-domain is actually built. Redeploy firestore.rules for the admin fix to take effect in production.
+- **Golden-rule check:** #4 upheld (no longer exposing the non-functional custom-domain feature); #6 advanced (admin rules now point at the real account).
 
 ### [2026-07-18] — T-1.15 — Performance + image optimization
 - **Status:** DONE
@@ -337,9 +351,10 @@ Template for each entry — copy this block:
 - [x] Logo/brand assets: PNGs received 2026-07-17; T-1.3 shipped with derivatives extracted from them (icon-only mark, favicons, og-image). **Nice-to-have from client:** vector/SVG originals and an official horizontal no-tagline lockup — would render crisper at large sizes and replace the raster crops; also update the logo inside Brevo email templates (IDs 10–15, managed in the Brevo dashboard, not the repo).
 - [x] Payment provider: **Stripe**. → **Resolved 2026-07-17**: Stripe **Checkout Sessions, `mode: 'subscription'`**; webhook wired + signature-verified + idempotent; events handled: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`, `customer.subscription.updated` (see CLAUDE.md §4).
 - [ ] Is there real usage data we ARE allowed to display (e.g. real avg generation time)?
-- [ ] **Admin email mismatch:** `firestore.rules` hardcodes `admin@flacronai.com`, but env/actual admin is `admin@flacronenterprises.com`. Which address is the real admin account? (Affects T-3.x fixes.)
-- [ ] **Is production AI currently working?** Both OpenAI model IDs in code are retired (`gpt-4-vision-preview`, `gpt-4-turbo-preview`) — image analysis and the WatsonX-fallback path should be failing. Is WatsonX alone carrying prod today? Which models should we target when we fix this?
-- [ ] **Are production uploads being lost?** Render has no persistent disk and files are stored locally — every deploy wipes uploads/exports. Should we plan a move to cloud storage (Firebase Storage / S3) as an early task, and is any user data already dangling?
+- [x] **Admin email** → **RESOLVED 2026-07-18.** Official admin = **admin@flacronenterprises.com**; fixed firestore.rules + both .env.examples. (Redeploy rules to Firebase for prod effect; ensure Render `ADMIN_EMAIL` is set to it.)
+- [x] **AI provider direction** → **DECIDED 2026-07-18.** **Claude API = primary, IBM watsonx = fallback, remove ALL deprecated OpenAI models/code.** Big backend task queued (needs `ANTHROPIC_API_KEY`; use the `claude-api` skill for model IDs/SDK).
+- [x] **File storage** → **DECIDED 2026-07-18.** Migrate all uploads to **Firebase Storage** (already on Firebase), off Render's local disk. Big backend task queued (reports/exports/logos + `imagePaths` + signed access).
+- [x] **Email provider** → **CHANGED 2026-07-18.** Dropping **Brevo → AWS SES**. Needs AWS creds + coordination; update `emailService.js` + templates + branding. Blocked on AWS setup.
 - [x] **Public `/uploads` exposure:** → **RESOLVED 2026-07-18 (T-3.10a).** Client escalated; claim photos + exports no longer publicly served (only branding logos). NOTE still open: files remain on Render's ephemeral disk (see the "uploads being lost" item) — durable cloud storage + at-rest encryption is the remaining part of T-3.10.
 - [x] Blog pages (`Blog.jsx`, `BlogPost.jsx`) — **DELETED 2026-07-18 (T-1.1b).** Unrouted dead code full of fabricated studies/stats; removed per the "everything must be factual" directive. Recoverable from git if a real, factual blog is wanted later.
 - [ ] **Real testimonials wanted (T-1.9 shipped hidden):** the home-page testimonials section now renders only from `frontend/src/data/testimonials.js` (empty). Please collect genuine customer feedback WITH written permission (name or initials, role, quote, date; carrier names only with authorization) and it can go live by filling that file.
@@ -355,8 +370,10 @@ Template for each entry — copy this block:
 
 ## Remaining / Nice-to-have backlog (not scheduled yet)
 
-- **[from T-0.2b walkthrough] White-Label "Custom Domain" is non-functional** — `WhiteLabelPortal.jsx` shows a Custom Domain section (CNAME setup, "Verify Domain" button, "reports.yourcompany.com") but `backend/routes/whitelabel.js` only supports subdomains. Either implement custom-domain + SSL (bigger infra task) or remove/mark "coming soon" (Rule #4). Ties to the marketing "custom domain → subdomain" fixes already shipped.
+- [x] **White-Label "Custom Domain" non-functional** → **RESOLVED 2026-07-18** — marked "Coming Soon" per client (removed CNAME/verify UI + dead code). Backend `verifyDomain` endpoint still exists unused; remove if/when custom domains are actually built.
 - [x] **Admin dashboard stats never populate** — **FIXED 2026-07-18 (T-3.3a).** Root cause: an un-timeboxed Stripe `charges.list` call could hang the whole response indefinitely. Time-boxed it (4s) + switched reports/leads to Firestore count() aggregations. Verified 200 in ~2.6s with real stats.
 - **[from T-0.2b walkthrough] White-Label default primary color is `#f97316`** (old orange), not brand `#FD4403` — update the default in the white-label config so new portals start on-brand.
 - **[from T-3.3a] backend `.env` `FIREBASE_API_KEY` is a 7-char placeholder** (real web key is 39 chars) — backend REST `/api/auth/login` password verification fails locally; confirm the prod Render env has the real key, or the login endpoint is dead there too.
 - **`sales.js` admin/users + leads still read whole collections** (in-memory pagination) — convert to real Firestore cursor pagination.
+- **Official SVG logo (client requested 2026-07-18):** current logo assets are raster (extracted from the client PNG). Best done by a designer; alternatively we can vectorize the FA mark to a clean SVG (approximate). Would sharpen the navbar/favicon at all sizes and shrink bytes further.
+- **White-Label default primary color `#f97316` → brand `#FD4403`** (from walkthrough) — small config default fix, do alongside the next white-label backend task.
