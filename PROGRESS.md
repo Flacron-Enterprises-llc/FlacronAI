@@ -35,7 +35,7 @@
 | T-1.8 | Pricing display rebuild | DONE | 2026-07-18 — single source src/data/plans.js; Pricing/Home/Subscriptions consistent at $0/$39.99/$99.99/$499; annual = 20% off; Developers text fixed |
 | T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
 | T-1.10 | "De-AI" pass on all landing pages | TODO | |
-| T-1.11 | Mobile layout pass (marketing) | TODO | |
+| T-1.11 | Mobile layout pass (marketing) | DONE | 2026-07-18 — audited all 8 marketing pages at 390px: zero horizontal overflow, layouts stack correctly; added swipe hint to pricing comparison table |
 | T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
 | T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
 | T-1.14 | SEO: structured data (JSON-LD) | DONE | 2026-07-18 — Organization (Home), SoftwareApplication+Offers (Pricing), FAQPage (FAQs); validated, prices from shared source |
@@ -79,6 +79,15 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-18] — T-1.11 — Marketing mobile pass
+- **Status:** DONE
+- **What changed:** Audited all 8 marketing pages (Home, Pricing, About, Contact, FAQs, Developers, ApiDocs, Auth) at 390×844 (2× DPR, isMobile) with a programmatic horizontal-overflow detector + full-page screenshots. **Result: zero page-level horizontal scroll on any page** — the only wide elements (pricing comparison table `min-w-[640px]`, API code blocks) correctly scroll inside their own `overflow-x-auto` containers, and decorative blur-blobs are clipped by `overflow-hidden` parents. Hero, features, how-it-works, pricing cards, security strip, and footer all stack correctly single-column; H1 count stays 1 on Home.
+  - **One enhancement:** added a `sm:hidden` "Swipe to compare plans →" hint above the pricing comparison table (it has more columns than fit on a phone, with no prior cue that it scrolls).
+- **Files touched:** frontend/src/pages/Pricing.jsx, PROGRESS.md.
+- **QA done:** overflow audit (all clean); visual review of Home (full + footer), Pricing, and each page's screenshot (E:/claude-scratch/mobile/); lint 0 errors; Vitest 2/2.
+- **Left / follow-ups:** authed/app pages (dashboard, admin, CRM, white-label) not yet mobile-audited — they're app surfaces, lower marketing priority; revisit if the client wants mobile app UX too. De-AI visual polish is T-1.10.
+- **Golden-rule check:** n/a (layout only).
 
 ### [2026-07-18] — T-1.14 — SEO structured data (JSON-LD)
 - **Status:** DONE

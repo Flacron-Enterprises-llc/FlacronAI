@@ -335,6 +335,7 @@ export default function Pricing() {
           {/* Comparison Table */}
           <motion.div className="mb-20" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Full Feature Comparison</h2>
+            <p className="text-center text-sm text-gray-500 mb-3 sm:hidden">Swipe to compare plans →</p>
             <div className="card overflow-hidden overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
