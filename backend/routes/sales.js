@@ -196,11 +196,20 @@ router.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => 
 router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getFirestore();
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const [usersSnap, reportsSnap, leadsSnap] = await Promise.all([
+    // Growing collections (reports, salesLeads) use count() aggregation instead of
+    // reading every document — O(1) billed reads vs O(n). `users` is read in full
+    // because tier tallying must default a missing `tier` field to 'starter'.
+    const reportsCol = db.collection('reports');
+    const leadsCol = db.collection('salesLeads');
+    const [usersSnap, totalReportsAgg, reportsMonthAgg, totalLeadsAgg, leadsMonthAgg] = await Promise.all([
       db.collection('users').get(),
-      db.collection('reports').get(),
-      db.collection('salesLeads').get(),
+      reportsCol.count().get(),
+      reportsCol.where('createdAt', '>=', monthStart).count().get(),
+      leadsCol.count().get(),
+      leadsCol.where('createdAt', '>=', monthStart).count().get(),
     ]);
 
     const users = usersSnap.docs.map(d => d.data());
@@ -210,27 +219,26 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
     const TIER_PRICE = { starter: 0, professional: 39.99, agency: 99.99, enterprise: 499 };
     const mrr = Object.entries(tierCounts).reduce((sum, [t, count]) => sum + (TIER_PRICE[t] || 0) * count, 0);
 
-    // Total reports generated
-    const totalReports = reportsSnap.size;
+    const totalReports = totalReportsAgg.data().count;
+    const reportsThisMonth = reportsMonthAgg.data().count;
+    const newLeadsThisMonth = leadsMonthAgg.data().count;
 
-    // Reports this month
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const reportsThisMonth = reportsSnap.docs.filter(d => (d.data().createdAt || '') >= monthStart).length;
-
-    // Stripe revenue — last 30 days
+    // Stripe revenue — last 30 days. Time-boxed so a slow/unreachable Stripe API
+    // can never hang the whole stats response (previously left the dashboard on
+    // its loading skeletons indefinitely).
     let stripeRevenue = null;
     if (stripe) {
       try {
         const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-        const charges = await stripe.charges.list({ limit: 100, created: { gte: thirtyDaysAgo } });
+        const charges = await Promise.race([
+          stripe.charges.list({ limit: 100, created: { gte: thirtyDaysAgo } }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('stripe-timeout')), 4000)),
+        ]);
         stripeRevenue = charges.data
           .filter(c => c.status === 'succeeded')
           .reduce((sum, c) => sum + c.amount, 0) / 100;
-      } catch { /* Stripe not configured */ }
+      } catch { /* Stripe not configured or timed out — leave null */ }
     }
-
-    const newLeadsThisMonth = leadsSnap.docs.filter(d => (d.data().createdAt || '') >= monthStart).length;
 
     return res.json({
       success: true,
@@ -241,7 +249,7 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
         totalReports,
         reportsThisMonth,
         stripeRevenue30d: stripeRevenue,
-        totalLeads: leadsSnap.size,
+        totalLeads: totalLeadsAgg.data().count,
         newLeadsThisMonth,
         paidUsers: tierCounts.professional + tierCounts.agency + tierCounts.enterprise,
       },

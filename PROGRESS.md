@@ -80,6 +80,15 @@ Template for each entry — copy this block:
 - **Golden-rule check:** confirmed none violated
 -->
 
+### [2026-07-18] — T-3.3a — Fix admin stats hang + O(n) reads (walkthrough finding)
+- **Status:** DONE
+- **Root cause:** `GET /api/sales/admin/stats` awaited a Stripe `charges.list` call with no timeout — if Stripe is slow/unreachable (as during the local walkthrough), the whole response never returns and the Admin Dashboard sits on loading skeletons forever. Separately, it read the entire `reports` and `salesLeads` collections into memory just to count them (O(n) billed reads, grows with the product).
+- **What changed (`backend/routes/sales.js` admin/stats):** (1) Stripe call wrapped in `Promise.race` with a 4s timeout → on slow/absent Stripe it falls back to `stripeRevenue=null` instead of hanging. (2) `reports`/`salesLeads` totals + this-month counts now use Firestore `count()` aggregation queries (O(1) billed) instead of `.get()`-ing every doc. `users` still read in full (small; tier tally needs a missing-field → 'starter' default).
+- **Files touched:** backend/routes/sales.js.
+- **QA done:** created a temp admin test user, fetched a real Firebase ID token (via the frontend web API key), called the endpoint twice → **HTTP 200 in 6.6s cold / 2.6s warm** (previously hung), returning correct aggregated stats (tier counts, MRR, count()-based totals, Stripe bounded). Test user deleted + confirmed gone. Backend lint 0 errors. **Incidental finding:** `backend/.env` `FIREBASE_API_KEY` is a 7-char placeholder (real web key is 39 chars, only in frontend) — the backend's REST `/api/auth/login` password path would fail locally; prod may differ (Render env). Logged to backlog.
+- **Left / follow-ups:** the admin `users` list + other `sales.js` endpoints (`admin/users`, leads) still use in-memory pagination over full collections (audit tech-debt) — convert to real Firestore pagination later; MRR is estimated from tier counts × list price (not actual Stripe subscription amounts).
+- **Golden-rule check:** n/a (perf/reliability fix).
+
 ### [2026-07-18] — T-1.11 — Marketing mobile pass
 - **Status:** DONE
 - **What changed:** Audited all 8 marketing pages (Home, Pricing, About, Contact, FAQs, Developers, ApiDocs, Auth) at 390×844 (2× DPR, isMobile) with a programmatic horizontal-overflow detector + full-page screenshots. **Result: zero page-level horizontal scroll on any page** — the only wide elements (pricing comparison table `min-w-[640px]`, API code blocks) correctly scroll inside their own `overflow-x-auto` containers, and decorative blur-blobs are clipped by `overflow-hidden` parents. Hero, features, how-it-works, pricing cards, security strip, and footer all stack correctly single-column; H1 count stays 1 on Home.
@@ -338,5 +347,7 @@ Template for each entry — copy this block:
 ## Remaining / Nice-to-have backlog (not scheduled yet)
 
 - **[from T-0.2b walkthrough] White-Label "Custom Domain" is non-functional** — `WhiteLabelPortal.jsx` shows a Custom Domain section (CNAME setup, "Verify Domain" button, "reports.yourcompany.com") but `backend/routes/whitelabel.js` only supports subdomains. Either implement custom-domain + SSL (bigger infra task) or remove/mark "coming soon" (Rule #4). Ties to the marketing "custom domain → subdomain" fixes already shipped.
-- **[from T-0.2b walkthrough] Admin dashboard stats never populate** — the Overview stat cards stayed as skeletons for 20s+ with the test admin. Likely the O(n) whole-collection reads in `backend/routes/sales.js` (admin/stats reads all users/reports/salesLeads) — slow or timing out. Investigate + add Firestore aggregation/limits (relates to the audit's in-memory-pagination tech-debt list).
+- [x] **Admin dashboard stats never populate** — **FIXED 2026-07-18 (T-3.3a).** Root cause: an un-timeboxed Stripe `charges.list` call could hang the whole response indefinitely. Time-boxed it (4s) + switched reports/leads to Firestore count() aggregations. Verified 200 in ~2.6s with real stats.
 - **[from T-0.2b walkthrough] White-Label default primary color is `#f97316`** (old orange), not brand `#FD4403` — update the default in the white-label config so new portals start on-brand.
+- **[from T-3.3a] backend `.env` `FIREBASE_API_KEY` is a 7-char placeholder** (real web key is 39 chars) — backend REST `/api/auth/login` password verification fails locally; confirm the prod Render env has the real key, or the login endpoint is dead there too.
+- **`sales.js` admin/users + leads still read whole collections** (in-memory pagination) — convert to real Firestore cursor pagination.
