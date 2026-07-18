@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'admin@flacronai.com';
+      return isAuthenticated() && request.auth.token.email == 'admin@flacronenterprises.com';
     }
 
     function getUserTier() {
