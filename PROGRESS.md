@@ -6,9 +6,9 @@
 ---
 
 ## Current focus
-- **Now working on:** — (admin-email fix + Custom-Domain "Coming Soon" — done; awaiting next prompt)
-- **BIG NEW client-directed tasks (2026-07-18, batch 2) — not yet started, each substantial:**
-  1. **AI provider swap:** Claude API = PRIMARY, IBM watsonx = fallback, **remove ALL deprecated OpenAI models/code**. (Backend `aiService.js` rework; use `claude-api` skill for model IDs/SDK; needs `ANTHROPIC_API_KEY`.)
+- **Now working on:** — (T-2.5a AI provider swap — code done; **needs client `ANTHROPIC_API_KEY` to go live + end-to-end test**)
+- **BIG client-directed tasks (2026-07-18, batch 2):**
+  1. **AI provider swap** — ✅ CODE DONE 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. **Blocked on client** for `ANTHROPIC_API_KEY` (Render env) + model/cost tier confirmation before it runs in prod / can be end-to-end tested.
   2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Finishes the durable-storage half of T-3.10.
   3. **Email: drop Brevo → AWS SES.** Needs AWS creds + coordination; update `emailService.js` + templates + branding.
   4. **Official SVG logo** — client asked for one; needs a designer or a careful vectorization.
@@ -84,6 +84,17 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-2.5a — AI provider swap: Claude primary, watsonx fallback, OpenAI removed
+- **Status:** DONE (code) — **runtime-blocked on client `ANTHROPIC_API_KEY`.** Confirmed the client explicitly authorized this in batch 2 ("use Claude API as primary … watsonx as secondary/fallback … remove all deprecated OpenAI models"); dev double-checked the go-ahead before I started.
+- **What changed:**
+  - **`backend/config/anthropic.js` (new):** wraps `@anthropic-ai/sdk` (installed, ^0.112.3). `generateText()` (text) + `analyzeImages()` (vision) + `checkHealth()`. Model from `ANTHROPIC_MODEL` env, default `claude-opus-4-8` (configurable so the client can drop to Sonnet for cost). Handles `stop_reason:"refusal"` and empty content; **does not send `temperature`/`budget_tokens`** (rejected by Opus 4.8 / Sonnet 5).
+  - **`aiService.js` reworked:** new `generateWithFallback()` = Claude → watsonx for all text paths (`generateReport`, `ensureLossSummary`, `generateSummary`, `generateScopeOfWork`, `enhanceContent`). `analyzeImages` now uses **Claude vision** (base64 image blocks; jpeg/png/gif/webp only, heic/heif skipped; still capped at 10); no vision fallback (watsonx/granite is text-only) → degrades to "unavailable" if Claude unconfigured. `checkAIHealth` now reports `{anthropic, watsonx, primary}`.
+  - **Removed OpenAI entirely:** deleted `backend/config/openai.js`; all `getOpenAI()` / `gpt-4-turbo-preview` / `gpt-4-vision-preview` call sites gone (the retired model IDs were a live prod breakage). `reports.js` ai-status fallback JSON updated to `{anthropic, watsonx}`. `.env.example`: `OPENAI_API_KEY` → `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL`.
+- **Files touched:** backend/config/anthropic.js (new), backend/services/aiService.js, backend/routes/reports.js, backend/.env.example, backend/config/openai.js (deleted), backend/package.json + lock (added @anthropic-ai/sdk), CLAUDE.md §4, PROGRESS.md.
+- **QA done (what's possible without a key):** `@anthropic-ai/sdk` installs + resolves; `require('./services/aiService')` loads with all 7 exports intact (no syntax/resolution errors); grep confirms **zero OpenAI references remain in code**; backend lint 0 errors (40 warnings, down 1 from deleting openai.js); `npm test` 13/13. **NOT tested:** live Claude generation / vision — needs `ANTHROPIC_API_KEY`.
+- **Left / follow-ups (client action needed):** (1) add `ANTHROPIC_API_KEY` to Render env (and locally to test) — until then everything falls back to watsonx; (2) confirm model/cost tier (default Opus 4.8 is premium; Sonnet is cheaper via `ANTHROPIC_MODEL`); (3) the `openai` npm package is now unused in `package.json` — can be uninstalled in a cleanup pass; (4) **Golden Rule #2 unchanged** — the report prompts still request coverage/cause/cost verdicts; softening that language + the auto-certification is still Phase-2 T-2.5.
+- **Golden-rule check:** #2 not yet addressed (provider swap only; noted); image-analysis prompt was written with cautious language ("appears", "defer to adjuster") as a small step in the right direction.
 
 ### [2026-07-18] — Client batch-2 quick wins: admin email + Custom Domain "Coming Soon"
 - **Status:** DONE (two focused commits)

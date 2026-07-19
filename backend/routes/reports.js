@@ -53,7 +53,7 @@ router.get('/ai-status', async (req, res) => {
     const status = await checkAIHealth();
     return res.json({ success: true, ...status });
   } catch (err) {
-    return res.json({ success: true, watsonx: 'offline', openai: 'offline', primary: 'none' });
+    return res.json({ success: true, anthropic: 'offline', watsonx: 'offline', primary: 'none' });
   }
 });
 

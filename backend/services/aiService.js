@@ -1,7 +1,24 @@
-const { generateText, checkHealth: checkWatsonx } = require('../config/watsonx');
-const { getOpenAI } = require('../config/openai');
+const anthropic = require('../config/anthropic');
+const { generateText: watsonxGenerate, checkHealth: checkWatsonx } = require('../config/watsonx');
 const fs = require('fs');
 const path = require('path');
+
+// Provider strategy (client directive 2026-07-18): Claude (Anthropic) is primary,
+// IBM watsonx is the text-only fallback. OpenAI has been removed entirely.
+// Returns { text, modelUsed }.
+const generateWithFallback = async (prompt, { maxTokens = 4096, temperature = 0.5 } = {}) => {
+  try {
+    const text = await anthropic.generateText(prompt, { maxTokens });
+    return { text, modelUsed: `anthropic/${anthropic.MODEL}` };
+  } catch (claudeErr) {
+    console.warn('⚠️  Claude failed, falling back to watsonx:', claudeErr.message);
+    const text = await watsonxGenerate(prompt, { max_new_tokens: maxTokens, temperature });
+    return { text, modelUsed: 'watsonx/ibm/granite-3-8b-instruct' };
+  }
+};
+
+// Anthropic vision only accepts these image media types.
+const CLAUDE_IMAGE_TYPES = new Set(['jpeg', 'png', 'gif', 'webp']);
 
 const buildReportPrompt = (reportData, imageAnalysis) => {
   const {
@@ -143,22 +160,10 @@ Output ONLY this markdown section (no preamble, no other text):
 
   let summaryText;
   try {
-    summaryText = await generateText(summaryPrompt, { max_new_tokens: 700, temperature: 0.3 });
-  } catch {
-    try {
-      const openai = getOpenAI();
-      if (!openai) return content;
-      const res = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [{ role: 'user', content: summaryPrompt }],
-        max_tokens: 700,
-        temperature: 0.3,
-      });
-      summaryText = res.choices[0].message.content;
-    } catch (err) {
-      console.warn('Loss summary fallback also failed:', err.message);
-      return content;
-    }
+    ({ text: summaryText } = await generateWithFallback(summaryPrompt, { maxTokens: 700, temperature: 0.3 }));
+  } catch (err) {
+    console.warn('Loss summary generation failed (Claude + watsonx):', err.message);
+    return content;
   }
 
   if (match) {
@@ -171,36 +176,14 @@ Output ONLY this markdown section (no preamble, no other text):
 const generateReport = async (reportData, imageAnalysis) => {
   const prompt = buildReportPrompt(reportData, imageAnalysis);
 
-  let content;
-  let modelUsed;
-
-  // Try WatsonX first
+  console.log('🤖 Generating report (Claude primary, watsonx fallback)...');
+  let content, modelUsed;
   try {
-    console.log('🤖 Attempting WatsonX report generation...');
-    content = await generateText(prompt, { max_new_tokens: 4096, temperature: 0.5 });
-    modelUsed = 'watsonx/ibm/granite-3-8b-instruct';
-    console.log('✅ Report generated via WatsonX');
-  } catch (watsonxErr) {
-    console.warn('⚠️  WatsonX failed, falling back to OpenAI:', watsonxErr.message);
-
-    // Fallback to OpenAI
-    const openai = getOpenAI();
-    if (!openai) throw new Error('No AI provider available. Please configure WATSONX_API_KEY or OPENAI_API_KEY.');
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [
-        { role: 'system', content: 'You are a professional insurance adjuster. Generate detailed, accurate insurance inspection reports.' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 4096,
-      temperature: 0.5,
-    });
-
-    content = completion.choices[0].message.content;
-    modelUsed = 'openai/gpt-4-turbo-preview';
-    console.log('✅ Report generated via OpenAI');
+    ({ text: content, modelUsed } = await generateWithFallback(prompt, { maxTokens: 4096, temperature: 0.5 }));
+  } catch (err) {
+    throw new Error(`No AI provider available (Claude + watsonx both failed): ${err.message}. Configure ANTHROPIC_API_KEY or WATSONX_API_KEY.`);
   }
+  console.log(`✅ Report generated via ${modelUsed}`);
 
   // Ensure Section 7 cost table is complete — patch it if truncated
   content = await ensureLossSummary(reportData, content);
@@ -209,82 +192,72 @@ const generateReport = async (reportData, imageAnalysis) => {
 };
 
 const analyzeImages = async (imagePaths) => {
-  const openai = getOpenAI();
-  if (!openai) {
+  if (!anthropic.getClient()) {
+    // watsonx (granite) has no vision capability, so there is no image-analysis
+    // fallback — degrade gracefully rather than blocking report generation.
     return {
-      summary: 'Image analysis unavailable — OpenAI not configured',
+      summary: 'Image analysis unavailable — ANTHROPIC_API_KEY not configured',
       damages: [],
       severity: 'Unknown',
     };
   }
 
-  // Limit to 10 images for analysis
+  // Limit to 10 images for analysis. Build Anthropic image content blocks.
   const pathsToAnalyze = imagePaths.slice(0, 10);
-  const imageContents = [];
+  const imageBlocks = [];
 
   for (const imgPath of pathsToAnalyze) {
     try {
       if (!fs.existsSync(imgPath)) continue;
-      const imageData = fs.readFileSync(imgPath);
-      const base64 = imageData.toString('base64');
       const ext = path.extname(imgPath).toLowerCase().replace('.', '');
-      const mimeType = ext === 'jpg' ? 'jpeg' : ext;
-      imageContents.push({
-        type: 'image_url',
-        image_url: { url: `data:image/${mimeType};base64,${base64}`, detail: 'high' },
+      const mediaType = ext === 'jpg' ? 'jpeg' : ext;
+      if (!CLAUDE_IMAGE_TYPES.has(mediaType)) {
+        console.warn(`Skipping ${imgPath}: ${mediaType} not supported by Claude vision`);
+        continue;
+      }
+      const base64 = fs.readFileSync(imgPath).toString('base64');
+      imageBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: `image/${mediaType}`, data: base64 },
       });
     } catch (err) {
       console.warn(`Could not read image ${imgPath}:`, err.message);
     }
   }
 
-  if (imageContents.length === 0) {
+  if (imageBlocks.length === 0) {
     return { summary: 'No valid images provided for analysis', damages: [], severity: 'Unknown' };
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4-vision-preview',
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `You are an expert insurance damage assessor. Analyze these ${imageContents.length} damage photos and provide:
-1. A detailed damage assessment for each visible area
-2. Overall severity (Minor/Moderate/Severe/Total Loss)
-3. Estimated affected areas (rooms, surfaces)
-4. Materials damaged (drywall, flooring, roofing, etc.)
-5. Immediate concerns (structural, safety, mold risk)
+  const promptText = `You are an expert insurance damage assessor reviewing photos for a draft report that a licensed adjuster will review. Describe only what is visible; use cautious language ("appears", "may indicate") and defer final determinations to the adjuster. Analyze these ${imageBlocks.length} damage photos and provide:
+1. A damage assessment for each visible area
+2. Overall apparent severity (Minor/Moderate/Severe)
+3. Apparent affected areas (rooms, surfaces)
+4. Materials that appear damaged (drywall, flooring, roofing, etc.)
+5. Conditions a professional should evaluate further (structural, safety, mold)
 6. Documentation quality assessment
 
-Return as JSON with this structure:
+Return ONLY JSON with this structure:
 {
   "summary": "Overall assessment summary",
   "severity": "Moderate",
-  "totalImagesAnalyzed": ${imageContents.length},
+  "totalImagesAnalyzed": ${imageBlocks.length},
   "damages": [
-    {
-      "area": "Living Room",
-      "type": "Water damage",
-      "severity": "Severe",
-      "materials": ["drywall", "flooring"],
-      "description": "Detailed description"
-    }
+    { "area": "Living Room", "type": "Water damage", "severity": "Severe", "materials": ["drywall", "flooring"], "description": "Detailed description" }
   ],
-  "immediateConcerns": ["List of urgent concerns"],
+  "itemsForProfessionalReview": ["List of conditions a professional should confirm"],
   "estimatedAffectedSqFt": 450,
   "documentationNotes": "Photo quality assessment"
-}`,
-          },
-          ...imageContents,
-        ],
-      },
-    ],
-    max_tokens: 2000,
-  });
+}`;
 
-  const content = response.choices[0].message.content;
+  let content;
+  try {
+    content = await anthropic.analyzeImages(promptText, imageBlocks, { maxTokens: 2000 });
+  } catch (err) {
+    console.warn('Claude image analysis failed:', err.message);
+    return { summary: `Image analysis unavailable — ${err.message}`, damages: [], severity: 'Unknown' };
+  }
+
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: content, damages: [], severity: 'Unknown' };
@@ -294,35 +267,22 @@ Return as JSON with this structure:
 };
 
 const generateSummary = async (reportContent) => {
+  const prompt = `Summarize this insurance inspection report in 3-4 sentences highlighting the key findings, damage assessment, and recommended actions:\n\n${reportContent.substring(0, 3000)}`;
   try {
-    const prompt = `Summarize this insurance inspection report in 3-4 sentences highlighting the key findings, damage assessment, and recommended actions:\n\n${reportContent.substring(0, 3000)}`;
-    const result = await generateText(prompt, { max_new_tokens: 500, temperature: 0.3 });
-    return result;
+    const { text } = await generateWithFallback(prompt, { maxTokens: 500, temperature: 0.3 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return 'Summary unavailable';
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: `Summarize this insurance report in 3-4 sentences:\n\n${reportContent.substring(0, 3000)}` }],
-      max_tokens: 500,
-    });
-    return completion.choices[0].message.content;
+    return 'Summary unavailable';
   }
 };
 
 const generateScopeOfWork = async (reportContent, damageAssessment) => {
   const prompt = `Based on this insurance report and damage assessment, generate a detailed scope of work with itemized repair tasks, materials needed, and labor descriptions:\n\nReport:\n${reportContent.substring(0, 2000)}\n\nDamage Assessment:\n${JSON.stringify(damageAssessment, null, 2).substring(0, 1000)}`;
   try {
-    return await generateText(prompt, { max_new_tokens: 2000, temperature: 0.4 });
+    const { text } = await generateWithFallback(prompt, { maxTokens: 2000, temperature: 0.4 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return 'Scope of work generation unavailable';
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-    });
-    return completion.choices[0].message.content;
+    return 'Scope of work generation unavailable';
   }
 };
 
@@ -358,33 +318,19 @@ const checkQuality = async (reportContent) => {
 const enhanceContent = async (rawContent) => {
   const prompt = `Improve the professional quality of this insurance inspection report section. Make it more detailed, precise, and industry-standard. Return only the improved text:\n\n${rawContent}`;
   try {
-    return await generateText(prompt, { max_new_tokens: 1500, temperature: 0.4 });
+    const { text } = await generateWithFallback(prompt, { maxTokens: 1500, temperature: 0.4 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return rawContent;
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1500,
-    });
-    return completion.choices[0].message.content;
+    return rawContent;
   }
 };
 
 const checkAIHealth = async () => {
-  const watsonxOk = await checkWatsonx();
-  let openaiOk = false;
-  try {
-    const openai = getOpenAI();
-    if (openai) {
-      await openai.models.list();
-      openaiOk = true;
-    }
-  } catch {}
+  const [claudeOk, watsonxOk] = await Promise.all([anthropic.checkHealth(), checkWatsonx()]);
   return {
+    anthropic: claudeOk ? 'online' : 'offline',
     watsonx: watsonxOk ? 'online' : 'offline',
-    openai: openaiOk ? 'online' : 'offline',
-    primary: watsonxOk ? 'watsonx' : openaiOk ? 'openai' : 'none',
+    primary: claudeOk ? 'anthropic' : watsonxOk ? 'watsonx' : 'none',
   };
 };
 
