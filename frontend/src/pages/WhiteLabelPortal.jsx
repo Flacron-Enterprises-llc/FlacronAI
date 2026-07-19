@@ -22,8 +22,8 @@ const WATERMARK_POSITIONS = ['Diagonal', 'Corner', 'None'];
 const DEFAULT_CONFIG = {
   companyName: '',
   subdomain: '',
-  primaryColor: '#f97316',
-  secondaryColor: '#8b5cf6',
+  primaryColor: '#FD4403',
+  secondaryColor: '#002A64',
   logoUrl: '',
   headerText: '',
   footerText: '',

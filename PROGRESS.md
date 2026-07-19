@@ -12,7 +12,7 @@
   2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Finishes the durable-storage half of T-3.10.
   3. **Email: drop Brevo → AWS SES.** Needs AWS creds + coordination; update `emailService.js` + templates + branding.
   4. **Official SVG logo** — client asked for one; needs a designer or a careful vectorization.
-- **T-1.10 de-AI polish:** parked mid-start (rainbow gradient icons) — resume after the client-directed items.
+- **T-1.10 de-AI polish:** ✅ DONE 2026-07-19 — unified rainbow gradient icons to a cohesive brand treatment (Home features + About values), fixed white-label default color.
 - **Client confirmations (2026-07-18):** Blog delete → already done (T-1.1b); Enterprise "Unlimited" stays → no change; testimonials stay hidden → matches T-1.9; performance numbers stay off → matches T-1.1b; pricing correct/match Stripe → done (T-1.8); canonical non-www → done (T-1.12/13).
 - **Branch:** all work on `flacron/improvements` (Golden Rule #8) — never push to main.
 
@@ -39,7 +39,7 @@
 | T-1.7 | CTAs + trust bar | DONE | 2026-07-17 — broken /api-docs CTA fixed; all internal links verified; honest security strip added (no badges) |
 | T-1.8 | Pricing display rebuild | DONE | 2026-07-18 — single source src/data/plans.js; Pricing/Home/Subscriptions consistent at $0/$39.99/$99.99/$499; annual = 20% off; Developers text fixed |
 | T-1.9 | Testimonials/social proof (real only) | DONE | 2026-07-17 — section hidden until real entries added to src/data/testimonials.js; card supports full schema |
-| T-1.10 | "De-AI" pass on all landing pages | TODO | |
+| T-1.10 | "De-AI" pass on all landing pages | DONE | 2026-07-19 — unified rainbow gradient icons → cohesive brand chips (Home features, About values); white-label default color → brand |
 | T-1.11 | Mobile layout pass (marketing) | DONE | 2026-07-18 — audited all 8 marketing pages at 390px: zero horizontal overflow, layouts stack correctly; added swipe hint to pricing comparison table |
 | T-1.12 | SEO: per-page meta + headings | DONE | 2026-07-17 — Seo component on all 13 public pages; unique titles/desc/canonical/OG; 1 h1 each; audit clean |
 | T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
@@ -84,6 +84,17 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-1.10 — De-AI polish (cohesive brand icons)
+- **Status:** DONE
+- **What changed:** The biggest "AI-template" tell was the rainbow of per-card gradient icons. Unified them to a cohesive brand treatment (soft brand-orange chip + brand icon, matching the T-1.7 security strip):
+  - **Home features** (6 cards): removed the per-card `color` gradient field (orange/cyan, emerald/teal, pink/rose, violet/orange…) → single `bg-brand-50 border-brand-100` chip with `text-brand-600` icon; card hover + "Everything you need" badge moved off raw `orange-*` onto brand tokens.
+  - **About values** (6 cards): removed the per-value rainbow `color` field (yellow/orange/green/pink/amber/red) → same cohesive brand chip.
+  - **White-Label default config** (walkthrough finding): `primaryColor` `#f97316`→`#FD4403`, `secondaryColor`→brand navy `#002A64` so new portals start on-brand.
+- **Files touched:** frontend/src/pages/Home.jsx, About.jsx, WhiteLabelPortal.jsx, PROGRESS.md.
+- **QA done:** Home features screenshot verified cohesive (E:/claude-scratch/t110-qa/); 0 console errors; build passes; lint 0 errors (32 warnings, unchanged); Vitest 2/2.
+- **Left / follow-ups:** deeper de-AI work (varied section rhythm, custom imagery beyond the one product screenshot, spacing audit) is larger and subjective — this pass targeted the concrete rainbow-gradient tell. Firebase Storage found NOT enabled on the project — storage migration blocked on the client (see needs list).
+- **Golden-rule check:** n/a (visual only).
 
 ### [2026-07-19] — T-2.5a — AI provider swap: Claude primary, watsonx fallback, OpenAI removed
 - **Status:** DONE (code) — **runtime-blocked on client `ANTHROPIC_API_KEY`.** Confirmed the client explicitly authorized this in batch 2 ("use Claude API as primary … watsonx as secondary/fallback … remove all deprecated OpenAI models"); dev double-checked the go-ahead before I started.
@@ -383,7 +394,7 @@ Template for each entry — copy this block:
 
 - [x] **White-Label "Custom Domain" non-functional** → **RESOLVED 2026-07-18** — marked "Coming Soon" per client (removed CNAME/verify UI + dead code). Backend `verifyDomain` endpoint still exists unused; remove if/when custom domains are actually built.
 - [x] **Admin dashboard stats never populate** — **FIXED 2026-07-18 (T-3.3a).** Root cause: an un-timeboxed Stripe `charges.list` call could hang the whole response indefinitely. Time-boxed it (4s) + switched reports/leads to Firestore count() aggregations. Verified 200 in ~2.6s with real stats.
-- **[from T-0.2b walkthrough] White-Label default primary color is `#f97316`** (old orange), not brand `#FD4403` — update the default in the white-label config so new portals start on-brand.
+- [x] **White-Label default primary color** → **FIXED 2026-07-19 (T-1.10)** — DEFAULT_CONFIG primaryColor `#f97316`→`#FD4403`, secondary → brand navy `#002A64`.
 - **[from T-3.3a] backend `.env` `FIREBASE_API_KEY` is a 7-char placeholder** (real web key is 39 chars) — backend REST `/api/auth/login` password verification fails locally; confirm the prod Render env has the real key, or the login endpoint is dead there too.
 - **`sales.js` admin/users + leads still read whole collections** (in-memory pagination) — convert to real Firestore cursor pagination.
 - **Official SVG logo (client requested 2026-07-18):** current logo assets are raster (extracted from the client PNG). Best done by a designer; alternatively we can vectorize the FA mark to a clean SVG (approximate). Would sharpen the navbar/favicon at all sizes and shrink bytes further.

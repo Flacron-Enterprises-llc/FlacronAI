@@ -9,32 +9,26 @@ const VALUES = [
   {
     icon: Zap, title: 'Speed',
     desc: 'We believe every hour an adjuster spends writing is an hour not spent helping people. We obsess over reducing the time between inspection and submission.',
-    color: 'text-yellow-400 bg-yellow-500/10',
   },
   {
     icon: Target, title: 'Accuracy',
     desc: 'AI drafts are structured and consistent, and built for human review. We measure and improve output quality constantly, because a wrong report doesn\'t just waste time — it damages trust.',
-    color: 'text-orange-400 bg-orange-500/10',
   },
   {
     icon: Shield, title: 'Security',
     desc: 'Insurance data is sensitive. We encrypt traffic in transit, control access to your files, and never sell or share your data. Your data stays yours.',
-    color: 'text-green-400 bg-green-500/10',
   },
   {
     icon: Smile, title: 'Simplicity',
     desc: 'We built the product we wished existed — no bloat, no confusing workflows. From claim details to generated report in five guided steps. That\'s it.',
-    color: 'text-pink-400 bg-pink-500/10',
   },
   {
     icon: Building2, title: 'Enterprise-Grade',
     desc: 'Whether you\'re an independent adjuster or a national agency, the platform scales to your needs. Custom branding, white-label portals, and team management.',
-    color: 'text-amber-400 bg-amber-500/10',
   },
   {
     icon: Heart, title: 'Customer First',
     desc: 'Our highest-priority features come from customer feedback. Our Enterprise clients get dedicated support and direct lines to our engineering team.',
-    color: 'text-red-400 bg-red-500/10',
   },
 ];
 
@@ -92,8 +86,8 @@ export default function About() {
               return (
                 <motion.div key={v.title} className="card p-5"
                   initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07 }}>
-                  <div className={`w-10 h-10 rounded-xl ${v.color.split(' ')[1]} flex items-center justify-center mb-4`}>
-                    <Icon className={`w-5 h-5 ${v.color.split(' ')[0]}`} />
+                  <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-brand-600" />
                   </div>
                   <h3 className="text-gray-900 font-semibold mb-2">{v.title}</h3>
                   <p className="text-gray-600 text-sm leading-relaxed">{v.desc}</p>
