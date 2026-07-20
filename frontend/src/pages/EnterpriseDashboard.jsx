@@ -38,14 +38,14 @@ const ROLE_PERMS = {
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon: Icon, color, trend }) {
+function StatCard({ label, value, sub, icon: Icon, trend }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white border border-[#e5e7eb] rounded-2xl p-6 relative overflow-hidden">
-      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-8 ${color}`} />
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-          <Icon className="w-5 h-5 text-white" />
+      <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-brand-50" />
+      <div className="flex items-start justify-between mb-4 relative">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-brand-50 border border-brand-100">
+          <Icon className="w-5 h-5 text-brand-600" />
         </div>
         {trend !== undefined && (
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${trend >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -113,7 +113,7 @@ export default function EnterpriseDashboard() {
   const [stats, setStats] = useState({ total: 0, thisMonth: 0, apiCalls: 0, qualityAvg: 0 });
 
   // White-label state
-  const [wlConfig, setWlConfig] = useState({ companyName: '', subdomain: '', reportFooter: '', supportEmail: '', primaryColor: '#f97316', hideFlacronBranding: false });
+  const [wlConfig, setWlConfig] = useState({ companyName: '', subdomain: '', reportFooter: '', supportEmail: '', primaryColor: '#FD4403', hideFlacronBranding: false });
   const [wlLoading, setWlLoading] = useState(false);
   const [wlSaving, setWlSaving] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
@@ -160,7 +160,7 @@ export default function EnterpriseDashboard() {
       const res = await whiteLabelAPI.getConfig();
       if (res.data?.config) {
         const c = res.data.config;
-        setWlConfig({ companyName: c.companyName || '', subdomain: c.subdomain || '', reportFooter: c.reportFooter || '', supportEmail: c.emailFromAddress || '', primaryColor: c.primaryColor || '#f97316', hideFlacronBranding: c.hideFlacronBranding || false });
+        setWlConfig({ companyName: c.companyName || '', subdomain: c.subdomain || '', reportFooter: c.reportFooter || '', supportEmail: c.emailFromAddress || '', primaryColor: c.primaryColor || '#FD4403', hideFlacronBranding: c.hideFlacronBranding || false });
       }
     } catch { /* no config yet */ }
     finally { setWlLoading(false); }
@@ -411,7 +411,7 @@ export default function EnterpriseDashboard() {
             <ChevronRight className="w-3.5 h-3.5 rotate-180" /> Standard Dashboard
           </button>
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-[#e5e7eb]">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-xs font-black text-white shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-xs font-black text-white shrink-0">
               {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -450,10 +450,10 @@ export default function EnterpriseDashboard() {
             {activeView === 'overview' && (
               <motion.div key="overview" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-                  <StatCard label="Total Reports" value={stats.total} sub="All time" icon={FileText} color="bg-gradient-to-br from-orange-500 to-amber-500" trend={12} />
-                  <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} color="bg-gradient-to-br from-blue-500 to-cyan-500" trend={8} />
-                  <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} color="bg-gradient-to-br from-violet-500 to-purple-600" />
-                  <StatCard label="Avg Quality" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="AI report score" icon={Shield} color="bg-gradient-to-br from-emerald-500 to-teal-500" trend={3} />
+                  <StatCard label="Total Reports" value={stats.total} sub="All time" icon={FileText} trend={12} />
+                  <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} trend={8} />
+                  <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} />
+                  <StatCard label="Avg Quality" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="AI report score" icon={Shield} trend={3} />
                 </div>
 
                 {/* Quick-action cards */}
@@ -967,7 +967,7 @@ export default function EnterpriseDashboard() {
 
                   {/* Owner row */}
                   <div className="flex items-center gap-4 px-5 py-4 border-b border-[#e5e7eb] bg-orange-50/30">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-sm font-black text-white shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-sm font-black text-white shrink-0">
                       {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
