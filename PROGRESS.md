@@ -85,6 +85,17 @@ Template for each entry — copy this block:
 - **Golden-rule check:** confirmed none violated
 -->
 
+### [2026-07-19] — T-3.12 — Security: stop leaking stack traces to clients
+- **Status:** DONE
+- **What changed:** `POST /api/reports/:id/export` error response returned `detail: err.stack` — an info-disclosure leak (Rule #6). Removed it; the response now mirrors the global handler (generic "Export failed" in production, `err.message` only in dev). Server-side `console.error` logging kept. Audited all routes: no other response-body stack/`detail` leaks; global error handler already prod-safe; CORS allow-all is dev-only (prod restricts to `allowedOrigins`).
+- **Files touched:** backend/routes/reports.js, CLAUDE.md, PROGRESS.md.
+- **QA done:** Lint 0 errors; backend tests 6/6.
+- **Left / follow-ups:** Non-revocable 7-day custom JWTs on logout; malware/magic-byte upload validation; audit logs; MFA — deferred (larger). At-rest encryption is already provided by GCP defaults (Firestore + Firebase Storage encrypt at rest).
+- **Golden-rule check:** advances Rule #6; none violated.
+
+### [2026-07-19] — T-2.7b — Human-review gate UI on EnterpriseDashboard
+- **Status:** DONE — mirrored the Dashboard review gate (editable content + Save + Approve & Finalize + status card) on the enterprise generate flow. Lint 0 errors, build OK. (Committed 3e434b6.)
+
 ### [2026-07-19] — T-2.7 — Human-review gate before finalize (Golden Rule #3)
 - **Status:** DONE (end-to-end verified)
 - **What changed:** AI output was written straight to `status:'completed'` and immediately exportable — no human review. Added a real review gate:

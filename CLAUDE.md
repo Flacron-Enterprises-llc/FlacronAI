@@ -120,7 +120,7 @@ If something is ambiguous or a Golden Rule is at risk → do NOT guess. Write th
 - ~~`/uploads` served publicly~~ — RESOLVED 2026-07-19: migrated to Firebase Storage; claim photos + exports are private (server-side / authenticated proxy), logos use download-token URLs. Public static route removed.
 - ~~Render has no persistent disk~~ — RESOLVED 2026-07-19 by the Firebase Storage migration; `imagePaths` are now Storage object paths, durable across deploys.
 - `firestore.rules:15` hardcodes admin as `admin@flacronai.com` but the real admin is `admin@flacronenterprises.com` — rules-level admin grants point at the wrong account.
-- `reports.js:355` returns `err.stack` to clients. `server.js:32` CORS allows all origins in development mode. Custom JWTs (7-day) can't be revoked on logout (`auth.js:128`). `.env.example:6` ships placeholder `JWT_SECRET`.
+- ~~`reports.js` returns `err.stack` to clients~~ — FIXED 2026-07-19 (T-3.12): export error no longer leaks stack/internals (prod → generic message). Global error handler already prod-safe; CORS allow-all is dev-only (prod restricts to `allowedOrigins`; secure default when `NODE_ENV` unset). Still open: custom JWTs (7-day) can't be revoked on logout (`auth.js`); `.env.example` ships placeholder `JWT_SECRET` (real secret set in Render).
 - `/admin` and `/admin-tier-update` frontend routes gated only client-side (`AdminDashboard.jsx:390-396` email check via `VITE_ADMIN_EMAIL`); real protection depends on backend `requireAdmin` — verify each admin endpoint has it.
 - Upload mimetype checks trust the client-supplied type (multer allowlists only).
 

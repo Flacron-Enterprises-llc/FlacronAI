@@ -405,7 +405,12 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
     return res.json({ success: true, downloadUrl, expiresAt, format, filename });
   } catch (err) {
     console.error('Export error:', err.stack || err.message || err);
-    return res.status(500).json({ success: false, error: err.message || 'Export failed', code: 'EXPORT_ERROR', detail: err.stack });
+    // Do not leak stack traces / internals to the client (Rule #6).
+    return res.status(500).json({
+      success: false,
+      error: process.env.NODE_ENV === 'production' ? 'Export failed' : (err.message || 'Export failed'),
+      code: 'EXPORT_ERROR',
+    });
   }
 });
 
