@@ -89,6 +89,7 @@ export const reportsAPI = {
   getAll: (params) => api.get('/reports', { params }),
   getOne: (id) => api.get(`/reports/${id}`),
   update: (id, data) => api.put(`/reports/${id}`, data),
+  approve: (id, data) => api.post(`/reports/${id}/approve`, data),
   delete: (id, permanent = false) => api.delete(`/reports/${id}`, { params: { permanent } }),
   export: (id, data) => api.post(`/reports/${id}/export`, data),
   getDownloadUrl: (id, filename) => `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,

@@ -50,16 +50,16 @@ ${recommendations ? `- Adjuster Recommendations: ${recommendations}` : ''}${imag
 
 Generate a thorough, professional DRAFT report following this EXACT structure with all sections fully populated:
 
-# INSURANCE INSPECTION REPORT — DRAFT FOR ADJUSTER REVIEW
+# INSURANCE INSPECTION REPORT
 
-> This document is an AI-generated draft. All observations are preliminary and require review, correction, and approval by a licensed insurance adjuster. No determination of cause, coverage, liability, or final cost has been made.
+> Prepared with AI assistance for review and approval by a licensed insurance adjuster. Observations are preliminary; this report does not constitute a final determination of cause, coverage, liability, or loss value.
 
 ## SECTION 1: REPORT HEADER
-- Report Type: ${reportType} Inspection Report (Draft)
+- Report Type: ${reportType} Inspection Report
 - Claim Number: ${claimNumber}
 - Date of Inspection: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 - Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Prepared By: FlacronAI (AI-generated draft — pending licensed adjuster review)
+- Prepared By: FlacronAI (AI-assisted — for licensed adjuster review)
 
 ## SECTION 2: INSURED INFORMATION
 - Insured Name: ${insuredName}

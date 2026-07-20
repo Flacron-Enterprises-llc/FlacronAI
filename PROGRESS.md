@@ -6,7 +6,7 @@
 ---
 
 ## Current focus
-- **Now working on:** — batch-2 items done (AI swap, SES email, Firebase Storage, SVG logo, Rule #2 de-verdicting). Next big open item: Rule #3 human-review gate (accept/reject/edit before finalize).
+- **Now working on:** — all Golden-Rule violations from the audit now resolved (Rule #1 content, #2 verdicts, #3 review gate, #6 storage). Remaining backlog: T-1.16 lead-capture consent forms; EnterpriseDashboard approve UI; misc Phase 2/3.
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
   2. **Migrate file storage to Firebase Storage** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-3.10b): `config/storage.js` rewritten on Firebase Storage; generators buffer-based; photos+exports private, logos via token URL; public `/uploads` route removed. 8/8 live bucket round-trip checks passed. **Client must add `FIREBASE_STORAGE_BUCKET` to Render.**
@@ -84,6 +84,16 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-2.7 — Human-review gate before finalize (Golden Rule #3)
+- **Status:** DONE (end-to-end verified)
+- **What changed:** AI output was written straight to `status:'completed'` and immediately exportable — no human review. Added a real review gate:
+  - **Backend (`reports.js`):** new reports save as **`status:'draft'`** (+ `reviewedBy`/`reviewedAt` null). Export of an un-reviewed report is **force-watermarked** "DRAFT — PENDING ADJUSTER REVIEW" and filename suffixed `_DRAFT`; only a reviewed report exports clean (`isReviewed()` — treats legacy `completed` as reviewed so old reports still work). New **`POST /api/reports/:id/approve`** records reviewer + timestamp, sets `status:'finalized'`, and persists any final content edits. AI content title is now status-neutral (draft state is shown by the watermark/workflow, not baked into the text).
+  - **Frontend (`Dashboard.jsx` + `api.js`):** the read-only preview is now an **editable content textarea** with **Save Changes** (PUT) and **Approve & Finalize** (POST /approve); a Review & Approval card shows draft/finalized state; report list gained draft/finalized status styles + a "Review" action to reopen any report into the editable pane.
+- **Files touched:** backend/routes/reports.js, backend/services/aiService.js (status-neutral title), frontend/src/pages/Dashboard.jsx, frontend/src/services/api.js, CLAUDE.md, PROGRESS.md.
+- **QA done:** End-to-end against the real API/Firestore/Storage (seeded draft, minted JWT, no Claude): draft export filename → `_DRAFT` ✓; approve → `status:finalized` + `reviewedBy` + `reviewedAt` ✓; finalized export → clean filename ✓. Frontend lint 0 errors + `npm run build` OK; backend lint 0 errors + tests 6/6.
+- **Left / follow-ups:** `EnterpriseDashboard.jsx` still lacks the approve UI (backend gate already applies — enterprise reports export watermarked until approved via API). `StatusToggle` can also manually set 'finalized' (a deliberate human action; doesn't record reviewer — acceptable override).
+- **Golden-rule check:** satisfies Rule #3 (no AI output passes as a final report without human approval); complements the Rule #2 cautious language.
 
 ### [2026-07-19] — T-2.5 — De-verdict AI report language (Golden Rule #2)
 - **Status:** DONE (live-verified)

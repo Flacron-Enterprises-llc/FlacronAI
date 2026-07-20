@@ -6,7 +6,7 @@ import {
   FileText, Upload, ChevronRight, ChevronLeft, X, Download, RefreshCw,
   Search, Trash2, Eye, Lock, ExternalLink, BarChart3, Users,
   Zap, Clock, AlertCircle, CheckCircle, Settings,
-  Star, Image as ImageIcon, CreditCard, Check
+  Star, Image as ImageIcon, CreditCard, Check, Save, ShieldCheck
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import TierBadge from '../components/TierBadge';
@@ -16,7 +16,7 @@ import api from '../services/api';
 
 const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Other'];
 const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'];
-const STATUSES = ['All', 'completed', 'processing', 'failed', 'archived'];
+const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived'];
 
 const GENERATION_STEPS = [
   'Uploading photos...',
@@ -119,14 +119,17 @@ function SkeletonRow() {
 }
 
 const STATUS_STYLES = {
+  finalized: 'bg-green-500/20 text-green-600 border-green-500/30',
+  approved: 'bg-green-500/20 text-green-600 border-green-500/30',
   completed: 'bg-green-500/20 text-green-600 border-green-500/30',
   complete: 'bg-green-500/20 text-green-600 border-green-500/30',
+  draft: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
   processing: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30',
   failed: 'bg-red-500/20 text-red-500 border-red-500/30',
   archived: 'bg-gray-400/20 text-gray-500 border-gray-400/30',
 };
 
-const STATUS_LABELS = ['completed', 'processing', 'failed', 'archived'];
+const STATUS_LABELS = ['draft', 'finalized', 'processing', 'failed', 'archived'];
 
 function StatusBadge({ status }) {
   const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
@@ -361,6 +364,9 @@ export default function Dashboard() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [previewing, setPreviewing] = useState(false);
+  const [editableContent, setEditableContent] = useState('');
+  const [savingContent, setSavingContent] = useState(false);
+  const [approving, setApproving] = useState(false);
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
 
@@ -502,6 +508,40 @@ export default function Dashboard() {
       setPdfPreviewUrl(url);
     } catch { toast.error('Preview failed'); }
     finally { setPreviewing(false); }
+  };
+
+  // Keep the editable draft in sync when a new report is generated/opened
+  useEffect(() => {
+    if (generatedReport?.content != null) setEditableContent(generatedReport.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedReport?.id]);
+
+  const reportReviewed = ['finalized', 'approved', 'completed'].includes(generatedReport?.status);
+
+  const handleSaveContent = async () => {
+    if (!generatedReport) return;
+    setSavingContent(true);
+    try {
+      await reportsAPI.update(generatedReport.id, { content: editableContent });
+      setGeneratedReport(prev => ({ ...prev, content: editableContent }));
+      toast.success('Changes saved');
+      handlePreviewPDF();
+    } catch { toast.error('Save failed'); }
+    finally { setSavingContent(false); }
+  };
+
+  const handleApprove = async () => {
+    if (!generatedReport) return;
+    setApproving(true);
+    try {
+      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent });
+      const updated = res.data?.report || {};
+      setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
+      toast.success('Report approved & finalized — exports are now clean');
+      handlePreviewPDF();
+    } catch { toast.error('Approval failed'); }
+    finally { setApproving(false); }
   };
 
   const handleDeleteReport = async (id) => {
@@ -1108,18 +1148,45 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {/* Raw content collapsible */}
-                      <details className="card p-4">
-                        <summary className="text-sm font-semibold text-gray-700 cursor-pointer select-none">
-                          Raw Report Content
-                        </summary>
-                        <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700 max-h-[500px] overflow-y-auto leading-relaxed whitespace-pre-wrap font-mono">
-                          {generatedReport.content || 'Report content generated successfully.'}
+                      {/* Editable draft content — mandatory human review (Golden Rule #3) */}
+                      <div className="card p-4">
+                        <div className="flex items-center justify-between mb-3 gap-3">
+                          <div>
+                            <h2 className="text-sm font-semibold text-gray-900">Review &amp; Edit Report</h2>
+                            <p className="text-xs text-gray-500 mt-0.5">AI-generated draft — review and edit any section, then approve to finalize.</p>
+                          </div>
+                          <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
+                            className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50 shrink-0">
+                            {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
+                          </button>
                         </div>
-                      </details>
+                        <textarea value={editableContent} onChange={e => setEditableContent(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700 leading-relaxed font-mono resize-y focus:outline-none focus:ring-2 focus:ring-orange-400"
+                          style={{ minHeight: '360px' }} spellCheck={false} />
+                      </div>
                     </div>
 
                     <div className="space-y-4">
+                      {/* Human-review gate (Golden Rule #3) */}
+                      <div className={`card p-4 border ${reportReviewed ? 'border-green-200' : 'border-amber-300 bg-amber-50/40'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <ShieldCheck className={`w-4 h-4 ${reportReviewed ? 'text-green-600' : 'text-amber-600'}`} />
+                          <h3 className="text-sm font-semibold text-gray-800">Review &amp; Approval</h3>
+                        </div>
+                        {reportReviewed ? (
+                          <div className="flex items-center gap-2 text-sm text-green-700">
+                            <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <button onClick={handleApprove} disabled={approving}
+                              className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
+                              {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
+                            </button>
+                          </>
+                        )}
+                      </div>
                       <div className="card p-4">
                         <h3 className="text-sm font-semibold text-gray-700 mb-3">Export Options</h3>
                         <div className="space-y-2">
@@ -1256,6 +1323,10 @@ export default function Dashboard() {
                             </td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
+                                <button onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
+                                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
+                                  <ShieldCheck className="w-4 h-4 text-amber-600" />
+                                </button>
                                 <button onClick={() => setDetailReport(r)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
                                   <Eye className="w-4 h-4 text-gray-600" />
                                 </button>
