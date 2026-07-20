@@ -7,6 +7,7 @@ import Footer from '../components/Footer';
 import { salesAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import Seo from '../components/Seo.jsx';
+import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
 
 const SUBJECTS = [
   'General Inquiry',
@@ -28,6 +29,7 @@ const FAQ_LINKS = [
 
 export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
@@ -35,10 +37,12 @@ export default function Contact() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.subject) { toast.error('Please select a subject'); return; }
+    if (!consent) { toast.error('Please agree to be contacted before submitting'); return; }
     setLoading(true);
     try {
-      await salesAPI.contact(form);
+      await salesAPI.contact({ ...form, consent: buildConsent(false) });
       setSuccess(true);
+      setConsent(false);
     } catch {
       toast.error('Failed to send message. Please try again or email us directly.');
     } finally {
@@ -100,7 +104,8 @@ export default function Contact() {
                     <textarea className="input min-h-[180px] resize-y" required placeholder="Tell us how we can help you. The more detail you provide, the faster we can assist."
                       value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
                   </div>
-                  <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
+                  <ConsentCheckbox checked={consent} onChange={setConsent} />
+                  <button type="submit" disabled={loading || !consent} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     {loading ? 'Sending...' : 'Send Message'}
                   </button>
                   <p className="text-xs text-gray-500 text-center">We typically respond within 1 business day. For urgent support, use the live chat widget.</p>

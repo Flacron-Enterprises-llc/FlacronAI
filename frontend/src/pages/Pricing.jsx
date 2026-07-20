@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import Seo from '../components/Seo.jsx';
 import { PLAN_PRICING } from '../data/plans.js';
 import { PRODUCT_JSONLD } from '../data/structuredData.js';
+import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
 
 const PLANS = [
   {
@@ -114,14 +115,16 @@ const COLOR_MAP = {
 
 function ContactSalesModal({ onClose }) {
   const [form, setForm] = useState({ name: '', email: '', company: '', phone: '', companyType: '', monthlyVolume: '', message: '' });
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!consent) { toast.error('Please agree to be contacted before submitting'); return; }
     setLoading(true);
     try {
-      await salesAPI.contact({ ...form, subject: 'Enterprise Plan Inquiry' });
+      await salesAPI.contact({ ...form, subject: 'Enterprise Plan Inquiry', consent: buildConsent(!!form.phone.trim()) });
       setSuccess(true);
     } catch {
       toast.error('Failed to send. Please try again.');
@@ -198,7 +201,8 @@ function ContactSalesModal({ onClose }) {
                 <textarea className="input min-h-[100px] resize-none" placeholder="Tell us about your requirements, integrations needed, or any questions..."
                   value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
               </div>
-              <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
+              <ConsentCheckbox checked={consent} onChange={setConsent} includeSms />
+              <button type="submit" disabled={loading || !consent} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 {loading ? 'Sending...' : 'Send Message'}
               </button>
             </form>

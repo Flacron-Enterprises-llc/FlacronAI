@@ -45,7 +45,7 @@
 | T-1.13 | SEO: sitemap, robots, canonical | DONE | 2026-07-17 — robots.txt + sitemap.xml (10 public URLs); 404 now noindex + soft-404 canonical dropped |
 | T-1.14 | SEO: structured data (JSON-LD) | DONE | 2026-07-18 — Organization (Home), SoftwareApplication+Offers (Pricing), FAQPage (FAQs); validated, prices from shared source |
 | T-1.15 | SEO: performance + image optimization | DONE | 2026-07-18 — logo-mark 512px/137KB → 160px/21KB (every page); confirmed lazy+sized images, route code-splitting, font-display swap |
-| T-1.16 | Opt-in / lead-capture forms | TODO | consent-based |
+| T-1.16 | Opt-in / lead-capture forms | DONE | 2026-07-21 — consent checkbox (never pre-checked) + PP/ToS links on Contact + Pricing enterprise forms; server enforces + records consent (version, channels, timestamp, ip, UA) |
 
 ### Phase 2 — Core Reporting Platform
 | Task | Title | Status | Notes |
@@ -84,6 +84,18 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-21] — T-1.16 — Lead-capture consent flow (Golden Rule #5)
+- **Status:** DONE (end-to-end verified)
+- **What changed:** Client-required consent before submitting contact/lead info.
+  - **New `components/ConsentCheckbox.jsx`** — reusable, **never pre-checked** (Rule #5): states the user agrees to be contacted by email (and SMS where a phone is given), that consent is **voluntary and withdrawable**, with links to the **Privacy Policy** and **Terms of Service**. Exports `CONSENT_VERSION` (`2026-07-21`) + `buildConsent(hasPhone)`.
+  - **Wired into both live lead forms:** `Contact.jsx` (email-only) and `Pricing.jsx` enterprise "Contact Sales" modal (email+SMS, since it has a phone field). Submit button is disabled until the box is checked; handler also guards.
+  - **Backend `POST /api/sales/contact`:** rejects submissions without consent (`400 CONSENT_REQUIRED`) and records a compliance object on the lead — `{ agreed, version, channels, consentedAt (server time), ip, userAgent }`.
+  - Deleted the dead `components/ContactSalesModal.jsx` (unused; would have been a non-consented path).
+- **Files touched:** frontend/src/components/ConsentCheckbox.jsx (new), frontend/src/pages/Contact.jsx, frontend/src/pages/Pricing.jsx, backend/routes/sales.js, deleted frontend/src/components/ContactSalesModal.jsx, PROGRESS.md, CLAUDE.md.
+- **QA done:** Backend test (mounted router): no-consent → 400 CONSENT_REQUIRED ✓; with-consent → 201 + lead stored with agreed/version/channels(email+sms)/consentedAt ✓. Frontend lint 0 errors + `npm run build` OK.
+- **Left / follow-ups:** Account signup (`Auth.jsx`) could also surface a Terms/Privacy acceptance line (separate from contact consent) if the client wants it. Marketing unsubscribe/withdrawal handling is a future item (no marketing sends exist yet — only transactional + admin-initiated).
+- **Golden-rule check:** satisfies Rule #5 (explicit, unchecked, voluntary consent; transactional email stays separate; consent recorded for compliance).
 
 ### [2026-07-19] — T-3.12 — Security: stop leaking stack traces to clients
 - **Status:** DONE

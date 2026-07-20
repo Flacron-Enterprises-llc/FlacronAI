@@ -22,9 +22,29 @@ router.post('/contact', [
     return res.status(400).json({ success: false, errors: errors.mapped() });
   }
 
+  // Consent is required before we may store or act on a lead (Golden Rule #5).
+  const consentIn = req.body.consent;
+  if (!consentIn || consentIn.agreed !== true) {
+    return res.status(400).json({
+      success: false,
+      error: 'Consent to be contacted is required before submitting.',
+      code: 'CONSENT_REQUIRED',
+    });
+  }
+
   try {
     const db = getFirestore();
     const { name, email, subject, message, company, phone, companyType, monthlyVolume } = req.body;
+
+    // Compliance record: what was agreed, which version, when, and from where.
+    const consent = {
+      agreed: true,
+      version: typeof consentIn.version === 'string' ? consentIn.version : 'unknown',
+      channels: Array.isArray(consentIn.channels) && consentIn.channels.length ? consentIn.channels : ['email'],
+      consentedAt: new Date().toISOString(),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || '',
+    };
 
     const lead = {
       id: uuidv4(),
@@ -36,6 +56,7 @@ router.post('/contact', [
       phone: phone || '',
       companyType: companyType || '',
       monthlyVolume: monthlyVolume || '',
+      consent,
       status: 'new',
       notes: '',
       createdAt: new Date().toISOString(),
