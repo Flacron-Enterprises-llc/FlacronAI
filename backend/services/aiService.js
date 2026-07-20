@@ -27,7 +27,13 @@ const buildReportPrompt = (reportData, imageAnalysis) => {
     ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
     : '';
 
-  return `You are a professional insurance adjuster with 20+ years of experience. Generate a complete, professional CRU GROUP standard insurance inspection report in markdown format.
+  return `You are assisting a licensed insurance adjuster by preparing a DRAFT inspection report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations. A qualified professional will review, correct, and sign off on this draft before it is used.
+
+CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make final determinations about any of the following — instead, note them as items for the licensed adjuster to evaluate and confirm: cause of loss, coverage or exclusions, liability, fault, fraud, policy interpretation, structural safety, mold, engineering conclusions, code compliance, or final/binding repair costs.
+- Where a determination would normally be stated, write what the adjuster should assess and flag that no determination has been made.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.
 
 CLAIM DETAILS:
 - Claim Number: ${claimNumber}
@@ -42,16 +48,18 @@ ${lossDescription ? `- Loss Description (provided by adjuster): ${lossDescriptio
 ${damagesObserved ? `- Damages Observed (provided by adjuster): ${damagesObserved}` : ''}
 ${recommendations ? `- Adjuster Recommendations: ${recommendations}` : ''}${imageSection}
 
-Generate a thorough, professional report following this EXACT structure with all sections fully populated:
+Generate a thorough, professional DRAFT report following this EXACT structure with all sections fully populated:
 
-# INSURANCE INSPECTION REPORT
+# INSURANCE INSPECTION REPORT — DRAFT FOR ADJUSTER REVIEW
+
+> This document is an AI-generated draft. All observations are preliminary and require review, correction, and approval by a licensed insurance adjuster. No determination of cause, coverage, liability, or final cost has been made.
 
 ## SECTION 1: REPORT HEADER
-- Report Type: ${reportType} Inspection Report
+- Report Type: ${reportType} Inspection Report (Draft)
 - Claim Number: ${claimNumber}
 - Date of Inspection: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 - Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Prepared By: FlacronAI Automated Report System
+- Prepared By: FlacronAI (AI-generated draft — pending licensed adjuster review)
 
 ## SECTION 2: INSURED INFORMATION
 - Insured Name: ${insuredName}
@@ -62,70 +70,71 @@ Generate a thorough, professional report following this EXACT structure with all
 
 ## SECTION 3: PROPERTY DESCRIPTION
 ${propertyDetails
-    ? `Based on the following property details provided by the adjuster, expand into a professional property description:\n${propertyDetails}`
-    : `Write a professional property description for the ${lossType} loss site at ${propertyAddress}. Include: the type of structure (residential/commercial), likely construction type and materials, estimated age and condition, general layout, and any physical characteristics relevant to a ${lossType} loss assessment.`}
+    ? `Based on the following property details provided by the adjuster, expand into a professional property description (describe only what is provided; note assumptions the adjuster should confirm):\n${propertyDetails}`
+    : `Write a professional property description for the ${lossType} loss site at ${propertyAddress}. Describe the apparent type of structure (residential/commercial), likely construction type and materials, estimated age and condition, and general layout. Frame characteristics that are not directly provided as apparent/likely and note that the adjuster should confirm on site.`}
 
-## SECTION 4: SCOPE OF LOSS / CAUSE OF LOSS
+## SECTION 4: SCOPE OF LOSS / OBSERVATIONS
 ${lossDescription
-    ? `Based on the following loss description provided by the adjuster, expand into a professional analysis:\n${lossDescription}\n\nAlso include analysis of coverage implications and contributing factors.`
-    : `Write a detailed professional analysis of this ${lossType} loss at ${propertyAddress} on ${lossDate}. Cover all of the following in full sentences and paragraphs:
-- The most probable cause of this ${lossType} loss and how it typically occurs
-- How the damage developed, spread, and progressed at this property
-- The likely sequence of events from the initial incident through discovery
-- Coverage analysis: whether this ${lossType} loss is covered under standard insurance policy terms and any relevant exclusions to consider
-- Contributing factors, pre-existing conditions, or aggravating circumstances relevant to this loss${additionalNotes ? `\n- Additional context from adjuster notes: ${additionalNotes}` : ''}`}
+    ? `Based on the following loss description provided by the adjuster, expand into a professional narrative. Describe what appears to have occurred using cautious language, and list coverage-related considerations the adjuster should evaluate — do NOT make a coverage determination:\n${lossDescription}`
+    : `Write a professional narrative of this reported ${lossType} loss at ${propertyAddress} on ${lossDate}, using cautious, non-conclusive language. Cover:
+- Possible cause(s) that are consistent with this type of ${lossType} loss and how such losses typically occur — clearly framed as possibilities for the adjuster to confirm, not a finding
+- How the damage may have developed, spread, and progressed at this property (apparent, subject to verification)
+- The likely sequence of events, noting this is a preliminary reconstruction to be confirmed
+- Coverage-related considerations and potential exclusions the adjuster should evaluate — explicitly state that no coverage determination has been made
+- Possible contributing factors or pre-existing conditions the adjuster should investigate${additionalNotes ? `\n- Additional context from adjuster notes: ${additionalNotes}` : ''}`}
 
-## SECTION 5: DAMAGE ASSESSMENT
+## SECTION 5: DAMAGE ASSESSMENT (OBSERVED / APPARENT)
 ${damagesObserved
-    ? `Based on the following damages observed by the adjuster, expand into a professional room-by-room damage assessment:\n${damagesObserved}\n\nFor each area include severity (Minor/Moderate/Severe), affected materials, and estimated square footage.`
-    : `Provide a detailed room-by-room / area-by-area damage assessment. For each area, list:
+    ? `Based on the following damages observed by the adjuster, expand into a professional room-by-room assessment. For each area include apparent severity (Minor/Moderate/Severe), affected materials, and estimated square footage — noting that severity and extent are preliminary and subject to the adjuster's confirmation:\n${damagesObserved}`
+    : `Provide a detailed room-by-room / area-by-area assessment of apparent damage. For each area, list:
 - Location/Room Name
-- Type of damage observed
-- Severity (Minor/Moderate/Severe)
+- Type of damage that appears present
+- Apparent severity (Minor/Moderate/Severe) — preliminary, to be confirmed
 - Affected materials (e.g., drywall, flooring, cabinetry)
-- Square footage affected (estimated)
+- Estimated square footage affected (approximate)
 
-Include at minimum 5-7 damage areas relevant to the loss type: ${lossType}`}
+Include at minimum 5-7 areas relevant to the loss type: ${lossType}. Note any conditions (structural, electrical, mold, safety) that a qualified professional should evaluate further — do not conclude on them.`}
 
-## SECTION 6: SCOPE OF WORK (RECOMMENDED REPAIRS)
-Provide itemized repair recommendations:
-- Immediate emergency mitigation steps
-- Temporary repairs needed
-- Permanent repair scope by trade (demo, framing, drywall, flooring, painting, mechanical, etc.)
+## SECTION 6: SCOPE OF WORK (SUGGESTED REPAIRS FOR REVIEW)
+Provide itemized, suggested repair considerations for the adjuster and contractor to confirm:
+- Possible immediate mitigation steps
+- Temporary repairs that may be needed
+- Suggested permanent repair scope by trade (demo, framing, drywall, flooring, painting, mechanical, etc.)
 - Material specifications where applicable
 - Labor descriptions
+Frame these as suggestions to be validated, not directives.
 
-## SECTION 7: ESTIMATED LOSS SUMMARY
-Provide a structured cost estimate table with REAL calculated dollar amounts based on industry-standard restoration rates for a ${lossType} loss. Do NOT use placeholder values like $XXX.XX — use realistic specific numbers (e.g., $1,850.00, $3,200.00). Calculate each line item individually and sum them for the TOTAL.
+## SECTION 7: PRELIMINARY ESTIMATED COSTS (FOR PLANNING & REVIEW ONLY)
+Provide a structured, PRELIMINARY cost estimate table using approximate industry-standard restoration rates for a ${lossType} loss. These figures are for planning and adjuster review only — they are NOT a final, binding, or authoritative estimate, and must be verified against actual contractor bids and the policy. Use realistic approximate numbers (e.g., ~$1,850) rather than placeholders.
 
-| Category | Description | Estimated Cost |
-|----------|-------------|----------------|
-[Include 8-12 line items with REAL dollar amounts based on scope of damage, e.g. $1,250.00]
-| **TOTAL ESTIMATED LOSS** | | [sum of all line items above, e.g. $14,750.00] |
+| Category | Description | Estimated Cost (approx.) |
+|----------|-------------|--------------------------|
+[Include 8-12 line items with approximate dollar amounts based on the apparent scope, e.g. ~$1,250]
+| **PRELIMINARY ESTIMATED TOTAL** | Subject to verification | [approximate sum of the line items above] |
 
-IMPORTANT: Every dollar amount must be a specific calculated number. No placeholders. The TOTAL must equal the sum of all line items above it.
+Note directly beneath the table: "Preliminary estimate for planning only — not a final determination of loss value. Actual costs subject to contractor bids, measurement, and coverage review."
 
 ## SECTION 8: SUPPORTING DOCUMENTATION
-List all documentation reviewed and recommended:
-- Photos taken (reference image analysis if available)
+List documentation reviewed and recommended:
+- Photos provided (reference image analysis if available)
 - Documents reviewed
 - Additional documentation recommended
-- Third-party reports needed (if any)
+- Third-party/professional reports the adjuster may need (if any)
 
-## SECTION 9: CONCLUSION / ADJUSTER NOTES
+## SECTION 9: CONCLUSION / ITEMS FOR ADJUSTER REVIEW
 ${recommendations
-    ? `Include the following adjuster recommendations and expand professionally:\n${recommendations}\n\nAlso include:`
+    ? `Incorporate the following adjuster recommendations and expand professionally, keeping cautious language:\n${recommendations}\n\nAlso include:`
     : ''}
-- Summary of findings
-- Coverage determination notes
-- Recommended next steps
-- Special considerations
-- Adjuster certification statement
+- Summary of apparent findings (preliminary)
+- Coverage considerations for the adjuster to evaluate — state clearly that no coverage determination has been made
+- Recommended next steps and items requiring professional confirmation
+- Conditions a qualified professional should further evaluate (structural, mold, safety, engineering, etc.)
+- A note that this draft must be reviewed, corrected, and approved by a licensed adjuster before use. Do NOT write a certification or attestation on behalf of the adjuster; leave a blank line for the reviewing adjuster's own sign-off.
 
 ---
-*Report generated by FlacronAI AI System | ${new Date().toISOString()}*
+*AI-generated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*
 
-Write the complete report now with all sections fully populated with professional, realistic content appropriate for a ${lossType} loss at a residential/commercial property. Be specific, detailed, and professional.`;
+Write the complete DRAFT report now with all sections fully populated, using professional but cautious, non-conclusive language appropriate for a ${lossType} loss. Be specific and detailed where the inputs support it, and flag anything requiring professional confirmation.`;
 };
 
 // Checks if the generated content has a complete Section 7 cost table.
@@ -141,7 +150,7 @@ const ensureLossSummary = async (reportData, content) => {
 
   console.log('⚠️  Section 7 incomplete — generating cost summary separately...');
 
-  const summaryPrompt = `You are a professional insurance adjuster. Generate ONLY the estimated cost table for a ${reportData.lossType} insurance loss claim.
+  const summaryPrompt = `You are assisting a licensed adjuster. Generate ONLY a PRELIMINARY estimated cost table for a ${reportData.lossType} insurance loss claim. These figures are approximate, for planning and adjuster review only — NOT a final or binding determination of loss value.
 
 Property: ${reportData.propertyAddress}
 Damages: ${reportData.damagesObserved || 'Typical ' + reportData.lossType + ' damage to a residential property'}
@@ -149,12 +158,14 @@ Loss Description: ${reportData.lossDescription || ''}
 
 Output ONLY this markdown section (no preamble, no other text):
 
-## SECTION 7: ESTIMATED LOSS SUMMARY
+## SECTION 7: PRELIMINARY ESTIMATED COSTS (FOR PLANNING & REVIEW ONLY)
 
-| Category | Description | Estimated Cost |
-|----------|-------------|----------------|
-[8-10 rows with REAL specific dollar amounts, e.g. $1,850.00. No placeholders.]
-| **TOTAL ESTIMATED LOSS** | | [exact sum of all rows above] |`;
+| Category | Description | Estimated Cost (approx.) |
+|----------|-------------|--------------------------|
+[8-10 rows with approximate dollar amounts, e.g. ~$1,850]
+| **PRELIMINARY ESTIMATED TOTAL** | Subject to verification | [approximate sum of the rows above] |
+
+_Preliminary estimate for planning only — not a final determination of loss value. Actual costs subject to contractor bids and coverage review._`;
 
   let summaryText;
   try {

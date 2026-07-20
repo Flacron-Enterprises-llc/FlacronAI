@@ -6,7 +6,7 @@
 ---
 
 ## Current focus
-- **Now working on:** — batch-2 backend migrations complete; SVG logo + report-prompt verdict language (T-2.5) remain.
+- **Now working on:** — batch-2 items done (AI swap, SES email, Firebase Storage, SVG logo, Rule #2 de-verdicting). Next big open item: Rule #3 human-review gate (accept/reject/edit before finalize).
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
   2. **Migrate file storage to Firebase Storage** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-3.10b): `config/storage.js` rewritten on Firebase Storage; generators buffer-based; photos+exports private, logos via token URL; public `/uploads` route removed. 8/8 live bucket round-trip checks passed. **Client must add `FIREBASE_STORAGE_BUCKET` to Render.**
@@ -84,6 +84,25 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-2.5 — De-verdict AI report language (Golden Rule #2)
+- **Status:** DONE (live-verified)
+- **What changed:** The report prompts made the AI issue definitive professional verdicts (most-probable cause, "whether this loss is covered", "Adjuster certification statement", "REAL calculated" final costs). Rewrote to a review-first stance:
+  - **`buildReportPrompt`** (aiService.js): report retitled "DRAFT FOR ADJUSTER REVIEW" with a top disclaimer; added a CRITICAL LANGUAGE & SCOPE RULES block (cautious language; no final determination of cause/coverage/liability/fraud/policy/structural/mold/engineering/code/final cost — all reframed as "items for the licensed adjuster to evaluate"). Section 4 "Cause of Loss" → "Scope of Loss / Observations" (possible causes to confirm, coverage *considerations* with explicit "no determination made"). Section 7 → "PRELIMINARY ESTIMATED COSTS (FOR PLANNING & REVIEW ONLY)" with a non-binding note. Section 9 no longer asks for a certification; leaves the adjuster's own sign-off blank.
+  - **Section-7 fallback prompt** (`ensureLossSummary`) relabelled + non-binding framing to match.
+  - **Auto-certification removed from exports:** `properPdfGenerator.js` + `documentGenerator.js` "Adjuster Certification / I certify that the information… is accurate" → "Reviewing Adjuster Sign-Off" + AI-draft disclaimer (signature = the adjuster's own attestation; system no longer certifies).
+- **Files touched:** backend/services/aiService.js, backend/utils/properPdfGenerator.js, backend/utils/documentGenerator.js, CLAUDE.md, PROGRESS.md.
+- **QA done:** Live Claude generation (Opus 4.8) of a water-damage report — all 6 cautious markers present ("appear", "may", "subject to", "preliminary", "no coverage determination", "review"); all 7 hard-verdict phrases absent ("is covered under", "I certify that", "claim is approved/denied", …). Lint 0 errors; backend tests 6/6.
+- **Left / follow-ups:** Rule #3 (human accept/reject/edit gate before finalize) is still open — reports still save `status:'completed'` and are immediately exportable; that's a separate frontend+backend workflow task.
+- **Golden-rule check:** directly satisfies Rule #2. Advances Rule #3 posture (drafts now self-identify as pending review) but the enforcement gate remains TODO.
+
+### [2026-07-19] — T-1.3b — Vector (SVG) logo mark
+- **Status:** DONE
+- **What changed:** Client asked for a vector logo. Vectorized the FA monogram from `logo-mark.png` by per-color potrace tracing (orange F + triangle, navy A) → `frontend/public/logo-mark.svg`; faithfulness confirmed by re-rasterizing and comparing to source. Switched all UI `<img>` logo refs (navbar, footer, auth ×2, home, enterprise dashboard, app loader) from `.png` → `.svg` for crisp any-size rendering (~13KB vs 21KB). Kept PNG for Organization JSON-LD `logo` (search engines prefer raster).
+- **Files touched:** frontend/public/logo-mark.svg (new), App.jsx, components/Navbar.jsx, components/Footer.jsx, pages/Auth.jsx, pages/Home.jsx, pages/EnterpriseDashboard.jsx.
+- **QA done:** SVG re-render matches original; `npm run build` succeeds; SVG copied to dist/.
+- **Left / follow-ups:** Full "FLACRON AI" wordmark + taglines still only in PNG (the mark is what the UI uses); can vectorize the wordmark too if the client wants it.
+- **Golden-rule check:** none violated.
 
 ### [2026-07-19] — T-3.10b — File storage migration local disk → Firebase Storage
 - **Status:** DONE (live-verified against the real bucket)

@@ -187,9 +187,9 @@ const generateDOCX = async (report, options = {}) => {
     <w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>
     <w:p>
       <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
-      <w:r><w:t>Adjuster Certification</w:t></w:r>
+      <w:r><w:t>Reviewing Adjuster Sign-Off</w:t></w:r>
     </w:p>
-    <w:p><w:r><w:t>I certify that the information contained in this report is accurate and complete to the best of my knowledge.</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">This report was prepared with AI assistance and is provided as a draft for professional review. It does not constitute a final determination of cause, coverage, liability, or loss value. The reviewing adjuster's signature below indicates that they have reviewed, corrected as needed, and approved its contents.</w:t></w:r></w:p>
     <w:p><w:r><w:t></w:t></w:r></w:p>
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Signature</w:t></w:r></w:p>
     <w:p><w:r><w:t></w:t></w:r></w:p>

@@ -388,13 +388,15 @@ const generatePDF = async (report, options = {}) => {
       doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
       doc.y = 72;
 
-      doc.fontSize(18).fillColor('#0f172a').font('Helvetica-Bold').text('Adjuster Certification', margin, 72);
+      doc.fontSize(18).fillColor('#0f172a').font('Helvetica-Bold').text('Reviewing Adjuster Sign-Off', margin, 72);
       doc.rect(margin, 96, contentWidth, 2).fill(accentHex);
       doc.y = 114;
 
       doc.fontSize(10).fillColor('#374151').font('Helvetica')
         .text(
-          'I certify that the information contained in this report is accurate and complete to the best of my knowledge.',
+          'This report was prepared with AI assistance and is provided as a draft for professional review. ' +
+          'It does not constitute a final determination of cause, coverage, liability, or loss value. ' +
+          'The reviewing adjuster’s signature below indicates that they have reviewed, corrected as needed, and approved its contents.',
           margin, doc.y, { width: contentWidth }
         );
 
