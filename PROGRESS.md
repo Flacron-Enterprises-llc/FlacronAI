@@ -85,6 +85,14 @@ Template for each entry — copy this block:
 - **Golden-rule check:** confirmed none violated
 -->
 
+### [2026-07-21] — T-5.6a — Enterprise Dashboard UI polish (de-AI / brand)
+- **Status:** DONE
+- **What changed:** Removed the "AI dashboard" tells from EnterpriseDashboard: the four rainbow-gradient stat cards (orange/amber, blue/cyan, violet/purple, emerald/teal) now use the cohesive brand chip (`bg-brand-50` + `text-brand-600` icon) matching the T-1.10 site-wide treatment; monogram badges → solid `brand-600`; stale white-label default `#f97316` → brand `#FD4403`.
+- **Files touched:** frontend/src/pages/EnterpriseDashboard.jsx, PROGRESS.md.
+- **QA done:** lint 0 errors, `npm run build` OK. (Visual QA in-app pending — enterprise-tier login needed; deferred to client's final review.)
+- **Left / follow-ups:** broader `orange-*` (#f97316) → brand-token migration across the enterprise dashboard is a larger cosmetic sweep, deferred (needs enterprise-login visual QA). Added review-gate UI already in T-2.7b.
+- **Golden-rule check:** none violated; advances the "not AI-looking / branded" goal.
+
 ### [2026-07-21] — T-1.16 — Lead-capture consent flow (Golden Rule #5)
 - **Status:** DONE (end-to-end verified)
 - **What changed:** Client-required consent before submitting contact/lead info.
