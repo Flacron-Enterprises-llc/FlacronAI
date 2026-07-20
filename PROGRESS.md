@@ -92,7 +92,7 @@ Template for each entry — copy this block:
   - **Frontend (`Dashboard.jsx` + `api.js`):** the read-only preview is now an **editable content textarea** with **Save Changes** (PUT) and **Approve & Finalize** (POST /approve); a Review & Approval card shows draft/finalized state; report list gained draft/finalized status styles + a "Review" action to reopen any report into the editable pane.
 - **Files touched:** backend/routes/reports.js, backend/services/aiService.js (status-neutral title), frontend/src/pages/Dashboard.jsx, frontend/src/services/api.js, CLAUDE.md, PROGRESS.md.
 - **QA done:** End-to-end against the real API/Firestore/Storage (seeded draft, minted JWT, no Claude): draft export filename → `_DRAFT` ✓; approve → `status:finalized` + `reviewedBy` + `reviewedAt` ✓; finalized export → clean filename ✓. Frontend lint 0 errors + `npm run build` OK; backend lint 0 errors + tests 6/6.
-- **Left / follow-ups:** `EnterpriseDashboard.jsx` still lacks the approve UI (backend gate already applies — enterprise reports export watermarked until approved via API). `StatusToggle` can also manually set 'finalized' (a deliberate human action; doesn't record reviewer — acceptable override).
+- **Left / follow-ups:** ✅ EnterpriseDashboard approve UI added 2026-07-19 (same turn). `StatusToggle` can also manually set 'finalized' (a deliberate human action; doesn't record reviewer — acceptable override).
 - **Golden-rule check:** satisfies Rule #3 (no AI output passes as a final report without human approval); complements the Rule #2 cautious language.
 
 ### [2026-07-19] — T-2.5 — De-verdict AI report language (Golden Rule #2)
