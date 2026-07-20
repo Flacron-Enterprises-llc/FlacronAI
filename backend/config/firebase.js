@@ -24,6 +24,7 @@ const initFirebase = () => {
   firebaseApp = admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.firebasestorage.app`,
   });
 
   console.log('✅ Firebase Admin SDK initialized');
@@ -40,7 +41,12 @@ const getAuth = () => {
   return admin.auth();
 };
 
+const getBucket = () => {
+  if (!admin.apps.length) initFirebase();
+  return admin.storage().bucket();
+};
+
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 
-module.exports = { initFirebase, getFirestore, getAuth, FieldValue, Timestamp, admin };
+module.exports = { initFirebase, getFirestore, getAuth, getBucket, FieldValue, Timestamp, admin };

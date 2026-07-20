@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { getFirestore } = require('../config/firebase');
 const { authenticateAny, authenticateToken } = require('../middleware/auth');
@@ -10,22 +9,14 @@ const { generateReport, analyzeImages, checkQuality, checkAIHealth } = require('
 const { generatePDF } = require('../utils/properPdfGenerator');
 const { generateDOCX } = require('../utils/documentGenerator');
 const { addWatermarkToPDF } = require('../services/watermarkService');
-const { getReportUploadPath, getExportPath, getFileUrl } = require('../config/storage');
+const {
+  reportImageObject, exportObject, uploadBuffer, downloadBuffer, deleteObjects,
+} = require('../config/storage');
 const { getTier, canGenerate } = require('../config/tiers');
 
-// Multer setup for image uploads
+// Multer holds uploads in memory; buffers are then persisted to Firebase Storage.
 const imageUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const reportId = req.reportId || req.params.id || 'temp';
-      const dir = getReportUploadPath(req.user.uid, reportId);
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { files: 100, fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
@@ -33,6 +24,20 @@ const imageUpload = multer({
     else cb(new Error(`File type ${file.mimetype} not allowed`));
   },
 });
+
+// Upload multer memory files to Storage under a report; returns object paths.
+const persistReportImages = async (uid, reportId, files = []) => {
+  const uploads = files.map((f, i) => {
+    const ext = (path.extname(f.originalname).toLowerCase() || '.jpg');
+    const name = `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}${ext}`;
+    const objectPath = reportImageObject(uid, reportId, name);
+    return uploadBuffer(objectPath, f.buffer, f.mimetype).then(() => objectPath);
+  });
+  return Promise.all(uploads);
+};
+
+// Shape multer memory files for the vision API (buffers, no disk reads).
+const toImageInputs = (files = []) => files.map((f) => ({ buffer: f.buffer, mimetype: f.mimetype }));
 
 // Helper: check and reset monthly usage
 const checkAndResetMonthly = async (db, userId) => {
@@ -70,8 +75,6 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     const reportsThisMonth = userData.reportsThisMonth || 0;
 
     if (!canGenerate(userData.tier, reportsThisMonth)) {
-      // Cleanup uploaded files
-      if (req.files) req.files.forEach(f => fs.unlink(f.path, () => {}));
       return res.status(429).json({
         success: false,
         error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -88,7 +91,6 @@ router.post('/generate', authenticateAny, (req, res, next) => {
 
     // Validate required fields
     if (!claimNumber || !insuredName || !propertyAddress || !lossDate || !lossType) {
-      if (req.files) req.files.forEach(f => fs.unlink(f.path, () => {}));
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
@@ -98,16 +100,17 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     }
 
     const reportId = req.reportId;
-    const imagePaths = req.files ? req.files.map(f => f.path) : [];
 
-    // Analyze images if provided
+    // Analyze images from in-memory buffers, then persist them to Storage.
     let imageAnalysis = null;
-    if (imagePaths.length > 0) {
+    let imagePaths = [];
+    if (req.files && req.files.length > 0) {
       try {
-        imageAnalysis = await analyzeImages(imagePaths);
+        imageAnalysis = await analyzeImages(toImageInputs(req.files));
       } catch (imgErr) {
         console.warn('Image analysis failed:', imgErr.message);
       }
+      imagePaths = await persistReportImages(req.user.uid, reportId, req.files);
     }
 
     const reportData = {
@@ -155,7 +158,6 @@ router.post('/generate', authenticateAny, (req, res, next) => {
 
     return res.status(201).json({ success: true, report: reportDoc });
   } catch (err) {
-    if (req.files) req.files.forEach(f => fs.unlink(f.path, () => {}));
     console.error('Report generation error:', err);
     return res.status(500).json({ success: false, error: err.message || 'Report generation failed', code: 'GENERATION_ERROR' });
   }
@@ -258,9 +260,9 @@ router.delete('/:id', authenticateAny, async (req, res) => {
 
     if (permanent) {
       const data = doc.data();
-      // Delete associated files
-      if (data.imagePaths) {
-        data.imagePaths.forEach(p => fs.unlink(p, () => {}));
+      // Delete associated images from Storage
+      if (data.imagePaths && data.imagePaths.length) {
+        await deleteObjects(data.imagePaths);
       }
       await ref.delete();
       return res.json({ success: true, message: 'Report permanently deleted' });
@@ -290,9 +292,8 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
     const userData = userDoc.data() || {};
     const tier = getTier(userData.tier || 'starter');
 
-    const exportDir = getExportPath(req.user.uid);
     const safeClaimNum = (report.claimNumber || report.id || 'report').replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `report_${safeClaimNum}_${Date.now()}`;
+    const filenameBase = `report_${safeClaimNum}_${Date.now()}`;
 
     // Get white-label config if enterprise
     let wlConfig = null;
@@ -303,9 +304,9 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
 
     // When white-label config exists with a company name, always hide FlacronAI branding
     const hasWhiteLabel = !!(wlConfig?.companyName);
+    const logoObjectPath = wlConfig?.logoPath || userData.logoPath || null;
     const pdfOptions = {
       companyName: wlConfig?.companyName || userData.company || 'FlacronAI',
-      logoPath: wlConfig?.logoPath || userData.logoPath || null,
       primaryColor: wlConfig?.primaryColor ? hexToRgb(wlConfig.primaryColor) : [249, 115, 22],
       watermark: tier.watermark,
       watermarkText: 'Generated by FlacronAI — Upgrade to remove watermark',
@@ -313,43 +314,55 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
       hideFlacronBranding: hasWhiteLabel || wlConfig?.hideFlacronBranding || false,
     };
 
-    let outputPath;
+    // Pull branding logo + report photos from Storage as buffers (best-effort).
+    if (logoObjectPath) {
+      try { pdfOptions.logoBuffer = await downloadBuffer(logoObjectPath); } catch { /* logo optional */ }
+    }
+    if (includeImages && (report.imagePaths || []).length) {
+      const imgs = await Promise.all(
+        report.imagePaths.map((p) => downloadBuffer(p).catch(() => null)),
+      );
+      pdfOptions.images = imgs.filter(Boolean);
+    }
+
+    let buffer;
+    let ext;
+    let contentType;
 
     if (format === 'pdf') {
-      outputPath = path.join(exportDir, `${filename}.pdf`);
-      pdfOptions.outputPath = outputPath;
-      await generatePDF(report, pdfOptions);
-
+      ext = 'pdf';
+      contentType = 'application/pdf';
+      buffer = await generatePDF(report, pdfOptions);
       // Apply watermark overlay if starter tier
       if (tier.watermark) {
         try {
-          const watermarkedPath = path.join(exportDir, `${filename}_wm.pdf`);
-          await addWatermarkToPDF(outputPath, watermarkedPath, pdfOptions.watermarkText, null);
-          fs.unlink(outputPath, () => {});
-          outputPath = watermarkedPath;
+          buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
         } catch (wmErr) {
           console.warn('Watermark failed, returning unwatermarked PDF:', wmErr.message);
         }
       }
     } else if (format === 'docx') {
-      outputPath = path.join(exportDir, `${filename}.docx`);
-      await generateDOCX(report, {
-        outputPath,
+      ext = 'docx';
+      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      buffer = await generateDOCX(report, {
         companyName: pdfOptions.companyName,
         hideFlacronBranding: pdfOptions.hideFlacronBranding,
       });
     } else if (format === 'html') {
-      outputPath = path.join(exportDir, `${filename}.html`);
-      const html = generateHTML(report, pdfOptions);
-      fs.writeFileSync(outputPath, html);
+      ext = 'html';
+      contentType = 'text/html';
+      buffer = Buffer.from(generateHTML(report, pdfOptions), 'utf8');
     } else {
       return res.status(400).json({ success: false, error: 'Invalid format. Use pdf, docx, or html', code: 'INVALID_FORMAT' });
     }
 
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const downloadUrl = `/api/reports/${req.params.id}/download?file=${path.basename(outputPath)}`;
+    const filename = `${filenameBase}.${ext}`;
+    await uploadBuffer(exportObject(req.user.uid, filename), buffer, contentType);
 
-    return res.json({ success: true, downloadUrl, expiresAt, format, filename: path.basename(outputPath) });
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const downloadUrl = `/api/reports/${req.params.id}/download?file=${filename}`;
+
+    return res.json({ success: true, downloadUrl, expiresAt, format, filename });
   } catch (err) {
     console.error('Export error:', err.stack || err.message || err);
     return res.status(500).json({ success: false, error: err.message || 'Export failed', code: 'EXPORT_ERROR', detail: err.stack });
@@ -370,10 +383,10 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid filename', code: 'INVALID_FILE' });
     }
 
-    const exportDir = getExportPath(req.user.uid);
-    const filePath = path.join(exportDir, filename);
-
-    if (!fs.existsSync(filePath)) {
+    let buffer;
+    try {
+      buffer = await downloadBuffer(exportObject(req.user.uid, filename));
+    } catch {
       return res.status(404).json({ success: false, error: 'File not found or expired', code: 'FILE_NOT_FOUND' });
     }
 
@@ -384,7 +397,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const inline = req.query.inline === 'true';
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`);
-    fs.createReadStream(filePath).pipe(res);
+    return res.send(buffer);
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Download failed', code: 'DOWNLOAD_ERROR' });
   }
@@ -403,12 +416,13 @@ router.post('/:id/images', authenticateAny, (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
     }
 
-    const newPaths = req.files ? req.files.map(f => f.path) : [];
     const existingPaths = doc.data().imagePaths || [];
 
     let newAnalysis = null;
-    if (newPaths.length > 0) {
-      try { newAnalysis = await analyzeImages(newPaths); } catch {}
+    let newPaths = [];
+    if (req.files && req.files.length > 0) {
+      try { newAnalysis = await analyzeImages(toImageInputs(req.files)); } catch {}
+      newPaths = await persistReportImages(req.user.uid, req.params.id, req.files);
     }
 
     await ref.update({
@@ -427,14 +441,12 @@ router.post('/:id/images', authenticateAny, (req, res, next) => {
 // POST /api/reports/analyze-images — analyze without creating report
 router.post('/analyze-images', authenticateAny, imageUpload.array('images', 20), async (req, res) => {
   try {
-    const paths = req.files ? req.files.map(f => f.path) : [];
-    if (paths.length === 0) return res.status(400).json({ success: false, error: 'No images provided', code: 'NO_IMAGES' });
+    if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, error: 'No images provided', code: 'NO_IMAGES' });
 
-    const analysis = await analyzeImages(paths);
-    paths.forEach(p => fs.unlink(p, () => {}));
+    // Analysis-only endpoint: buffers stay in memory, nothing persisted.
+    const analysis = await analyzeImages(toImageInputs(req.files));
     return res.json({ success: true, analysis });
   } catch (err) {
-    if (req.files) req.files.forEach(f => fs.unlink(f.path, () => {}));
     return res.status(500).json({ success: false, error: 'Image analysis failed', code: 'ANALYSIS_ERROR' });
   }
 });

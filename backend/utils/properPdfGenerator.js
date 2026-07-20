@@ -1,12 +1,14 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
 
+// Resolves with a Buffer of the generated PDF (no disk I/O — Render is ephemeral).
+// `logoBuffer` (Buffer|null) is embedded in the header; `images` (Buffer[]) is the
+// photo appendix — callers pre-download these from Firebase Storage.
 const generatePDF = async (report, options = {}) => {
   return new Promise((resolve, reject) => {
     try {
       const {
-        outputPath,
-        logoPath,
+        logoBuffer = null,
+        images = [],
         companyName = 'FlacronAI',
         primaryColor = [249, 115, 22],
         watermark = false,
@@ -30,8 +32,10 @@ const generatePDF = async (report, options = {}) => {
         },
       });
 
-      const stream = fs.createWriteStream(outputPath);
-      doc.pipe(stream);
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
       // Ensure every auto-flow page starts content below the header band
       doc.on('pageAdded', () => {
@@ -135,8 +139,8 @@ const generatePDF = async (report, options = {}) => {
 
       const cx = pageWidth / 2;
 
-      if (logoPath && fs.existsSync(logoPath)) {
-        try { doc.image(logoPath, cx - 55, 90, { width: 110, fit: [110, 70] }); } catch {}
+      if (logoBuffer) {
+        try { doc.image(logoBuffer, cx - 55, 90, { width: 110, fit: [110, 70] }); } catch {}
       }
 
       doc.fontSize(10).fillColor(accentHex).font('Helvetica')
@@ -317,11 +321,9 @@ const generatePDF = async (report, options = {}) => {
       // ══════════════════════════════════════════════════════════════════════
       // PHOTO APPENDIX — embed uploaded images if present
       // ══════════════════════════════════════════════════════════════════════
-      const validImagePaths = (report.imagePaths || []).filter(p => {
-        try { return p && fs.existsSync(p); } catch { return false; }
-      });
+      const validImages = (images || []).filter(Boolean);
 
-      if (validImagePaths.length > 0) {
+      if (validImages.length > 0) {
         addPage();
         doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
 
@@ -339,7 +341,7 @@ const generatePDF = async (report, options = {}) => {
         let col = 0;
         let rowStartY = doc.y;
 
-        validImagePaths.forEach((imgPath, idx) => {
+        validImages.forEach((imgBuffer, idx) => {
           const x = margin + col * (colW + colGap);
           const y = rowStartY;
 
@@ -353,7 +355,7 @@ const generatePDF = async (report, options = {}) => {
           doc.rect(x, y, colW, imgH).fill('#f8fafc').stroke('#e2e8f0');
 
           try {
-            doc.image(imgPath, x + 4, y + 4, { width: colW - 8, height: imgH - 8, fit: [colW - 8, imgH - 8], align: 'center', valign: 'center' });
+            doc.image(imgBuffer, x + 4, y + 4, { width: colW - 8, height: imgH - 8, fit: [colW - 8, imgH - 8], align: 'center', valign: 'center' });
           } catch {
             // If image can't be embedded, draw placeholder text
             doc.fontSize(8).fillColor('#94a3b8').font('Helvetica')
@@ -440,8 +442,8 @@ const generatePDF = async (report, options = {}) => {
         // Header bar
         doc.rect(0, 0, pageWidth, 42).fill(accentHex);
 
-        if (logoPath && fs.existsSync(logoPath)) {
-          try { doc.image(logoPath, margin, 7, { height: 26, fit: [110, 26] }); } catch {
+        if (logoBuffer) {
+          try { doc.image(logoBuffer, margin, 7, { height: 26, fit: [110, 26] }); } catch {
             doc.fontSize(13).fillColor('white').font('Helvetica-Bold')
               .text(hideFlacronBranding ? companyName : 'FlacronAI', margin, 14, { width: 200, lineBreak: false });
           }
@@ -466,9 +468,6 @@ const generatePDF = async (report, options = {}) => {
 
       doc.flushPages();
       doc.end();
-
-      stream.on('finish', () => resolve(outputPath));
-      stream.on('error', reject);
 
     } catch (err) {
       reject(err);

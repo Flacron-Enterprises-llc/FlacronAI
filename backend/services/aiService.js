@@ -1,7 +1,5 @@
 const anthropic = require('../config/anthropic');
 const { generateText: watsonxGenerate, checkHealth: checkWatsonx } = require('../config/watsonx');
-const fs = require('fs');
-const path = require('path');
 
 // Provider strategy (client directive 2026-07-18): Claude (Anthropic) is primary,
 // IBM watsonx is the text-only fallback. OpenAI has been removed entirely.
@@ -191,7 +189,9 @@ const generateReport = async (reportData, imageAnalysis) => {
   return { content, modelUsed };
 };
 
-const analyzeImages = async (imagePaths) => {
+// `images` is an array of { buffer, mimetype } (buffers are held in memory at
+// upload time — no disk reads). Limits to 10 images for the vision call.
+const analyzeImages = async (images) => {
   if (!anthropic.getClient()) {
     // watsonx (granite) has no vision capability, so there is no image-analysis
     // fallback — degrade gracefully rather than blocking report generation.
@@ -202,26 +202,26 @@ const analyzeImages = async (imagePaths) => {
     };
   }
 
-  // Limit to 10 images for analysis. Build Anthropic image content blocks.
-  const pathsToAnalyze = imagePaths.slice(0, 10);
+  const toAnalyze = (images || []).slice(0, 10);
   const imageBlocks = [];
 
-  for (const imgPath of pathsToAnalyze) {
+  for (const img of toAnalyze) {
     try {
-      if (!fs.existsSync(imgPath)) continue;
-      const ext = path.extname(imgPath).toLowerCase().replace('.', '');
-      const mediaType = ext === 'jpg' ? 'jpeg' : ext;
+      if (!img || !img.buffer) continue;
+      // Normalize "image/jpeg" | "jpg" → "jpeg"
+      let mediaType = String(img.mimetype || '').toLowerCase().replace('image/', '');
+      if (mediaType === 'jpg') mediaType = 'jpeg';
       if (!CLAUDE_IMAGE_TYPES.has(mediaType)) {
-        console.warn(`Skipping ${imgPath}: ${mediaType} not supported by Claude vision`);
+        console.warn(`Skipping image: ${mediaType || 'unknown type'} not supported by Claude vision`);
         continue;
       }
-      const base64 = fs.readFileSync(imgPath).toString('base64');
+      const base64 = Buffer.from(img.buffer).toString('base64');
       imageBlocks.push({
         type: 'image',
         source: { type: 'base64', media_type: `image/${mediaType}`, data: base64 },
       });
     } catch (err) {
-      console.warn(`Could not read image ${imgPath}:`, err.message);
+      console.warn('Could not read image buffer:', err.message);
     }
   }
 

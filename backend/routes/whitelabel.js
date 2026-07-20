@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const { getFirestore } = require('../config/firebase');
 const { authenticateToken, requireTier, optionalAuth } = require('../middleware/auth');
 const { generatePDF } = require('../utils/properPdfGenerator');
-const { getWhiteLabelPath, getFileUrl } = require('../config/storage');
+const { whiteLabelObject, uploadBuffer, downloadBuffer, deleteObject } = require('../config/storage');
 
 const enterpriseOnly = requireTier('enterprise');
 
@@ -92,30 +90,29 @@ router.post('/logo', authenticateToken, enterpriseOnly, logoUpload.single('logo'
   if (!req.file) return res.status(400).json({ success: false, error: 'No logo file provided' });
 
   try {
-    const wlDir = getWhiteLabelPath(req.user.uid);
-    const filename = `wl_logo_${Date.now()}.png`;
-    const outputPath = path.join(wlDir, filename);
+    const db = getFirestore();
+    const snap = await db.collection('enterpriseClients').where('userId', '==', req.user.uid).limit(1).get();
+    const prevPath = !snap.empty ? snap.docs[0].data().logoPath : null;
 
-    // SVG: save as-is
+    // SVG: store as-is
     if (req.file.mimetype === 'image/svg+xml') {
-      fs.writeFileSync(outputPath.replace('.png', '.svg'), req.file.buffer);
-      const svgUrl = getFileUrl(outputPath.replace('.png', '.svg'));
-      const db = getFirestore();
-      const snap = await db.collection('enterpriseClients').where('userId', '==', req.user.uid).limit(1).get();
-      if (!snap.empty) await snap.docs[0].ref.update({ logoUrl: svgUrl, logoPath: outputPath.replace('.png', '.svg'), updatedAt: new Date().toISOString() });
+      const objectPath = whiteLabelObject(req.user.uid, `wl_logo_${Date.now()}.svg`);
+      if (prevPath) await deleteObject(prevPath);
+      const { url: svgUrl } = await uploadBuffer(objectPath, req.file.buffer, 'image/svg+xml', { publicToken: true });
+      if (!snap.empty) await snap.docs[0].ref.update({ logoUrl: svgUrl, logoPath: objectPath, updatedAt: new Date().toISOString() });
       return res.json({ success: true, logoUrl: svgUrl });
     }
 
-    await sharp(req.file.buffer)
+    const buf = await sharp(req.file.buffer)
       .resize(400, 200, { fit: 'inside', withoutEnlargement: true })
       .png()
-      .toFile(outputPath);
+      .toBuffer();
 
-    const logoUrl = getFileUrl(outputPath);
-    const db = getFirestore();
-    const snap = await db.collection('enterpriseClients').where('userId', '==', req.user.uid).limit(1).get();
+    const objectPath = whiteLabelObject(req.user.uid, `wl_logo_${Date.now()}.png`);
+    if (prevPath) await deleteObject(prevPath);
+    const { url: logoUrl } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true });
     if (!snap.empty) {
-      await snap.docs[0].ref.update({ logoUrl, logoPath: outputPath, updatedAt: new Date().toISOString() });
+      await snap.docs[0].ref.update({ logoUrl, logoPath: objectPath, updatedAt: new Date().toISOString() });
     }
 
     return res.json({ success: true, logoUrl });
@@ -147,12 +144,13 @@ router.post('/preview', authenticateToken, enterpriseOnly, async (req, res) => {
       return r ? [parseInt(r[1], 16), parseInt(r[2], 16), parseInt(r[3], 16)] : [99, 102, 241];
     };
 
-    const exportDir = getWhiteLabelPath(req.user.uid);
-    const outputPath = path.join(exportDir, `preview_${Date.now()}.pdf`);
+    let logoBuffer = null;
+    if (wlConfig.logoPath) {
+      try { logoBuffer = await downloadBuffer(wlConfig.logoPath); } catch { /* logo optional */ }
+    }
 
-    await generatePDF(sampleReport, {
-      outputPath,
-      logoPath: wlConfig.logoPath || null,
+    const buffer = await generatePDF(sampleReport, {
+      logoBuffer,
       companyName: wlConfig.companyName || 'Your Company',
       primaryColor: hexToRgb(wlConfig.primaryColor || '#6366f1'),
       watermark: false,
@@ -162,8 +160,7 @@ router.post('/preview', authenticateToken, enterpriseOnly, async (req, res) => {
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="white-label-preview.pdf"');
-    fs.createReadStream(outputPath).pipe(res);
-    res.on('finish', () => fs.unlink(outputPath, () => {}));
+    return res.send(buffer);
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, code: 'PREVIEW_ERROR' });
   }

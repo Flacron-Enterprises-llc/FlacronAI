@@ -6,10 +6,10 @@
 ---
 
 ## Current focus
-- **Now working on:** — Firebase Storage migration is next (bucket verified reachable).
+- **Now working on:** — batch-2 backend migrations complete; SVG logo + report-prompt verdict language (T-2.5) remain.
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
-  2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Bucket `flacronai-c8dab.firebasestorage.app` verified reachable → **UNBLOCKED, next up**. Finishes the durable-storage half of T-3.10.
+  2. **Migrate file storage to Firebase Storage** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-3.10b): `config/storage.js` rewritten on Firebase Storage; generators buffer-based; photos+exports private, logos via token URL; public `/uploads` route removed. 8/8 live bucket round-trip checks passed. **Client must add `FIREBASE_STORAGE_BUCKET` to Render.**
   3. **Email: drop Brevo → AWS SES.** — ✅ DONE + LIVE-VERIFIED 2026-07-19: `emailService.js` rewritten on `@aws-sdk/client-ses`; all 6 emails branded inline HTML; real welcome email delivered to admin@ (MessageId returned). Domain verified, us-east-1, production mode. Brevo fully removed. **Client must add `AWS_*`/`SES_*` vars to Render** + rotate the shared secret key.
   4. **Official SVG logo** — client asked for one; needs a designer or a careful vectorization.
 - **T-1.10 de-AI polish:** ✅ DONE 2026-07-19 — unified rainbow gradient icons to a cohesive brand treatment (Home features + About values), fixed white-label default color.
@@ -84,6 +84,20 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-3.10b — File storage migration local disk → Firebase Storage
+- **Status:** DONE (live-verified against the real bucket)
+- **What changed:** Killed the ephemeral local-disk uploads (Render loses them on every deploy + they were world-readable). Everything now lives in Firebase Storage bucket `flacronai-c8dab.firebasestorage.app`.
+  - **`config/storage.js`** rewritten as a Storage abstraction: `uploadBuffer` (optional Firebase download-token for public branding), `downloadBuffer`, `deleteObject(s)`, `getSignedUrl`, `tokenUrl`, `objectExists` + path builders (`users/{uid}/reports|exports|logos|whitelabel/...`).
+  - **`config/firebase.js`**: `storageBucket` on init + `getBucket()`.
+  - **Generators made buffer-based (no disk):** `properPdfGenerator.generatePDF` resolves a Buffer, takes `logoBuffer`+`images` (Buffers) instead of paths; `documentGenerator.generateDOCX` returns a Buffer; `watermarkService.addWatermarkToPDF` is buffer-in/out; `aiService.analyzeImages` takes `{buffer,mimetype}`.
+  - **`routes/reports.js`**: multer → memoryStorage; generate/add-images upload buffers to Storage (imagePaths = object paths) + analyze from in-memory buffers; export downloads photo+logo buffers, builds the doc buffer, uploads to `exports/`, returns the same `/download?file=` contract; download proxies bytes from Storage (auth+ownership preserved); permanent-delete removes Storage objects; analyze-images is memory-only.
+  - **`routes/users.js` + `routes/whitelabel.js`**: logos resized in memory (sharp `.toBuffer()`) → Storage with token URL; old logo deleted on replace; white-label preview streams a generated buffer.
+  - **`server.js`**: removed the public `/uploads` static route; **deleted** now-dead `middleware/uploadAccess.js` + its test.
+- **Files touched:** backend/config/storage.js (rewrite), config/firebase.js, routes/reports.js, routes/users.js, routes/whitelabel.js, services/aiService.js, services/watermarkService.js (rewrite), utils/properPdfGenerator.js, utils/documentGenerator.js, server.js, .env.example (+FIREBASE_STORAGE_BUCKET), deleted middleware/uploadAccess.js + test/uploadAccess.test.js, CLAUDE.md §4 + security notes, PROGRESS.md.
+- **QA done:** 8/8 live end-to-end checks against the real bucket (throwaway objects, then deleted): report image upload/download round-trip; logo token URL publicly readable (HTTP 200); generatePDF → valid `%PDF-` buffer with embedded logo+photo; watermark → valid PDF buffer; generateDOCX → `PK` zip buffer; export upload/download round-trip; deleteObjects confirms removal. Lint 0 errors; backend `node --test` 6/6 (was 13; −7 from the deleted uploadAccess test).
+- **Left / follow-ups:** Client to add `FIREBASE_STORAGE_BUCKET=flacronai-c8dab.firebasestorage.app` to Render env. Consider Storage security rules (admin SDK bypasses them, but tighten for any future client-SDK access). Export catch still leaks `err.stack` (pre-existing, separate item). Finishes the durable-storage half of **T-3.10**.
+- **Golden-rule check:** none violated. Rule #6 (security) advanced — claim photos no longer world-readable (private objects, authenticated download proxy); logos intentionally public via unguessable tokens.
 
 ### [2026-07-19] — T-2.6a — Email migration Brevo → AWS SES
 - **Status:** DONE (live-verified)

@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const sharp = require('sharp');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken, optionalAuth, requireApiAccess } = require('../middleware/auth');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { sendWelcomeEmail } = require('../services/emailService');
-const { getLogoPath, getFileUrl } = require('../config/storage');
+const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
 const { body, validationResult } = require('express-validator');
 
 const logoUpload = multer({
@@ -103,19 +101,22 @@ router.post('/profile/logo', authenticateToken, logoUpload.single('logo'), async
   if (!req.file) return res.status(400).json({ success: false, error: 'No logo file provided' });
 
   try {
-    const logoDir = getLogoPath(req.user.uid);
     const filename = `logo_${Date.now()}.png`;
-    const outputPath = path.join(logoDir, filename);
+    const objectPath = logoObject(req.user.uid, filename);
 
-    // Resize and convert to PNG
-    await sharp(req.file.buffer)
+    // Resize and convert to PNG in memory
+    const buf = await sharp(req.file.buffer)
       .resize(300, 150, { fit: 'inside', withoutEnlargement: true })
       .png()
-      .toFile(outputPath);
+      .toBuffer();
 
-    const logoUrl = getFileUrl(outputPath);
+    // Remove the previous logo object, if any, then store the new one.
     const db = getFirestore();
-    await db.collection('users').doc(req.user.uid).update({ logoUrl, logoPath: outputPath, updatedAt: new Date().toISOString() });
+    const prev = (await db.collection('users').doc(req.user.uid).get()).data() || {};
+    if (prev.logoPath) await deleteObject(prev.logoPath);
+
+    const { url: logoUrl } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true });
+    await db.collection('users').doc(req.user.uid).update({ logoUrl, logoPath: objectPath, updatedAt: new Date().toISOString() });
 
     return res.json({ success: true, logoUrl });
   } catch (err) {
@@ -131,7 +132,7 @@ router.delete('/profile/logo', authenticateToken, async (req, res) => {
     const doc = await db.collection('users').doc(req.user.uid).get();
     const { logoPath } = doc.data() || {};
 
-    if (logoPath && fs.existsSync(logoPath)) fs.unlinkSync(logoPath);
+    if (logoPath) await deleteObject(logoPath);
     await db.collection('users').doc(req.user.uid).update({ logoUrl: null, logoPath: null, updatedAt: new Date().toISOString() });
 
     return res.json({ success: true, message: 'Logo removed' });

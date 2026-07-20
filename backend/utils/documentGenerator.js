@@ -1,11 +1,9 @@
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
-const fs = require('fs');
-const path = require('path');
 
-// Generate DOCX from report data
+// Generate DOCX from report data. Returns a Buffer (no disk I/O).
 const generateDOCX = async (report, options = {}) => {
-  const { outputPath, companyName = 'FlacronAI', hideFlacronBranding = false } = options;
+  const { companyName = 'FlacronAI', hideFlacronBranding = false } = options;
 
   // Build a DOCX from scratch using XML template
   const brandName = hideFlacronBranding ? companyName : 'FlacronAI';
@@ -233,8 +231,7 @@ const generateDOCX = async (report, options = {}) => {
   zip.file('word/styles.xml', getDefaultStyles());
 
   const buf = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-  fs.writeFileSync(outputPath, buf);
-  return outputPath;
+  return buf;
 };
 
 const parseReportSections = (content) => {
