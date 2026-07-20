@@ -6,11 +6,11 @@
 ---
 
 ## Current focus
-- **Now working on:** — (T-2.5a AI provider swap — code done; **needs client `ANTHROPIC_API_KEY` to go live + end-to-end test**)
+- **Now working on:** — Firebase Storage migration is next (bucket verified reachable).
 - **BIG client-directed tasks (2026-07-18, batch 2):**
-  1. **AI provider swap** — ✅ CODE DONE 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. **Blocked on client** for `ANTHROPIC_API_KEY` (Render env) + model/cost tier confirmation before it runs in prod / can be end-to-end tested.
-  2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Finishes the durable-storage half of T-3.10.
-  3. **Email: drop Brevo → AWS SES.** Needs AWS creds + coordination; update `emailService.js` + templates + branding.
+  1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
+  2. **Migrate file storage to Firebase Storage** (drop Render local disk) — reports, exports, logos; update upload/download + `imagePaths`. Bucket `flacronai-c8dab.firebasestorage.app` verified reachable → **UNBLOCKED, next up**. Finishes the durable-storage half of T-3.10.
+  3. **Email: drop Brevo → AWS SES.** — ✅ DONE + LIVE-VERIFIED 2026-07-19: `emailService.js` rewritten on `@aws-sdk/client-ses`; all 6 emails branded inline HTML; real welcome email delivered to admin@ (MessageId returned). Domain verified, us-east-1, production mode. Brevo fully removed. **Client must add `AWS_*`/`SES_*` vars to Render** + rotate the shared secret key.
   4. **Official SVG logo** — client asked for one; needs a designer or a careful vectorization.
 - **T-1.10 de-AI polish:** ✅ DONE 2026-07-19 — unified rainbow gradient icons to a cohesive brand treatment (Home features + About values), fixed white-label default color.
 - **Client confirmations (2026-07-18):** Blog delete → already done (T-1.1b); Enterprise "Unlimited" stays → no change; testimonials stay hidden → matches T-1.9; performance numbers stay off → matches T-1.1b; pricing correct/match Stripe → done (T-1.8); canonical non-www → done (T-1.12/13).
@@ -84,6 +84,25 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-19] — T-2.6a — Email migration Brevo → AWS SES
+- **Status:** DONE (live-verified)
+- **What changed:** Replaced Brevo REST with **AWS SES** (`@aws-sdk/client-ses`). `emailService.js` fully rewritten:
+  - Lazy `SESClient` (returns null → logs + skips when creds absent, so dev without AWS still boots).
+  - Shared `layout()` builder → all 6 transactional emails are branded inline HTML (navy header + "Flacron**AI**" wordmark, brand-orange CTA button, transactional footer w/ Flacron Enterprises LLC). No external template store, no image assets (no broken-image risk). User-supplied values HTML-escaped (`esc()`).
+  - All exported wrapper signatures unchanged → **zero route changes** (auth/users/teams/sales/payment untouched). Generic `sendEmail({to,subject,html,text})` preserved for admin/email route.
+  - `SES_REPLY_TO` supported; sender = `SES_FROM_NAME <SES_FROM_EMAIL>`.
+- **Files touched:** backend/services/emailService.js (rewrite), backend/.env.example (EMAIL_* → AWS_*/SES_*), backend/package.json (+@aws-sdk/client-ses), deleted backend/scripts/createBrevoTemplates.js + updateBrevoTemplates.js, CLAUDE.md §4 + env list + §6, PROGRESS.md.
+- **QA done:** SES creds verified valid + **production mode** (50k/day quota, not sandbox); domain `flacronenterprises.com` verified in SES. **Real welcome email delivered** to admin@flacronenterprises.com (MessageId returned). Lint clean on emailService.js; backend `node --test` 13/13 pass.
+- **Left / follow-ups:** Client to add `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_FROM_EMAIL`, `SES_FROM_NAME`, `SES_REPLY_TO` to Render env. **Client must rotate the AWS secret key** (it was shared in plaintext chat) after confirming prod works. testEmails.js still valid (provider-agnostic).
+- **Golden-rule check:** none violated. These are transactional emails only (Rule #5 — kept separate from marketing, no consent needed); no fabricated claims in copy.
+
+### [2026-07-19] — T-2.5a (activation) — Claude API live-verified
+- **Status:** DONE
+- **What changed:** `ANTHROPIC_API_KEY` added to local `.env` (108-char `sk-ant-` key) + `ANTHROPIC_MODEL=claude-opus-4-8`. No code change — activation/verification of the T-2.5a swap.
+- **QA done:** `checkHealth()` → `true`; `generateText()` round-trip returned expected output from Opus 4.8. Fallback chain (Claude → watsonx) intact.
+- **Left / follow-ups:** Client to add the same two vars to **Render** for production.
+- **Golden-rule check:** none violated (report-prompt verdict language is still separate Phase-2 T-2.5 work).
 
 ### [2026-07-19] — T-1.10 — De-AI polish (cohesive brand icons)
 - **Status:** DONE
