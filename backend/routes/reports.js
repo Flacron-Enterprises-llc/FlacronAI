@@ -39,6 +39,22 @@ const persistReportImages = async (uid, reportId, files = []) => {
 // Shape multer memory files for the vision API (buffers, no disk reads).
 const toImageInputs = (files = []) => files.map((f) => ({ buffer: f.buffer, mimetype: f.mimetype }));
 
+// Append a snapshot to reports/{id}/versions for history + audit trail (T-2.13).
+// action: 'generated' | 'edited' | 'approved'. Best-effort — never blocks the request.
+const recordVersion = async (ref, { action, by, content = null, note = '' }) => {
+  try {
+    await ref.collection('versions').add({
+      action,
+      by: by || 'system',
+      note,
+      content,
+      at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('[versions] record failed:', e.message);
+  }
+};
+
 // Helper: check and reset monthly usage
 const checkAndResetMonthly = async (db, userId) => {
   const userDoc = await db.collection('users').doc(userId).get();
@@ -153,6 +169,9 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     };
 
     await db.collection('reports').doc(reportId).set(reportDoc);
+    await recordVersion(db.collection('reports').doc(reportId), {
+      action: 'generated', by: req.user.email || req.user.uid, content, note: `Generated via ${modelUsed}`,
+    });
     await db.collection('users').doc(req.user.uid).set({
       reportsGenerated: (userData.reportsGenerated || 0) + 1,
       reportsThisMonth: reportsThisMonth + 1,
@@ -243,6 +262,11 @@ router.put('/:id', authenticateAny, async (req, res) => {
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 
     await ref.update(updates);
+
+    // Record a version snapshot when the report content actually changed.
+    if (typeof req.body.content === 'string' && req.body.content !== doc.data().content) {
+      await recordVersion(ref, { action: 'edited', by: req.user.email || req.user.uid, content: req.body.content });
+    }
     return res.json({ success: true, message: 'Report updated', updates });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to update report', code: 'UPDATE_ERROR' });
@@ -270,9 +294,34 @@ router.post('/:id/approve', authenticateAny, async (req, res) => {
       updates.content = req.body.content;
     }
     await ref.update(updates);
+    await recordVersion(ref, {
+      action: 'approved',
+      by: req.user.email || req.user.uid,
+      content: updates.content || doc.data().content,
+      note: 'Reviewed and finalized',
+    });
     return res.json({ success: true, message: 'Report approved and finalized', report: { id: doc.id, ...doc.data(), ...updates } });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to approve report', code: 'APPROVE_ERROR' });
+  }
+});
+
+// GET /api/reports/:id/versions — version history + audit trail (T-2.13)
+router.get('/:id/versions', authenticateAny, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const snap = await ref.collection('versions').get();
+    const versions = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.at < b.at ? 1 : -1)); // newest first
+    return res.json({ success: true, versions });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch versions', code: 'VERSIONS_ERROR' });
   }
 });
 

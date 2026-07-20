@@ -367,6 +367,8 @@ export default function Dashboard() {
   const [editableContent, setEditableContent] = useState('');
   const [savingContent, setSavingContent] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [showVersions, setShowVersions] = useState(false);
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
 
@@ -542,6 +544,24 @@ export default function Dashboard() {
       handlePreviewPDF();
     } catch { toast.error('Approval failed'); }
     finally { setApproving(false); }
+  };
+
+  const loadVersions = async () => {
+    if (!generatedReport) return;
+    const next = !showVersions;
+    setShowVersions(next);
+    if (next) {
+      try {
+        const res = await reportsAPI.versions(generatedReport.id);
+        setVersions(res.data.versions || []);
+      } catch { toast.error('Could not load history'); }
+    }
+  };
+
+  const handleRestoreVersion = (v) => {
+    if (v?.content == null) return;
+    setEditableContent(v.content);
+    toast.success('Version loaded into editor — Save to keep it');
   };
 
   const handleDeleteReport = async (id) => {
@@ -1185,6 +1205,31 @@ export default function Dashboard() {
                               {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
                             </button>
                           </>
+                        )}
+                      </div>
+                      {/* Version history & audit trail (T-2.13) */}
+                      <div className="card p-4">
+                        <button onClick={loadVersions} className="w-full flex items-center justify-between text-sm font-semibold text-gray-700">
+                          <span className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" /> Version History</span>
+                          <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showVersions ? 'rotate-90' : ''}`} />
+                        </button>
+                        {showVersions && (
+                          <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                            {versions.length === 0 ? (
+                              <p className="text-xs text-gray-400">No history yet.</p>
+                            ) : versions.map((v) => (
+                              <div key={v.id} className="flex items-center justify-between gap-2 text-xs border border-gray-100 rounded-lg px-2.5 py-2">
+                                <div className="min-w-0">
+                                  <span className={`font-semibold ${v.action === 'approved' ? 'text-green-600' : v.action === 'generated' ? 'text-brand-600' : 'text-gray-700'}`}>{v.action}</span>
+                                  <span className="text-gray-400"> · {new Date(v.at).toLocaleString()}</span>
+                                  <p className="text-gray-400 truncate">{v.by}</p>
+                                </div>
+                                {v.content != null && (
+                                  <button onClick={() => handleRestoreVersion(v)} className="shrink-0 text-brand-600 hover:underline font-medium">Restore</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                       <div className="card p-4">
