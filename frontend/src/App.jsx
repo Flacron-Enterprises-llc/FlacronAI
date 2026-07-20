@@ -38,7 +38,7 @@ const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
 const PageLoader = () => (
   <div className="min-h-screen bg-bg flex items-center justify-center">
     <div className="flex flex-col items-center gap-4">
-      <img src="/logo-mark.png" alt="FlacronAI logo" className="w-12 h-12 object-contain animate-pulse-slow" />
+      <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-12 h-12 object-contain animate-pulse-slow" />
       <div className="relative">
         <div className="w-12 h-12 border-2 border-orange-500/30 rounded-full" />
         <div className="w-12 h-12 border-2 border-orange-500 border-t-transparent rounded-full animate-spin absolute inset-0" />

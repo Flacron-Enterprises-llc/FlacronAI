@@ -349,7 +349,7 @@ export default function EnterpriseDashboard() {
         {/* Logo */}
         <div className="p-5 border-b border-[#e5e7eb]">
           <div className="flex items-center gap-3">
-            <img src="/logo-mark.png" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
+            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
               <p className="text-sm font-black text-gray-900 leading-none">FlacronAI</p>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500 text-white uppercase tracking-wide">

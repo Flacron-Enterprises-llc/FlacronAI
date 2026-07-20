@@ -60,7 +60,7 @@ const Navbar = ({ transparent = false }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
-            <img src="/logo-mark.png" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
+            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg text-gray-900 tracking-tight">FlacronAI</span>
           </Link>
 
