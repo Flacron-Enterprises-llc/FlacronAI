@@ -371,6 +371,8 @@ export default function Dashboard() {
   const [showVersions, setShowVersions] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [templateName, setTemplateName] = useState('');
+  const [signatureName, setSignatureName] = useState('');
+  const [sharing, setSharing] = useState(false);
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
 
@@ -538,7 +540,8 @@ export default function Dashboard() {
     if (!generatedReport) return;
     setApproving(true);
     try {
-      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent });
+      const signature = signatureName.trim() ? { name: signatureName.trim() } : undefined;
+      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent, signature });
       const updated = res.data?.report || {};
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
@@ -546,6 +549,18 @@ export default function Dashboard() {
       handlePreviewPDF();
     } catch { toast.error('Approval failed'); }
     finally { setApproving(false); }
+  };
+
+  const handleShare = async () => {
+    if (!generatedReport) return;
+    setSharing(true);
+    try {
+      const res = await reportsAPI.share(generatedReport.id);
+      try { await navigator.clipboard.writeText(res.data.url); toast.success('Share link copied to clipboard'); }
+      catch { toast.success(`Share link: ${res.data.url}`); }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Could not create share link');
+    } finally { setSharing(false); }
   };
 
   const loadVersions = async () => {
@@ -1260,12 +1275,24 @@ export default function Dashboard() {
                           <h3 className="text-sm font-semibold text-gray-800">Review &amp; Approval</h3>
                         </div>
                         {reportReviewed ? (
-                          <div className="flex items-center gap-2 text-sm text-green-700">
-                            <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
-                          </div>
+                          <>
+                            <div className="flex items-center gap-2 text-sm text-green-700 mb-2">
+                              <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
+                            </div>
+                            {generatedReport.signature?.name && (
+                              <p className="text-xs text-gray-500 mb-3">E-signed by <span className="font-medium text-gray-700">{generatedReport.signature.name}</span></p>
+                            )}
+                            <button onClick={handleShare} disabled={sharing}
+                              className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
+                              {sharing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />} Copy Share Link
+                            </button>
+                          </>
                         ) : (
                           <>
                             <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Type your name to e-sign (optional)</label>
+                            <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="e.g. Jane Adjuster"
+                              className="w-full mb-3 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
                             <button onClick={handleApprove} disabled={approving}
                               className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
                               {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize

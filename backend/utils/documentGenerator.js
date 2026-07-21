@@ -114,6 +114,12 @@ const generateDOCX = async (report, options = {}) => {
     ${xmlParts.join('\n')}`;
   }).join('\n');
 
+  // E-signature (T-2.12): statement of electronic sign-off, if the adjuster signed.
+  const sig = report.signature;
+  const signedByLine = sig?.name
+    ? `<w:p><w:r><w:rPr><w:i/><w:color w:val="0F172A"/></w:rPr><w:t xml:space="preserve">Electronically signed by ${escapeXml(sig.name)}${sig.title ? `, ${escapeXml(sig.title)}` : ''}${sig.signedAt ? ` on ${new Date(sig.signedAt).toLocaleString()}` : ''}.</w:t></w:r></w:p>`
+    : '';
+
   const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -190,6 +196,7 @@ const generateDOCX = async (report, options = {}) => {
       <w:r><w:t>Reviewing Adjuster Sign-Off</w:t></w:r>
     </w:p>
     <w:p><w:r><w:t xml:space="preserve">This report was prepared with AI assistance and is provided as a draft for professional review. It does not constitute a final determination of cause, coverage, liability, or loss value. The reviewing adjuster's signature below indicates that they have reviewed, corrected as needed, and approved its contents.</w:t></w:r></w:p>
+    ${signedByLine}
     <w:p><w:r><w:t></w:t></w:r></w:p>
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Signature</w:t></w:r></w:p>
     <w:p><w:r><w:t></w:t></w:r></w:p>

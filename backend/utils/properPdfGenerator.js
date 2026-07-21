@@ -401,10 +401,24 @@ const generatePDF = async (report, options = {}) => {
         );
 
       doc.y += 50;
-      [['Adjuster Signature', margin], ['Date', margin + 310]].forEach(([label, x]) => {
-        doc.rect(x, doc.y + 36, 210, 1).fill('#374151');
-        doc.fontSize(8).fillColor('#94a3b8').text(label, x, doc.y + 42, { width: 210 });
+      // If the adjuster e-signed on approval, render their typed signature + date;
+      // otherwise leave blank lines for a wet/manual signature.
+      const sig = report.signature;
+      const sigDate = sig?.signedAt ? new Date(sig.signedAt).toLocaleDateString() : '';
+      const sigBaseY = doc.y;
+      [['Adjuster Signature', margin, sig?.name || '', 'signature'], ['Date', margin + 310, sigDate, 'date']].forEach(([label, x, value]) => {
+        if (value) {
+          doc.fontSize(13).fillColor('#0f172a').font('Helvetica-Oblique')
+            .text(value, x, sigBaseY + 14, { width: 210, lineBreak: false });
+        }
+        doc.rect(x, sigBaseY + 36, 210, 1).fill('#374151');
+        doc.fontSize(8).fillColor('#94a3b8').font('Helvetica').text(label, x, sigBaseY + 42, { width: 210 });
       });
+      if (sig?.name) {
+        doc.fontSize(8).fillColor('#94a3b8').font('Helvetica')
+          .text(`Electronically signed by ${sig.name}${sig.title ? `, ${sig.title}` : ''}${sig.signedAt ? ` on ${new Date(sig.signedAt).toLocaleString()}` : ''}.`,
+            margin, sigBaseY + 64, { width: contentWidth });
+      }
 
       doc.y += 90;
       ['Adjuster Name (Print)', 'License Number', 'Company / Firm Name'].forEach(label => {

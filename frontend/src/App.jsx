@@ -34,6 +34,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite.jsx'));
 const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
+const SharedReport = lazy(() => import('./pages/SharedReport.jsx'));
 
 const PageLoader = () => (
   <div className="min-h-screen bg-bg flex items-center justify-center">
@@ -86,6 +87,7 @@ const App = () => {
         <Route path="/terms-of-service" element={<TermsOfService />} />
         <Route path="/enterprise/:subdomain" element={<EnterpriseOnboarding />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />
+        <Route path="/shared/:token" element={<SharedReport />} />
         <Route path="/cookies-policy" element={<CookiesPolicy />} />
 
         {/* Protected routes */}

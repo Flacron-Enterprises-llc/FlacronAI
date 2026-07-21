@@ -347,6 +347,14 @@ router.post('/:id/approve', authenticateAny, async (req, res) => {
     if (typeof req.body?.content === 'string' && req.body.content.trim()) {
       updates.content = req.body.content;
     }
+    // E-signature (T-2.12): the reviewing adjuster types their name to sign off.
+    if (req.body?.signature?.name) {
+      updates.signature = {
+        name: String(req.body.signature.name).slice(0, 120),
+        title: String(req.body.signature.title || '').slice(0, 120),
+        signedAt: new Date().toISOString(),
+      };
+    }
     await ref.update(updates);
     await recordVersion(ref, {
       action: 'approved',
@@ -376,6 +384,70 @@ router.get('/:id/versions', authenticateAny, async (req, res) => {
     return res.json({ success: true, versions });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to fetch versions', code: 'VERSIONS_ERROR' });
+  }
+});
+
+// ── SHARE LINKS (T-2.9) ──────────────────────────────────────────────────────
+// POST /api/reports/:id/share — create/return a public read-only link.
+// Only finalized reports can be shared (never expose an un-reviewed draft).
+router.post('/:id/share', authenticateAny, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    if (!isReviewed(doc.data().status)) {
+      return res.status(400).json({ success: false, error: 'Finalize the report before sharing.', code: 'NOT_FINALIZED' });
+    }
+    let shareToken = doc.data().shareToken;
+    if (!shareToken) {
+      shareToken = uuidv4();
+      await ref.update({ shareToken, sharedAt: new Date().toISOString() });
+    }
+    const url = `${process.env.FRONTEND_URL || ''}/shared/${shareToken}`;
+    return res.json({ success: true, shareToken, url });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to create share link', code: 'SHARE_ERROR' });
+  }
+});
+
+// DELETE /api/reports/:id/share — revoke the public link.
+router.delete('/:id/share', authenticateAny, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    await ref.update({ shareToken: null, sharedAt: null });
+    return res.json({ success: true, message: 'Share link revoked' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to revoke share link', code: 'SHARE_ERROR' });
+  }
+});
+
+// GET /api/reports/shared/:token — PUBLIC read-only view (no auth). Finalized only.
+router.get('/shared/:token', async (req, res) => {
+  try {
+    const db = getFirestore();
+    const snap = await db.collection('reports').where('shareToken', '==', req.params.token).limit(1).get();
+    if (snap.empty) return res.status(404).json({ success: false, error: 'Shared report not found', code: 'NOT_FOUND' });
+    const r = snap.docs[0].data();
+    if (!isReviewed(r.status)) return res.status(404).json({ success: false, error: 'Shared report not available', code: 'NOT_AVAILABLE' });
+    // Expose only presentation fields — never userId, imagePaths, or internal metadata.
+    return res.json({
+      success: true,
+      report: {
+        claimNumber: r.claimNumber, insuredName: r.insuredName, propertyAddress: r.propertyAddress,
+        lossType: r.lossType, lossDate: r.lossDate, reportType: r.reportType,
+        content: r.content, signature: r.signature || null, reviewedAt: r.reviewedAt || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to load shared report', code: 'SHARED_ERROR' });
   }
 });
 
