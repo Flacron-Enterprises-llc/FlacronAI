@@ -237,6 +237,28 @@ const sendEmailVerificationEmail = async (email, displayName, verificationLink) 
   return sendEmail({ to: email, subject: 'Verify your FlacronAI email address', html, text });
 };
 
+// ── New-device / new-location login alert ──────────────────────────────────────
+const sendNewDeviceLoginAlert = async (email, displayName, { ip, userAgent, at }) => {
+  const name = esc(displayName || 'there');
+  const when = esc(new Date(at).toUTCString());
+  const html = layout({
+    preheader: 'New sign-in to your FlacronAI account.',
+    heading:   'New Sign-In Detected',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;">We noticed a sign-in to your FlacronAI account from a device or location we haven't seen before.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e7eb;">
+        <tr><td style="padding:8px 0;color:#9ca3af;font-size:13px;width:100px;">Time</td><td style="padding:8px 0;color:#111827;font-size:14px;">${when}</td></tr>
+        <tr><td style="padding:8px 0;color:#9ca3af;font-size:13px;">IP address</td><td style="padding:8px 0;color:#111827;font-size:14px;">${esc(ip || 'unknown')}</td></tr>
+        <tr><td style="padding:8px 0;color:#9ca3af;font-size:13px;">Device</td><td style="padding:8px 0;color:#111827;font-size:14px;">${esc(userAgent || 'unknown')}</td></tr>
+      </table>
+      <p style="margin:16px 0 0;color:#6b7280;font-size:15px;line-height:1.6;">If this was you, no action is needed. If you don't recognize this activity, change your password immediately.</p>`,
+    cta:      { label: 'Change Password', url: `${FRONTEND_URL}/settings?tab=security` },
+  });
+  const text = `Hi ${displayName || 'there'},\n\nWe noticed a sign-in to your FlacronAI account from a new device/location.\n\nTime: ${when}\nIP: ${ip || 'unknown'}\nDevice: ${userAgent || 'unknown'}\n\nIf this wasn't you, change your password immediately:\n${FRONTEND_URL}/settings?tab=security\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'New sign-in to your FlacronAI account', html, text });
+};
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
@@ -245,4 +267,5 @@ module.exports = {
   sendTeamInviteEmail,
   sendSalesNotificationEmail,
   sendEmailVerificationEmail,
+  sendNewDeviceLoginAlert,
 };

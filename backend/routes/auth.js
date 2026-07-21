@@ -7,6 +7,28 @@ const { authenticateToken } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
+const { sendNewDeviceLoginAlert } = require('../services/emailService');
+
+// Compares this login's IP/device against the last-known one on the user doc.
+// Sends an alert (and records the audit event) only when there IS a prior
+// login to compare against — the very first login on a brand-new account
+// is never "suspicious".
+const notifyIfNewDevice = async (uid, userProfile, req) => {
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+  const last = userProfile.lastLogin;
+  const isNewDevice = last && (last.ip !== ip || last.userAgent !== userAgent);
+
+  const db = getFirestore();
+  await db.collection('users').doc(uid).update({
+    lastLogin: { ip, userAgent, at: new Date().toISOString() },
+  });
+
+  if (isNewDevice) {
+    recordAuditLog({ actorUid: uid, actorEmail: userProfile.email, action: 'suspicious_login_new_device', meta: { previousIp: last.ip }, req });
+    await sendNewDeviceLoginAlert(userProfile.email, userProfile.displayName, { ip, userAgent, at: new Date().toISOString() });
+  }
+};
 
 // Tighter brute-force guard for credential-related endpoints — the global
 // 100/15min limiter (server.js) is shared across the whole API and too loose
@@ -111,6 +133,7 @@ router.post('/login', authLimiter, [
     const userProfile = userDoc.exists ? userDoc.data() : { uid, email, tier: 'starter' };
 
     recordAuditLog({ actorUid: uid, actorEmail: email, action: 'login_success', req });
+    notifyIfNewDevice(uid, userProfile, req).catch((err) => console.error('New-device login alert error:', err));
 
     return res.json({
       success: true,
