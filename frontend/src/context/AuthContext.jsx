@@ -24,6 +24,9 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [emailVerified, setEmailVerified] = useState(false);
+  // Tracks whether the TOTP second factor was confirmed for the current
+  // session; reset on every fresh sign-in so MFA is never skipped.
+  const [mfaVerified, setMfaVerified] = useState(false);
 
   // Fetch profile via backend API (Admin SDK — bypasses Firestore rules)
   const fetchUserProfile = useCallback(async () => {
@@ -67,12 +70,14 @@ export const AuthProvider = ({ children }) => {
   }, [fetchUserProfile]);
 
   const login = async (email, password) => {
+    setMfaVerified(false);
     const result = await signInWithEmailAndPassword(auth, email, password);
     await fetchUserProfile();
     return result;
   };
 
   const loginWithGoogle = async () => {
+    setMfaVerified(false);
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
     // Backend auto-creates profile if it doesn't exist
@@ -81,6 +86,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (email, password, displayName) => {
+    setMfaVerified(false);
     const result = await createUserWithEmailAndPassword(auth, email, password);
     await firebaseUpdateProfile(result.user, { displayName });
     // Backend auto-creates profile on first getProfile call
@@ -92,7 +98,10 @@ export const AuthProvider = ({ children }) => {
     await signOut(auth);
     setUser(null);
     setUserProfile(null);
+    setMfaVerified(false);
   };
+
+  const markMfaVerified = () => setMfaVerified(true);
 
   const updateProfile = async (data) => {
     if (!user) throw new Error('Not authenticated');
@@ -129,6 +138,8 @@ export const AuthProvider = ({ children }) => {
     userProfile,
     loading,
     emailVerified,
+    mfaVerified,
+    markMfaVerified,
     login,
     loginWithGoogle,
     register,

@@ -79,6 +79,11 @@ export const authAPI = {
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   changePassword: (newPassword) => api.post('/auth/change-password', { newPassword }),
   sendVerification: (pendingPlan) => api.post('/auth/send-verification', { pendingPlan }),
+  mfaSetup: () => api.post('/auth/mfa/setup'),
+  mfaVerifySetup: (code) => api.post('/auth/mfa/verify-setup', { code }),
+  mfaDisable: (code) => api.post('/auth/mfa/disable', { code }),
+  mfaStatus: () => api.get('/auth/mfa/status'),
+  mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
 };
 
 export const reportsAPI = {

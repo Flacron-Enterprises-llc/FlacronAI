@@ -3,9 +3,10 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
+import MfaGate from './MfaGate.jsx';
 
 const ProtectedRoute = ({ children, requiredTier }) => {
-  const { isAuthenticated, loading, tier, user, emailVerified, reloadUser } = useAuth();
+  const { isAuthenticated, loading, tier, user, emailVerified, reloadUser, userProfile, mfaVerified, markMfaVerified } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [resending, setResending] = useState(false);
@@ -77,6 +78,10 @@ const ProtectedRoute = ({ children, requiredTier }) => {
         </div>
       </div>
     );
+  }
+
+  if (userProfile?.mfaEnabled && !mfaVerified) {
+    return <MfaGate onVerified={markMfaVerified} />;
   }
 
   if (requiredTier) {

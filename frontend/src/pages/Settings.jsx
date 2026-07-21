@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   User, Lock, Key, Bell, CreditCard, Eye, EyeOff, Plus,
   Trash2, Copy, Check, AlertTriangle, ExternalLink, Download, X,
-  Shield, RefreshCw, Mail
+  Shield, ShieldCheck, RefreshCw, Mail
 } from 'lucide-react';
 import {
   reauthenticateWithCredential,
@@ -18,7 +18,7 @@ import {
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
-import { usersAPI, paymentAPI } from '../services/api';
+import { usersAPI, paymentAPI, authAPI } from '../services/api';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -164,6 +164,12 @@ export default function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSetupData, setMfaSetupData] = useState(null); // { secret, qrCode } while mid-enrollment
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
+
   useEffect(() => {
     if (userProfile) {
       setProfileForm({
@@ -179,6 +185,9 @@ export default function Settings() {
   useEffect(() => {
     if (activeTab === 'api-keys' && ['agency', 'enterprise'].includes(tier)) fetchApiKeys();
     if (activeTab === 'billing') fetchBilling();
+    if (activeTab === 'security') {
+      authAPI.mfaStatus().then(res => setMfaEnabled(!!res.data.mfaEnabled)).catch(() => {});
+    }
   }, [activeTab, tier]);
 
   const fetchApiKeys = async () => {
@@ -328,6 +337,49 @@ export default function Settings() {
     }
   };
 
+  const handleMfaSetupStart = async () => {
+    setMfaLoading(true);
+    try {
+      const res = await authAPI.mfaSetup();
+      setMfaSetupData({ secret: res.data.secret, qrCode: res.data.qrCode });
+    } catch {
+      toast.error('Failed to start two-factor setup');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaConfirm = async () => {
+    if (mfaCode.length < 6) return;
+    setMfaLoading(true);
+    try {
+      await authAPI.mfaVerifySetup(mfaCode);
+      toast.success('Two-factor authentication enabled');
+      setMfaEnabled(true);
+      setMfaSetupData(null);
+      setMfaCode('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid code');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaDisable = async () => {
+    if (mfaCode.length < 6) return;
+    setMfaLoading(true);
+    try {
+      await authAPI.mfaDisable(mfaCode);
+      toast.success('Two-factor authentication disabled');
+      setMfaEnabled(false);
+      setMfaCode('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid code');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
   const usagePercent = userProfile?.usage
     ? Math.round((userProfile.usage.reportsThisMonth / (userProfile.usage.monthlyLimit || 1)) * 100)
     : 0;
@@ -419,6 +471,54 @@ export default function Settings() {
                         {pwLoading ? 'Updating...' : 'Update Password'}
                       </button>
                     </form>
+                  </div>
+
+                  <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Two-Factor Authentication</h2>
+                    <p className="text-gray-500 text-sm mb-4">
+                      {mfaEnabled
+                        ? 'Enabled. An authenticator app code is required each time you sign in.'
+                        : 'Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.).'}
+                    </p>
+
+                    {!mfaEnabled && !mfaSetupData && (
+                      <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="btn-primary flex items-center gap-2 text-sm py-2 disabled:opacity-50">
+                        <ShieldCheck className="w-4 h-4" /> {mfaLoading ? 'Starting...' : 'Enable Two-Factor Authentication'}
+                      </button>
+                    )}
+
+                    {mfaSetupData && (
+                      <div className="max-w-sm space-y-4">
+                        <p className="text-gray-600 text-sm">Scan this QR code with your authenticator app, then enter the 6-digit code it shows.</p>
+                        <img src={mfaSetupData.qrCode} alt="Two-factor authentication QR code" className="w-40 h-40 border border-gray-200 rounded-xl" />
+                        <div>
+                          <label className="label">Can't scan? Enter this key manually:</label>
+                          <code className="block bg-gray-100 rounded-lg px-3 py-2 text-xs break-all">{mfaSetupData.secret}</code>
+                        </div>
+                        <div>
+                          <label className="label">Authentication Code</label>
+                          <input type="text" inputMode="numeric" maxLength={8} className="input"
+                            value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
+                        </div>
+                        <div className="flex gap-3">
+                          <button onClick={() => { setMfaSetupData(null); setMfaCode(''); }} className="btn-secondary text-sm py-2 px-4">Cancel</button>
+                          <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaCode.length < 6} className="btn-primary text-sm py-2 px-4 disabled:opacity-50">
+                            {mfaLoading ? 'Confirming...' : 'Confirm & Enable'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {mfaEnabled && (
+                      <div className="max-w-sm space-y-3">
+                        <label className="label">Enter your current code to disable</label>
+                        <input type="text" inputMode="numeric" maxLength={8} className="input"
+                          value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
+                        <button onClick={handleMfaDisable} disabled={mfaLoading || mfaCode.length < 6} className="btn-danger text-sm py-2 px-4 disabled:opacity-50">
+                          {mfaLoading ? 'Disabling...' : 'Disable Two-Factor Authentication'}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="card p-6">
