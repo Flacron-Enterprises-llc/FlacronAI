@@ -89,8 +89,47 @@ function CancelModal({ onConfirm, onClose, loading }) {
   );
 }
 
+function DeleteAccountModal({ onConfirm, onClose, loading }) {
+  const [password, setPassword] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const canSubmit = password.length > 0 && confirmText === 'DELETE';
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}>
+      <motion.div className="card w-full max-w-sm p-6"
+        initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+        onClick={e => e.stopPropagation()}>
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-red-400" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Delete Your Account?</h2>
+          <p className="text-gray-600 text-sm">This permanently deletes your account, all reports, photos, exports, templates, and API keys. This cannot be undone.</p>
+        </div>
+        <div className="space-y-3 mb-6">
+          <div>
+            <label className="label">Current Password</label>
+            <input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Type DELETE to confirm</label>
+            <input type="text" className="input" value={confirmText} onChange={e => setConfirmText(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-secondary flex-1 text-sm py-2">Cancel</button>
+          <button onClick={() => onConfirm(password)} disabled={!canSubmit || loading} className="btn-danger flex-1 text-sm py-2 disabled:opacity-50">
+            {loading ? 'Deleting...' : 'Delete Account'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function Settings() {
-  const { userProfile, tier, refreshProfile } = useAuth();
+  const { userProfile, tier, refreshProfile, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -122,6 +161,8 @@ export default function Settings() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -269,6 +310,24 @@ export default function Settings() {
     finally { setCancelLoading(false); }
   };
 
+  const handleDeleteAccount = async (password) => {
+    setDeleteLoading(true);
+    try {
+      await usersAPI.deleteAccount(password);
+      toast.success('Your account has been deleted');
+      setShowDeleteModal(false);
+      await logout();
+      navigate('/');
+    } catch (err) {
+      const code = err.response?.data?.code;
+      if (code === 'INVALID_PASSWORD') toast.error('Incorrect password');
+      else if (code === 'TEAM_OWNER_BLOCKED') toast.error(err.response.data.error);
+      else toast.error('Failed to delete account');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const usagePercent = userProfile?.usage
     ? Math.round((userProfile.usage.reportsThisMonth / (userProfile.usage.monthlyLimit || 1)) * 100)
     : 0;
@@ -369,6 +428,14 @@ export default function Settings() {
                     </p>
                     <button onClick={handleSendResetEmail} className="btn-secondary flex items-center gap-2 text-sm">
                       <Mail className="w-4 h-4" /> Send Reset Email
+                    </button>
+                  </div>
+
+                  <div className="card p-6 border-red-500/30">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Danger Zone</h2>
+                    <p className="text-gray-500 text-sm mb-4">Permanently delete your account, reports, photos, exports, and API keys. This cannot be undone.</p>
+                    <button onClick={() => setShowDeleteModal(true)} className="btn-danger flex items-center gap-2 text-sm py-2">
+                      <Trash2 className="w-4 h-4" /> Delete Account
                     </button>
                   </div>
                 </motion.div>
@@ -561,6 +628,13 @@ export default function Settings() {
             onConfirm={handleCancelSubscription}
             onClose={() => setShowCancelModal(false)}
             loading={cancelLoading}
+          />
+        )}
+        {showDeleteModal && (
+          <DeleteAccountModal
+            onConfirm={handleDeleteAccount}
+            onClose={() => setShowDeleteModal(false)}
+            loading={deleteLoading}
           />
         )}
       </AnimatePresence>

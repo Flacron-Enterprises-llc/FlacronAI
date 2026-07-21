@@ -6,7 +6,7 @@ const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken, optionalAuth, requireApiAccess } = require('../middleware/auth');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { sendWelcomeEmail } = require('../services/emailService');
-const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
+const { logoObject, uploadBuffer, deleteObject, deletePrefix } = require('../config/storage');
 const { recordAuditLog } = require('../services/auditLogService');
 const { body, validationResult } = require('express-validator');
 
@@ -281,6 +281,79 @@ router.get('/api-usage', authenticateToken, requireApiAccess, async (req, res) =
     return res.json({ success: true, analytics: { totalCalls, byDay, byEndpoint, period: '30 days' } });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to get API usage', code: 'USAGE_ERROR' });
+  }
+});
+
+// DELETE /api/users/account — self-service, irreversible account + data deletion
+router.delete('/account', authenticateToken, [
+  body('password').notEmpty().withMessage('Current password is required to confirm deletion'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+
+  const uid = req.user.uid;
+
+  try {
+    const firebaseApiKey = process.env.FIREBASE_API_KEY;
+    if (!firebaseApiKey) {
+      return res.status(500).json({ success: false, error: 'Firebase API key not configured', code: 'CONFIG_ERROR' });
+    }
+
+    // Re-verify current password before an irreversible delete.
+    const axios = require('axios');
+    try {
+      await axios.post(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
+        { email: req.user.email, password: req.body.password, returnSecureToken: true }
+      );
+    } catch {
+      return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+    }
+
+    const db = getFirestore();
+
+    // Refuse to orphan a team — owner must remove members / transfer first.
+    const teamSnap = await db.collection('enterpriseTeams').where('ownerId', '==', uid).limit(1).get();
+    if (!teamSnap.empty) {
+      return res.status(409).json({
+        success: false,
+        error: 'You still own an enterprise team. Remove all team members before deleting your account.',
+        code: 'TEAM_OWNER_BLOCKED',
+      });
+    }
+
+    // Reports (+ their versions subcollection) need a recursive delete.
+    const reportsSnap = await db.collection('reports').where('userId', '==', uid).get();
+    await Promise.all(reportsSnap.docs.map((d) => db.recursiveDelete(d.ref)));
+
+    const flatCollections = [
+      { name: 'reportTemplates', field: 'userId' },
+      { name: 'apiKeys', field: 'userId' },
+      { name: 'crmClients', field: 'userId' },
+      { name: 'crmAppointments', field: 'userId' },
+      { name: 'crmClaims', field: 'userId' },
+      { name: 'enterpriseClients', field: 'userId' },
+    ];
+    for (const { name, field } of flatCollections) {
+      const snap = await db.collection(name).where(field, '==', uid).get();
+      if (snap.empty) continue;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Wipe all Storage objects (report photos, exports, logos).
+    await deletePrefix(`users/${uid}/`);
+
+    await db.collection('users').doc(uid).delete();
+    await getAuth().deleteUser(uid);
+
+    recordAuditLog({ actorUid: uid, actorEmail: req.user.email, action: 'account_self_delete', req });
+
+    return res.json({ success: true, message: 'Account and all associated data deleted' });
+  } catch (err) {
+    console.error('Account deletion error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to delete account', code: 'DELETE_ACCOUNT_ERROR' });
   }
 });
 

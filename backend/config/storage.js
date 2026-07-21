@@ -68,6 +68,17 @@ const deleteObjects = async (objectPaths = []) => {
   await Promise.all(objectPaths.filter(Boolean).map(deleteObject));
 };
 
+// Wipes every object under a path prefix — used for full account deletion
+// (users/{uid}/) so photos/exports/logos are removed without having to track
+// every individual object path.
+const deletePrefix = async (prefix) => {
+  try {
+    await getBucket().deleteFiles({ prefix, force: true });
+  } catch (err) {
+    console.warn('[Storage] deletePrefix failed for', prefix, '-', err.message);
+  }
+};
+
 // Time-limited read URL (used where a direct browser link is acceptable).
 const getSignedUrl = async (objectPath, expiresMs = 24 * 60 * 60 * 1000) => {
   const [url] = await getBucket()
@@ -88,5 +99,6 @@ module.exports = {
   objectExists,
   deleteObject,
   deleteObjects,
+  deletePrefix,
   getSignedUrl,
 };

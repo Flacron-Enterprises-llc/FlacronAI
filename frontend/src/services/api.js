@@ -119,6 +119,7 @@ export const usersAPI = {
   revokeApiKey: (keyId) => api.delete(`/users/api-keys/${keyId}`),
   getKeyUsage: (keyId) => api.get(`/users/api-keys/${keyId}/usage`),
   getApiUsage: () => api.get('/users/api-usage'),
+  deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
 };
 
 export const paymentAPI = {
