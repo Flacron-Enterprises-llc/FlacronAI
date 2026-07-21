@@ -369,6 +369,8 @@ export default function Dashboard() {
   const [approving, setApproving] = useState(false);
   const [versions, setVersions] = useState([]);
   const [showVersions, setShowVersions] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templateName, setTemplateName] = useState('');
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
 
@@ -562,6 +564,42 @@ export default function Dashboard() {
     if (v?.content == null) return;
     setEditableContent(v.content);
     toast.success('Version loaded into editor — Save to keep it');
+  };
+
+  // ── Report templates (T-2.10) ──
+  const fetchTemplates = useCallback(async () => {
+    try { const r = await reportsAPI.listTemplates(); setTemplates(r.data.templates || []); } catch { /* non-critical */ }
+  }, []);
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+
+  const handleSaveTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) { toast.error('Enter a template name'); return; }
+    try {
+      const fields = {
+        lossType: form.lossType, reportType: form.reportType, propertyDetails: form.propertyDetails,
+        lossDescription: form.lossDescription, damagesObserved: form.damagesObserved,
+        recommendations: form.recommendations, additionalNotes: form.additionalNotes,
+      };
+      await reportsAPI.saveTemplate({ name, fields });
+      setTemplateName('');
+      toast.success('Template saved');
+      fetchTemplates();
+    } catch { toast.error('Could not save template'); }
+  };
+
+  const handleLoadTemplate = (t) => {
+    setForm(prev => ({ ...prev, ...t.fields }));
+    toast.success(`Loaded "${t.name}"`);
+  };
+
+  const handleDeleteTemplate = async (id, e) => {
+    e.stopPropagation();
+    try {
+      await reportsAPI.deleteTemplate(id);
+      setTemplates(prev => prev.filter(t => t.id !== id));
+      toast.success('Template deleted');
+    } catch { toast.error('Delete failed'); }
   };
 
   const handleDeleteReport = async (id) => {
@@ -875,6 +913,34 @@ export default function Dashboard() {
                                 ))}
                               </div>
                               <p className="text-xs text-gray-400 mt-1.5">Click a template to auto-fill all fields for a demo report</p>
+                            </div>
+
+                            {/* My Templates (T-2.10) — saved, reusable claim structures */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">My Templates</p>
+                                <div className="flex items-center gap-1.5">
+                                  <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name"
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-400 w-32" />
+                                  <button onClick={handleSaveTemplate} className="text-xs btn-secondary py-1 px-2.5 flex items-center gap-1">
+                                    <Save className="w-3 h-3" /> Save current
+                                  </button>
+                                </div>
+                              </div>
+                              {templates.length === 0 ? (
+                                <p className="text-xs text-gray-400">Save the current claim details (property, loss, damages, recommendations) as a reusable template.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {templates.map(t => (
+                                    <div key={t.id} className="group flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-200 hover:border-brand-400 hover:bg-brand-50 transition-all">
+                                      <button onClick={() => handleLoadTemplate(t)} className="text-xs font-medium text-gray-700 group-hover:text-brand-600">{t.name}</button>
+                                      <button onClick={(e) => handleDeleteTemplate(t.id, e)} className="w-4 h-4 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete template">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             <div className="border-t border-gray-100 pt-4">

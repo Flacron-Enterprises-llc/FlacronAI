@@ -78,6 +78,60 @@ router.get('/ai-status', async (req, res) => {
   }
 });
 
+// ── REPORT TEMPLATES (T-2.10) ────────────────────────────────────────────────
+// Saved, reusable sets of wizard field values, scoped per user. Defined BEFORE
+// the /:id routes so GET /templates isn't captured by GET /:id.
+const TEMPLATE_FIELDS = ['lossType', 'reportType', 'propertyDetails', 'lossDescription', 'damagesObserved', 'recommendations', 'additionalNotes'];
+
+// GET /api/reports/templates — list the user's templates
+router.get('/templates', authenticateAny, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const snap = await db.collection('reportTemplates').where('userId', '==', req.user.uid).get();
+    const templates = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return res.json({ success: true, templates });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch templates', code: 'TEMPLATES_ERROR' });
+  }
+});
+
+// POST /api/reports/templates — save a template
+router.post('/templates', authenticateAny, async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ success: false, error: 'Template name is required', code: 'VALIDATION_ERROR' });
+
+    const fields = {};
+    TEMPLATE_FIELDS.forEach(f => { if (req.body.fields?.[f] !== undefined) fields[f] = req.body.fields[f]; });
+
+    const db = getFirestore();
+    const id = uuidv4();
+    const template = { id, userId: req.user.uid, name, fields, createdAt: new Date().toISOString() };
+    await db.collection('reportTemplates').doc(id).set(template);
+    return res.status(201).json({ success: true, template });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to save template', code: 'TEMPLATE_SAVE_ERROR' });
+  }
+});
+
+// DELETE /api/reports/templates/:tid — delete a template
+router.delete('/templates/:tid', authenticateAny, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reportTemplates').doc(req.params.tid);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Template not found', code: 'NOT_FOUND' });
+    }
+    await ref.delete();
+    return res.json({ success: true, message: 'Template deleted' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to delete template', code: 'TEMPLATE_DELETE_ERROR' });
+  }
+});
+
 // POST /api/reports/generate
 router.post('/generate', authenticateAny, (req, res, next) => {
   req.reportId = uuidv4();
