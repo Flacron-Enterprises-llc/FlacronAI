@@ -6,7 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — client's Phase 2/3 batch DONE 2026-07-21: consent flow (T-1.16), Enterprise UI polish + approve UI (T-5.6a/T-2.7b), version history (T-2.13), templates (T-2.10), share link + e-sign (T-2.9/2.12), security hardening rest (T-3.10c). All Golden Rules resolved. All lint-clean, tests 6/6, builds pass, each verified end-to-end. **Ready for client final review.** Pending client deploy actions: Render env vars (AWS_*/SES_*, ANTHROPIC_*, FIREBASE_STORAGE_BUCKET) + AWS key rotation.
+- **Now working on:** — T-3.10 security hardening batch DONE 2026-07-22: session revocation + auth rate limiting + audit trail (T-3.10d), new-device login alerts (T-3.10e), self-service account deletion (T-3.10f), opt-in TOTP MFA (T-3.10g), secret/env management audit. T-3.10 acceptance is now fully met except malware scanning and data-retention auto-deletion, both **deliberately deferred per client decision** (see changelog) — everything else (encryption in transit/rest, RBAC, upload validation, signed URLs, session mgmt, MFA, audit logs, account/document deletion, login alerts, rate limiting, secret management) is done and live-QA'd against the real Firebase project. All lint-clean (0 errors), backend tests 6/6, frontend build passes.
+- **Previous batch (2026-07-21):** consent flow (T-1.16), Enterprise UI polish + approve UI (T-5.6a/T-2.7b), version history (T-2.13), templates (T-2.10), share link + e-sign (T-2.9/2.12), security hardening rest (T-3.10c). All Golden Rules resolved. **Ready for client final review.** Pending client deploy actions: Render env vars (AWS_*/SES_*, ANTHROPIC_*, FIREBASE_STORAGE_BUCKET) + AWS key rotation + **confirm `FIREBASE_API_KEY` is set in Render** (local backend `.env` is missing it — see 2026-07-22 audit note; without it, `/api/auth/login`, the new MFA login-challenge flow, and self-service account deletion's password re-check all fail with `CONFIG_ERROR`).
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
   2. **Migrate file storage to Firebase Storage** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-3.10b): `config/storage.js` rewritten on Firebase Storage; generators buffer-based; photos+exports private, logos via token URL; public `/uploads` route removed. 8/8 live bucket round-trip checks passed. **Client must add `FIREBASE_STORAGE_BUCKET` to Render.**
@@ -56,7 +57,7 @@
 | Task | Title | Status | Notes |
 |------|-------|--------|-------|
 | T-3.10a | Security: lock down public uploads (pulled forward at client request) | DONE | 2026-07-18 — claim photos + exports no longer world-readable; only branding logos public; traversal-safe + tested |
-| T-3.10 | Security hardening (rest: at-rest encryption, signed URLs, MFA, audit logs, malware scan, persistent storage…) | TODO | ephemeral-disk + at-rest still open |
+| T-3.10 | Security hardening (rest: at-rest encryption, signed URLs, MFA, audit logs, malware scan, persistent storage…) | DONE (see 2026-07-22 batch) | Only malware scan + data retention remain, both deliberately deferred per client decision. Backup/recovery is a GCP console action, not code — flagged below. |
 | T-3.x | See TASKS.md | TODO | |
 
 ### Phase 4 — Marketing & Growth Automation
@@ -84,6 +85,54 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-22] — T-3.10 wrap-up — Secret/env management audit (report only)
+- **Status:** DONE (audit, no code change)
+- **What was checked:** (1) `.env` is gitignored at repo root + both packages; only `.env.example` (placeholders only, no real secrets) is tracked — confirmed via `git ls-files`. (2) Grepped all tracked source for hardcoded secret patterns (Stripe live/test keys, Firebase-API-key-shaped strings, PEM private keys) — zero matches outside `.env*`. (3) Grepped for `console.log` of tokens/passwords/secrets — only one hit (`watsonx.js`) and it logs a status message, not the token value. (4) CORS dev-bypass and the global error handler's stack-trace suppression (fixed T-3.12) are already prod-safe. (5) Custom JWTs use a single `JWT_SECRET` per environment (dev vs Render prod each have their own value) — correct separation; no rotation mechanism exists, but per-user `tokenVersion` (T-3.10d) already lets us revoke individual sessions without a full secret rotation.
+- **Findings / open items (not fixed this session — flagged for the client):**
+  - **Admin access is single-email, not role-based** (`requireAdmin` in `sales.js` matches `req.user.email === ADMIN_EMAIL`). There's no granular staff-role/least-privilege system — acceptable for a single-admin operation today, but would need real RBAC before adding a second admin/support user. Not built speculatively.
+  - **Local backend `.env` is still missing `FIREBASE_API_KEY`** (flagged since T-3.3a) — confirmed still true. This blocks local testing of `/api/auth/login`, the new MFA login-challenge (`/mfa/login-verify`), and the new self-service account-deletion password re-check (all three return `CONFIG_ERROR` without it). **Client must confirm the real key is set in Render** — these code paths were live-QA'd this session using the (non-secret) Firebase Web API key from `frontend/.env` injected only into a throwaway local process, never written to disk.
+  - **Backup/recovery** (Firestore PITR, Storage object versioning) is a GCP console/billing decision, not a code change — not actioned; flagged for the client to decide.
+- **Golden-rule check:** none violated; advances Rule #6.
+
+### [2026-07-22] — T-3.10g — Opt-in TOTP two-factor authentication
+- **Status:** DONE (live-verified over real HTTP against the running backend + real Firebase project)
+- **What changed:** Added MFA (client-authorized T-3.10 acceptance item) using `speakeasy` + `qrcode`. Two separate enforcement points were needed because this app has two login paths:
+  - **Public REST login** (`/api/auth/login`, documented in `ApiDocs.jsx` for third-party JWT consumers): when `mfaEnabled`, the real Firebase idToken is deliberately discarded (never sent to the client) and a short-lived challenge token is returned instead, signed with a **separate secret** (`JWT_SECRET + '::mfa-challenge'`) so it's cryptographically impossible for it to be replayed as a real session token against `authenticateToken`. `POST /mfa/login-verify` exchanges a valid TOTP code for the real custom JWT.
+  - **Web app** (Firebase client SDK, never touches `/login`): a new `ProtectedRoute` gate (`components/MfaGate.jsx`) blocks app access after a Firebase sign-in until `POST /mfa/verify` confirms the code, using the idToken the client already holds. `AuthContext` tracks `mfaVerified`, reset to `false` on every fresh login/register so MFA can never be silently skipped across sessions.
+  - Enrollment: `POST /mfa/setup` (QR + manual secret) → `POST /mfa/verify-setup` (confirm code, turn on) → `POST /mfa/disable` (requires a valid code) → `GET /mfa/status`. A dedicated `mfaLimiter` (8 attempts/10min, keyed by uid) guards every code-verification endpoint against brute-forcing a 6-digit code.
+  - Settings > Security gained a Two-Factor Authentication card (enable → QR/secret → confirm; or disable with a code).
+- **Files touched:** backend/routes/auth.js, backend/package.json/package-lock.json (+speakeasy, +qrcode), frontend/src/components/MfaGate.jsx (new), frontend/src/components/ProtectedRoute.jsx, frontend/src/context/AuthContext.jsx, frontend/src/pages/Settings.jsx, frontend/src/services/api.js.
+- **QA done:** 12/12 checks over real HTTP against the live local backend + real Firebase project (temp test user, cleaned up after): setup returns secret+QR; wrong enrollment code rejected, correct one enables MFA; `/login` returns `mfaRequired` with **no usable token leaked**; login-verify rejects wrong code, accepts correct code and returns a real token that then authenticates on a real protected route; the web-gate endpoint (`/mfa/verify`) accepts/rejects correctly; disable works; a subsequent login returns a normal token directly. Also unit-verified in-process that the challenge token is rejected by the real session secret (the critical isolation property). Lint 0 errors, backend tests 6/6, frontend lint 0 errors (baseline warnings only), `npm run build` passes.
+- **Left / follow-ups:** No backup codes for a lost authenticator device (would need support-assisted recovery — flagged, not built speculatively). The web-app gate is a per-session client-side checkpoint on top of an already-valid Firebase idToken, not a token-level restriction — acceptable given the Firebase-SDK architecture, but a determined attacker who already stole a live idToken *and* bypassed the frontend could skip the gate; full enforcement would need Firebase's own native multi-factor auth (Blaze plan) or moving the web app off direct client-SDK login, both bigger architecture changes.
+- **Golden-rule check:** none violated; satisfies the MFA line of Rule #6/T-3.10.
+
+### [2026-07-22] — T-3.10f — Self-service account deletion
+- **Status:** DONE (live-verified against real Firebase Auth/Firestore/Storage)
+- **What changed:** Users had no way to delete their own account (only an admin-triggered delete existed). New `DELETE /api/users/account` (authenticateToken, `{password}`): re-verifies the current password via Firebase's REST sign-in (irreversible action deserves fresh proof of possession), refuses to proceed if the user still owns an enterprise team (`409 TEAM_OWNER_BLOCKED` — would orphan members), then deletes every report **and its versions subcollection** via `db.recursiveDelete()`, report templates, API keys, CRM records, all Storage objects under `users/{uid}/` (new `deletePrefix()` helper using the bucket's `deleteFiles({prefix})`), the Firestore user doc, and the Firebase Auth account. Records an `account_self_delete` audit entry. Settings > Security gained a Danger Zone (password + typed "DELETE" confirmation modal).
+- **Files touched:** backend/routes/users.js, backend/config/storage.js (+`deletePrefix`), frontend/src/pages/Settings.jsx, frontend/src/services/api.js.
+- **QA done:** live script against the real project (temp user + seeded report/version/template/API-key/storage-object): wrong password rejected, correct password accepted, then every seeded artifact confirmed gone afterward (report, versions subcollection, templates, API keys, storage object, Firestore user doc, Firebase Auth account) — 9/9 checks pass. Lint 0 errors, tests 6/6, frontend build OK.
+- **Left / follow-ups:** Doesn't unwind CRM client records owned by *other* users referencing this one (none exist in the schema), and deliberately blocks rather than cascades team ownership — a team owner must remove members first.
+- **Golden-rule check:** none violated; satisfies the account-deletion line of Rule #6/T-3.10.
+
+### [2026-07-22] — T-3.10e — New-device login alerts
+- **Status:** DONE (live-verified)
+- **What changed:** The public REST login had no session-anomaly detection. Login now compares the request's IP/user-agent against the last-known values stored on the user doc; a mismatch — and only when there IS a prior login to compare against, so a brand-new account's first sign-in is never flagged — emails the account owner (new `sendNewDeviceLoginAlert`, reuses the existing SES `layout()` template system) and records a `suspicious_login_new_device` audit entry. `lastLogin {ip, userAgent, at}` is updated on every login.
+- **Files touched:** backend/services/emailService.js, backend/routes/auth.js.
+- **QA done:** live script against real Firestore (temp user): first-ever login not flagged; second login from the same IP/UA not flagged; a login from a different IP/UA correctly flagged; `lastLogin` persisted correctly at each step — 4/4 checks pass.
+- **Left / follow-ups:** only covers the REST `/login` path — the web app's Google-popup sign-in bypasses the backend entirely (Firebase client SDK), so it isn't covered by this alert. Extending it would mean adding a "record login" call from `AuthContext.loginWithGoogle`; noted but not built (scope creep beyond what was asked).
+- **Golden-rule check:** none violated; advances Rule #6.
+
+### [2026-07-22] — T-3.10d — Session revocation, auth rate limiting, audit trail
+- **Status:** DONE (live-verified against real Firebase Auth/Firestore)
+- **What changed:**
+  - **Session revocation:** Custom JWTs (7-day, used by the documented public REST API) were stateless and couldn't be revoked on logout, unlike Firebase ID tokens (which already had `revokeRefreshTokens`). Added a `tokenVersion` claim, checked against the user doc on every custom-JWT request (`middleware/auth.js`); logout and password-change (both `auth.js` and `users.js` variants) now bump it, immediately invalidating any outstanding custom JWT.
+  - **Rate limiting:** New `authLimiter` (10/15min) on `/register`, `/login`, `/forgot-password`, `/send-verification` — the existing global 100/15min limiter was shared across the whole API and too loose to deter credential stuffing on its own.
+  - **Audit trail:** New `auditLogs` Firestore collection + `services/auditLogService.js`. Wired into register, login (success + failure), logout, password-change, and admin tier-update/user-delete. New admin-only `GET /api/sales/admin/audit-logs` (cursor-paginated by timestamp, no full-collection scan) to view the trail.
+- **Files touched:** backend/middleware/auth.js, backend/routes/auth.js, backend/routes/users.js, backend/routes/sales.js, backend/services/auditLogService.js (new).
+- **QA done:** live scripts against the real Firebase project (temp users, cleaned up after): tokenVersion revocation — old token valid before logout, rejected after, new token valid — 3/3; audit log write+query+cleanup round-trip — 1/1; both green. Lint 0 errors, tests 6/6.
+- **Left / follow-ups:** none for this sub-item.
+- **Golden-rule check:** none violated; advances Rule #6.
 
 ### [2026-07-21] — T-3.10c — Security hardening (upload validation + usage tracking)
 - **Status:** DONE
