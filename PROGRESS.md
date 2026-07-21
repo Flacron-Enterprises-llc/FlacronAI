@@ -6,7 +6,7 @@
 ---
 
 ## Current focus
-- **Now working on:** — all Golden-Rule violations from the audit now resolved (Rule #1 content, #2 verdicts, #3 review gate, #6 storage). Remaining backlog: T-1.16 lead-capture consent forms; EnterpriseDashboard approve UI; misc Phase 2/3.
+- **Now working on:** — client's Phase 2/3 batch DONE 2026-07-21: consent flow (T-1.16), Enterprise UI polish + approve UI (T-5.6a/T-2.7b), version history (T-2.13), templates (T-2.10), share link + e-sign (T-2.9/2.12), security hardening rest (T-3.10c). All Golden Rules resolved. All lint-clean, tests 6/6, builds pass, each verified end-to-end. **Ready for client final review.** Pending client deploy actions: Render env vars (AWS_*/SES_*, ANTHROPIC_*, FIREBASE_STORAGE_BUCKET) + AWS key rotation.
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
   2. **Migrate file storage to Firebase Storage** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-3.10b): `config/storage.js` rewritten on Firebase Storage; generators buffer-based; photos+exports private, logos via token URL; public `/uploads` route removed. 8/8 live bucket round-trip checks passed. **Client must add `FIREBASE_STORAGE_BUCKET` to Render.**
@@ -84,6 +84,33 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-21] — T-3.10c — Security hardening (upload validation + usage tracking)
+- **Status:** DONE
+- **What changed:** (1) Magic-byte image validation (`utils/imageValidation.js`) — report generate / add-images / analyze-images reject files whose real bytes aren't jpeg/png/gif/webp/heic (defeats spoofed mimetype; `400 INVALID_IMAGE`). (2) Mounted `trackApiUsage` on `/api` so API-key usage is finally recorded (was never mounted → analytics always empty); no-op for token/browser requests.
+- **Files touched:** backend/utils/imageValidation.js (new), backend/routes/reports.js, backend/server.js.
+- **QA done:** signature sniffer unit test (real png/jpeg/webp pass; disguised text + short buffers rejected); lint 0 errors; backend tests 6/6.
+- **Left / follow-ups:** MFA, malware-scan service, general security audit log deferred (larger). At-rest encryption already provided by GCP defaults.
+- **Golden-rule check:** advances Rule #6.
+
+### [2026-07-21] — T-2.9 / T-2.12 — Shareable report link + adjuster e-signature
+- **Status:** DONE (end-to-end verified)
+- **What changed:** **Share (T-2.9):** `POST/DELETE /reports/:id/share` create/revoke a public token (finalized only); public `GET /reports/shared/:token` returns presentation fields only (no `userId`/`imagePaths`); new public `/shared/:token` page renders the report read-only with print-to-PDF, `noindex`. **E-signature (T-2.12):** approve accepts `signature {name,title}` → stored `{name,title,signedAt}`; PDF + DOCX sign-off render the typed signature + an "Electronically signed by … on …" line. Dashboard: e-sign name field on approve + "Copy Share Link" when finalized.
+- **Files touched:** backend/routes/reports.js, utils/properPdfGenerator.js, utils/documentGenerator.js, frontend services/api.js, pages/Dashboard.jsx, pages/SharedReport.jsx (new), App.jsx.
+- **QA done:** draft-share rejected (400), approve stores signature, public fetch returns content+signature without leaking userId, revoke → 404. Lint 0 errors, tests 6/6, build OK.
+- **Golden-rule check:** only finalized (human-approved) reports are shareable; no internal fields leaked.
+
+### [2026-07-21] — T-2.10 — Report templates (save/reuse claim structures)
+- **Status:** DONE (CRUD verified)
+- **What changed:** `reportTemplates` collection (per-user); `GET/POST/DELETE /reports/templates` (defined before `/:id` to avoid path capture). Dashboard "My Templates" in wizard step 1 — save current claim details as a named template, load to auto-fill, delete.
+- **Files touched:** backend/routes/reports.js, frontend services/api.js, pages/Dashboard.jsx.
+- **QA done:** create/list/delete + ownership + no-name rejection verified; lint 0 errors, build OK.
+
+### [2026-07-21] — T-2.13 — Report version history & audit trail
+- **Status:** DONE (end-to-end verified)
+- **What changed:** `recordVersion()` writes snapshots to `reports/{id}/versions` on generate/edit/approve (actor, timestamp, note, content snapshot); `GET /reports/:id/versions` (newest first). Dashboard "Version History" card lists entries with a Restore action.
+- **Files touched:** backend/routes/reports.js, frontend services/api.js, pages/Dashboard.jsx.
+- **QA done:** edit+approve record versions; GET returns them ordered with content; lint 0 errors, tests 6/6, build OK.
 
 ### [2026-07-21] — T-5.6a — Enterprise Dashboard UI polish (de-AI / brand)
 - **Status:** DONE
