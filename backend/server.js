@@ -105,6 +105,10 @@ app.get('/health', (req, res) => {
 });
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
+// Record API-key usage (no-op for token/browser requests) so usage analytics work.
+const { trackApiUsage } = require('./middleware/auth');
+app.use('/api', trackApiUsage);
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', aiLimiter, require('./routes/reports'));

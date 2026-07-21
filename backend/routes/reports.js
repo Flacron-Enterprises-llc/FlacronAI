@@ -12,7 +12,17 @@ const { addWatermarkToPDF } = require('../services/watermarkService');
 const {
   reportImageObject, exportObject, uploadBuffer, downloadBuffer, deleteObjects,
 } = require('../config/storage');
+const { isValidImageBuffer } = require('../utils/imageValidation');
 const { getTier, canGenerate } = require('../config/tiers');
+
+// Reject any uploaded file whose actual bytes aren't a real image (defeats a
+// spoofed mimetype). Returns the offending filename, or null if all are valid.
+const firstInvalidImage = (files = []) => {
+  for (const f of files) {
+    if (!isValidImageBuffer(f.buffer)) return f.originalname || 'unnamed file';
+  }
+  return null;
+};
 
 // Multer holds uploads in memory; buffers are then persisted to Firebase Storage.
 const imageUpload = multer({
@@ -170,6 +180,12 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     }
 
     const reportId = req.reportId;
+
+    // Reject spoofed/non-image uploads before doing any work.
+    const badFile = firstInvalidImage(req.files);
+    if (badFile) {
+      return res.status(400).json({ success: false, error: `"${badFile}" is not a valid image file`, code: 'INVALID_IMAGE' });
+    }
 
     // Analyze images from in-memory buffers, then persist them to Storage.
     let imageAnalysis = null;
@@ -638,6 +654,11 @@ router.post('/:id/images', authenticateAny, (req, res, next) => {
 
     const existingPaths = doc.data().imagePaths || [];
 
+    const badFile = firstInvalidImage(req.files);
+    if (badFile) {
+      return res.status(400).json({ success: false, error: `"${badFile}" is not a valid image file`, code: 'INVALID_IMAGE' });
+    }
+
     let newAnalysis = null;
     let newPaths = [];
     if (req.files && req.files.length > 0) {
@@ -662,6 +683,11 @@ router.post('/:id/images', authenticateAny, (req, res, next) => {
 router.post('/analyze-images', authenticateAny, imageUpload.array('images', 20), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, error: 'No images provided', code: 'NO_IMAGES' });
+
+    const badFile = firstInvalidImage(req.files);
+    if (badFile) {
+      return res.status(400).json({ success: false, error: `"${badFile}" is not a valid image file`, code: 'INVALID_IMAGE' });
+    }
 
     // Analysis-only endpoint: buffers stay in memory, nothing persisted.
     const analysis = await analyzeImages(toImageInputs(req.files));
