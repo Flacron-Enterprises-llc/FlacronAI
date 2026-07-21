@@ -7,6 +7,7 @@ const { authenticateToken, optionalAuth, requireApiAccess } = require('../middle
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { sendWelcomeEmail } = require('../services/emailService');
 const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
+const { recordAuditLog } = require('../services/auditLogService');
 const { body, validationResult } = require('express-validator');
 
 const logoUpload = multer({
@@ -201,6 +202,12 @@ router.put('/change-password', authenticateToken, [body('newPassword').isLength(
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
+    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    }).catch(() => {});
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password changed' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to change password', code: 'PASSWORD_ERROR' });

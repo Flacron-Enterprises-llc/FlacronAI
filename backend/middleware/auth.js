@@ -36,6 +36,12 @@ const authenticateToken = async (req, res, next) => {
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         const userData = userDoc.exists ? userDoc.data() : {};
 
+        // tokenVersion is bumped on logout/password-change to revoke all
+        // previously issued custom JWTs (they're otherwise stateless for 7 days).
+        if ((decoded.tokenVersion || 0) !== (userData.tokenVersion || 0)) {
+          return res.status(401).json({ success: false, error: 'Session revoked, please log in again', code: 'TOKEN_REVOKED' });
+        }
+
         req.user = {
           uid: decoded.uid,
           email: decoded.email,
@@ -133,7 +139,11 @@ const optionalAuth = async (req, res, next) => {
       const db = getFirestore();
       const userDoc = await db.collection('users').doc(decoded.uid).get();
       const userData = userDoc.exists ? userDoc.data() : {};
-      req.user = { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+      if ((decoded.tokenVersion || 0) !== (userData.tokenVersion || 0)) {
+        req.user = null;
+      } else {
+        req.user = { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+      }
     } catch {
       req.user = null;
     }

@@ -1,13 +1,26 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
 
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
+const { recordAuditLog } = require('../services/auditLogService');
+
+// Tighter brute-force guard for credential-related endpoints — the global
+// 100/15min limiter (server.js) is shared across the whole API and too loose
+// to stop password-guessing on its own.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many attempts, please try again later', code: 'AUTH_RATE_LIMITED' },
+});
 
 // POST /api/auth/register
-router.post('/register', [
+router.post('/register', authLimiter, [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   body('displayName').trim().notEmpty(),
@@ -42,12 +55,14 @@ router.post('/register', [
       address: '',
       logoUrl: null,
       notificationsEnabled: true,
+      tokenVersion: 0,
     };
 
     await db.collection('users').doc(userRecord.uid).set(userProfile);
+    recordAuditLog({ actorUid: userRecord.uid, actorEmail: email, action: 'register', req });
 
-    // Create custom JWT
-    const token = jwt.sign({ uid: userRecord.uid, email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Create custom JWT (tokenVersion lets logout/password-change revoke it early)
+    const token = jwt.sign({ uid: userRecord.uid, email, tokenVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     return res.status(201).json({
       success: true,
@@ -65,7 +80,7 @@ router.post('/register', [
 });
 
 // POST /api/auth/login
-router.post('/login', [
+router.post('/login', authLimiter, [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
 ], async (req, res) => {
@@ -95,6 +110,8 @@ router.post('/login', [
     const userDoc = await db.collection('users').doc(uid).get();
     const userProfile = userDoc.exists ? userDoc.data() : { uid, email, tier: 'starter' };
 
+    recordAuditLog({ actorUid: uid, actorEmail: email, action: 'login_success', req });
+
     return res.json({
       success: true,
       token: idToken,
@@ -103,6 +120,7 @@ router.post('/login', [
   } catch (err) {
     const firebaseError = err.response?.data?.error?.message;
     if (firebaseError === 'INVALID_PASSWORD' || firebaseError === 'EMAIL_NOT_FOUND' || firebaseError === 'INVALID_LOGIN_CREDENTIALS') {
+      recordAuditLog({ actorEmail: email, action: 'login_failed', meta: { reason: firebaseError }, req });
       return res.status(401).json({ success: false, error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
     }
     console.error('Login error:', err.message);
@@ -126,11 +144,21 @@ router.post('/verify', authenticateToken, async (req, res) => {
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     await getAuth().revokeRefreshTokens(req.user.uid);
-    return res.json({ success: true, message: 'Logged out successfully' });
   } catch (err) {
-    console.error('Logout error:', err);
-    return res.json({ success: true, message: 'Logged out' });
+    console.error('Logout revokeRefreshTokens error:', err);
   }
+  try {
+    // Bumping tokenVersion invalidates any outstanding custom JWT (Firebase
+    // idTokens are covered by revokeRefreshTokens above, but that call doesn't
+    // touch already-issued custom JWTs, which are otherwise stateless for 7 days).
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    });
+  } catch (err) {
+    console.error('Logout tokenVersion bump error:', err);
+  }
+  recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'logout', req });
+  return res.json({ success: true, message: 'Logged out successfully' });
 });
 
 // POST /api/auth/refresh
@@ -152,7 +180,7 @@ router.post('/refresh', async (req, res) => {
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], async (req, res) => {
+router.post('/forgot-password', authLimiter, [body('email').isEmail().normalizeEmail()], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.mapped() });
@@ -169,7 +197,7 @@ router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyn
 });
 
 // POST /api/auth/send-verification
-router.post('/send-verification', authenticateToken, async (req, res) => {
+router.post('/send-verification', authLimiter, authenticateToken, async (req, res) => {
   try {
     const { pendingPlan } = req.body;
     const auth = getAuth();
@@ -218,6 +246,12 @@ router.post('/change-password', authenticateToken, [
   }
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
+    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    }).catch(() => {});
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password updated successfully' });
   } catch (err) {
     console.error('Change password error:', err);

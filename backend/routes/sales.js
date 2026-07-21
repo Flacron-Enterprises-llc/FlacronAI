@@ -5,6 +5,7 @@ const { sendSalesNotificationEmail } = require('../services/emailService');
 const { authenticateToken } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
+const { recordAuditLog } = require('../services/auditLogService');
 
 // Stripe — instantiated once at module level
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -300,6 +301,16 @@ router.put('/admin/update-tier', authenticateToken, requireAdmin, [
       adminUpdatedAt: new Date().toISOString(),
     });
 
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'admin_tier_update',
+      targetType: 'user',
+      targetId: userRecord.uid,
+      meta: { targetEmail: req.body.email, newTier: req.body.tier },
+      req,
+    });
+
     return res.json({ success: true, message: `User ${req.body.email} updated to ${req.body.tier} tier` });
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
@@ -328,9 +339,36 @@ router.delete('/admin/user/:uid', authenticateToken, requireAdmin, async (req, r
     // Delete Firebase Auth account
     await getAuth().deleteUser(uid);
 
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'admin_user_delete',
+      targetType: 'user',
+      targetId: uid,
+      req,
+    });
+
     return res.json({ success: true, message: 'User deleted' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, code: 'ADMIN_ERROR' });
+  }
+});
+
+// GET /api/sales/admin/audit-logs — recent security-relevant events, admin only
+router.get('/admin/audit-logs', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    let query = db.collection('auditLogs').orderBy('timestamp', 'desc');
+    if (req.query.before) {
+      query = query.where('timestamp', '<', req.query.before);
+    }
+    const snap = await query.limit(limit).get();
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.json({ success: true, logs, nextBefore: logs.length ? logs[logs.length - 1].timestamp : null });
+  } catch (err) {
+    console.error('Audit log fetch error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load audit logs', code: 'AUDIT_LOG_ERROR' });
   }
 });
 
