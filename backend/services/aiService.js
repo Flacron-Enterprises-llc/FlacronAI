@@ -182,7 +182,19 @@ _Preliminary estimate for planning only — not a final determination of loss va
   return content.trimEnd() + '\n\n' + summaryText.trim();
 };
 
-const generateReport = async (reportData, imageAnalysis) => {
+const NO_PHOTO_DISCLAIMER = 'No photographs were provided. Damage observations in this draft are based exclusively on user-entered information and must be independently verified.';
+
+// Deterministic — does not rely on the LLM to remember to say this. Inserted
+// right under Section 8 (Supporting Documentation) where photos are referenced.
+const insertNoPhotoDisclaimer = (content) => {
+  const section8Re = /(##\s*SECTION\s*8[^\n]*\n)/i;
+  if (section8Re.test(content)) {
+    return content.replace(section8Re, (heading) => `${heading}\n**${NO_PHOTO_DISCLAIMER}**\n`);
+  }
+  return `${content.trimEnd()}\n\n**${NO_PHOTO_DISCLAIMER}**`;
+};
+
+const generateReport = async (reportData, imageAnalysis, photoCount = 0) => {
   const prompt = buildReportPrompt(reportData, imageAnalysis);
 
   console.log('🤖 Generating report (Claude primary, watsonx fallback)...');
@@ -196,6 +208,10 @@ const generateReport = async (reportData, imageAnalysis) => {
 
   // Ensure Section 7 cost table is complete — patch it if truncated
   content = await ensureLossSummary(reportData, content);
+
+  if (photoCount === 0) {
+    content = insertNoPhotoDisclaimer(content);
+  }
 
   return { content, modelUsed };
 };

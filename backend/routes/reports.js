@@ -206,7 +206,7 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     };
 
     // Generate report
-    const { content, modelUsed } = await generateReport(reportData, imageAnalysis);
+    const { content, modelUsed } = await generateReport(reportData, imageAnalysis, imagePaths.length);
     const qualityCheck = await checkQuality(content);
 
     const reportDoc = {

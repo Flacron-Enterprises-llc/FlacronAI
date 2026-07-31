@@ -87,7 +87,7 @@
 | T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
 | T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
 | T-6.13 | Rename "Quality Score" → "Documentation Completeness" | DONE | 2026-08-01 — 7 display sites across Dashboard.jsx, EnterpriseDashboard.jsx, and the Home.jsx marketing preview relabeled with tooltips; qualityScore backend field name unchanged (data shape, out of scope) |
-| T-6.14 | Zero-photo disclaimer text | TODO | Confirmed gap |
+| T-6.14 | Zero-photo disclaimer text | DONE | 2026-08-01 — disclaimer deterministically inserted into report content (not LLM-dependent) under Section 8; propagates to preview + PDF/DOCX/HTML exports automatically since all render from the same content field |
 | T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
 | T-6.16 | Link claim number to real CRM claim record | TODO | Confirmed gap — needs migration plan, large task |
 | T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.14 — Zero-photo disclaimer text
+- **Status:** DONE
+- **What changed:** Confirmed (2026-07-31 audit) that 0-photo reports never fabricate AI findings, but also said nothing — the PDF's photo appendix section was silently skipped entirely (`if (validImages.length > 0)` in `properPdfGenerator.js`) with zero indication that damage observations came from text alone. Added a deterministic disclaimer — "No photographs were provided. Damage observations in this draft are based exclusively on user-entered information and must be independently verified." — inserted directly into the generated report `content` (under Section 8: Supporting Documentation) whenever `photoCount === 0`, via a new `insertNoPhotoDisclaimer` helper in `aiService.js`. Deliberately **not** left to the LLM to remember to include (existing prompt language is advisory, not enforced) — it's a straight string insertion after generation, verified against both a normal Section-8 heading match and a fallback append if the heading is ever missing/reformatted. Because the frontend preview (`ReportMarkdown`) and every export format (PDF/DOCX/HTML) all render from the same `report.content` field, this single insertion point covers preview + all three export formats without touching each renderer separately.
+- **Files touched:** `backend/services/aiService.js`, `backend/routes/reports.js` (passes `imagePaths.length` into `generateReport`).
+- **QA done:** Targeted ESLint 0 errors on both files (pre-existing warnings only); backend tests 7/7 passed; both files verified to load without syntax errors; the insertion helper was exercised standalone against both a normal-heading sample and a no-heading-found fallback sample — both produced the expected output. Not live-tested against a real end-to-end 0-photo generation (would need a configured `ANTHROPIC_API_KEY`/live Firestore report), but the only new call-site change is a plain integer parameter, and the existing generation flow, tests, and lint are all unaffected.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** Reinforces Golden Rule #1/#2 — the draft is explicit about its own evidentiary basis instead of silently implying photo-backed findings.
 
 ### [2026-08-01] — T-6.13 — Rename "Quality Score" → "Documentation Completeness"
 - **Status:** DONE
