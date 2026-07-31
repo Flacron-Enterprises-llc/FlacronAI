@@ -179,7 +179,7 @@ function ReportDetailModal({ report, onClose }) {
             </div>
             {report.qualityScore && (
               <div className="flex gap-3">
-                <span className="text-gray-600 w-32 shrink-0">Quality Score:</span>
+                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">Documentation Completeness:</span>
                 <span className="text-orange-400 font-semibold">{report.qualityScore}/100</span>
               </div>
             )}
@@ -1222,8 +1222,9 @@ export default function Dashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
-                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                                Quality {generatedReport.qualityScore}/100
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30"
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
                             <button onClick={handlePreviewPDF} disabled={previewing}

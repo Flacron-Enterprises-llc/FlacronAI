@@ -38,7 +38,7 @@ const ROLE_PERMS = {
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon: Icon, trend }) {
+function StatCard({ label, value, sub, icon: Icon, trend, tooltip }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white border border-[#e5e7eb] rounded-2xl p-6 relative overflow-hidden">
@@ -54,7 +54,7 @@ function StatCard({ label, value, sub, icon: Icon, trend }) {
         )}
       </div>
       <p className="text-3xl font-black text-gray-900 mb-1">{value}</p>
-      <p className="text-sm font-semibold text-gray-700">{label}</p>
+      <p className="text-sm font-semibold text-gray-700" title={tooltip}>{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </motion.div>
   );
@@ -475,7 +475,8 @@ export default function EnterpriseDashboard() {
                   <StatCard label="Total Reports" value={stats.total} sub="All time" icon={FileText} trend={12} />
                   <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} trend={8} />
                   <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} />
-                  <StatCard label="Avg Quality" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="AI report score" icon={Shield} trend={3} />
+                  <StatCard label="Avg Completeness" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="Documentation completeness" icon={Shield} trend={3}
+                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings." />
                 </div>
 
                 {/* Quick-action cards */}
@@ -516,8 +517,9 @@ export default function EnterpriseDashboard() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#e5e7eb] bg-gray-50">
-                          {['Claim #','Insured','Loss Type','Date','Quality','Export'].map(h => (
-                            <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                          {['Claim #','Insured','Loss Type','Date','Completeness','Export'].map(h => (
+                            <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -683,8 +685,9 @@ export default function EnterpriseDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
-                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-                                Quality {generatedReport.qualityScore}/100
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700"
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
                             <button onClick={() => autoPreviewPdf(generatedReport)} disabled={pdfLoading}
@@ -826,8 +829,9 @@ export default function EnterpriseDashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#e5e7eb] bg-gray-50">
-                        {['Claim #','Insured','Loss Type','Report Type','Date','Quality','Export'].map(h => (
-                          <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        {['Claim #','Insured','Loss Type','Report Type','Date','Completeness','Export'].map(h => (
+                          <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
                         ))}
                       </tr>
                     </thead>

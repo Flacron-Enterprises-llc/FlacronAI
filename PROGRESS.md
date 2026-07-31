@@ -86,7 +86,7 @@
 | T-6.10 | Audit logging coverage check | TODO | |
 | T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
 | T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
-| T-6.13 | Rename "Quality Score" → "Documentation Completeness" | TODO | Confirmed gap |
+| T-6.13 | Rename "Quality Score" → "Documentation Completeness" | DONE | 2026-08-01 — 7 display sites across Dashboard.jsx, EnterpriseDashboard.jsx, and the Home.jsx marketing preview relabeled with tooltips; qualityScore backend field name unchanged (data shape, out of scope) |
 | T-6.14 | Zero-photo disclaimer text | TODO | Confirmed gap |
 | T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
 | T-6.16 | Link claim number to real CRM claim record | TODO | Confirmed gap — needs migration plan, large task |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.13 — Rename "Quality Score" → "Documentation Completeness"
+- **Status:** DONE
+- **What changed:** The client flagged that a "Quality 100/100" score risks implying the AI's findings are fully correct, which they aren't — it only measures required-field/section completeness. Relabeled every user-facing display of `qualityScore` from "Quality"/"Quality Score" to "Completeness"/"Documentation Completeness" (found 7 sites total — the audit only checked `Dashboard.jsx`; a full grep also caught `EnterpriseDashboard.jsx`'s reports-table headers ×2, its stat card, its review-view badge, and the `Home.jsx` marketing dashboard-preview mockup). Added an explanatory tooltip (native `title` attribute) at every site: "Measures how many required fields and sections are filled in — not the accuracy of the AI's findings." The underlying `qualityScore` field name/API shape is unchanged — renaming that would be a breaking API change and is out of scope for a display-label fix.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`, `frontend/src/pages/Home.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all three files (pre-existing warnings only); frontend production build passed; grepped the whole frontend afterward for "Quality" — zero remaining user-facing occurrences.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** Reinforces the spirit of Golden Rule #2 (no implied AI verdicts) — the label no longer suggests the AI's findings are verified/accurate.
 
 ### [2026-08-01] — T-6.11 — Raise password minimum length to 12
 - **Status:** DONE

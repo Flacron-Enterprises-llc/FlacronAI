@@ -4,7 +4,7 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
   BarChart3, Lock, KeyRound, CreditCard, ServerCog, Star,
-  CheckCircle, Download, Eye, Cpu, RefreshCw
+  CheckCircle, Download, Eye, Cpu, RefreshCw, Droplets, Flame, Wind, Hammer
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
@@ -146,10 +146,22 @@ const DashboardMock = () => {
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold text-gray-700">New Report</p>
                     <div className="flex gap-1">
-                      {['💧','🔥','🌪️','🔨'].map((e, i) => (
-                        <div key={i} className={`text-xs px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                      {[
+                        { label: 'Water damage', icon: Droplets },
+                        { label: 'Fire damage', icon: Flame },
+                        { label: 'Wind or hail', icon: Wind },
+                        { label: 'Vandalism', icon: Hammer },
+                      ].map(({ label, icon: LossIcon }, i) => (
+                        <div
+                          key={label}
+                          title={label}
+                          aria-label={label}
+                          className={`flex h-6 w-7 items-center justify-center rounded-md border transition-colors ${
                           i === 0 ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-400'
-                        }`}>{e}</div>
+                        }`}
+                        >
+                          <LossIcon className="h-3.5 w-3.5" strokeWidth={1.8} />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -237,8 +249,9 @@ const DashboardMock = () => {
                       <span className="text-xs font-bold text-gray-700">Report Generated</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100">
-                        Quality 94/100
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100"
+                        title="Documentation completeness — not the accuracy of the AI's findings.">
+                        Completeness 94/100
                       </span>
                       <div className="flex gap-1">
                         {['PDF', 'DOCX', 'HTML'].map(f => (
