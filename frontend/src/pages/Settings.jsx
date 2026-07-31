@@ -11,9 +11,6 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
   updatePassword,
-  sendPasswordResetEmail,
-  reauthenticateWithPopup,
-  GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
@@ -141,6 +138,7 @@ export default function Settings() {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
+  const [resetEmailLoading, setResetEmailLoading] = useState(false);
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
@@ -157,6 +155,7 @@ export default function Settings() {
 
   // Billing state
   const [subscription, setSubscription] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -203,9 +202,14 @@ export default function Settings() {
   const fetchBilling = async () => {
     setBillingLoading(true);
     try {
-      const [subRes, invRes] = await Promise.all([paymentAPI.getSubscription(), paymentAPI.getInvoices()]);
-      setSubscription(subRes.data.subscription || subRes.data);
+      const [subRes, invRes, usageRes] = await Promise.all([
+        paymentAPI.getSubscription(),
+        paymentAPI.getInvoices(),
+        usersAPI.getUsage(),
+      ]);
+      setSubscription(subRes.data.subscription ?? null);
       setInvoices(invRes.data.invoices || invRes.data || []);
+      setUsage(usageRes.data.usage ?? null);
     } catch { toast.error('Failed to load billing info'); }
     finally { setBillingLoading(false); }
   };
@@ -226,7 +230,7 @@ export default function Settings() {
     e.preventDefault();
     if (!pwForm.currentPassword) { toast.error('Enter your current password'); return; }
     if (!pwForm.newPassword) { toast.error('Enter a new password'); return; }
-    if (pwForm.newPassword.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+    if (pwForm.newPassword.length < 12) { toast.error('New password must be at least 12 characters'); return; }
     if (pwForm.newPassword !== pwForm.confirmPassword) { toast.error('New passwords do not match'); return; }
     if (pwForm.currentPassword === pwForm.newPassword) { toast.error('New password must be different from current password'); return; }
 
@@ -251,7 +255,7 @@ export default function Settings() {
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         toast.error('Current password is incorrect');
       } else if (err.code === 'auth/weak-password') {
-        toast.error('New password is too weak — use at least 8 characters');
+        toast.error('New password is too weak — use at least 12 characters');
       } else if (err.code === 'auth/too-many-requests') {
         toast.error('Too many attempts. Please try again later.');
       } else if (err.code === 'auth/requires-recent-login') {
@@ -267,15 +271,18 @@ export default function Settings() {
   const handleSendResetEmail = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser?.email) { toast.error('No email address found on your account'); return; }
+    setResetEmailLoading(true);
     try {
-      await sendPasswordResetEmail(auth, currentUser.email);
+      await authAPI.forgotPassword(currentUser.email);
       toast.success(`Reset email sent to ${currentUser.email}`);
     } catch (err) {
-      if (err.code === 'auth/too-many-requests') {
+      if (err?.response?.status === 429) {
         toast.error('Too many requests. Please wait a few minutes and try again.');
       } else {
-        toast.error(err.message || 'Failed to send reset email');
+        toast.error(err?.response?.data?.error || err.message || 'Failed to send reset email');
       }
+    } finally {
+      setResetEmailLoading(false);
     }
   };
 
@@ -380,9 +387,10 @@ export default function Settings() {
     }
   };
 
-  const usagePercent = userProfile?.usage
-    ? Math.round((userProfile.usage.reportsThisMonth / (userProfile.usage.monthlyLimit || 1)) * 100)
-    : 0;
+  const reportsUsed = usage?.reportsThisMonth ?? userProfile?.reportsThisMonth ?? 0;
+  const reportsLimit = usage?.reportsLimit ?? 0;
+  const usagePercent =
+    reportsLimit > 0 ? Math.round((reportsUsed / reportsLimit) * 100) : 0;
 
   const filteredTabs = TABS;
 
@@ -447,7 +455,7 @@ export default function Settings() {
                 <motion.div key="security" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                   <div className="card p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h2>
-                    <p className="text-gray-500 text-sm mb-6">Must be at least 8 characters and different from your current password.</p>
+                    <p className="text-gray-500 text-sm mb-6">Must be at least 12 characters and different from your current password.</p>
                     <form onSubmit={handlePasswordChange} className="space-y-4 max-w-sm">
                       {[
                         { key: 'currentPassword', label: 'Current Password', show: 'current' },
@@ -526,8 +534,15 @@ export default function Settings() {
                     <p className="text-gray-500 text-sm mb-4">
                       We'll send a password reset link to <span className="font-medium text-gray-700">{auth.currentUser?.email}</span>.
                     </p>
-                    <button onClick={handleSendResetEmail} className="btn-secondary flex items-center gap-2 text-sm">
-                      <Mail className="w-4 h-4" /> Send Reset Email
+                    <button
+                      onClick={handleSendResetEmail}
+                      disabled={resetEmailLoading}
+                      className="btn-secondary flex items-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resetEmailLoading
+                        ? <RefreshCw className="w-4 h-4 animate-spin" />
+                        : <Mail className="w-4 h-4" />}
+                      {resetEmailLoading ? 'Sending...' : 'Send Reset Email'}
                     </button>
                   </div>
 
@@ -582,7 +597,7 @@ export default function Settings() {
                                   <p className="text-gray-900 text-sm font-medium">{key.name}</p>
                                   <div className="flex gap-3 mt-1">
                                     <span className="text-gray-500 text-xs">Created {new Date(key.createdAt).toLocaleDateString()}</span>
-                                    {key.lastUsed && <span className="text-gray-500 text-xs">Last used {new Date(key.lastUsed).toLocaleDateString()}</span>}
+                                    {key.lastUsedAt && <span className="text-gray-500 text-xs">Last used {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
                                     {key.usageCount !== undefined && <span className="text-gray-500 text-xs">{key.usageCount} calls</span>}
                                   </div>
                                 </div>
@@ -643,9 +658,17 @@ export default function Settings() {
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-gray-900 font-semibold capitalize text-xl">{tier} Plan</p>
-                              {subscription && <p className="text-gray-600 text-sm mt-1">
-                                {subscription.status === 'active' ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : `Status: ${subscription.status}`}
-                              </p>}
+                              <p className="text-gray-600 text-sm mt-1">
+                                {subscription?.cancelAtPeriodEnd || subscription?.status === 'cancelling'
+                                  ? `Cancellation scheduled · Access ends ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                                  : subscription?.status === 'active' && subscription.currentPeriodEnd
+                                  ? `Active · Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                                  : subscription?.status
+                                    ? `Status: ${subscription.status.replaceAll('_', ' ')}`
+                                    : tier === 'starter'
+                                      ? 'Free plan · No recurring billing'
+                                      : 'Plan access managed by your account'}
+                              </p>
                             </div>
                             <button onClick={() => navigate('/pricing')} className="btn-secondary text-sm py-2 px-4 flex items-center gap-2">
                               <ExternalLink className="w-4 h-4" /> Change Plan
@@ -654,14 +677,16 @@ export default function Settings() {
                           <div className="mb-2">
                             <div className="flex justify-between text-xs text-gray-600 mb-1.5">
                               <span>Monthly Reports Used</span>
-                              <span>{userProfile?.usage?.reportsThisMonth || 0} / {userProfile?.usage?.monthlyLimit || 0}</span>
+                              <span>
+                                {reportsUsed} / {reportsLimit === -1 ? 'Unlimited' : reportsLimit}
+                              </span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full transition-all ${usagePercent > 80 ? 'bg-red-500' : 'bg-orange-500'}`}
                                 style={{ width: `${Math.min(usagePercent, 100)}%` }} />
                             </div>
                           </div>
-                          {tier !== 'starter' && subscription?.status === 'active' && (
+                          {tier !== 'starter' && subscription?.status === 'active' && !subscription.cancelAtPeriodEnd && (
                             <button onClick={() => setShowCancelModal(true)} className="btn-danger text-sm py-2 mt-4 flex items-center gap-2">
                               <X className="w-4 h-4" /> Cancel Subscription
                             </button>

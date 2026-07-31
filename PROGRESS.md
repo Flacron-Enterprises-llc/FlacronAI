@@ -84,7 +84,7 @@
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
 | T-6.9 | Progress modal reflects real backend stages | TODO | Backend already skips AI stage at 0 photos — verify frontend UI |
 | T-6.10 | Audit logging coverage check | TODO | |
-| T-6.11 | Password min length 6→12 | TODO | Confirmed gap |
+| T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
 | T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
 | T-6.13 | Rename "Quality Score" → "Documentation Completeness" | TODO | Confirmed gap |
 | T-6.14 | Zero-photo disclaimer text | TODO | Confirmed gap |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.11 — Raise password minimum length to 12
+- **Status:** DONE
+- **What changed:** The 2026-07-31 audit found register (`auth.js:65`) and reset (`auth.js:446`) both at `min: 6`. A closer pass while implementing found a third, separate password endpoint the audit missed: `users.js:200` (`PUT /api/users/change-password`), also `min: 6`. All three raised to `min: 12`. Frontend `Auth.jsx` signup validation + placeholder and `Settings.jsx` change-password validation, weak-password message, and helper copy (previously inconsistently enforcing 8, its own separate number) all raised to 12 for consistency across every password-entry surface in the app.
+- **Files touched:** `backend/routes/auth.js`, `backend/routes/users.js`, `frontend/src/pages/Auth.jsx`, `frontend/src/pages/Settings.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all four files (pre-existing warnings only); backend tests 7/7 passed; frontend tests 2/2 passed; frontend production build passed.
+- **Left / follow-ups:** None — Firebase's own client-side floor (6) is below our 12, but our own client + server checks now gate before it's reached in every path we control.
+- **Golden-rule check:** none violated; pure hardening, no feature change.
 
 ### [2026-07-31] — T-6.5 — Strengthen the adjuster approval record
 - **Status:** DONE

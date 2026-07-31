@@ -62,7 +62,7 @@ const authLimiter = rateLimit({
 // POST /api/auth/register
 router.post('/register', authLimiter, [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
+  body('password').isLength({ min: 12 }),
   body('displayName').trim().notEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -396,6 +396,7 @@ router.post('/forgot-password', authLimiter, [body('email').isEmail().normalizeE
     return res.json({ success: true, message: 'Password reset email sent' });
   } catch (err) {
     // Don't reveal if email exists
+    console.error('[forgot-password] Failed to generate or send reset email:', err.message);
     return res.json({ success: true, message: 'If that email exists, a reset link was sent' });
   }
 });
@@ -442,7 +443,7 @@ router.post('/send-verification', authLimiter, authenticateToken, async (req, re
 
 // POST /api/auth/change-password
 router.post('/change-password', authenticateToken, [
-  body('newPassword').isLength({ min: 6 }),
+  body('newPassword').isLength({ min: 12 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

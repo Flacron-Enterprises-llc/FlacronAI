@@ -197,7 +197,7 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 });
 
 // PUT /api/users/change-password
-router.put('/change-password', authenticateToken, [body('newPassword').isLength({ min: 6 })], async (req, res) => {
+router.put('/change-password', authenticateToken, [body('newPassword').isLength({ min: 12 })], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {

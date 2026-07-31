@@ -45,6 +45,11 @@ const Auth = () => {
           window.location.href = res.data.url;
           return;
         }
+        if (res.data?.changeType) {
+          sessionStorage.removeItem('flac_pending_plan');
+          navigate('/dashboard?billing=updated');
+          return;
+        }
       } catch {
         toast.error('Account created! Redirecting to plans...');
         navigate('/pricing');
@@ -64,7 +69,7 @@ const Auth = () => {
     if (!form.email) errs.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Invalid email';
     if (!form.password) errs.password = 'Password is required';
-    else if (form.password.length < 6) errs.password = 'Password must be at least 6 characters';
+    else if (form.password.length < 12) errs.password = 'Password must be at least 12 characters';
     if (mode === 'signup') {
       if (!form.displayName) errs.displayName = 'Full name is required';
       if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
@@ -134,6 +139,8 @@ const Auth = () => {
           ? 'Too many failed attempts. Please try again later or reset your password.'
           : code === 'auth/invalid-email'
           ? 'Invalid email address'
+          : code === 'auth/network-request-failed'
+          ? 'Unable to reach the sign-up service. Check your internet or DNS connection, then try again.'
           : err?.message || 'Authentication failed';
       toast.error(msg);
       setErrors({ general: msg });
@@ -359,7 +366,7 @@ const Auth = () => {
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={handleChange}
-                      placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'}
+                      placeholder={mode === 'signup' ? 'Min. 12 characters' : '••••••••'}
                       className={`input pl-10 pr-10 ${errors.password ? 'border-red-500' : ''}`}
                     />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
