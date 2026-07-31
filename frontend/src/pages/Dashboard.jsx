@@ -6,9 +6,11 @@ import {
   FileText, Upload, ChevronRight, ChevronLeft, X, Download, RefreshCw,
   Search, Trash2, Eye, Lock, ExternalLink, BarChart3, Users,
   Zap, Clock, AlertCircle, CheckCircle, Settings,
-  Star, Image as ImageIcon, CreditCard, Check, Save, ShieldCheck
+  Star, Image as ImageIcon, CreditCard, Check, Save, ShieldCheck,
+  Menu, PanelLeftClose, Droplets, Flame, Wind, Hammer
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI } from '../services/api';
@@ -34,7 +36,7 @@ const FORM_INITIAL = {
 const QUICK_DEMOS = [
   {
     label: 'Water Damage',
-    icon: '💧',
+    icon: Droplets,
     color: 'blue',
     data: {
       claimNumber: 'CLM-2024-WD-001',
@@ -52,7 +54,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Fire Damage',
-    icon: '🔥',
+    icon: Flame,
     color: 'red',
     data: {
       claimNumber: 'CLM-2024-FD-042',
@@ -70,7 +72,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Wind / Hail',
-    icon: '🌪️',
+    icon: Wind,
     color: 'gray',
     data: {
       claimNumber: 'CLM-2024-WH-118',
@@ -88,7 +90,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Vandalism',
-    icon: '🔨',
+    icon: Hammer,
     color: 'purple',
     data: {
       claimNumber: 'CLM-2024-VN-007',
@@ -129,8 +131,6 @@ const STATUS_STYLES = {
   archived: 'bg-gray-400/20 text-gray-500 border-gray-400/30',
 };
 
-const STATUS_LABELS = ['draft', 'finalized', 'processing', 'failed', 'archived'];
-
 function StatusBadge({ status }) {
   const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
   const label = status === 'complete' ? 'completed' : (status || 'unknown');
@@ -138,63 +138,6 @@ function StatusBadge({ status }) {
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>
       {label}
     </span>
-  );
-}
-
-function StatusToggle({ reportId, status, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleSelect = async (newStatus) => {
-    setOpen(false);
-    if (newStatus === status || newStatus === 'complete') return;
-    setUpdating(true);
-    try {
-      await reportsAPI.update(reportId, { status: newStatus });
-      onUpdate(reportId, newStatus);
-    } catch {
-      toast.error('Failed to update status');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const normalised = status === 'complete' ? 'completed' : status;
-  const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
-
-  return (
-    <div ref={ref} className="relative inline-block">
-      <button
-        disabled={updating}
-        onClick={() => setOpen(o => !o)}
-        className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1 transition-opacity ${cls} ${updating ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 cursor-pointer'}`}
-      >
-        {updating ? '…' : normalised}
-        <svg className="w-2.5 h-2.5 opacity-60" viewBox="0 0 10 6" fill="currentColor">
-          <path d="M0 0l5 6 5-6z" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {STATUS_LABELS.map(s => (
-            <button
-              key={s}
-              onClick={() => handleSelect(s)}
-              className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 ${s === normalised ? 'text-orange-500 bg-orange-50/50' : 'text-gray-700'}`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -244,9 +187,10 @@ function ReportDetailModal({ report, onClose }) {
           {report.content && (
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Report Content</h3>
-              <div className="bg-black/30 rounded-xl p-4 text-sm text-gray-700 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                {report.content}
-              </div>
+              <ReportMarkdown
+                content={report.content}
+                className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-4"
+              />
             </div>
           )}
           <div className="flex gap-3 mt-6">
@@ -285,22 +229,31 @@ export default function Dashboard() {
     const params = new URLSearchParams(location.search);
     if (params.get('upgrade') === 'success') {
       const upgradedTier = params.get('tier');
+      const expectedTier = upgradedTier?.replace('_annual', '');
+      const sessionId = params.get('session_id');
       // Clean URL immediately so refresh doesn't re-trigger
       navigate('/dashboard', { replace: true });
 
-      // Poll Firestore until webhook updates the tier (Stripe webhooks can lag 2-10s)
+      // Confirm the completed Stripe session directly, then poll as a webhook fallback.
       let attempts = 0;
       const maxAttempts = 10;
       const poll = async () => {
         attempts++;
+        if (attempts === 1 && sessionId) {
+          try {
+            await paymentAPI.confirmCheckout(sessionId);
+          } catch {
+            // Webhook reconciliation below remains the fallback.
+          }
+        }
         const profile = await refreshProfile();
         const currentTier = profile?.tier || 'starter';
 
-        if (!upgradedTier || currentTier === upgradedTier) {
+        if (!expectedTier || currentTier === expectedTier) {
           // Tier confirmed — show success and switch to billing view
           toast.success(
-            upgradedTier
-              ? `Plan upgraded to ${upgradedTier.charAt(0).toUpperCase() + upgradedTier.slice(1)}! Welcome aboard.`
+            expectedTier
+              ? `Plan upgraded to ${expectedTier.charAt(0).toUpperCase() + expectedTier.slice(1)}! Welcome aboard.`
               : 'Plan upgraded successfully!'
           );
           setActiveView('billing');
@@ -315,7 +268,10 @@ export default function Dashboard() {
           setTimeout(poll, 2000);
         }
       };
-      setTimeout(poll, 2000);
+      poll();
+    } else if (params.get('billing') === 'updated') {
+      navigate('/dashboard', { replace: true });
+      refreshProfile().finally(() => setActiveView('billing'));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -334,6 +290,7 @@ export default function Dashboard() {
       paymentAPI.createCheckout(planToCheckout)
         .then(res => {
           if (res.data?.url) window.location.href = res.data.url;
+          else if (res.data?.changeType) navigate('/dashboard?billing=updated');
           else navigate('/pricing');
         })
         .catch(() => {
@@ -344,6 +301,7 @@ export default function Dashboard() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [activeView, setActiveView] = useState('generate');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(FORM_INITIAL);
   const [photos, setPhotos] = useState([]);
@@ -639,10 +597,6 @@ export default function Dashboard() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const handleStatusUpdate = (id, newStatus) => {
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
-  };
-
   const TIER_LIMITS = { starter: 5, professional: 50, agency: 200, enterprise: -1 };
   const TIER_EXPORTS = { starter: ['pdf'], professional: ['pdf', 'docx', 'html'], agency: ['pdf', 'docx', 'html'], enterprise: ['pdf', 'docx', 'html'] };
   const allowedExports = TIER_EXPORTS[tier] || ['pdf'];
@@ -679,8 +633,34 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#ffffff] flex flex-col">
       <Navbar />
       <div className="flex flex-1 pt-16">
+        {sidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close dashboard navigation"
+            className="fixed inset-0 top-16 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 hidden md:flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] px-3 py-5 gap-4">
+        <aside
+          className={`fixed bottom-0 left-0 top-16 z-50 flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r border-[#e5e7eb] bg-[#f8f8f8] px-3 py-4 shadow-xl transition-transform duration-300 scrollbar-hide md:sticky md:top-16 md:z-20 md:h-[calc(100vh-4rem)] md:w-64 md:translate-x-0 md:rounded-r-3xl md:shadow-sm ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between px-1 md:hidden">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+              Dashboard
+            </p>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm"
+              aria-label="Close dashboard navigation"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
 
           {/* Profile Card */}
           <div className="rounded-2xl overflow-hidden border border-[#e5e7eb] bg-white">
@@ -751,7 +731,11 @@ export default function Dashboard() {
           <nav className="flex flex-col gap-0.5 flex-1">
             {navLinks.map(link => (
               <button key={link.id}
-                onClick={() => link.href ? navigate(link.href) : setActiveView(link.id)}
+                onClick={() => {
+                  setSidebarOpen(false);
+                  if (link.href) navigate(link.href);
+                  else setActiveView(link.id);
+                }}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeView === link.id
                     ? 'bg-orange-500 text-white shadow-sm shadow-orange-200'
@@ -788,12 +772,21 @@ export default function Dashboard() {
         </aside>
 
         {/* Main */}
-        <main className="flex-1 overflow-auto">
+        <main className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="fixed bottom-5 left-4 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-700 text-white shadow-lg shadow-navy-900/20 md:hidden"
+            aria-label="Open dashboard navigation"
+            aria-expanded={sidebarOpen}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
 
           {/* Mobile/tablet usage panel — visible only below md breakpoint */}
-          <div className="md:hidden border-b border-[#e5e7eb] bg-[#f8f8f8]">
+          <div className="mx-3 mt-4 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] shadow-sm md:hidden">
             {/* User row */}
-            <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+            <div className="flex items-center gap-3 px-4 pt-4 pb-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                 {(userProfile?.displayName || user?.email || 'U')[0].toUpperCase()}
               </div>
@@ -807,7 +800,7 @@ export default function Dashboard() {
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-3 gap-2 px-4 pb-2">
+            <div className="grid grid-cols-3 gap-2 px-4 pb-3">
               <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
                 <p className="text-lg font-bold text-orange-500 leading-none">{usedThisMonth}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Used</p>
@@ -831,7 +824,7 @@ export default function Dashboard() {
             </div>
 
             {/* Progress bar */}
-            <div className="px-4 pb-3">
+            <div className="px-4 pb-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-medium text-gray-500">Monthly reports</span>
                 <span className="text-[10px] font-semibold text-gray-600">
@@ -854,8 +847,9 @@ export default function Dashboard() {
                 </p>
               )}
               {reportsRemaining !== -1 && reportsRemaining > 0 && usagePercent >= 80 && (
-                <p className="text-[10px] text-amber-600 font-medium mt-1">
-                  ⚠️ {reportsRemaining} report{reportsRemaining !== 1 ? 's' : ''} remaining this month
+                <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-600">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {reportsRemaining} report{reportsRemaining !== 1 ? 's' : ''} remaining this month
                 </p>
               )}
             </div>
@@ -863,7 +857,7 @@ export default function Dashboard() {
 
           <AnimatePresence mode="wait">
             {activeView === 'generate' && (
-              <motion.div key="generate" className="p-6 max-w-5xl mx-auto"
+              <motion.div key="generate" className="mx-auto max-w-5xl px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
 
                 {tier === 'starter' && (
@@ -922,7 +916,9 @@ export default function Dashboard() {
                                   <button key={demo.label}
                                     onClick={() => { setForm(prev => ({ ...prev, ...demo.data })); toast.success(`${demo.label} template loaded!`); }}
                                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-500/5 transition-all text-center group">
-                                    <span className="text-2xl">{demo.icon}</span>
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors group-hover:bg-orange-50 group-hover:text-orange-500">
+                                      <demo.icon className="h-5 w-5" aria-hidden="true" />
+                                    </span>
                                     <span className="text-xs font-medium text-gray-700 group-hover:text-orange-500">{demo.label}</span>
                                   </button>
                                 ))}
@@ -1108,14 +1104,17 @@ export default function Dashboard() {
                                 ['Loss Type', form.lossType],
                                 ['Report Type', form.reportType],
                                 ['Photos', `${photos.length} uploaded`],
-                                ['Property Description', form.propertyDetails ? '✓ Provided' : 'Not provided'],
-                                ['Loss Description', form.lossDescription ? '✓ Provided' : 'Not provided'],
-                                ['Damages Observed', form.damagesObserved ? '✓ Provided' : 'Not provided'],
-                                ['Recommendations', form.recommendations ? '✓ Provided' : 'Not provided'],
-                              ].map(([label, val]) => (
+                                ['Property Description', form.propertyDetails ? 'Provided' : 'Not provided', Boolean(form.propertyDetails)],
+                                ['Loss Description', form.lossDescription ? 'Provided' : 'Not provided', Boolean(form.lossDescription)],
+                                ['Damages Observed', form.damagesObserved ? 'Provided' : 'Not provided', Boolean(form.damagesObserved)],
+                                ['Recommendations', form.recommendations ? 'Provided' : 'Not provided', Boolean(form.recommendations)],
+                              ].map(([label, val, provided]) => (
                                 <div key={label} className="flex gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
                                   <span className="text-gray-500 text-xs w-36 shrink-0 pt-0.5">{label}</span>
-                                  <span className={`text-sm font-medium ${val?.startsWith('✓') ? 'text-green-600' : 'text-gray-900'}`}>{val || '—'}</span>
+                                  <span className={`flex items-center gap-1.5 text-sm font-medium ${provided ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {provided && <CheckCircle className="h-3.5 w-3.5 shrink-0" />}
+                                    {val || '—'}
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -1369,7 +1368,7 @@ export default function Dashboard() {
             )}
 
             {activeView === 'reports' && (
-              <motion.div key="reports" className="p-6"
+              <motion.div key="reports" className="px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
@@ -1457,7 +1456,7 @@ export default function Dashboard() {
                             <td className="px-4 py-3 text-sm text-gray-600">{r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{r.lossType}</td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                              <StatusToggle reportId={r.id} status={r.status} onUpdate={handleStatusUpdate} />
+                              <StatusBadge status={r.status} />
                             </td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
@@ -1496,7 +1495,7 @@ export default function Dashboard() {
 
             {/* ── BILLING VIEW ── */}
             {activeView === 'billing' && (
-              <motion.div key="billing" className="p-6 max-w-3xl mx-auto"
+              <motion.div key="billing" className="mx-auto max-w-3xl px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                 <div className="mb-6">
                   <h1 className="text-2xl font-bold text-gray-900">Usage & Billing</h1>
@@ -1528,7 +1527,10 @@ export default function Dashboard() {
                       style={{ width: `${usagePercent}%` }} />
                   </div>
                   {usagePercent >= 80 && (
-                    <p className="text-xs text-amber-600 mt-2 font-medium">⚠️ You are approaching your monthly limit</p>
+                    <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      You are approaching your monthly limit
+                    </p>
                   )}
                 </div>
 

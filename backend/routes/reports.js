@@ -327,7 +327,9 @@ router.put('/:id', authenticateAny, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
     }
 
-    const allowed = ['content', 'status', 'additionalNotes', 'clientId'];
+    // 'status' is intentionally excluded: it is system-controlled (set by
+    // generation, /approve, and delete/archive) and must never be client-settable.
+    const allowed = ['content', 'additionalNotes', 'clientId'];
     const updates = { updatedAt: new Date().toISOString() };
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 

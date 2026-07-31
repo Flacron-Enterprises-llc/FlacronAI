@@ -77,7 +77,7 @@
 | T-6.1 | Revoke exposed API key | BLOCKED (client action) | Masking/hashing already done; revoking the specific leaked key is an out-of-code account action |
 | T-6.2 | Purge personal/sensitive demo data | TODO | Verify only — sample generator already uses fictional data |
 | T-6.3 | Fix Stripe business identity | BLOCKED (client action) | Out-of-repo — Stripe Dashboard settings |
-| T-6.4 | Harden report status transitions server-side | TODO | No free UI dropdown found, but PATCH doesn't validate transitions |
+| T-6.4 | Harden report status transitions server-side | DONE | 2026-07-31 — found a real manual status dropdown in "My Reports" (missed by the initial audit) letting any user set draft/finalized/processing/failed/archived directly; removed it + backend accepted arbitrary status via PUT |
 | T-6.5 | Strengthen adjuster approval fields | TODO | Confirmed gap — real flow only captures name/title, not license/state/firm |
 | T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
 | T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-07-31] — T-6.4 — Remove manual report-status manipulation
+- **Status:** DONE
+- **What changed:** The initial Phase-6 audit undercounted this one — a closer look at "My Reports" found a `StatusToggle` dropdown on every report row that let a user directly set `draft`/`finalized`/`processing`/`failed`/`archived` via a raw `PUT /api/reports/:id` call, completely bypassing the `/approve` human-review gate (Golden Rule #3) and the dedicated archive/delete flow. `processing`/`failed` were never actually produced by the generation pipeline either — purely cosmetic, confusing options. Removed the dropdown and replaced it with the existing read-only `StatusBadge`. Server-side, `status` is no longer in the PUT `/:id` editable-fields allowlist — it can only change via report generation (`draft`), `/approve` (`finalized`), or delete (`archived`), closing the API-level bypass regardless of what the frontend sends.
+- **Files touched:** `backend/routes/reports.js`, `frontend/src/pages/Dashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on both files (pre-existing warnings only); backend tests 7/7 passed; frontend production build passed.
+- **Left / follow-ups:** The "Delete" button on a report row calls `permanent=true` (hard delete) with no confirmation dialog — flagged for T-6.19 (confirmation dialogs), not fixed here to keep this change focused. The "shield" icon (ShieldCheck) used for "Review & edit" is the ambiguous icon the client flagged in item #31 — also deferred to its own task (T-6.22).
+- **Golden-rule check:** Restores Golden Rule #3 (human review mandatory before finalize) — finalization is now only reachable through `/approve`.
 
 ### [2026-07-28] — T-3.2/T-3.4 — Reconcile paid plans and correctly change subscriptions
 - **Status:** DONE
