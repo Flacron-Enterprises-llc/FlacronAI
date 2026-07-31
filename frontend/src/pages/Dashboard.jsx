@@ -330,6 +330,11 @@ export default function Dashboard() {
   const [templates, setTemplates] = useState([]);
   const [templateName, setTemplateName] = useState('');
   const [signatureName, setSignatureName] = useState('');
+  const [signatureTitle, setSignatureTitle] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [licenseState, setLicenseState] = useState('');
+  const [company, setCompany] = useState('');
+  const [confirmReview, setConfirmReview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
@@ -496,17 +501,32 @@ export default function Dashboard() {
 
   const handleApprove = async () => {
     if (!generatedReport) return;
+    if (!signatureName.trim() || !licenseNumber.trim() || !licenseState.trim() || !company.trim()) {
+      toast.error('Full name, license number, license state, and company/firm are required to approve.');
+      return;
+    }
+    if (!confirmReview) {
+      toast.error('You must confirm you have reviewed the report before approving.');
+      return;
+    }
     setApproving(true);
     try {
-      const signature = signatureName.trim() ? { name: signatureName.trim() } : undefined;
-      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent, signature });
+      const signature = {
+        name: signatureName.trim(),
+        title: signatureTitle.trim(),
+        licenseNumber: licenseNumber.trim(),
+        licenseState: licenseState.trim(),
+        company: company.trim(),
+      };
+      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent, signature, confirmReview: true });
       const updated = res.data?.report || {};
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
       toast.success('Report approved & finalized — exports are now clean');
       handlePreviewPDF();
-    } catch { toast.error('Approval failed'); }
-    finally { setApproving(false); }
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Approval failed');
+    } finally { setApproving(false); }
   };
 
   const handleShare = async () => {
@@ -1279,7 +1299,13 @@ export default function Dashboard() {
                               <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
                             </div>
                             {generatedReport.signature?.name && (
-                              <p className="text-xs text-gray-500 mb-3">E-signed by <span className="font-medium text-gray-700">{generatedReport.signature.name}</span></p>
+                              <div className="text-xs text-gray-500 mb-3 space-y-0.5">
+                                <p>Approved by <span className="font-medium text-gray-700">{generatedReport.signature.name}</span>{generatedReport.signature.title ? `, ${generatedReport.signature.title}` : ''}</p>
+                                {generatedReport.signature.licenseNumber && (
+                                  <p>License {generatedReport.signature.licenseState} {generatedReport.signature.licenseNumber}</p>
+                                )}
+                                {generatedReport.signature.company && <p>{generatedReport.signature.company}</p>}
+                              </div>
                             )}
                             <button onClick={handleShare} disabled={sharing}
                               className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
@@ -1289,9 +1315,36 @@ export default function Dashboard() {
                         ) : (
                           <>
                             <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Type your name to e-sign (optional)</label>
-                            <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="e.g. Jane Adjuster"
+                            <div className="grid grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
+                                <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                                <input value={signatureTitle} onChange={e => setSignatureTitle(e.target.value)} placeholder="Senior Adjuster"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License number *</label>
+                                <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="TX-ADJ-583920"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License state *</label>
+                                <input value={licenseState} onChange={e => setLicenseState(e.target.value)} placeholder="TX"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                            </div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Company / adjusting firm *</label>
+                            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="ABC Claims Services"
                               className="w-full mb-3 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                            <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
+                              <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
+                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that AI-generated content must be independently verified.</span>
+                            </label>
                             <button onClick={handleApprove} disabled={approving}
                               className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
                               {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize

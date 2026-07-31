@@ -355,30 +355,58 @@ router.post('/:id/approve', authenticateAny, async (req, res) => {
     if (!doc.exists || doc.data().userId !== req.user.uid) {
       return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
     }
+
+    // Golden Rule #3: require the reviewing adjuster's identity + an explicit
+    // confirmation, not just a typed name — this is the legal attestation, not a UI nicety.
+    const sig = req.body?.signature || {};
+    const name = String(sig.name || '').trim();
+    const licenseNumber = String(sig.licenseNumber || '').trim();
+    const licenseState = String(sig.licenseState || '').trim();
+    const company = String(sig.company || '').trim();
+    if (!name || !licenseNumber || !licenseState || !company) {
+      return res.status(400).json({
+        success: false,
+        error: 'Full name, license number, license state, and company/firm are required to approve a report.',
+        code: 'SIGNATURE_INCOMPLETE',
+      });
+    }
+    if (req.body?.confirmReview !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'You must confirm you have reviewed the report before approving it.',
+        code: 'CONFIRMATION_REQUIRED',
+      });
+    }
+
+    const versionsSoFar = (await ref.collection('versions').get()).size;
+
     // Persist any final edits passed alongside the approval.
     const updates = {
       status: 'finalized',
       reviewedBy: req.user.email || req.user.uid,
+      reviewedByUid: req.user.uid,
       reviewedAt: new Date().toISOString(),
+      reviewedFromIp: req.ip,
+      versionApproved: versionsSoFar + 1,
       updatedAt: new Date().toISOString(),
     };
     if (typeof req.body?.content === 'string' && req.body.content.trim()) {
       updates.content = req.body.content;
     }
-    // E-signature (T-2.12): the reviewing adjuster types their name to sign off.
-    if (req.body?.signature?.name) {
-      updates.signature = {
-        name: String(req.body.signature.name).slice(0, 120),
-        title: String(req.body.signature.title || '').slice(0, 120),
-        signedAt: new Date().toISOString(),
-      };
-    }
+    updates.signature = {
+      name: name.slice(0, 120),
+      title: String(sig.title || '').slice(0, 120),
+      licenseNumber: licenseNumber.slice(0, 60),
+      licenseState: licenseState.slice(0, 60),
+      company: company.slice(0, 200),
+      confirmedAt: new Date().toISOString(),
+    };
     await ref.update(updates);
     await recordVersion(ref, {
       action: 'approved',
       by: req.user.email || req.user.uid,
       content: updates.content || doc.data().content,
-      note: 'Reviewed and finalized',
+      note: `Reviewed and finalized by ${name} (${licenseState} ${licenseNumber}, ${company})`,
     });
     return res.json({ success: true, message: 'Report approved and finalized', report: { id: doc.id, ...doc.data(), ...updates } });
   } catch (err) {

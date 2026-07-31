@@ -78,7 +78,7 @@
 | T-6.2 | Purge personal/sensitive demo data | TODO | Verify only — sample generator already uses fictional data |
 | T-6.3 | Fix Stripe business identity | BLOCKED (client action) | Out-of-repo — Stripe Dashboard settings |
 | T-6.4 | Harden report status transitions server-side | DONE | 2026-07-31 — found a real manual status dropdown in "My Reports" (missed by the initial audit) letting any user set draft/finalized/processing/failed/archived directly; removed it + backend accepted arbitrary status via PUT |
-| T-6.5 | Strengthen adjuster approval fields | TODO | Confirmed gap — real flow only captures name/title, not license/state/firm |
+| T-6.5 | Strengthen adjuster approval fields | DONE | 2026-07-31 — /approve now requires full name, license #, license state, company/firm + explicit confirmation checkbox; rejects with 400 if any missing; both Dashboard.jsx and EnterpriseDashboard.jsx updated to match |
 | T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
 | T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-07-31] — T-6.5 — Strengthen the adjuster approval record
+- **Status:** DONE
+- **What changed:** Confirmed the real `/approve` endpoint only ever captured a typed name + optional title — the polished sign-off block in the client's reference sample PDF (license number, license state, firm, audit reference) is fabricated only by `make-sample-report.js` for the demo, not collected by the real approval flow. `POST /api/reports/:id/approve` now requires full name, license number, license state, and company/firm (all four, or the request is rejected with 400 `SIGNATURE_INCOMPLETE`), plus an explicit `confirmReview: true` flag mirroring the "I confirm I have reviewed…" attestation language (400 `CONFIRMATION_REQUIRED` if absent) — typing a name alone can no longer finalize a report. Also now persists `reviewedByUid`, `reviewedFromIp` (`req.ip`, matching the existing pattern in `auth.js`/`sales.js`), and `versionApproved` (derived from the `versions` subcollection size at approval time). Both `Dashboard.jsx` and `EnterpriseDashboard.jsx` approval cards updated with the four required fields + the confirmation checkbox (client-side mirrors the server validation with a toast, so users get immediate feedback instead of a raw 400); the finalized-state view now displays the full name/title/license/firm instead of just a name.
+- **Files touched:** `backend/routes/reports.js`, `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all three files (pre-existing warnings only, same counts as before); backend tests 7/7 passed; `reports.js` verified to load without syntax errors; frontend production build passed. Not live-tested against a real Firestore report (would need a seeded account) — logic and both call sites were traced end-to-end and both match the new stricter contract.
+- **Left / follow-ups:** No automated test coverage exists for `/approve` (before or after this change) — worth adding when Phase 3's subscription/report test suite is extended.
+- **Golden-rule check:** Strengthens Golden Rule #3 — approval now requires a real credentialed identity + explicit attestation, not just a typed name.
 
 ### [2026-07-31] — T-6.4 — Remove manual report-status manipulation
 - **Status:** DONE
