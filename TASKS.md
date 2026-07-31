@@ -354,3 +354,154 @@ Each task = one small, shippable change. Format:
 - Phase 1 is safe to do early (mostly front-end, high client-visible value).
 - T-3.1 (entitlements) should land before T-3.11 / T-4 / T-5 features that depend on plan checks.
 - Big tasks (T-2.10 templates, T-3.10 security, T-4.5 CRM) ship as one sub-task at a time.
+
+---
+
+# PHASE 6 — 2026-07-31 Client Product Audit Follow-ups
+
+Source: client walkthrough of the live product (screenshots of API keys, My Reports, CRM, calendar, billing, approval flow) + a reference "what a finished sample report should look like" PDF. Original doc had 42 numbered items grouped into the client's own three priority tiers — kept below. A code audit (2026-07-31) checked each against current `flacron/improvements` state; status shown where verified. **Ship one sub-task at a time per Golden Rule #7 — this section is a backlog, not a batch to do in one commit.**
+
+## P1 — Security & launch blockers
+
+### T-6.1 — Revoke + rotate the exposed live API key
+- **Client item:** #1 (partial — masking already shipped).
+- **Status:** Key masking/hashing/last-used already **DONE** (Settings.jsx key list never re-displays the raw key; `apiKeyService.js` stores SHA-256 hash only). What's outstanding is an **out-of-code action**: the specific key shown in the client's screenshot must be revoked from Settings → API Keys by whoever holds that account, and a fresh key issued. Not a code task.
+- **Follow-up (real code gap):** add an "Environment: Live/Test" label and a delete-confirmation dialog to the key list (ties into T-6.19 confirmation dialogs).
+
+### T-6.2 — Purge personal/sensitive data from anything client-facing
+- **Client item:** #2.
+- **Goal:** Any demo data, screenshots, or seeded accounts used for sales/marketing/investor demos use fictional data only (e.g. `demo@flacronai.com`, "Sarah Mitchell", "ABC Claims Services") — never real customer PII, real names, real emails, real card numbers.
+- **Acceptance:** Confirm `backend/scripts/make-sample-report.js` sample data is fictional (it is — matches the reference PDF). Audit any other seed/demo scripts for real data. No code change expected unless a seed script is found using real data.
+- **QA:** grep repo for real emails/phone numbers/addresses outside test fixtures.
+
+### T-6.3 — Fix Stripe business identity
+- **Client item:** #16.
+- **Status:** OUT-OF-CODE — Stripe Dashboard settings (business name, statement descriptor, support email/logo/policy links). Not a repo change. Flag for client to update directly in Stripe.
+
+### T-6.4 — Harden report status against manual/unauthorized transitions
+- **Client item:** #3.
+- **Status:** PARTIAL. No free status-picker exists in the "My Reports" UI (the `<select>` at `Dashboard.jsx:1507` is a *view filter*, not a per-report editor) — client's screenshot concern doesn't reproduce as described. But `backend/routes/reports.js` PATCH allows `status` in its editable-fields allowlist (line ~330) with no server-side transition validation, so a crafted API call could still set an arbitrary status.
+- **Goal:** Server-side status state machine: PATCH must reject any client-supplied transition that isn't `draft→draft` (edits) or explicitly allowed; `processing`/`failed`/`finalized` are system-only, settable only by the generation pipeline / `/approve` endpoint.
+- **QA:** Attempt a PATCH setting `status: 'finalized'` directly (bypassing `/approve`) → rejected.
+
+### T-6.5 — Strengthen the licensed-adjuster approval record
+- **Client item:** #4, #42.
+- **Status:** GAP CONFIRMED. Real `/approve` endpoint (`reports.js` ~L348-381) only stores `reviewedBy` (email/uid), `reviewedAt`, and an optional typed `signature.name`/`signature.title`. The polished approval block in the reference PDF (license #, license state, firm, audit reference) is fabricated only inside `make-sample-report.js` for demo purposes — it is **not** collected by the real flow.
+- **Goal:** Approval form/API captures: full name, license number, license state, company/firm, explicit "I confirm I have reviewed..." checkbox (required, not just typing a name), and persists IP + user account ID + report version approved alongside the existing `reviewedAt`/audit entry. Export's signature page renders these real fields instead of being blank/minimal.
+- **QA:** Approve a report without the checkbox checked → blocked. Approve with full fields → exported PDF signature page shows them; Firestore record has all fields.
+- **Golden Rule #3.**
+
+### T-6.6 — Re-verify billing/plan synchronization end to end
+- **Status:** LIKELY ALREADY ADDRESSED by T-3.2/T-3.4 (2026-07-28 changelog — checkout-session confirmation, duplicate-subscription prevention, webhook-derives-tier-from-price). **Action:** re-test the specific scenario the client saw (Agency plan shown, Professional invoice in history) against current code before assuming it's stale; if reproducible, it's a bug in the reconciliation logic, not a new feature.
+- **Client item:** #15.
+
+### T-6.7 — Confirm draft/final export separation is complete
+- **Client item:** #40.
+- **Status:** LIKELY ALREADY DONE per T-2.7 (2026-07-19 changelog: un-reviewed exports force-watermarked "DRAFT — PENDING ADJUSTER REVIEW" + `_DRAFT` filename; `/approve` produces clean export). **Action:** re-verify against current export code that an edit-after-approval correctly reopens/invalidates the prior approval (client's "any later edit should create a new draft version and invalidate the previous approval" requirement) rather than silently leaving stale approval metadata on a changed report.
+
+### T-6.8 — Authorization/role-permission audit pass
+- **Client item:** #8 (general, from priority list).
+- **Goal:** Confirm every report/claim/export/admin endpoint checks tenant ownership + role, not just authentication. Cross-reference against T-3.8 (roles & permissions — currently TODO in Phase 3). This is the natural place to fold the client's ask in, not a new task.
+
+### T-6.9 — Report generation progress must reflect real backend events
+- **Client item:** #11.
+- **Goal:** The generation-progress modal must not show "Analyzing damage photos with AI" (or any stage) that didn't actually run — e.g. skip that stage entirely when 0 photos were uploaded. Audit (2026-07-31) confirms `aiService.analyzeImages` is only invoked when `req.files.length > 0` and returns a safe "no images" result rather than fabricating findings — but the frontend progress UI should be checked separately for simulated/timer-based stages vs real SSE/poll-driven ones.
+- **QA:** Generate a report with 0 photos → progress modal never shows a photo-analysis stage.
+
+### T-6.10 — Confirm audit logging coverage
+- **Status:** Partial audit-log infra already exists (T-3.10d audit trail collection, `recordVersion` on approve). **Action:** verify report approve/finalize/export/share/delete and admin actions all write to the `auditLogs` collection, not just security events.
+
+## P2 — Core product workflow
+
+### T-6.11 — Password policy strengthening
+- **Client item:** #22.
+- **Status:** GAP CONFIRMED — currently `min: 6` on both register (`auth.js:65`) and password reset (`auth.js:446`), weaker than the client's already-modest "8 characters" assumption.
+- **Goal:** Raise minimum to 12; keep existing rate-limiting; no other new requirements unless requested (avoid over-engineering per project conventions).
+- **QA:** Register/reset with an 11-char password → rejected with clear message; 12-char accepted.
+
+### T-6.12 — MFA recovery codes + password-gated disable
+- **Client item:** #23.
+- **Status:** GAP CONFIRMED — TOTP enroll/verify/disable all work (`auth.js`, `speakeasy`), but no recovery-code generation/regeneration exists, and `/mfa/disable` currently requires a valid TOTP code rather than the account password.
+- **Goal:** Generate one-time recovery codes at enrollment (shown once, hashed at rest); allow disable via password re-entry as an alternative to a TOTP code (matches client ask + is friendlier when the authenticator is lost).
+- **QA:** Enroll → recovery codes shown once; log in with a recovery code (consumes it); disable MFA via password.
+
+### T-6.13 — Rename "Quality Score" + explain what it measures
+- **Client item:** #5.
+- **Status:** GAP CONFIRMED — `Dashboard.jsx:294,1322` literally labels it "Quality Score X/100".
+- **Goal:** Rename to "Documentation Completeness" (matches the reference PDF's own "DOCUMENTATION COMPLETENESS 97%" framing already used in the sample generator — reuse that language for consistency). Add a tooltip: measures required-field/section completeness, not AI accuracy or correctness of findings.
+- **QA:** Label + tooltip visible; no other page still says "Quality Score".
+
+### T-6.14 — Zero-photo disclaimer text
+- **Client item:** #10.
+- **Status:** PARTIAL — no fabricated AI findings occur (confirmed), but no explicit disclaimer sentence is shown when photo count is 0.
+- **Goal:** When a report has 0 photos, show/insert: "No photographs were provided. Damage observations in this draft are based exclusively on user-entered information and must be independently verified."
+- **QA:** Generate with 0 photos → disclaimer appears in preview + export.
+
+### T-6.15 — Unify CRM into one navigation shell
+- **Client item:** #6, P2-#2.
+- **Status:** PARTIAL — base `Dashboard.jsx` already links to `/crm` in its sidebar; `EnterpriseDashboard.jsx` and the marketing `Navbar.jsx` do not.
+- **Goal:** Add the CRM entry consistently wherever a logged-in Agency/Enterprise user's primary nav appears, so it reads as one product, not a bolt-on. (Full "single unified sidebar with Overview/Reports/Claims/Clients/Appointments/Templates/Team/API" IA redesign is a larger follow-on — scope that separately if wanted after this lands.)
+
+### T-6.16 — Link claim number to a real CRM claim record (prevent duplicates)
+- **Client item:** #8 (dup claims), #29, P2-#1/#8.
+- **Status:** GAP CONFIRMED — `reports.js` `claimNumber` is free-typed text never validated against `crmClaims`; `crmService.js` has no call site from the report-generation path.
+- **Goal:** Report generation either selects an existing CRM claim (auto-populates claim #, insured, address, loss date/type) or creates a new claim inline — never a bare unlinked string. This is a real data-model change; scope and confirm with the client before starting (affects existing reports with only a text claim number — needs a migration/back-compat plan).
+- **Note:** flag as a bigger task — do not start without confirming migration approach for existing data.
+
+### T-6.17 — Replace raw Markdown report editor with a sectioned rich editor
+- **Client item:** #9, P2-#4.
+- **Status:** GAP CONFIRMED — `Dashboard.jsx` report edit view is a plain `<textarea>` over the full markdown content plus separate raw textareas per field.
+- **Goal:** Section-based editing (Executive Summary, Claim Info, Damage Assessment, etc.) with per-section "regenerate" and accept/reject of AI suggestions (this overlaps existing Phase-2 backlog item T-2.6 "AI suggestion review UI" — do them together, don't duplicate). Large task; scope as its own multi-step plan before implementing.
+
+### T-6.18 — Calendar layout + event display fixes
+- **Client item:** #12, P2-#7.
+- **Goal:** Verify current CRM appointments calendar (`CRM.jsx`) against the specific complaints: missing weekday columns, truncated event titles, an event rendering as spanning two days when it's single-day. Needs a live look at the current calendar component before scoping a fix — not yet audited.
+
+### T-6.19 — Confirmation dialogs for destructive/high-stakes actions
+- **Client item:** #32, P3-#2.
+- **Goal:** Add confirm-before for: delete report/client/claim, bulk delete, restore version, finalize report, cancel subscription, revoke API key, delete account. Most of these already exist for account deletion (T-3.10f); audit the rest and add where missing.
+
+### T-6.20 — Field validation + address autocomplete
+- **Client item:** #14, P2-#9.
+- **Goal:** Phone/email format validation, unique-claim-number check (ties to T-6.16), max lengths, and address autocomplete (Google Places or equivalent) on claim/property forms.
+
+## P3 — Professional polish
+
+### T-6.21 — Standardize status/label capitalization across the UI
+- **Client item:** #30, P3-#1. Small, mechanical — good first task to pick up.
+
+### T-6.22 — Icon tooltips + accessible labels
+- **Client item:** #31, P3-#2. Add `title`/`aria-label` to icon-only buttons (shield/eye/trash/download/restore); clarify what the "shield" action actually does.
+
+### T-6.23 — Loading / empty / error states audit
+- **Client item:** #33, P3-#5. Sweep major screens (Reports, Appointments, Billing, CRM) for missing states; standardize copy per client's examples.
+
+### T-6.24 — Mobile responsiveness pass on report editor/approval + calendar
+- **Client item:** #34, P3-#3. Phase 1's mobile pass (T-1.11) only covered marketing pages — this extends it to the authenticated report/CRM screens the client screenshotted narrow.
+
+### T-6.25 — Accessibility pass (contrast, focus, keyboard, ARIA)
+- **Client item:** #35, P3-#4. Check the pale-orange status-badge contrast the client flagged specifically, plus modal focus-trapping/Escape-to-close.
+
+### T-6.26 — Expand public API documentation
+- **Client item:** #19, P3-#6. Base URL, versioning, auth, request/response examples, errors, pagination, rate limits, webhooks, OpenAPI spec.
+
+### T-6.27 — API key scopes/permissions
+- **Client item:** #21. Selectable scopes per key (`reports:read`, `reports:generate`, etc.) instead of full access by default. Depends on T-3.8 roles work landing first.
+
+### T-6.28 — Separate customer-facing API auth from internal login JWT
+- **Client item:** #20. Confirm `/api/auth/login`/`register` JWTs aren't documented/marketed as the external integration auth method — API keys already are the documented path; verify docs don't blur this.
+
+### T-6.29 — CRM analytics expansion + client/claim detail pages
+- **Client item:** #26, #27, #28, P3-#9. Larger CRM feature work — claims-by-status, overdue appointments, turnaround time, full client profile page, full claim detail page. Scope as its own multi-task project, likely several sub-tasks.
+
+### T-6.30 — Pricing/plan feature-matrix consistency + Enterprise positioning
+- **Client item:** #17, #18, P3-#8. Confirm CRM/API-access-by-tier claims on the Pricing page match `tiers.js` reality; decide (with client) whether Enterprise stays "Contact Sales" only or gets a public anchor price — this is a business decision, present options rather than picking one.
+
+### T-6.31 — Export sanitization + branding-preservation check
+- **Client item:** #41. Confirm HTML export has no executable script/internal URLs/hidden data; confirm PDF/DOCX preserve branding/signatures/watermarks reliably.
+
+### T-6.32 — Homepage precision + audience clarity + trust content
+- **Client item:** #36, #37, #38, #39. Status: T-1.4 hero rebuild already emphasizes AI-assisted/draft/human-review framing — re-check current copy against the client's suggested safer headline variant before assuming more work is needed; verify no unsupported response-time promises remain on Contact page.
+
+---
+**Sequencing note:** P1 items are the only ones recommended as near-term picks (T-6.4, T-6.5, T-6.11, T-6.13, T-6.14 are small and self-contained — good next commits). T-6.16/T-6.17/T-6.29 are large and need their own scoping/planning session before implementation, per Golden Rule #7. T-6.3/T-6.6(business-decision part)/T-6.30 need client input, not just code.

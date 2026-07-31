@@ -6,7 +6,8 @@
 ---
 
 ## Current focus
-- **Now working on:** — T-3.10 security hardening batch DONE 2026-07-22: session revocation + auth rate limiting + audit trail (T-3.10d), new-device login alerts (T-3.10e), self-service account deletion (T-3.10f), opt-in TOTP MFA (T-3.10g), secret/env management audit. T-3.10 acceptance is now fully met except malware scanning and data-retention auto-deletion, both **deliberately deferred per client decision** (see changelog) — everything else (encryption in transit/rest, RBAC, upload validation, signed URLs, session mgmt, MFA, audit logs, account/document deletion, login alerts, rate limiting, secret management) is done and live-QA'd against the real Firebase project. All lint-clean (0 errors), backend tests 6/6, frontend build passes.
+- **Now working on:** — Phase 6 backlog logged 2026-07-31 from a full client product walkthrough (42-item feedback doc + a reference sample-report PDF showing the target finished look). Triaged against actual code via audit before writing tasks — several client-reported issues are already fixed (API key masking, MFA core flow, no free status dropdown, zero-photo doesn't fabricate AI findings); real confirmed gaps are T-6.5 (adjuster approval only captures name/title, not license/state/firm — the polished sign-off in the reference PDF is fabricated by the sample-generator script only), T-6.11 (password min length is 6, not 8 as the client assumed), T-6.13 ("Quality Score" label), T-6.14 (no zero-photo disclaimer), T-6.16 (claim number is unlinked free text — real duplicate-claim risk), T-6.17 (report editor is raw Markdown, not rich/sectioned). Full backlog + status in TASKS.md Phase 6 / status board above. Not started implementing yet — next step is picking tasks one at a time per Golden Rule #7 (small P1 items T-6.4/T-6.5/T-6.11/T-6.13/T-6.14 are good first picks; T-6.16/T-6.17/T-6.29 are large and need their own scoping pass).
+- **Previous batch:** T-3.10 security hardening batch DONE 2026-07-22: session revocation + auth rate limiting + audit trail (T-3.10d), new-device login alerts (T-3.10e), self-service account deletion (T-3.10f), opt-in TOTP MFA (T-3.10g), secret/env management audit. T-3.10 acceptance is now fully met except malware scanning and data-retention auto-deletion, both **deliberately deferred per client decision** (see changelog) — everything else (encryption in transit/rest, RBAC, upload validation, signed URLs, session mgmt, MFA, audit logs, account/document deletion, login alerts, rate limiting, secret management) is done and live-QA'd against the real Firebase project. All lint-clean (0 errors), backend tests 6/6, frontend build passes.
 - **Previous batch (2026-07-21):** consent flow (T-1.16), Enterprise UI polish + approve UI (T-5.6a/T-2.7b), version history (T-2.13), templates (T-2.10), share link + e-sign (T-2.9/2.12), security hardening rest (T-3.10c). All Golden Rules resolved. **Ready for client final review.** Pending client deploy actions: Render env vars (AWS_*/SES_*, ANTHROPIC_*, FIREBASE_STORAGE_BUCKET) + AWS key rotation + **confirm `FIREBASE_API_KEY` is set in Render** (local backend `.env` is missing it — see 2026-07-22 audit note; without it, `/api/auth/login`, the new MFA login-challenge flow, and self-service account deletion's password re-check all fail with `CONFIG_ERROR`).
 - **BIG client-directed tasks (2026-07-18, batch 2):**
   1. **AI provider swap** — ✅ DONE + LIVE-VERIFIED 2026-07-19 (T-2.5a): Claude primary, watsonx fallback, OpenAI removed. `ANTHROPIC_API_KEY` now in local `.env`; live test = health `true`, Opus 4.8 returned expected output. **Client must also add `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` to Render** for prod.
@@ -70,9 +71,91 @@
 |------|-------|--------|-------|
 | T-5.x | See TASKS.md | TODO | |
 
+### Phase 6 — 2026-07-31 Client Product Audit Follow-ups
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| T-6.1 | Revoke exposed API key | BLOCKED (client action) | Masking/hashing already done; revoking the specific leaked key is an out-of-code account action |
+| T-6.2 | Purge personal/sensitive demo data | TODO | Verify only — sample generator already uses fictional data |
+| T-6.3 | Fix Stripe business identity | BLOCKED (client action) | Out-of-repo — Stripe Dashboard settings |
+| T-6.4 | Harden report status transitions server-side | TODO | No free UI dropdown found, but PATCH doesn't validate transitions |
+| T-6.5 | Strengthen adjuster approval fields | TODO | Confirmed gap — real flow only captures name/title, not license/state/firm |
+| T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
+| T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
+| T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
+| T-6.9 | Progress modal reflects real backend stages | TODO | Backend already skips AI stage at 0 photos — verify frontend UI |
+| T-6.10 | Audit logging coverage check | TODO | |
+| T-6.11 | Password min length 6→12 | TODO | Confirmed gap |
+| T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
+| T-6.13 | Rename "Quality Score" → "Documentation Completeness" | TODO | Confirmed gap |
+| T-6.14 | Zero-photo disclaimer text | TODO | Confirmed gap |
+| T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
+| T-6.16 | Link claim number to real CRM claim record | TODO | Confirmed gap — needs migration plan, large task |
+| T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
+| T-6.18 | Calendar layout/event display fixes | TODO | Not yet audited — needs live look |
+| T-6.19 | Confirmation dialogs for destructive actions | TODO | |
+| T-6.20 | Field validation + address autocomplete | TODO | |
+| T-6.21 | Standardize capitalization of statuses | TODO | Small — good next pick |
+| T-6.22 | Icon tooltips + accessible labels | TODO | |
+| T-6.23 | Loading/empty/error states audit | TODO | |
+| T-6.24 | Mobile pass on authed report/CRM screens | TODO | T-1.11 only covered marketing pages |
+| T-6.25 | Accessibility pass (contrast/focus/ARIA) | TODO | |
+| T-6.26 | Expand public API documentation | TODO | |
+| T-6.27 | API key scopes/permissions | TODO | Depends on T-3.8 |
+| T-6.28 | Separate API-key auth docs from login JWT | TODO | |
+| T-6.29 | CRM analytics + client/claim detail pages | TODO | Large — needs own scoping |
+| T-6.30 | Pricing feature-matrix + Enterprise positioning | BLOCKED (client decision) | Needs client input on Enterprise pricing approach |
+| T-6.31 | Export sanitization check | TODO | |
+| T-6.32 | Homepage precision/trust content re-check | TODO | Likely mostly already done via T-1.4 — verify |
+
 ---
 
 ## Changelog (newest on top)
+
+### [2026-07-28] — T-3.2/T-3.4 — Reconcile paid plans and correctly change subscriptions
+- **Status:** DONE
+- **What changed:** Fixed paid Stripe invoices coexisting with a Starter entitlement by adding authenticated checkout-session confirmation and server-side recovery of the customer's newest active Stripe subscription when Firestore is stale. New purchases now include the Checkout Session ID in the success redirect, so the dashboard can reconcile immediately without relying only on webhook timing. Existing subscribers no longer create a second subscription when selecting another plan: upgrades and monthly/annual changes update the current Stripe subscription immediately with an invoiced prorated credit/charge; downgrades use a Stripe Subscription Schedule and begin after the already-paid period. Webhook reconciliation now derives the tier from the actual Stripe price, ignores late older checkout events, and cannot downgrade an account when a non-current duplicate subscription is deleted. Annual checkout redirects now compare the correct base tier.
+- **Files touched:** `backend/config/tiers.js`, `backend/routes/payment.js`, `backend/test/tiers.test.js`, `frontend/src/services/api.js`, `frontend/src/pages/Auth.jsx`, `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/Pricing.jsx`, `frontend/src/pages/Subscriptions.jsx`.
+- **QA done:** Backend syntax check passed; backend tests 7/7 passed (including Stripe price-to-tier mapping); targeted backend/frontend ESLint passed with 0 errors (pre-existing warnings only); frontend tests 2/2 passed; production Vite build passed. Build retains the unrelated pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
+- **Left / follow-ups:** Historical accounts that already have multiple simultaneously active Stripe subscriptions should be reviewed once in Stripe before cancelling/refunding an older charge; this change prevents new duplicates and selects the newest active subscription for the entitlement. End-to-end Stripe test-mode QA still requires the local Stripe CLI/webhook forwarder or deployed webhook.
+- **Golden-rule check:** Golden Rule #4 preserved: the backend reconciles the verified Stripe subscription/checkout and persists server-authoritative entitlements; the client never assigns its own tier.
+
+### 2026-07-26 — Homepage static product screenshot icon replacement
+
+- Corrected the remaining emoji reported in “The Actual Product, Not a Mockup”; these were baked into the static `product-generate-report.webp` asset rather than rendered by `Home.jsx`.
+- Replaced only the four image regions with professional monochrome Droplets, Flame, Wind, and Hammer outline icons while preserving the original screenshot's text, logo, layout, dimensions, and all other pixels.
+- Asset: `frontend/public/product-generate-report.webp` (2400×1500 WebP, visually inspected after final compositing).
+- QA: final asset inspected at original resolution; frontend production build passed. Build still reports the unrelated pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
+
+### 2026-07-26 — Homepage dashboard visual icon cleanup
+
+- Replaced the four loss-type emoji in the animated homepage dashboard preview with the same Lucide icons used by the real dashboard: Droplets, Flame, Wind, and Hammer.
+- Preserved the preview's active orange and inactive gray states, with consistent sizing and accessible labels/tooltips.
+- File: `frontend/src/pages/Home.jsx`.
+- QA: targeted ESLint 0 errors (1 existing hook dependency warning); frontend production build passed. Build still reports the unrelated pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
+
+### 2026-07-26 — Dashboard mobile header/content spacing
+
+- Added clear mobile separation between the fixed header and account/usage summary by converting the full-bleed strip into an inset, rounded card with top margin and balanced internal spacing.
+- Added consistent mobile horizontal and vertical page padding across Generate Report, My Reports, and Usage & Billing; desktop spacing remains unchanged.
+- File: `frontend/src/pages/Dashboard.jsx`.
+- QA: targeted ESLint 0 errors (3 existing warnings); frontend production build passed. Automated browser preview was unavailable because the local browser-control runtime could not initialize its assets; build still reports the unrelated pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
+
+### 2026-07-26 — Settings password-reset email fix
+
+- Fixed Settings → Security → “Send Reset Email”: it was bypassing the app's transactional-email service and calling Firebase's client-side default mail sender directly.
+- Settings now uses the same `/api/auth/forgot-password` backend flow as the sign-in page, which generates the Firebase reset link and delivers the branded email through AWS SES.
+- Added an in-progress state, duplicate-click protection, rate-limit feedback, and server-side failure logging while retaining account-enumeration-safe API responses.
+- Files: `frontend/src/pages/Settings.jsx`, `backend/routes/auth.js`.
+- QA: real local API request for the account returned `{"success":true,"message":"Password reset email sent"}`; backend tests 6/6 passed; targeted frontend/backend ESLint 0 errors (existing backend warnings only); frontend production build passed. The build still reports the unrelated pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
+
+### 2026-07-26 — API key usage counter persistence/display fix
+
+- Fixed the API Keys settings card remaining at `0 calls` after successful `X-API-Key` requests.
+- `trackApiUsage` now writes the usage event and atomically increments the API key's `usageCount`/`lastUsedAt` in one Firestore batch.
+- Active-key responses derive the displayed count from the authoritative `apiUsage` collection, so calls recorded before this fix are included immediately.
+- Settings now reads the backend's actual `lastUsedAt` property instead of the nonexistent `lastUsed` property.
+- Files: `backend/middleware/auth.js`, `backend/services/apiKeyService.js`, `frontend/src/pages/Settings.jsx`.
+- QA: backend ESLint 0 errors (existing warnings only); backend tests 6/6 passed; targeted Settings ESLint 0 errors (2 existing unused-import warnings); frontend production build passed. Build continues to report the pre-existing duplicate `onClick` warning in `AdminDashboard.jsx`.
 
 <!--
 Template for each entry — copy this block:
@@ -85,6 +168,110 @@ Template for each entry — copy this block:
 - **Left / follow-ups:** anything not finished
 - **Golden-rule check:** confirmed none violated
 -->
+
+### [2026-07-26] — CRM bootstrap — Block misleading zero summaries
+- **Status:** DONE
+- **What changed:** CRM summary cards were calculated from initially empty arrays before the first clients/appointments/claims requests completed, so refresh temporarily showed four zeros while the lower panels still displayed skeletons. Added an explicit initial CRM readiness gate: the site preloader remains visible until all three server datasets settle, then the dashboard renders once with authoritative values. A failed dataset request now shows a dedicated retry state instead of a zero-filled dashboard; retry returns to the blocking loader until data resolves. Subsequent in-page refreshes preserve existing data while updating.
+- **Files touched:** `frontend/src/pages/CRM.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors (5 baseline warnings), frontend tests 2/2, production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated; CRM values no longer imply server-authoritative zeros before data loads.
+
+### [2026-07-26] — CRM claims — Implement View action and persist all form fields
+- **Status:** DONE
+- **What changed:** The Claims eye icon previously had no handler or detail component. Added a responsive claim-detail slide-over with claim number, client, status, loss type/date, property, created/updated timestamps, description, and notes; it opens from the eye action and closes by its button or backdrop. Also fixed a backend persistence gap: New Claim submitted `propertyAddress` and `notes`, but `crmService.createClaim` discarded both. New claim documents now retain those fields in Firestore.
+- **Files touched:** `frontend/src/pages/CRM.jsx`, `backend/services/crmService.js`.
+- **QA done:** Backend lint 0 errors (baseline warnings), backend tests 6/6, targeted frontend lint 0 errors (5 baseline warnings), production frontend build passes.
+- **Left / follow-ups:** Claims created before this fix cannot display property/notes that were never stored; new claims persist them correctly.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — CRM client detail — Fix linked-reports crash and list keys
+- **Status:** DONE
+- **What changed:** Fixed `ClientSlideOver` treating the `{ success, reports }` API envelope as an array, which caused `reports.map is not a function`. Linked reports now extract and validate the actual array, reset correctly when switching clients, and fail safely to an empty list. CRM frontend also incorrectly assumed Mongo-style `_id` while the Firestore service returns `id`; introduced one stable ID resolver (`id` with legacy `_id` fallback) and applied it to client selects, list/table keys, appointment rows, claim rows, report rows, client lookup, and delete/detail actions. This removes the React missing-key warning and fixes actions that previously received undefined IDs.
+- **Files touched:** `frontend/src/pages/CRM.jsx`.
+- **QA done:** Confirmed no direct `_id` assumptions remain outside the compatibility resolver; targeted ESLint passes with 0 errors (5 pre-existing unused-import warnings); production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — CRM mobile navigation — Move tabs into hamburger drawer
+- **Status:** DONE
+- **What changed:** Removed the duplicate horizontal CRM tab strip from the mobile page. Extended the shared Navbar with optional page-specific mobile menu items and injected Dashboard, Clients, Appointments, and Claims as a dedicated `CRM Menu` section inside the existing hamburger drawer. Each item uses its CRM icon, shows the active state, switches the CRM view, and closes the drawer immediately.
+- **Files touched:** `frontend/src/components/Navbar.jsx`, `frontend/src/pages/CRM.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors (6 pre-existing unused-import warnings); production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — CRM appointments — Responsive calendar polish
+- **Status:** DONE
+- **What changed:** Reworked the CRM appointments view for mobile: added accessible horizontally scrollable CRM tab navigation (the desktop sidebar was previously hidden with no mobile replacement), stacked the page header and controls, made Month/Week/List share available width, converted the New Appointment action to a compact icon button on narrow screens, reduced card/calendar padding, and stacked week/list appointment rows. Month cells now use compact mobile dimensions and appointment dots on small screens. Replaced the oversized full-cell current-day highlight with a compact orange date badge on both desktop and mobile.
+- **Files touched:** `frontend/src/pages/CRM.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors (5 pre-existing unused-import warnings); production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — Billing lifecycle — Correct scheduled-cancellation state
+- **Status:** DONE
+- **What changed:** Audited the Stripe cancellation lifecycle. Cancellation is intentionally scheduled for the period end, so paid entitlements remain active until then; the bug was that Stripe's underlying status remains `active` while `cancel_at_period_end` is true. The current-subscription API now exposes the effective status as `cancelling` (and preserves raw Stripe status separately), `customer.subscription.updated` persists `cancelling` instead of overwriting it with `active`, and final `customer.subscription.deleted` downgrades to Starter and clears the stale subscription ID. Settings and Subscriptions now show `Cancellation scheduled · Access ends <date>` and hide the Cancel button after scheduling. The cancellation response uses `current_period_end` as its reliable end date.
+- **Files touched:** `backend/routes/payment.js`, `frontend/src/pages/Settings.jsx`, `frontend/src/pages/Subscriptions.jsx`.
+- **QA done:** Backend lint 0 errors (baseline warnings), backend tests 6/6, targeted frontend lint 0 errors (3 baseline warnings), production frontend build passes.
+- **Left / follow-ups:** Local Stripe CLI must forward `customer.subscription.updated` and `customer.subscription.deleted` events to `/api/payment/webhook` for end-to-end local lifecycle testing.
+- **Golden-rule check:** confirmed none violated; paid access remains available only through the already-paid billing period, then the webhook enforces Starter entitlements server-side.
+
+### [2026-07-26] — Auth bootstrap — Prevent temporary zero/default dashboard data
+- **Status:** DONE
+- **What changed:** Verified report persistence already writes every generated report to Firestore and updates the user's persisted monthly/total counters. Fixed the actual UI issue: protected pages could render after Firebase authentication while the backend Firestore profile was unavailable, exposing fallback `Welcome Back`/zero values until a later profile refresh. Profile loading is now a separate blocking state; initial profile retrieval retries up to three times, protected pages keep the site preloader visible until real account data arrives, and a persistent failure shows an explicit retry screen instead of fabricated defaults. Login/register/Google flows no longer launch redundant competing profile requests.
+- **Files touched:** `frontend/src/context/AuthContext.jsx`, `frontend/src/components/ProtectedRoute.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors; frontend Vitest passes 2/2; production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated; UI now waits for server-authoritative account data.
+
+### [2026-07-26] — Settings billing — Fix undefined plan status and usage
+- **Status:** DONE
+- **What changed:** Fixed the Settings billing response mapping. The Starter endpoint correctly returns `subscription: null`, but the UI previously replaced that null with the entire API response and then read its missing `status`, producing `Status: undefined`. Settings now preserves the null subscription and displays `Free plan · No recurring billing`. Billing also fetches the real `/users/usage` contract, so monthly usage shows the actual tier limit (Starter `0 / 5`, rather than the incorrect `0 / 0`) and supports Enterprise `Unlimited`.
+- **Files touched:** `frontend/src/pages/Settings.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors (2 pre-existing unused-import warnings); production Vite build passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated; displayed entitlements now match the server-side tier configuration.
+
+### [2026-07-26] — Dashboard reports — Responsive status dropdown
+- **Status:** DONE
+- **What changed:** Moved the report-status menu into a `document.body` portal so table/card overflow can no longer clip it. The menu is anchored to its status button with viewport-aware positioning, flips above the button when there is insufficient room below, stays within horizontal viewport padding on narrow screens, and repositions during nested scrolling or window resize. Added outside-click closing and menu ARIA semantics.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`.
+- **QA done:** Targeted ESLint passes with 0 errors (3 pre-existing warnings); production Vite build passes; `git diff --check` passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — Report presentation — Proper Markdown rendering
+- **Status:** DONE
+- **What changed:** Replaced raw report-content text and the incomplete shared-report parser with a reusable, safely rendered GitHub-Flavored Markdown component. Report headings, bold/italic text, ordered and unordered lists, nested content, blockquotes, links, code blocks, horizontal rules, and tables now render with deliberate report styling. Raw HTML is not enabled. The dashboard's editable review textarea remains raw Markdown so reviewers can edit the source before approval.
+- **Files touched:** `frontend/src/components/ReportMarkdown.jsx` (new), `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/SharedReport.jsx`, `frontend/package.json`, `frontend/package-lock.json`.
+- **QA done:** Installed `react-markdown` + `remark-gfm`; targeted ESLint passes with 0 errors (3 pre-existing Dashboard warnings); production Vite build passes; `git diff --check` passes.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated; human review/edit gate remains intact.
+
+### [2026-07-26] — Dashboard polish — Drawer sidebar and icon cleanup
+- **Status:** DONE
+- **What changed:** Rebuilt the dashboard navigation as a drawer-style sidebar. On desktop it stays pinned below the navbar at viewport height; when its content is taller than the viewport it scrolls independently with its scrollbar hidden. On mobile it opens from a floating navigation button, uses a backdrop, closes from its header/backdrop/after navigation, and does not shift the main content. Replaced dashboard template/warning/status emoji characters with consistent Lucide icons.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`, `frontend/src/index.css`.
+- **QA done:** Dashboard emoji scan returns no matches; targeted ESLint passes with 0 errors (3 pre-existing warnings); production Vite build passes.
+- **Left / follow-ups:** Authenticated visual QA still requires signing into a local test account.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — Auth reliability — Sign-up network failure handling
+- **Status:** DONE
+- **What changed:** Firebase sign-up now retries once after a short delay when the Firebase SDK reports `auth/network-request-failed`, covering transient DNS/connectivity failures like the browser screenshot. If Firebase still cannot be reached, the form now shows a clear internet/DNS message instead of exposing the raw Firebase exception.
+- **Files touched:** `frontend/src/context/AuthContext.jsx`, `frontend/src/pages/Auth.jsx`.
+- **QA done:** Confirmed DNS resolution and HTTPS connectivity to `identitytoolkit.googleapis.com`; a direct test request reached Firebase and received the expected HTTP rejection for intentionally invalid test credentials. Targeted ESLint passes with 0 errors (1 pre-existing warning); production Vite build passes.
+- **Left / follow-ups:** The screenshot's `ERR_NAME_NOT_RESOLVED` originated in the browser/OS DNS path. The endpoint is currently resolving on this machine; if Chrome retains the failed lookup, reload/restart the browser once after restarting Vite.
+- **Golden-rule check:** confirmed none violated.
+
+### [2026-07-26] — UI polish — Site-wide video preloader
+- **Status:** DONE
+- **What changed:** Replaced the app-level logo/spinner loading screens with the client-provided `pre-loading.mp4` video. Added one reusable, full-viewport, autoplay/muted/looping inline video loader and wired it into lazy-route loading, auth redirect resolution, and protected-route auth resolution. Kept local action loaders (form submits, uploads, billing requests) unchanged because those communicate specific in-page progress.
+- **Files touched:** `frontend/public/pre-loading.mp4`, `frontend/src/components/PageLoader.jsx`, `frontend/src/App.jsx`, `frontend/src/components/ProtectedRoute.jsx`.
+- **QA done:** Frontend ESLint passes with 0 errors (32 pre-existing warnings); production Vite build passes and includes the public video asset. Loader includes an accessible status label while the decorative video is hidden from assistive technology.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** confirmed none violated.
 
 ### [2026-07-22] — T-3.10 wrap-up — Secret/env management audit (report only)
 - **Status:** DONE (audit, no code change)
@@ -556,6 +743,10 @@ Template for each entry — copy this block:
 - [x] **Marketing-claim softening:** → **DIRECTIVE 2026-07-18.** Client: "Remove or soften any claims that cannot be verified — report generation time, industry standards, accuracy %, certifications, customer statistics. Everything must be factual and verifiable." Applies to the **"~60 seconds"** claim, **"CRU GROUP-standard"** wording (Home hero/feature/footer), and any residual stats. (To do — T-1.1 follow-up pass.)
 - [x] **Canonical domain:** → **2026-07-18.** Both www and non-www serve; keeping non-www (`https://flacronai.com`) as the single canonical (already set in Seo + sitemap). No change needed.
 - [ ] Is there real usage data we ARE allowed to display (e.g. real avg generation time)? (Still open — needed before re-adding any timing claim.)
+- [ ] **2026-07-31 — Revoke the exposed live API key** (T-6.1). Client's screenshot shows a full `flac_live_...` key. This must be revoked from Settings → API Keys (and a new one issued) by whoever holds that account — it's an account action, not something I can do from the repo.
+- [ ] **2026-07-31 — Fix Stripe business identity** (T-6.3). Checkout currently shows a personal name as the merchant instead of "FlacronAI by Flacron Enterprises LLC." Needs updating in the Stripe Dashboard (business profile, statement descriptor, support email/logo/policy links) — out-of-repo.
+- [ ] **2026-07-31 — Claim/report data-model change** (T-6.16): linking `claimNumber` to a real CRM claim record (vs. today's free-typed string) is a real schema change. Before starting: how should existing reports with only a text claim number be handled — leave as unlinked legacy records, or backfill-match to `crmClaims` by number?
+- [ ] **2026-07-31 — Enterprise pricing positioning** (T-6.30): client flagged that Enterprise shows both a public "$499/month" price AND "Contact Sales," which is contradictory. Decide: keep a public anchor price with a "Start Enterprise" CTA, or go fully custom/sales-only. Needs a client decision, not a code guess.
 
 ---
 
