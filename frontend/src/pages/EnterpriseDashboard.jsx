@@ -1197,7 +1197,7 @@ export default function EnterpriseDashboard() {
 
                 <div className={`${cardCls} p-5`}>
                   <h3 className="text-sm font-bold text-gray-900 mb-3">Quick Start</h3>
-                  <pre className="text-xs text-gray-600 bg-gray-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://api.flacronai.com/api/reports/generate \\
+                  <pre className="text-xs text-gray-600 bg-gray-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{ "claimNumber": "CLM-001", "insuredName": "John Smith",

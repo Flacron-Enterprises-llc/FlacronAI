@@ -6,8 +6,8 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
 
-const CURL_EXAMPLE = `curl -X POST https://api.flacronai.com/api/reports/generate \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
+const CURL_EXAMPLE = `curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
+  -H "X-API-Key: flac_live_xxxxxxxxxxxxxxxxxxxx" \\
   -H "Content-Type: multipart/form-data" \\
   -F "claimNumber=CLM-2024-001" \\
   -F "insuredName=John Smith" \\
@@ -44,7 +44,7 @@ export FLACRON_API_KEY="flac_live_xxxxxxxxxxxx"`,
   {
     step: '02',
     title: 'Make Your First Request',
-    desc: 'Use your API key in the X-API-Key header (or a JWT Bearer token) to authenticate all API requests. Generate your first report by sending claim data and damage photos.',
+    desc: 'Pass your API key in the X-API-Key header to authenticate integration requests. Generate your first report by sending claim data and damage photos.',
     code: CURL_EXAMPLE,
     icon: Terminal,
   },

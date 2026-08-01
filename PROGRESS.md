@@ -99,9 +99,9 @@
 | T-6.23 | Loading/empty/error states audit | PARTIAL | 2026-08-01 — fixed the exact client-cited case: billing/invoice fetch failures silently rendered "No invoices yet"/"Free Plan" (Dashboard.jsx + Settings.jsx) instead of an error; also fixed reports-list and API-keys-list the same way. CRM.jsx already had this right. EnterpriseDashboard/AdminDashboard sub-lists not yet swept (same pattern, lower priority) |
 | T-6.24 | Mobile pass on authed report/CRM screens | PARTIAL | 2026-08-01 — found EnterpriseDashboard.jsx's entire sidebar was fixed-width with zero mobile handling (whole product unusable on phones); added the same off-canvas pattern Dashboard.jsx already uses. Also fixed 4 tables missing overflow-x-auto (CRM ×2, EnterpriseDashboard ×2) and the T-6.5 approval-form grid. Not visually verified in a real browser — no browser tooling available this session |
 | T-6.25 | Accessibility pass (contrast/focus/ARIA) | PARTIAL | 2026-08-01 — fixed the client-flagged pale-orange badge/data-text contrast (4 sites); found + fixed a systemic gap: zero modals anywhere in the app supported Escape-key close — added a shared hook and wired it + role="dialog" into all 12 modal/slide-over components. Full focus-trapping (Tab-cycling) deferred as a bigger follow-up |
-| T-6.26 | Expand public API documentation | TODO | |
+| T-6.26 | Expand public API documentation | PARTIAL | 2026-08-01 — added Base URL section explaining the domain must be substituted per-deployment (was the fabrication fixed in T-6.28). OpenAPI spec/Postman collection/changelog/idempotency-keys/sandbox-mode still not built |
 | T-6.27 | API key scopes/permissions | TODO | Depends on T-3.8 |
-| T-6.28 | Separate API-key auth docs from login JWT | TODO | |
+| T-6.28 | Separate API-key auth docs from login JWT | DONE | 2026-08-01 — confirmed gap: docs presented API key and login-JWT as interchangeable; also found the whole API docs used a fabricated, non-existent api.flacronai.com domain (Golden Rule #1) across 47 code examples in 3 files — fixed both |
 | T-6.29 | CRM analytics + client/claim detail pages | TODO | Large — needs own scoping |
 | T-6.30 | Pricing feature-matrix + Enterprise positioning | BLOCKED (client decision) | Needs client input on Enterprise pricing approach |
 | T-6.31 | Export sanitization check | TODO | |
@@ -110,6 +110,15 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.28 / T-6.26 — Fix fabricated API domain in docs; clarify API-key vs login-JWT
+- **Status:** T-6.28 DONE, T-6.26 PARTIAL.
+- **What changed:** While verifying whether the API docs blur API-key auth with login-JWT (they did — see below), found a much more serious pre-existing issue: **every code example across the entire API documentation used a fabricated, non-existent domain**, `https://api.flacronai.com` — 45 occurrences in `ApiDocs.jsx`, plus one each in `Developers.jsx` and `EnterpriseDashboard.jsx`'s own inline "Quick Start" snippet (47 total). Confirmed via `.env.example` and a prior QA note in this file that production actually runs on an `onrender.com` host, not a `flacronai.com` subdomain — so every single copy-pasted example in the docs would fail to resolve. This is a direct Golden Rule #1 violation (a fabricated, concrete, checkable claim, not vague marketing fluff) that had gone unnoticed because it "looks" like a real, professional API domain. Replaced all 47 occurrences with an explicit `https://YOUR_API_BASE_URL` placeholder and added a new "Base URL" section (now the default landing view of the API docs) explaining the base URL varies by deployment, with the one concrete value that IS verifiably accurate (`http://localhost:3000/api` for local dev, from `.env.example`).
+  For **T-6.28**: confirmed the docs did present API keys and login-JWT as interchangeable ("Use your API key... (or a JWT Bearer token)..." in `Developers.jsx`; both given equal-weight cards in `ApiDocs.jsx`'s Auth Guide). Reordered so API Key is presented first and labeled "recommended for integrations"; relabeled the JWT card "web app sessions only" with an explanation that it's a per-person session token, not an integration credential; added a callout atop the Authentication endpoint section (register/login) pointing integrators to the API Key section instead; changed `Developers.jsx`'s cURL example and description to use `X-API-Key` instead of `Authorization: Bearer`.
+- **Files touched:** `frontend/src/pages/ApiDocs.jsx`, `frontend/src/pages/Developers.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all 3 files (pre-existing warnings only); frontend tests 2/2 passed; production build passed; grepped the entire repo afterward for `api.flacronai.com` — zero remaining occurrences anywhere.
+- **Left / follow-ups (T-6.26 remainder):** OpenAPI/Swagger spec, downloadable Postman collection, a changelog, idempotency-key documentation, and sandbox-mode documentation are all still missing — none of these exist as real backend capabilities yet either (no versioning scheme, no idempotency-key support, no sandbox environment), so documenting them now would itself be a fabrication; they'd need to be built before being documented.
+- **Golden-rule check:** Directly resolves a Golden Rule #1 violation (fabricated API domain) that predates this session's audit.
 
 ### [2026-08-01] — T-6.24 — Fix EnterpriseDashboard's non-responsive sidebar + table overflow + approval-form grid
 - **Status:** PARTIAL — most severe issue fixed; not visually verified in a real browser this session.

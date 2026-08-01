@@ -23,17 +23,17 @@ const ENDPOINTS = {
       ],
       response: `{ "user": { "uid": "...", "email": "...", "tier": "starter" }, "token": "eyJ..." }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/auth/register \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/auth/register \\
   -H "Content-Type: application/json" \\
   -d '{"email":"user@example.com","password":"securepassword"}'`,
-        js: `const res = await fetch('https://api.flacronai.com/api/auth/register', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/auth/register', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ email: 'user@example.com', password: 'securepassword' })
 });
 const data = await res.json();`,
         python: `import requests
-response = requests.post('https://api.flacronai.com/api/auth/register',
+response = requests.post('https://YOUR_API_BASE_URL/api/auth/register',
   json={'email': 'user@example.com', 'password': 'securepassword'})
 data = response.json()`,
       },
@@ -46,17 +46,17 @@ data = response.json()`,
       ],
       response: `{ "user": { "uid": "...", "email": "...", "tier": "professional" }, "token": "eyJ..." }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/auth/login \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/auth/login \\
   -H "Content-Type: application/json" \\
   -d '{"email":"user@example.com","password":"yourpassword"}'`,
-        js: `const res = await fetch('https://api.flacronai.com/api/auth/login', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ email: 'user@example.com', password: 'yourpassword' })
 });
 const { token } = await res.json();`,
         python: `import requests
-response = requests.post('https://api.flacronai.com/api/auth/login',
+response = requests.post('https://YOUR_API_BASE_URL/api/auth/login',
   json={'email': 'user@example.com', 'password': 'yourpassword'})
 token = response.json()['token']`,
       },
@@ -77,7 +77,7 @@ token = response.json()['token']`,
       ],
       response: `{ "report": { "_id": "...", "claimNumber": "CLM-001", "content": "...", "qualityScore": 92, "aiModel": "FlacronAI", "status": "completed" } }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/reports/generate \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -F "claimNumber=CLM-2024-001" \\
   -F "insuredName=John Smith" \\
@@ -94,7 +94,7 @@ formData.append('lossType', 'Water Damage');
 formData.append('reportType', 'Initial');
 photos.forEach(p => formData.append('photos', p));
 
-const res = await fetch('https://api.flacronai.com/api/reports/generate', {
+const res = await fetch('https://YOUR_API_BASE_URL/api/reports/generate', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' },
   body: formData
@@ -102,7 +102,7 @@ const res = await fetch('https://api.flacronai.com/api/reports/generate', {
         python: `import requests
 files = [('photos', open('damage1.jpg', 'rb')), ('photos', open('damage2.jpg', 'rb'))]
 data = {'claimNumber': 'CLM-2024-001', 'lossType': 'Water Damage', 'reportType': 'Initial'}
-response = requests.post('https://api.flacronai.com/api/reports/generate',
+response = requests.post('https://YOUR_API_BASE_URL/api/reports/generate',
   headers={'Authorization': 'Bearer YOUR_TOKEN'}, data=data, files=files)`,
       },
     },
@@ -116,13 +116,13 @@ response = requests.post('https://api.flacronai.com/api/reports/generate',
       ],
       response: `{ "reports": [...], "total": 42, "page": 1, "totalPages": 5 }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/reports?page=1&limit=10 \\
+        curl: `curl https://YOUR_API_BASE_URL/api/reports?page=1&limit=10 \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const res = await fetch('https://api.flacronai.com/api/reports?page=1&status=completed', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/reports?page=1&status=completed', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });
 const { reports, total } = await res.json();`,
-        python: `response = requests.get('https://api.flacronai.com/api/reports',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/reports',
   params={'page': 1, 'status': 'completed'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
@@ -134,12 +134,12 @@ const { reports, total } = await res.json();`,
       ],
       response: `{ "report": { "_id": "...", "claimNumber": "...", "content": "...", "createdAt": "..." } }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/reports/64f8abc123def456 \\
+        curl: `curl https://YOUR_API_BASE_URL/api/reports/64f8abc123def456 \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const res = await fetch('https://api.flacronai.com/api/reports/REPORT_ID', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/reports/REPORT_ID', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });`,
-        python: `response = requests.get('https://api.flacronai.com/api/reports/REPORT_ID',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/reports/REPORT_ID',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -151,17 +151,17 @@ const { reports, total } = await res.json();`,
       ],
       response: `Binary file stream (application/pdf, etc.)`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/reports/REPORT_ID/export \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/reports/REPORT_ID/export \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"format":"pdf"}' --output report.pdf`,
-        js: `const res = await fetch(\`https://api.flacronai.com/api/reports/\${id}/export\`, {
+        js: `const res = await fetch(\`https://YOUR_API_BASE_URL/api/reports/\${id}/export\`, {
   method: 'POST',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json' },
   body: JSON.stringify({ format: 'pdf' })
 });
 const blob = await res.blob();`,
-        python: `response = requests.post(f'https://api.flacronai.com/api/reports/{report_id}/export',
+        python: `response = requests.post(f'https://YOUR_API_BASE_URL/api/reports/{report_id}/export',
   json={'format': 'pdf'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})
 with open('report.pdf', 'wb') as f:
@@ -176,13 +176,13 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "message": "Report deleted successfully" }`,
       examples: {
-        curl: `curl -X DELETE "https://api.flacronai.com/api/reports/REPORT_ID?permanent=false" \\
+        curl: `curl -X DELETE "https://YOUR_API_BASE_URL/api/reports/REPORT_ID?permanent=false" \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `await fetch(\`https://api.flacronai.com/api/reports/\${id}\`, {
+        js: `await fetch(\`https://YOUR_API_BASE_URL/api/reports/\${id}\`, {
   method: 'DELETE',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });`,
-        python: `requests.delete(f'https://api.flacronai.com/api/reports/{report_id}',
+        python: `requests.delete(f'https://YOUR_API_BASE_URL/api/reports/{report_id}',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -193,12 +193,12 @@ with open('report.pdf', 'wb') as f:
       params: [],
       response: `{ "profile": { "uid": "...", "email": "...", "tier": "agency", "displayName": "...", "usage": {...} } }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/users/profile \\
+        curl: `curl https://YOUR_API_BASE_URL/api/users/profile \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const res = await fetch('https://api.flacronai.com/api/users/profile', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/users/profile', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });`,
-        python: `response = requests.get('https://api.flacronai.com/api/users/profile',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/users/profile',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -209,16 +209,16 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "key": "flac_live_xxxxxxxxxxxx", "keyId": "...", "name": "Production App", "createdAt": "..." }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/users/api-keys \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/users/api-keys \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name":"Production App"}'`,
-        js: `const res = await fetch('https://api.flacronai.com/api/users/api-keys', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/users/api-keys', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json' },
   body: JSON.stringify({ name: 'Production App' })
 });`,
-        python: `response = requests.post('https://api.flacronai.com/api/users/api-keys',
+        python: `response = requests.post('https://YOUR_API_BASE_URL/api/users/api-keys',
   json={'name': 'Production App'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
@@ -233,12 +233,12 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "clients": [...], "total": 30, "page": 1 }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/crm/clients \\
+        curl: `curl https://YOUR_API_BASE_URL/api/crm/clients \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const res = await fetch('https://api.flacronai.com/api/crm/clients', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/crm/clients', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });`,
-        python: `response = requests.get('https://api.flacronai.com/api/crm/clients',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/crm/clients',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -252,16 +252,16 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "client": { "_id": "...", "name": "Jane Doe", "email": "...", "createdAt": "..." } }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/crm/clients \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/crm/clients \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name":"Jane Doe","email":"jane@example.com"}'`,
-        js: `const res = await fetch('https://api.flacronai.com/api/crm/clients', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/crm/clients', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json' },
   body: JSON.stringify({ name: 'Jane Doe', email: 'jane@example.com' })
 });`,
-        python: `response = requests.post('https://api.flacronai.com/api/crm/clients',
+        python: `response = requests.post('https://YOUR_API_BASE_URL/api/crm/clients',
   json={'name': 'Jane Doe', 'email': 'jane@example.com'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
@@ -273,12 +273,12 @@ with open('report.pdf', 'wb') as f:
       params: [],
       response: `{ "config": { "companyName": "...", "primaryColor": "#...", "subdomain": "...", ... } }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/white-label/config \\
+        curl: `curl https://YOUR_API_BASE_URL/api/white-label/config \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const res = await fetch('https://api.flacronai.com/api/white-label/config', {
+        js: `const res = await fetch('https://YOUR_API_BASE_URL/api/white-label/config', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 });`,
-        python: `response = requests.get('https://api.flacronai.com/api/white-label/config',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/white-label/config',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -292,16 +292,16 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "config": { "companyName": "Updated Corp", "primaryColor": "#ff6600", ... } }`,
       examples: {
-        curl: `curl -X PUT https://api.flacronai.com/api/white-label/customize \\
+        curl: `curl -X PUT https://YOUR_API_BASE_URL/api/white-label/customize \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"companyName":"Acme Corp","primaryColor":"#ff6600"}'`,
-        js: `await fetch('https://api.flacronai.com/api/white-label/customize', {
+        js: `await fetch('https://YOUR_API_BASE_URL/api/white-label/customize', {
   method: 'PUT',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json' },
   body: JSON.stringify({ companyName: 'Acme Corp', primaryColor: '#ff6600' })
 });`,
-        python: `requests.put('https://api.flacronai.com/api/white-label/customize',
+        python: `requests.put('https://YOUR_API_BASE_URL/api/white-label/customize',
   json={'companyName': 'Acme Corp', 'primaryColor': '#ff6600'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
@@ -315,17 +315,17 @@ with open('report.pdf', 'wb') as f:
       ],
       response: `{ "url": "https://checkout.stripe.com/...", "sessionId": "cs_..." }`,
       examples: {
-        curl: `curl -X POST https://api.flacronai.com/api/payment/create-checkout-session \\
+        curl: `curl -X POST https://YOUR_API_BASE_URL/api/payment/create-checkout-session \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"tier":"professional"}'`,
-        js: `const { url } = await (await fetch('https://api.flacronai.com/api/payment/create-checkout-session', {
+        js: `const { url } = await (await fetch('https://YOUR_API_BASE_URL/api/payment/create-checkout-session', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json' },
   body: JSON.stringify({ tier: 'professional' })
 })).json();
 window.location.href = url;`,
-        python: `response = requests.post('https://api.flacronai.com/api/payment/create-checkout-session',
+        python: `response = requests.post('https://YOUR_API_BASE_URL/api/payment/create-checkout-session',
   json={'tier': 'professional'},
   headers={'Authorization': 'Bearer YOUR_TOKEN'})
 checkout_url = response.json()['url']`,
@@ -336,12 +336,12 @@ checkout_url = response.json()['url']`,
       params: [],
       response: `{ "invoices": [{ "id": "...", "amount": 3999, "status": "paid", "date": "...", "pdfUrl": "..." }] }`,
       examples: {
-        curl: `curl https://api.flacronai.com/api/payment/invoices \\
+        curl: `curl https://YOUR_API_BASE_URL/api/payment/invoices \\
   -H "Authorization: Bearer YOUR_TOKEN"`,
-        js: `const { invoices } = await (await fetch('https://api.flacronai.com/api/payment/invoices', {
+        js: `const { invoices } = await (await fetch('https://YOUR_API_BASE_URL/api/payment/invoices', {
   headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
 })).json();`,
-        python: `response = requests.get('https://api.flacronai.com/api/payment/invoices',
+        python: `response = requests.get('https://YOUR_API_BASE_URL/api/payment/invoices',
   headers={'Authorization': 'Bearer YOUR_TOKEN'})`,
       },
     },
@@ -444,7 +444,7 @@ function EndpointCard({ endpoint }) {
 }
 
 export default function ApiDocs() {
-  const [activeSection, setActiveSection] = useState('Authentication');
+  const [activeSection, setActiveSection] = useState('Base URL');
   const categories = Object.keys(ENDPOINTS);
 
   return (
@@ -470,7 +470,7 @@ export default function ApiDocs() {
                 </button>
               ))}
               <div className="border-t border-[#e5e7eb] my-3" />
-              {['Rate Limits', 'Errors', 'Auth Guide'].map(s => (
+              {['Base URL', 'Auth Guide', 'Rate Limits', 'Errors'].map(s => (
                 <button key={s} onClick={() => setActiveSection(s)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                     activeSection === s ? 'bg-orange-500/20 text-orange-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
@@ -482,20 +482,40 @@ export default function ApiDocs() {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
+            {/* Base URL */}
+            {activeSection === 'Base URL' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Base URL</h2>
+                <div className="card p-5 mb-4">
+                  <p className="text-gray-600 text-sm mb-3">
+                    All endpoints below are shown relative to your API base URL. Replace <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">YOUR_API_BASE_URL</code> in every example with your own deployment's backend host — it is not a fixed public hostname you can copy as-is.
+                  </p>
+                  <p className="text-gray-600 text-sm">For local development, this is:</p>
+                </div>
+                <CodeBlock code={`http://localhost:3000/api`} lang="text" />
+                <p className="text-gray-500 text-xs mt-4">In production, use your deployed backend's own host (see your environment configuration / the person who manages your deployment for the exact address).</p>
+              </motion.div>
+            )}
+
             {/* Auth Guide */}
             {activeSection === 'Auth Guide' && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Authentication Guide</h2>
+                <div className="card p-5 mb-4 border-orange-200 bg-orange-50/40">
+                  <p className="text-gray-700 text-sm">
+                    <strong>For third-party integrations and server-to-server access, use an API key</strong> — it can be scoped, revoked, and rotated independently of any person's login. The email/password login below issues a session token for signing into the FlacronAI web app itself; it is not intended as an integration credential and should not be embedded in another application or server.
+                  </p>
+                </div>
                 <div className="space-y-4">
                   <div className="card p-5">
-                    <h3 className="text-base font-semibold text-gray-900 mb-3">Bearer Token (JWT)</h3>
-                    <p className="text-gray-600 text-sm mb-3">Login to get a JWT token, then include it in the Authorization header of all requests.</p>
-                    <CodeBlock code={`Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...`} lang="text" />
-                  </div>
-                  <div className="card p-5">
-                    <h3 className="text-base font-semibold text-gray-900 mb-3">API Key (Agency/Enterprise)</h3>
+                    <h3 className="text-base font-semibold text-gray-900 mb-3">API Key (recommended for integrations — Agency/Enterprise)</h3>
                     <p className="text-gray-600 text-sm mb-3">Create an API key in Settings. Pass it via the X-API-Key header for server-to-server requests.</p>
                     <CodeBlock code={`X-API-Key: flac_live_xxxxxxxxxxxxxxxxxxxx`} lang="text" />
+                  </div>
+                  <div className="card p-5">
+                    <h3 className="text-base font-semibold text-gray-900 mb-3">Bearer Token (JWT) — web app sessions only</h3>
+                    <p className="text-gray-600 text-sm mb-3">Returned by <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">/api/auth/login</code> for the FlacronAI web app's own sign-in flow. It represents a specific person's session, expires, and is invalidated on logout or password change — don't use it as a long-lived integration credential.</p>
+                    <CodeBlock code={`Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...`} lang="text" />
                   </div>
                 </div>
               </motion.div>
@@ -549,6 +569,11 @@ export default function ApiDocs() {
             {categories.includes(activeSection) && (
               <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">{activeSection}</h2>
+                {activeSection === 'Authentication' && (
+                  <p className="text-gray-600 text-sm mb-4 -mt-2">
+                    These endpoints issue a per-person web-app session and aren't meant to be called from a third-party integration. If you're building an integration, see <button onClick={() => setActiveSection('Auth Guide')} className="text-orange-600 underline underline-offset-2">API keys in the Auth Guide</button> instead.
+                  </p>
+                )}
                 {ENDPOINTS[activeSection].map((ep, i) => <EndpointCard key={i} endpoint={ep} />)}
               </motion.div>
             )}
