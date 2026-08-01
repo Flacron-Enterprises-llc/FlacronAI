@@ -259,7 +259,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                           <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border border-[#e5e7eb] text-sm">
                             <div>
                               <p className="text-gray-900 font-medium">{fmtMoney(inv.amount)}</p>
-                              <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}</p>
+                              <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}{inv.description ? ` · ${inv.description}` : ''}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className={`text-xs px-2 py-0.5 rounded-full border ${inv.status === 'paid' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{formatStatus(inv.status)}</span>

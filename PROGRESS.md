@@ -79,7 +79,7 @@
 | T-6.3 | Fix Stripe business identity | BLOCKED (client action) | Out-of-repo — Stripe Dashboard settings |
 | T-6.4 | Harden report status transitions server-side | DONE | 2026-07-31 — found a real manual status dropdown in "My Reports" (missed by the initial audit) letting any user set draft/finalized/processing/failed/archived directly; removed it + backend accepted arbitrary status via PUT |
 | T-6.5 | Strengthen adjuster approval fields | DONE | 2026-07-31 — /approve now requires full name, license #, license state, company/firm + explicit confirmation checkbox; rejects with 400 if any missing; both Dashboard.jsx and EnterpriseDashboard.jsx updated to match |
-| T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
+| T-6.6 | Re-verify billing/plan sync | DONE | 2026-08-01 — core reconciliation confirmed sound (T-3.2 self-heals from live Stripe data); real gap was that invoice lists showed amount/date only, no plan name, so a legitimate old lower-priced invoice (from before an upgrade) looked like an unexplained mismatch. Added plan/description to all 3 invoice-list surfaces |
 | T-6.7 | Confirm draft/final export separation complete | DONE | 2026-08-01 — draft/final watermarking itself was fine, but found a real gap: editing a finalized report's content left status untouched, so it kept exporting "clean" under a stale approval/signature. Fixed — editing reverts status to draft and clears approval fields |
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
 | T-6.9 | Progress modal reflects real backend stages | DONE | 2026-08-01 — confirmed gap in BOTH Dashboard.jsx and EnterpriseDashboard.jsx (separate hardcoded step lists); both now skip the AI-photo-analysis stage at 0 photos; also fixed an interval-leak-on-error bug found in both while there |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.6 — Show plan name on invoices to explain historical price differences
+- **Status:** DONE
+- **What changed:** Re-verified the client's exact complaint (Agency plan shown, but a $39.99 Professional invoice in billing history, described as inconsistent). Read `payment.js`'s `/current-subscription` endpoint: it already re-derives the tier from the live Stripe subscription/price on every fetch and self-heals Firestore if stale (confirms T-3.2's fix is real and working) — so a current-plan/actual-Stripe-state mismatch is not reproducible in the current code. The client's screenshot was very likely accurate historical billing data (an old invoice from before an upgrade) displayed with **no plan-name context**, making a normal price difference read as a bug. Confirmed: `Dashboard.jsx`'s invoice table already renders Stripe's per-invoice `description` (e.g. "1 × Agency Plan"); `Settings.jsx`'s invoice table did not (only Date/Amount/Status/Download); the admin-panel per-user billing view (`sales.js` `/admin` endpoint) didn't even include the `description` field in its Stripe mapping. Added a Plan/description column to `Settings.jsx`'s table and to `sales.js`'s admin invoice mapping + `AdminDashboard.jsx`'s display, so every invoice list in the app now shows which plan/price each invoice was for.
+- **Files touched:** `frontend/src/pages/Settings.jsx`, `backend/routes/sales.js`, `frontend/src/pages/AdminDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all 3 files (pre-existing warnings only); backend module loads clean, tests 7/7 passed; frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** The ~20s post-checkout webhook-confirmation polling window (`Dashboard.jsx`) was already a documented, accepted tradeoff in CLAUDE.md's fragility notes — not touched here, out of this task's scope.
+- **Golden-rule check:** none violated.
 
 ### [2026-08-01] — T-6.7 — Editing a finalized report now invalidates its approval
 - **Status:** DONE

@@ -422,6 +422,7 @@ router.get('/admin/user/:uid/billing', authenticateToken, requireAdmin, async (r
           status: inv.status,
           date: new Date(inv.created * 1000).toISOString(),
           pdf: inv.invoice_pdf,
+          description: inv.lines.data[0]?.description || '',
         })),
       },
     });

@@ -720,7 +720,7 @@ export default function Settings() {
                           <table className="w-full">
                             <thead>
                               <tr className="border-b border-[#e5e7eb]">
-                                {['Date', 'Amount', 'Status', 'Download'].map(h => (
+                                {['Date', 'Plan', 'Amount', 'Status', 'Download'].map(h => (
                                   <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                                 ))}
                               </tr>
@@ -729,6 +729,7 @@ export default function Settings() {
                               {invoices.map(inv => (
                                 <tr key={inv.id} className="border-b border-[#e5e7eb]">
                                   <td className="px-3 py-3 text-sm text-gray-700">{new Date(inv.date).toLocaleDateString()}</td>
+                                  <td className="px-3 py-3 text-sm text-gray-600 max-w-[180px] truncate" title={inv.description}>{inv.description || 'Subscription'}</td>
                                   <td className="px-3 py-3 text-sm text-gray-900 font-medium">${inv.amount.toFixed(2)}</td>
                                   <td className="px-3 py-3">
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
