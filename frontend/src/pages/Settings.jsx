@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI } from '../services/api';
 
@@ -146,6 +147,8 @@ export default function Settings() {
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [revokeKeyId, setRevokeKeyId] = useState(null);
+  const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
 
   // Notifications state
   const [notifications, setNotifications] = useState({
@@ -298,12 +301,17 @@ export default function Settings() {
     finally { setCreatingKey(false); }
   };
 
-  const handleRevokeKey = async (keyId) => {
+  const handleRevokeKey = (keyId) => setRevokeKeyId(keyId);
+
+  const confirmRevokeKey = async () => {
+    setRevokeKeyLoading(true);
     try {
-      await usersAPI.revokeApiKey(keyId);
+      await usersAPI.revokeApiKey(revokeKeyId);
       toast.success('API key revoked');
       fetchApiKeys();
+      setRevokeKeyId(null);
     } catch { toast.error('Failed to revoke key'); }
+    finally { setRevokeKeyLoading(false); }
   };
 
   const handleNotifSave = async () => {
@@ -760,6 +768,16 @@ export default function Settings() {
             onConfirm={handleDeleteAccount}
             onClose={() => setShowDeleteModal(false)}
             loading={deleteLoading}
+          />
+        )}
+        {revokeKeyId && (
+          <ConfirmDialog
+            title="Revoke API key?"
+            message="Any application using this key will immediately lose access. This cannot be undone."
+            confirmLabel="Revoke"
+            loading={revokeKeyLoading}
+            onConfirm={confirmRevokeKey}
+            onClose={() => setRevokeKeyId(null)}
           />
         )}
       </AnimatePresence>

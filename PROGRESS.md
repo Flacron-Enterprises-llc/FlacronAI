@@ -92,7 +92,7 @@
 | T-6.16 | Link claim number to real CRM claim record | TODO | Confirmed gap — needs migration plan, large task |
 | T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
 | T-6.18 | Calendar layout/event display fixes | TODO | Not yet audited — needs live look |
-| T-6.19 | Confirmation dialogs for destructive actions | TODO | |
+| T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
 | T-6.20 | Field validation + address autocomplete | TODO | |
 | T-6.21 | Standardize capitalization of statuses | TODO | Small — good next pick |
 | T-6.22 | Icon tooltips + accessible labels | TODO | |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.19 — Confirmation dialogs for destructive actions
+- **Status:** DONE
+- **What changed:** Audited every delete/revoke action across the authenticated app. Subscription cancellation and account deletion already had proper confirm flows (`CancelModal`, `DeleteAccountModal` with password + typed "DELETE"). Found 5 real gaps that deleted/revoked immediately on click with no confirmation: single report delete, bulk report delete, report template delete (all `Dashboard.jsx`), CRM client delete (`CRM.jsx`), and API key revoke (`Settings.jsx`). Added a new shared `ConfirmDialog` component (mirrors the existing `CancelModal` visual pattern already used for subscription cancel) and wired all 5 actions through it — each shows an accurate, action-specific consequence message (e.g. client delete clarifies that linked claims/appointments aren't cascade-deleted, only unlinked, verified against `crmService.js`).
+- **Files touched:** `frontend/src/components/ConfirmDialog.jsx` (new), `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/CRM.jsx`, `frontend/src/pages/Settings.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all 4 files (pre-existing warnings only); frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** Did not touch `handleRestoreVersion` (non-destructive by design — loads into the editor, requires a separate explicit Save) or `handleApprove` (already gated behind required fields + an explicit confirm-review checkbox from T-6.5) — neither needed an additional dialog.
+- **Golden-rule check:** none violated.
 
 ### [2026-08-01] — T-6.14 — Zero-photo disclaimer text
 - **Status:** DONE

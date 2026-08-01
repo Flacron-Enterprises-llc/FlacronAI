@@ -12,6 +12,7 @@ import {
 import Navbar from '../components/Navbar';
 import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI } from '../services/api';
 import api from '../services/api';
@@ -314,6 +315,8 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { type: 'report'|'bulk'|'template', id }
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [detailReport, setDetailReport] = useState(null);
@@ -586,31 +589,44 @@ export default function Dashboard() {
     toast.success(`Loaded "${t.name}"`);
   };
 
-  const handleDeleteTemplate = async (id, e) => {
+  const handleDeleteTemplate = (id, e) => {
     e.stopPropagation();
-    try {
-      await reportsAPI.deleteTemplate(id);
-      setTemplates(prev => prev.filter(t => t.id !== id));
-      toast.success('Template deleted');
-    } catch { toast.error('Delete failed'); }
+    setConfirmTarget({ type: 'template', id });
   };
 
-  const handleDeleteReport = async (id) => {
-    try {
-      await reportsAPI.delete(id, true);
-      toast.success('Report deleted');
-      fetchReports();
-    } catch { toast.error('Delete failed'); }
+  const handleDeleteReport = (id) => {
+    setConfirmTarget({ type: 'report', id });
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (!selectedIds.length) return;
+    setConfirmTarget({ type: 'bulk' });
+  };
+
+  const runConfirmedDelete = async () => {
+    if (!confirmTarget) return;
+    setConfirmLoading(true);
     try {
-      await Promise.all(selectedIds.map(id => reportsAPI.delete(id, true)));
-      toast.success(`Deleted ${selectedIds.length} reports`);
-      setSelectedIds([]);
-      fetchReports();
-    } catch { toast.error('Bulk delete failed'); }
+      if (confirmTarget.type === 'template') {
+        await reportsAPI.deleteTemplate(confirmTarget.id);
+        setTemplates(prev => prev.filter(t => t.id !== confirmTarget.id));
+        toast.success('Template deleted');
+      } else if (confirmTarget.type === 'report') {
+        await reportsAPI.delete(confirmTarget.id, true);
+        toast.success('Report deleted');
+        fetchReports();
+      } else if (confirmTarget.type === 'bulk') {
+        await Promise.all(selectedIds.map(id => reportsAPI.delete(id, true)));
+        toast.success(`Deleted ${selectedIds.length} reports`);
+        setSelectedIds([]);
+        fetchReports();
+      }
+      setConfirmTarget(null);
+    } catch {
+      toast.error('Delete failed');
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const toggleSelect = (id) => {
@@ -1705,6 +1721,23 @@ export default function Dashboard() {
       </div>
 
       <ReportDetailModal report={detailReport} onClose={() => setDetailReport(null)} />
+
+      <AnimatePresence>
+        {confirmTarget && (
+          <ConfirmDialog
+            title={confirmTarget.type === 'bulk' ? `Delete ${selectedIds.length} reports?` : confirmTarget.type === 'template' ? 'Delete template?' : 'Delete report?'}
+            message={confirmTarget.type === 'bulk'
+              ? 'This permanently deletes the selected reports, including their photos and exports. This cannot be undone.'
+              : confirmTarget.type === 'template'
+                ? 'This template will no longer be available to load for future reports.'
+                : 'This permanently deletes the report, including its photos and exports. This cannot be undone.'}
+            confirmLabel="Delete"
+            loading={confirmLoading}
+            onConfirm={runConfirmedDelete}
+            onClose={() => setConfirmTarget(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

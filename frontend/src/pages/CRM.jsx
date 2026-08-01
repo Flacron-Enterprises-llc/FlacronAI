@@ -8,6 +8,8 @@ import {
   Clock, XCircle, AlertCircle, TrendingUp, Activity, RefreshCw
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import PageLoader from '../components/PageLoader';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { crmAPI } from '../services/api';
 
@@ -22,6 +24,7 @@ const APPT_STATUSES = { scheduled: 'bg-orange-500/20 text-orange-400 border-oran
 const CLAIM_STATUSES = ['open', 'in-progress', 'pending-review', 'closed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const getRecordId = record => record?.id || record?._id;
 
 function StatusPill({ status }) {
   const cls = APPT_STATUSES[status] || 'bg-gray-500/20 text-gray-600 border-gray-500/30';
@@ -94,7 +97,7 @@ function NewAppointmentModal({ clients, onClose, onSaved }) {
         <div><label className="label">Client</label>
           <select className="input" required value={form.clientId} onChange={e => setForm(p => ({ ...p, clientId: e.target.value }))}>
             <option value="">Select client...</option>
-            {clients.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+            {clients.map(c => <option key={getRecordId(c)} value={getRecordId(c)}>{c.name}</option>)}
           </select>
         </div>
         <div><label className="label">Title</label><input className="input" required placeholder="e.g. Property Inspection" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
@@ -130,7 +133,7 @@ function NewClaimModal({ clients, onClose, onSaved }) {
         <div><label className="label">Client</label>
           <select className="input" required value={form.clientId} onChange={e => setForm(p => ({ ...p, clientId: e.target.value }))}>
             <option value="">Select client...</option>
-            {clients.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+            {clients.map(c => <option key={getRecordId(c)} value={getRecordId(c)}>{c.name}</option>)}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -165,7 +168,14 @@ function ClientSlideOver({ client, onClose }) {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     if (!client) return;
-    crmAPI.getClientReports(client._id).then(r => { setReports(r.data || []); setLoading(false); }).catch(() => setLoading(false));
+    setLoading(true);
+    crmAPI.getClientReports(getRecordId(client))
+      .then(r => {
+        const nextReports = r.data?.reports ?? r.data?.data ?? [];
+        setReports(Array.isArray(nextReports) ? nextReports : []);
+      })
+      .catch(() => setReports([]))
+      .finally(() => setLoading(false));
   }, [client]);
   if (!client) return null;
   return (
@@ -189,7 +199,7 @@ function ClientSlideOver({ client, onClose }) {
             ? <p className="text-gray-500 text-sm">No reports linked.</p>
             : <div className="space-y-2">
                 {reports.map(r => (
-                  <div key={r._id} className="flex items-center justify-between p-3 rounded-xl bg-gray-100 border border-gray-200">
+                  <div key={getRecordId(r)} className="flex items-center justify-between p-3 rounded-xl bg-gray-100 border border-gray-200">
                     <div><p className="text-gray-900 text-sm font-mono">{r.claimNumber}</p><p className="text-gray-500 text-xs">{r.lossType}</p></div>
                     <span className="text-xs text-gray-600">{r.status}</span>
                   </div>
@@ -202,6 +212,96 @@ function ClientSlideOver({ client, onClose }) {
   );
 }
 
+function ClaimSlideOver({ claim, client, onClose }) {
+  if (!claim) return null;
+
+  const details = [
+    ['Client', client?.name || 'Not assigned'],
+    ['Loss type', claim.lossType],
+    ['Loss date', claim.lossDate],
+    ['Property', claim.propertyAddress],
+    ['Created', claim.createdAt ? new Date(claim.createdAt).toLocaleString() : null],
+    ['Last updated', claim.updatedAt ? new Date(claim.updatedAt).toLocaleString() : null],
+  ];
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex justify-end bg-gray-950/40"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.aside
+        className="h-full w-full max-w-md overflow-y-auto border-l border-gray-200 bg-white p-5 shadow-2xl sm:p-6"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'tween', duration: 0.22 }}
+        onClick={event => event.stopPropagation()}
+        aria-label={`Claim ${claim.claimNumber || ''} details`}
+      >
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Claim details
+            </p>
+            <h2 className="mt-1 truncate font-mono text-lg font-bold text-gray-900">
+              {claim.claimNumber || 'Unnumbered claim'}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-gray-500 hover:bg-gray-100"
+            aria-label="Close claim details"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${
+            claim.status === 'closed'
+              ? 'bg-gray-100 text-gray-600'
+              : claim.status === 'open'
+                ? 'bg-orange-50 text-orange-600'
+                : 'bg-amber-50 text-amber-700'
+          }`}>
+            {(claim.status || 'unknown').replaceAll('-', ' ')}
+          </span>
+        </div>
+
+        <dl className="space-y-1 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          {details.map(([label, value]) => value && (
+            <div key={label} className="grid grid-cols-[100px_1fr] gap-3 border-b border-gray-200 py-2.5 last:border-0">
+              <dt className="text-xs font-medium text-gray-500">{label}</dt>
+              <dd className="break-words text-sm text-gray-800">{value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {(claim.description || claim.notes) && (
+          <div className="mt-5 space-y-4">
+            {claim.description && (
+              <div>
+                <h3 className="mb-1.5 text-sm font-semibold text-gray-800">Description</h3>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-gray-600">{claim.description}</p>
+              </div>
+            )}
+            {claim.notes && (
+              <div>
+                <h3 className="mb-1.5 text-sm font-semibold text-gray-800">Notes</h3>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-gray-600">{claim.notes}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </motion.aside>
+    </motion.div>
+  );
+}
+
 function CalendarGrid({ appointments, month, year, onPrev, onNext }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -209,29 +309,33 @@ function CalendarGrid({ appointments, month, year, onPrev, onNext }) {
   const today = new Date();
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <button onClick={onPrev} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-4 h-4 text-gray-600" /></button>
-        <h3 className="text-gray-900 font-semibold">{MONTHS[month]} {year}</h3>
-        <button onClick={onNext} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="w-4 h-4 text-gray-600" /></button>
+      <div className="mb-4 flex items-center justify-between">
+        <button onClick={onPrev} aria-label="Previous month" className="rounded-lg p-2 hover:bg-gray-100"><ChevronLeft className="h-4 w-4 text-gray-600" /></button>
+        <h3 className="text-sm font-semibold text-gray-900 sm:text-base">{MONTHS[month]} {year}</h3>
+        <button onClick={onNext} aria-label="Next month" className="rounded-lg p-2 hover:bg-gray-100"><ChevronRight className="h-4 w-4 text-gray-600" /></button>
       </div>
-      <div className="grid grid-cols-7 gap-1">
-        {DAYS.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">{d}</div>)}
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+        {DAYS.map(d => <div key={d} className="py-1 text-center text-[10px] font-semibold text-gray-500 sm:text-xs">{d}</div>)}
         {cells.map((day, i) => {
           if (!day) return <div key={i} />;
           const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const dayAppts = appointments.filter(a => a.date?.startsWith(dateStr));
           const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           return (
-            <div key={i} className={`min-h-[60px] p-1 rounded-lg border transition-colors ${isToday ? 'border-orange-500/50 bg-orange-500/10' : 'border-transparent hover:bg-gray-100'}`}>
-              <span className={`text-xs font-medium ${isToday ? 'text-orange-400' : 'text-gray-600'}`}>{day}</span>
-              <div className="space-y-0.5 mt-0.5">
+            <div key={i} className="min-w-0 min-h-11 rounded-lg p-0.5 transition-colors hover:bg-gray-50 sm:min-h-[68px] sm:p-1">
+              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-medium sm:text-xs ${
+                isToday ? 'bg-orange-500 font-semibold text-white shadow-sm' : 'text-gray-600'
+              }`}>{day}</span>
+              <div className="mt-0.5 flex flex-wrap gap-0.5 sm:block sm:space-y-0.5">
                 {dayAppts.slice(0, 2).map((a, ai) => (
-                  <div key={ai} className={`text-xs px-1 py-0.5 rounded truncate ${
+                  <div key={ai} title={a.title} className={`h-1.5 w-1.5 rounded-full sm:h-auto sm:w-auto sm:truncate sm:px-1 sm:py-0.5 sm:text-xs ${
                     a.status === 'completed' ? 'bg-green-500/30 text-green-300' :
                     a.status === 'cancelled' ? 'bg-red-500/30 text-red-300' :
-                    'bg-orange-500/30 text-blue-300'}`}>{a.title}</div>
+                    'bg-orange-500/30 text-orange-700'}`}>
+                    <span className="hidden sm:inline">{a.title}</span>
+                  </div>
                 ))}
-                {dayAppts.length > 2 && <div className="text-xs text-gray-500">+{dayAppts.length - 2}</div>}
+                {dayAppts.length > 2 && <div className="text-[9px] leading-none text-gray-500 sm:text-xs sm:leading-normal">+{dayAppts.length - 2}</div>}
               </div>
             </div>
           );
@@ -251,17 +355,22 @@ export default function CRM() {
   const [appointments, setAppointments] = useState([]); const [apptsLoading, setApptsLoading] = useState(false);
   const [claims, setClaims] = useState([]); const [claimsLoading, setClaimsLoading] = useState(false);
   const [claimStatusFilter, setClaimStatusFilter] = useState('all');
+  const [crmReady, setCrmReady] = useState(false);
+  const [crmError, setCrmError] = useState(null);
 
   const [showNewClient, setShowNewClient] = useState(false);
   const [showNewAppt, setShowNewAppt] = useState(false);
   const [showNewClaim, setShowNewClaim] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedClaim, setSelectedClaim] = useState(null);
 
   const [calView, setCalView] = useState('month');
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
 
   const [csvImporting, setCsvImporting] = useState(false);
+  const [deleteClientId, setDeleteClientId] = useState(null);
+  const [deleteClientLoading, setDeleteClientLoading] = useState(false);
   const csvRef = useRef();
 
   const stats = {
@@ -280,6 +389,7 @@ export default function CRM() {
   };
 
   const fetchAll = useCallback(async () => {
+    setCrmError(null);
     setClientsLoading(true); setApptsLoading(true); setClaimsLoading(true);
     try {
       const [cl, ap, cr] = await Promise.all([crmAPI.getClients(), crmAPI.getAppointments(), crmAPI.getClaims()]);
@@ -287,14 +397,31 @@ export default function CRM() {
       setClients(toArr(cl.data?.clients ?? cl.data?.data));
       setAppointments(toArr(ap.data?.appointments ?? ap.data?.data));
       setClaims(toArr(cr.data?.claims ?? cr.data?.data));
-    } catch { toast.error('Failed to load CRM data'); }
-    finally { setClientsLoading(false); setApptsLoading(false); setClaimsLoading(false); }
+    } catch {
+      setCrmError('We could not load your CRM data. Please try again.');
+      toast.error('Failed to load CRM data');
+    }
+    finally {
+      setClientsLoading(false);
+      setApptsLoading(false);
+      setClaimsLoading(false);
+      setCrmReady(true);
+    }
   }, []);
 
   useEffect(() => { if (['agency', 'enterprise'].includes(tier)) fetchAll(); }, [tier, fetchAll]);
 
-  const handleDeleteClient = async (id) => {
-    try { await crmAPI.deleteClient(id); toast.success('Client deleted'); fetchAll(); } catch { toast.error('Delete failed'); }
+  const handleDeleteClient = (id) => setDeleteClientId(id);
+
+  const confirmDeleteClient = async () => {
+    setDeleteClientLoading(true);
+    try {
+      await crmAPI.deleteClient(deleteClientId);
+      toast.success('Client deleted');
+      fetchAll();
+      setDeleteClientId(null);
+    } catch { toast.error('Delete failed'); }
+    finally { setDeleteClientLoading(false); }
   };
 
   const handleCSVImport = (e) => {
@@ -338,9 +465,45 @@ export default function CRM() {
     );
   }
 
+  if (!crmReady) return <PageLoader />;
+
+  if (crmError) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex min-h-screen items-center justify-center px-4 pt-16">
+          <div className="card w-full max-w-md p-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
+              <AlertCircle className="h-7 w-7 text-amber-600" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900">CRM data unavailable</h1>
+            <p className="mt-2 text-sm text-gray-600">{crmError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setCrmReady(false);
+                fetchAll();
+              }}
+              className="btn-primary mt-6"
+            >
+              Retry loading
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#ffffff] flex flex-col">
-      <Navbar />
+      <Navbar
+        mobileMenuLabel="CRM Menu"
+        mobileMenuItems={SIDEBAR_TABS.map(tab => ({
+          ...tab,
+          active: activeTab === tab.id,
+          onSelect: () => setActiveTab(tab.id),
+        }))}
+      />
       <div className="flex flex-1 pt-16">
         {/* Sidebar */}
         <aside className="w-56 shrink-0 hidden md:flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] px-4 py-6 gap-1">
@@ -354,7 +517,7 @@ export default function CRM() {
           ))}
         </aside>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
           <AnimatePresence mode="wait">
             {/* Dashboard */}
             {activeTab === 'dashboard' && (
@@ -381,7 +544,7 @@ export default function CRM() {
                     <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><Activity className="w-4 h-4" /> Recent Activity</h3>
                     {clientsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
                       : clients.slice(0, 5).map(c => (
-                        <div key={c._id} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
+                        <div key={getRecordId(c)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
                           <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-sm font-bold text-orange-400">
                             {(c.name || 'C')[0].toUpperCase()}
                           </div>
@@ -394,7 +557,7 @@ export default function CRM() {
                     <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4" /> Upcoming Appointments</h3>
                     {apptsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
                       : appointments.filter(a => new Date(a.date) >= new Date()).slice(0, 5).map(a => (
-                        <div key={a._id} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
+                        <div key={getRecordId(a)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
                           <Calendar className="w-4 h-4 text-orange-400 shrink-0" />
                           <div><p className="text-gray-900 text-sm">{a.title}</p><p className="text-gray-500 text-xs">{a.date} {a.time}</p></div>
                           <StatusPill status={a.status} />
@@ -440,7 +603,7 @@ export default function CRM() {
                           <p className="text-gray-600">No clients found. Add your first client.</p>
                         </td></tr>
                       ) : filteredClients.map(c => (
-                        <tr key={c._id} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setSelectedClient(c)}>
+                        <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setSelectedClient(c)}>
                           <td className="px-4 py-3"><div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-orange-500/20 flex items-center justify-center text-xs font-bold text-orange-400">{(c.name || 'C')[0].toUpperCase()}</div>
                             <span className="text-gray-900 text-sm font-medium">{c.name}</span>
@@ -452,7 +615,7 @@ export default function CRM() {
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1">
                               <button onClick={() => setSelectedClient(c)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
-                              <button onClick={() => handleDeleteClient(c._id)} className="p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 className="w-4 h-4 text-red-400" /></button>
+                              <button onClick={() => handleDeleteClient(getRecordId(c))} className="p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 className="w-4 h-4 text-red-400" /></button>
                             </div>
                           </td>
                         </tr>
@@ -466,23 +629,24 @@ export default function CRM() {
             {/* Appointments */}
             {activeTab === 'appointments' && (
               <motion.div key="appts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
                   <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
-                  <div className="flex gap-2">
-                    <div className="flex rounded-xl border border-[#e5e7eb] overflow-hidden">
+                  <div className="flex w-full gap-2 sm:w-auto">
+                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-[#e5e7eb] sm:flex-none">
                       {['month', 'week', 'list'].map(v => (
                         <button key={v} onClick={() => setCalView(v)}
-                          className={`px-3 py-2 text-sm font-medium transition-colors ${calView === v ? 'bg-orange-500 text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}>
+                          className={`min-w-0 flex-1 px-2 py-2 text-xs font-medium transition-colors sm:flex-none sm:px-3 sm:text-sm ${calView === v ? 'bg-orange-500 text-white' : 'text-gray-600 hover:text-gray-900'}`}>
                           {v.charAt(0).toUpperCase() + v.slice(1)}
                         </button>
                       ))}
                     </div>
-                    <button onClick={() => setShowNewAppt(true)} className="btn-primary text-sm py-2 flex items-center gap-2">
-                      <Plus className="w-4 h-4" /> New Appointment
+                    <button onClick={() => setShowNewAppt(true)} aria-label="New appointment" className="btn-primary flex shrink-0 items-center gap-2 px-3 py-2 text-sm sm:px-6">
+                      <Plus className="h-4 w-4" />
+                      <span className="hidden sm:inline">New Appointment</span>
                     </button>
                   </div>
                 </div>
-                <div className="card p-6">
+                <div className="card p-2 sm:p-6">
                   {calView === 'month' && (
                     <CalendarGrid appointments={appointments} month={calMonth} year={calYear}
                       onPrev={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); }}
@@ -498,9 +662,9 @@ export default function CRM() {
                           const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
                           return d >= weekStart && d <= weekEnd;
                         }).map(a => (
-                          <div key={a._id} className="flex items-center gap-4 p-3 rounded-xl bg-gray-100 border border-gray-200">
-                            <div className="text-sm font-medium text-orange-400 w-24 shrink-0">{a.date}</div>
-                            <div className="flex-1"><p className="text-gray-900 text-sm">{a.title}</p><p className="text-gray-500 text-xs">{a.location}</p></div>
+                          <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
+                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-24">{a.date}</div>
+                            <div className="min-w-0 flex-1"><p className="truncate text-sm text-gray-900">{a.title}</p><p className="truncate text-xs text-gray-500">{a.location}</p></div>
                             <StatusPill status={a.status} />
                           </div>
                         ))}
@@ -513,9 +677,9 @@ export default function CRM() {
                         appointments.length === 0 ? (
                           <div className="text-center py-8"><Calendar className="w-8 h-8 text-gray-600 mx-auto mb-2" /><p className="text-gray-600">No appointments yet.</p></div>
                         ) : appointments.map(a => (
-                          <div key={a._id} className="flex items-center gap-4 p-3 rounded-xl bg-gray-100 border border-gray-200">
-                            <div className="text-sm font-medium text-orange-400 w-32 shrink-0">{a.date} {a.time}</div>
-                            <div className="flex-1"><p className="text-gray-900 text-sm font-medium">{a.title}</p><p className="text-gray-500 text-xs">{a.location}</p></div>
+                          <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
+                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-32">{a.date} {a.time}</div>
+                            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-gray-900">{a.title}</p><p className="truncate text-xs text-gray-500">{a.location}</p></div>
                             <StatusPill status={a.status} />
                           </div>
                         ))}
@@ -558,9 +722,9 @@ export default function CRM() {
                           <p className="text-gray-600">No claims found.</p>
                         </td></tr>
                       ) : filteredClaims.map(c => {
-                        const client = clients.find(cl => cl._id === c.clientId);
+                        const client = clients.find(cl => getRecordId(cl) === c.clientId);
                         return (
-                          <tr key={c._id} className="border-b border-[#e5e7eb] hover:bg-gray-100">
+                          <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100">
                             <td className="px-4 py-3 text-sm font-mono text-orange-400">{c.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{client?.name || c.clientId}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{c.lossType}</td>
@@ -570,7 +734,15 @@ export default function CRM() {
                               c.status === 'open' ? 'bg-orange-500/20 text-orange-400' :
                               'bg-yellow-500/20 text-yellow-400'}`}>{c.status}</span></td>
                             <td className="px-4 py-3">
-                              <button className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedClaim(c)}
+                                className="rounded-lg p-1.5 hover:bg-gray-100"
+                                aria-label={`View claim ${c.claimNumber}`}
+                                title="View claim"
+                              >
+                                <Eye className="h-4 w-4 text-gray-600" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -589,6 +761,23 @@ export default function CRM() {
         {showNewAppt && <NewAppointmentModal clients={clients} onClose={() => setShowNewAppt(false)} onSaved={() => { setShowNewAppt(false); fetchAll(); }} />}
         {showNewClaim && <NewClaimModal clients={clients} onClose={() => setShowNewClaim(false)} onSaved={() => { setShowNewClaim(false); fetchAll(); }} />}
         {selectedClient && <ClientSlideOver client={selectedClient} onClose={() => setSelectedClient(null)} />}
+        {selectedClaim && (
+          <ClaimSlideOver
+            claim={selectedClaim}
+            client={clients.find(client => getRecordId(client) === selectedClaim.clientId)}
+            onClose={() => setSelectedClaim(null)}
+          />
+        )}
+        {deleteClientId && (
+          <ConfirmDialog
+            title="Delete client?"
+            message="This permanently deletes the client record. Associated claims and appointments are not deleted, but will lose their client link. This cannot be undone."
+            confirmLabel="Delete"
+            loading={deleteClientLoading}
+            onConfirm={confirmDeleteClient}
+            onClose={() => setDeleteClientId(null)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
