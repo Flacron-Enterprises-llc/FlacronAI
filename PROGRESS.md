@@ -82,7 +82,7 @@
 | T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
 | T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
-| T-6.9 | Progress modal reflects real backend stages | TODO | Backend already skips AI stage at 0 photos — verify frontend UI |
+| T-6.9 | Progress modal reflects real backend stages | DONE | 2026-08-01 — confirmed gap in BOTH Dashboard.jsx and EnterpriseDashboard.jsx (separate hardcoded step lists); both now skip the AI-photo-analysis stage at 0 photos; also fixed an interval-leak-on-error bug found in both while there |
 | T-6.10 | Audit logging coverage check | TODO | |
 | T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
 | T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.9 — Generation progress modal must reflect real backend stages
+- **Status:** DONE
+- **What changed:** Confirmed the gap: both `Dashboard.jsx` (`GENERATION_STEPS`) and `EnterpriseDashboard.jsx` (`GEN_STEPS`) had a single hardcoded step list — including "Analyzing damage photos with AI…" / "Running AI vision on photos…" — shown unconditionally via a client-side `setInterval` timer regardless of whether any photos were uploaded, even though the backend (per T-6.14) skips AI image analysis entirely at 0 photos. Split each into a with-photos/no-photos variant and pick the right one at generation start based on the actual `photos.length`, so the photo-analysis stage is never shown for a 0-photo report. **Also fixed an adjacent bug found while touching this code:** in both files, the `setInterval` handle was declared inside the `try` block and only cleared on the success path — if `reportsAPI.generate()` threw, the interval kept firing every 4s indefinitely (a leak, and continued pointless re-renders). Moved the interval variable to function scope and clear it unconditionally in `finally`.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on both files (pre-existing warnings only); frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** The progress bar is still a client-side timer, not driven by real backend SSE/poll events (client's stronger ask). That's a bigger architectural change (would need a backend progress-streaming endpoint) — flagged, not done here; this fix addresses the specific, concrete inaccuracy (showing a stage that provably didn't happen).
+- **Golden-rule check:** none violated — this directly supports not misrepresenting what the AI actually did (adjacent to Golden Rule #1/#2 spirit).
 
 ### [2026-08-01] — T-6.22 — Icon tooltips + accessible labels
 - **Status:** DONE

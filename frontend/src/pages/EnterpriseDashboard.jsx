@@ -25,7 +25,10 @@ const QUICK_DEMOS = [
 const FORM_INIT = { claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '', lossType: 'Water Damage', reportType: 'Initial', propertyDetails: '', lossDescription: '', damagesObserved: '', recommendations: '', additionalNotes: '' };
 const LOSS_TYPES = ['Water Damage','Fire Damage','Wind/Hail Damage','Vandalism','Theft','Flood','Earthquake','Smoke Damage','Vehicle Impact','Other'];
 const REPORT_TYPES = ['Initial','Supplemental','Final','Re-inspection','Catastrophe'];
-const GEN_STEPS = ['Analyzing claim data…','Running AI vision on photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
+// Only shows "Running AI vision on photos" when photos were actually uploaded --
+// the backend skips AI image analysis entirely at 0 photos (see T-6.14).
+const GEN_STEPS_WITH_PHOTOS = ['Analyzing claim data…','Running AI vision on photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
+const GEN_STEPS_NO_PHOTOS = ['Analyzing claim data…','Generating report with FlacronAI…','Scoring & finalizing…'];
 
 const ROLE_COLORS = {
   owner:  'bg-orange-100 text-orange-700 border border-orange-200',
@@ -100,6 +103,7 @@ export default function EnterpriseDashboard() {
   const [photos, setPhotos] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+  const [genSteps, setGenSteps] = useState(GEN_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -206,14 +210,16 @@ export default function EnterpriseDashboard() {
 
   const handleGenerate = async () => {
     if (!form.claimNumber || !form.insuredName) { toast.error('Claim Number and Insured Name are required'); return; }
+    const steps = photos.length > 0 ? GEN_STEPS_WITH_PHOTOS : GEN_STEPS_NO_PHOTOS;
+    setGenSteps(steps);
     setGenerating(true); setGenStep(0); setGeneratedReport(null); setPdfUrl(null);
+    let interval;
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => v && fd.append(k, v));
       photos.forEach(p => fd.append('images', p.file));
-      const interval = setInterval(() => setGenStep(prev => Math.min(prev + 1, GEN_STEPS.length - 1)), 4000);
+      interval = setInterval(() => setGenStep(prev => Math.min(prev + 1, steps.length - 1)), 4000);
       const res = await reportsAPI.generate(fd);
-      clearInterval(interval);
       const report = res.data.report || res.data;
       setGeneratedReport(report);
       setReports(prev => [report, ...prev]);
@@ -222,7 +228,10 @@ export default function EnterpriseDashboard() {
       autoPreviewPdf(report);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Generation failed');
-    } finally { setGenerating(false); }
+    } finally {
+      clearInterval(interval);
+      setGenerating(false);
+    }
   };
 
   const autoPreviewPdf = async (report) => {
@@ -666,7 +675,7 @@ export default function EnterpriseDashboard() {
                           </div>
                           <p className="text-base font-bold text-gray-900">Generating Report…</p>
                           <div className="w-full max-w-sm space-y-2">
-                            {GEN_STEPS.map((s, i) => (
+                            {genSteps.map((s, i) => (
                               <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all ${
                                 i < genStep ? 'bg-green-50 text-green-700 border border-green-200' :
                                 i === genStep ? 'bg-orange-50 text-orange-700 border border-orange-200' :

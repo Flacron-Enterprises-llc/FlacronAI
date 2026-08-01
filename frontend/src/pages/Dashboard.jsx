@@ -22,9 +22,17 @@ const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism',
 const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'];
 const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived'];
 
-const GENERATION_STEPS = [
+// Only shows "Analyzing damage photos" when photos were actually uploaded --
+// the backend skips AI image analysis entirely at 0 photos (see T-6.14), so
+// showing that stage regardless would misrepresent what's actually happening.
+const GENERATION_STEPS_WITH_PHOTOS = [
   'Uploading photos...',
   'Analyzing damage photos with AI...',
+  'Generating report with FlacronAI...',
+  'Finalizing...',
+];
+const GENERATION_STEPS_NO_PHOTOS = [
+  'Validating claim details...',
   'Generating report with FlacronAI...',
   'Finalizing...',
 ];
@@ -310,6 +318,7 @@ export default function Dashboard() {
   const [dragging, setDragging] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+  const [genSteps, setGenSteps] = useState(GENERATION_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -397,20 +406,22 @@ export default function Dashboard() {
 
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
+    const steps = photos.length > 0 ? GENERATION_STEPS_WITH_PHOTOS : GENERATION_STEPS_NO_PHOTOS;
+    setGenSteps(steps);
     setGenerating(true);
     setGenStep(0);
+    let stepInterval;
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       photos.forEach(p => fd.append('images', p.file));
 
-      const stepInterval = setInterval(() => {
-        setGenStep(prev => Math.min(prev + 1, GENERATION_STEPS.length - 1));
+      stepInterval = setInterval(() => {
+        setGenStep(prev => Math.min(prev + 1, steps.length - 1));
       }, 4000);
 
       const res = await reportsAPI.generate(fd);
-      clearInterval(stepInterval);
-      setGenStep(GENERATION_STEPS.length - 1);
+      setGenStep(steps.length - 1);
       const report = res.data.report || res.data;
       setGeneratedReport(report);
       setForm(FORM_INITIAL);
@@ -427,6 +438,7 @@ export default function Dashboard() {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Generation failed');
     } finally {
+      clearInterval(stepInterval);
       setGenerating(false);
     }
   };
@@ -1206,7 +1218,7 @@ export default function Dashboard() {
                         <h2 className="text-xl font-bold text-gray-900 mb-2">Generating Your Report</h2>
                         <p className="text-gray-600 text-sm mb-6">Please wait while our AI processes your claim...</p>
                         <div className="space-y-3">
-                          {GENERATION_STEPS.map((s, i) => (
+                          {genSteps.map((s, i) => (
                             <div key={i} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
                               i < genStep ? 'bg-green-500/10 text-green-400' :
                               i === genStep ? 'bg-orange-500/10 text-orange-400' :
