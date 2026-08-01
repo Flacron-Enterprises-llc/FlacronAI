@@ -51,7 +51,7 @@ function Modal({ title, onClose, children }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-600" /></button>
+          <button onClick={onClose} aria-label={`Close ${title}`} title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         {children}
       </motion.div>
@@ -196,7 +196,7 @@ function ClientSlideOver({ client, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-bold text-gray-900">{client.name}</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-600" /></button>
+          <button onClick={onClose} aria-label="Close client details" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         <div className="space-y-3 mb-6 text-sm">
           {[['Email', client.email], ['Phone', client.phone], ['Company', client.company], ['Address', client.address]].map(([l, v]) => v && (
@@ -630,8 +630,8 @@ export default function CRM() {
                           <td className="px-4 py-3 text-sm text-gray-500">{new Date(c.createdAt).toLocaleDateString()}</td>
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1">
-                              <button onClick={() => setSelectedClient(c)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
-                              <button onClick={() => handleDeleteClient(getRecordId(c))} className="p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 className="w-4 h-4 text-red-400" /></button>
+                              <button onClick={() => setSelectedClient(c)} aria-label={`View client ${c.name}`} title="View client" className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
+                              <button onClick={() => handleDeleteClient(getRecordId(c))} aria-label={`Delete client ${c.name}`} title="Delete client" className="p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 className="w-4 h-4 text-red-400" /></button>
                             </div>
                           </td>
                         </tr>

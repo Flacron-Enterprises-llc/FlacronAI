@@ -157,7 +157,7 @@ function ContactSalesModal({ onClose }) {
                 <h2 className="text-xl font-bold text-gray-900">Contact Sales</h2>
                 <p className="text-gray-600 text-sm mt-1">Tell us about your enterprise needs</p>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <button onClick={onClose} aria-label="Close" title="Close" className="p-2 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-gray-600" />
               </button>
             </div>
@@ -246,9 +246,17 @@ export default function Pricing() {
     setLoadingTier(planId);
     try {
       const res = await paymentAPI.createCheckout(planId + (annual ? '_annual' : ''));
-      if (res.data.url) window.location.href = res.data.url;
-    } catch {
-      toast.error('Failed to start checkout. Please try again.');
+      if (res.data.url) {
+        window.location.href = res.data.url;
+      } else if (res.data.changeType === 'scheduled') {
+        toast.success(`Plan change scheduled for ${new Date(res.data.effectiveAt).toLocaleDateString()}.`);
+        navigate('/dashboard?billing=updated');
+      } else {
+        toast.success(res.data.message || 'Plan updated successfully.');
+        navigate('/dashboard?billing=updated');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update your plan. Please try again.');
     } finally {
       setLoadingTier(null);
     }

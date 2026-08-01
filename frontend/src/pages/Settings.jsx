@@ -43,7 +43,7 @@ function KeyModal({ apiKey, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">API Key Created</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-600" /></button>
+          <button onClick={onClose} aria-label="Close" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex gap-2 mb-4">
           <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
@@ -477,6 +477,8 @@ export default function Settings() {
                             <input type={showPw[f.show] ? 'text' : 'password'} className="input pr-10"
                               value={pwForm[f.key]} onChange={e => setPwForm(p => ({ ...p, [f.key]: e.target.value }))} />
                             <button type="button" onClick={() => setShowPw(p => ({ ...p, [f.show]: !p[f.show] }))}
+                              aria-label={showPw[f.show] ? `Hide ${f.label.toLowerCase()}` : `Show ${f.label.toLowerCase()}`}
+                              title={showPw[f.show] ? 'Hide' : 'Show'}
                               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
                               {showPw[f.show] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>

@@ -5,7 +5,11 @@ import { Menu, X, Zap, ChevronDown, LogOut, User, Settings } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx';
 import TierBadge from './TierBadge.jsx';
 
-const Navbar = ({ transparent = false }) => {
+const Navbar = ({
+  transparent = false,
+  mobileMenuLabel,
+  mobileMenuItems = [],
+}) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -154,6 +158,9 @@ const Navbar = ({ transparent = false }) => {
           <button
             className="md:hidden p-2 text-gray-600 hover:text-gray-900"
             onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileOpen}
+            title={mobileOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -193,6 +200,35 @@ const Navbar = ({ transparent = false }) => {
                     {link.label}
                   </Link>
                 )
+              )}
+              {mobileMenuItems.length > 0 && (
+                <div className="mt-3 border-t border-[#e5e7eb] pt-3">
+                  {mobileMenuLabel && (
+                    <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                      {mobileMenuLabel}
+                    </p>
+                  )}
+                  <div className="space-y-1">
+                    {mobileMenuItems.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          item.onSelect();
+                          setMobileOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                          item.active
+                            ? 'bg-orange-50 font-semibold text-orange-600'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="pt-3 border-t border-[#e5e7eb] space-y-1">
                 {isAuthenticated ? (

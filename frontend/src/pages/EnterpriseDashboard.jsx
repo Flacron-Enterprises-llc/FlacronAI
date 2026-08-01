@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
 import { formatStatus } from '../utils/formatStatus';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // ── Quick Demos ───────────────────────────────────────────────────────────────
 const QUICK_DEMOS = [
@@ -141,6 +142,8 @@ export default function EnterpriseDashboard() {
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [creatingKey, setCreatingKey] = useState(false);
+  const [revokeKeyId, setRevokeKeyId] = useState(null);
+  const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
 
   // ── Fetch functions ───────────────────────────────────────────────────────
   const fetchReports = useCallback(async () => {
@@ -379,6 +382,17 @@ export default function EnterpriseDashboard() {
       fetchApiKeys();
     } catch { toast.error('Failed to create key'); }
     finally { setCreatingKey(false); }
+  };
+
+  const confirmRevokeKey = async () => {
+    setRevokeKeyLoading(true);
+    try {
+      await usersAPI.revokeApiKey(revokeKeyId);
+      toast.success('Key revoked');
+      fetchApiKeys();
+      setRevokeKeyId(null);
+    } catch { toast.error('Failed to revoke key'); }
+    finally { setRevokeKeyLoading(false); }
   };
 
   // ── Nav ───────────────────────────────────────────────────────────────────
@@ -632,6 +646,7 @@ export default function EnterpriseDashboard() {
                               <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border border-[#e5e7eb]">
                                 <img src={p.url} alt="" className="w-full h-full object-cover" />
                                 <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
+                                  aria-label={`Remove photo ${i + 1}`} title="Remove photo"
                                   className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 hover:opacity-100 transition-opacity">
                                   <X className="w-3 h-3 text-white" />
                                 </button>
@@ -1028,7 +1043,7 @@ export default function EnterpriseDashboard() {
                 <div className={`${cardCls} overflow-hidden`}>
                   <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
                     <p className="text-sm font-bold text-gray-900">Team Members ({members.length + 1})</p>
-                    <button onClick={fetchMembers} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                    <button onClick={fetchMembers} aria-label="Refresh team members" title="Refresh team members" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
                       <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${membersLoading ? 'animate-spin' : ''}`} />
                     </button>
                   </div>
@@ -1070,7 +1085,8 @@ export default function EnterpriseDashboard() {
                             <option value="editor">Editor</option>
                             <option value="viewer">Viewer</option>
                           </select>
-                          <button onClick={() => setEditingRole(null)} className="p-1 hover:bg-gray-100 rounded transition-colors">
+                          <button onClick={() => setEditingRole(null)} aria-label="Cancel role edit" title="Cancel"
+                            className="p-1 hover:bg-gray-100 rounded transition-colors">
                             <X className="w-3 h-3 text-gray-400" />
                           </button>
                         </div>
@@ -1129,7 +1145,7 @@ export default function EnterpriseDashboard() {
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${k.active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                           {k.active !== false ? 'Active' : 'Revoked'}
                         </span>
-                        <button onClick={async () => { await usersAPI.revokeApiKey(k.id); toast.success('Key revoked'); fetchApiKeys(); }}
+                        <button onClick={() => setRevokeKeyId(k.id)} aria-label={`Revoke key ${k.name || 'API Key'}`} title="Revoke key"
                           className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
                           <Trash2 className="w-3.5 h-3.5 text-red-400" />
                         </button>
@@ -1201,6 +1217,19 @@ export default function EnterpriseDashboard() {
           </AnimatePresence>
         </div>
       </main>
+
+      <AnimatePresence>
+        {revokeKeyId && (
+          <ConfirmDialog
+            title="Revoke API key?"
+            message="Any application using this key will immediately lose access. This cannot be undone."
+            confirmLabel="Revoke"
+            loading={revokeKeyLoading}
+            onConfirm={confirmRevokeKey}
+            onClose={() => setRevokeKeyId(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

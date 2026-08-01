@@ -168,7 +168,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                 <p className="text-sm text-gray-500">{user.email}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+            <button onClick={onClose} aria-label="Close user details" title="Close" className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
           </div>
 
           {/* Stats row */}
@@ -315,7 +315,7 @@ function EmailModal({ to, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-gray-900">Email User</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+          <button onClick={onClose} aria-label="Close" title="Close" className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
         </div>
         <form onSubmit={handleSend} className="space-y-4">
           <div>
@@ -356,8 +356,8 @@ function LeadNoteEditor({ lead, onSave, onCancel }) {
         className="text-xs border border-orange-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-orange-400"
         value={notes} onChange={e => setNotes(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') onSave(notes); if (e.key === 'Escape') onCancel(); }} />
-      <button onClick={() => onSave(notes)} className="p-1 hover:bg-green-50 rounded text-green-600"><Check className="w-3.5 h-3.5" /></button>
-      <button onClick={onCancel} className="p-1 hover:bg-gray-100 rounded text-gray-400"><X className="w-3.5 h-3.5" /></button>
+      <button onClick={() => onSave(notes)} aria-label="Save note" title="Save note" className="p-1 hover:bg-green-50 rounded text-green-600"><Check className="w-3.5 h-3.5" /></button>
+      <button onClick={onCancel} aria-label="Cancel" title="Cancel" className="p-1 hover:bg-gray-100 rounded text-gray-400"><X className="w-3.5 h-3.5" /></button>
     </div>
   );
 }
@@ -553,7 +553,7 @@ export default function AdminDashboard() {
                 className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <Download className="w-4 h-4" /> Export CSV
               </button>
-              <button onClick={fetchUsers}
+              <button onClick={fetchUsers} aria-label="Refresh users" title="Refresh users"
                 className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -639,7 +639,7 @@ export default function AdminDashboard() {
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                 ))}
               </select>
-              <button onClick={fetchLeads}
+              <button onClick={fetchLeads} aria-label="Refresh leads" title="Refresh leads"
                 className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>

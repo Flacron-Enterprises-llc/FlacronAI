@@ -156,7 +156,7 @@ function ReportDetailModal({ report, onClose }) {
           onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">Report Details</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <button onClick={onClose} aria-label="Close report details" title="Close" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <X className="w-5 h-5 text-gray-600" />
             </button>
           </div>
@@ -1114,7 +1114,7 @@ export default function Dashboard() {
                                 {photos.map((p, i) => (
                                   <div key={i} className="relative group aspect-square">
                                     <img src={p.url} alt={p.name} className="w-full h-full object-cover rounded-lg" />
-                                    <button onClick={() => removePhoto(i)}
+                                    <button onClick={() => removePhoto(i)} aria-label={`Remove photo ${i + 1}`} title="Remove photo"
                                       className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                       <X className="w-3 h-3 text-white" />
                                     </button>
@@ -1251,6 +1251,7 @@ export default function Dashboard() {
                             </button>
                             {pdfPreviewUrl && (
                               <button onClick={() => { window.URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }}
+                                aria-label="Close PDF preview" title="Close PDF preview"
                                 className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
                                 <X className="w-4 h-4 text-gray-500" />
                               </button>
@@ -1532,13 +1533,13 @@ export default function Dashboard() {
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
                                 <button onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
-                                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
+                                  aria-label="Review and edit report" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
                                   <ShieldCheck className="w-4 h-4 text-amber-600" />
                                 </button>
-                                <button onClick={() => setDetailReport(r)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
+                                <button onClick={() => setDetailReport(r)} aria-label="View report details" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
                                   <Eye className="w-4 h-4 text-gray-600" />
                                 </button>
-                                <button onClick={() => handleDeleteReport(r.id)} className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
+                                <button onClick={() => handleDeleteReport(r.id)} aria-label="Delete report" className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
                                   <Trash2 className="w-4 h-4 text-red-400" />
                                 </button>
                               </div>

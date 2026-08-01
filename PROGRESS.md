@@ -95,7 +95,7 @@
 | T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
 | T-6.20 | Field validation + address autocomplete | TODO | |
 | T-6.21 | Standardize capitalization of statuses | DONE | 2026-08-01 — new shared formatStatus() helper; applied at 13 raw-status display sites across Dashboard/CRM/Settings/EnterpriseDashboard/AdminDashboard |
-| T-6.22 | Icon tooltips + accessible labels | TODO | |
+| T-6.22 | Icon tooltips + accessible labels | DONE | 2026-08-01 — 20 icon-only buttons across 8 files fixed; also found + fixed an unguarded API-key revoke in EnterpriseDashboard.jsx (separate from the one fixed in T-6.19) |
 | T-6.23 | Loading/empty/error states audit | TODO | |
 | T-6.24 | Mobile pass on authed report/CRM screens | TODO | T-1.11 only covered marketing pages |
 | T-6.25 | Accessibility pass (contrast/focus/ARIA) | TODO | |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.22 — Icon tooltips + accessible labels
+- **Status:** DONE
+- **What changed:** Audited every icon-only button (no visible text) across the authenticated app for a missing `aria-label`/`title`. Fixed 20 sites across 8 files: modal close buttons (`Dashboard.jsx` report detail + PDF preview, `CRM.jsx` generic Modal + client slide-over, `Settings.jsx` KeyModal, `Pricing.jsx` contact-sales modal, `AdminDashboard.jsx` user-detail + email-user modals), remove-photo buttons (`Dashboard.jsx`, `EnterpriseDashboard.jsx`), password show/hide toggles with dynamic Show/Hide labels (`Auth.jsx`, `EnterpriseOnboarding.jsx`, `Settings.jsx`), icon-only refresh buttons (`AdminDashboard.jsx` users + leads, `EnterpriseDashboard.jsx` team members), the site-wide mobile nav hamburger toggle (`Navbar.jsx`, plus `aria-expanded`), CRM client view/delete row buttons, a role-edit cancel button, and a lead-note save/cancel pair. Also completed the "shield icon unclear" item the client flagged (#31) — `Dashboard.jsx`'s "Review & edit" `ShieldCheck` button already had a `title`, but no `aria-label` (the only reliably-announced accessible name); added it, plus its two sibling row buttons (View/Delete) which had the same gap. **Found a real bug while auditing:** `EnterpriseDashboard.jsx` has its own separate API-key management UI (distinct from Settings.jsx's) whose revoke button fired immediately with zero confirmation — same class of bug as T-6.19, just in a file that task didn't check. Wired it through the same shared `ConfirmDialog` component.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/CRM.jsx`, `frontend/src/pages/Settings.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`, `frontend/src/pages/AdminDashboard.jsx`, `frontend/src/pages/Auth.jsx`, `frontend/src/pages/EnterpriseOnboarding.jsx`, `frontend/src/pages/Pricing.jsx`, `frontend/src/components/Navbar.jsx`.
+- **QA done:** Targeted ESLint 0 errors across all 9 files (pre-existing warnings only); frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** `frontend/src/components/Modal.jsx` also has unlabeled close buttons but is confirmed dead/unused code (per CLAUDE.md tech-debt notes) — not fixed since nothing renders it.
+- **Golden-rule check:** none violated. The EnterpriseDashboard API-key revoke fix specifically closes a real gap against the spirit of careful destructive-action handling.
 
 ### [2026-08-01] — T-6.18 — Fix calendar/appointment timezone bug behind "wrong day" complaint
 - **Status:** DONE
