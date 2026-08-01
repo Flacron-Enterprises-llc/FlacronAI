@@ -129,6 +129,7 @@ export const usersAPI = {
 
 export const paymentAPI = {
   createCheckout: (tier) => api.post('/payment/create-checkout-session', { tier }),
+  confirmCheckout: (sessionId) => api.post('/payment/confirm-checkout', { sessionId }),
   getSubscription: () => api.get('/payment/current-subscription'),
   getInvoices: () => api.get('/payment/invoices'),
   cancelSubscription: () => api.post('/payment/cancel-subscription'),
@@ -153,6 +154,7 @@ export const crmAPI = {
   getClaim: (id) => api.get(`/crm/claims/${id}`),
   updateClaim: (id, data) => api.put(`/crm/claims/${id}`, data),
   deleteClaim: (id) => api.delete(`/crm/claims/${id}`),
+  getClaimReports: (id) => api.get(`/crm/claims/${id}/reports`),
 };
 
 export const whiteLabelAPI = {

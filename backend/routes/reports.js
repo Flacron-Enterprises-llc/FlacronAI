@@ -15,6 +15,7 @@ const {
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { getTier, canGenerate } = require('../config/tiers');
 const { recordAuditLog } = require('../services/auditLogService');
+const { getClaim, getClient } = require('../services/crmService');
 
 // Reject any uploaded file whose actual bytes aren't a real image (defeats a
 // spoofed mimetype). Returns the offending filename, or null if all are valid.
@@ -165,10 +166,34 @@ router.post('/generate', authenticateAny, (req, res, next) => {
       });
     }
 
-    const {
-      claimNumber, insuredName, propertyAddress, lossDate, lossType, reportType,
-      additionalNotes, propertyDetails, lossDescription, damagesObserved, recommendations,
+    let {
+      claimNumber, insuredName, propertyAddress, lossDate, lossType,
     } = req.body;
+    const { reportType, additionalNotes, propertyDetails, lossDescription, damagesObserved, recommendations } = req.body;
+
+    // If generating against a real CRM claim (Agency/Enterprise), the server -- not
+    // the client -- is the source of truth for these fields, so the report can never
+    // drift from the claim it's linked to.
+    let linkedClientId = req.body.clientId || null;
+    if (req.body.claimId) {
+      let claim;
+      try {
+        claim = await getClaim(req.user.uid, req.body.claimId);
+      } catch {
+        return res.status(404).json({ success: false, error: 'Claim not found', code: 'CLAIM_NOT_FOUND' });
+      }
+      claimNumber = claim.claimNumber;
+      propertyAddress = claim.propertyAddress || propertyAddress;
+      lossDate = claim.lossDate || lossDate;
+      lossType = claim.lossType || lossType;
+      linkedClientId = claim.clientId || null;
+      if (claim.clientId) {
+        try {
+          const client = await getClient(req.user.uid, claim.clientId);
+          insuredName = client.name;
+        } catch { /* linked client may have been deleted since -- keep whatever was submitted */ }
+      }
+    }
 
     // Validate required fields
     if (!claimNumber || !insuredName || !propertyAddress || !lossDate || !lossType) {
@@ -181,12 +206,18 @@ router.post('/generate', authenticateAny, (req, res, next) => {
     }
 
     // Reject obviously malformed/oversized input before it reaches the AI prompt.
+    // Checked against the resolved values (claim/client data when claimId was used,
+    // otherwise the raw submission) -- not req.body directly, since those may differ.
+    const fieldValues = {
+      claimNumber, insuredName, propertyAddress, lossType, reportType,
+      additionalNotes, propertyDetails, lossDescription, damagesObserved, recommendations,
+    };
     const fieldLimits = {
       claimNumber: 50, insuredName: 200, propertyAddress: 300, lossType: 100, reportType: 100,
       additionalNotes: 5000, propertyDetails: 5000, lossDescription: 5000, damagesObserved: 5000, recommendations: 5000,
     };
     for (const [field, max] of Object.entries(fieldLimits)) {
-      const value = req.body[field];
+      const value = fieldValues[field];
       if (typeof value === 'string' && value.length > max) {
         return res.status(400).json({ success: false, error: `${field} exceeds the ${max}-character limit`, code: 'VALIDATION_ERROR' });
       }
@@ -251,7 +282,8 @@ router.post('/generate', authenticateAny, (req, res, next) => {
       reviewedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      clientId: req.body.clientId || null,
+      clientId: linkedClientId,
+      claimId: req.body.claimId || null,
     };
 
     await db.collection('reports').doc(reportId).set(reportDoc);

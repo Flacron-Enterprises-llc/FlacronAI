@@ -241,6 +241,19 @@ function ClientSlideOver({ client, onClose }) {
 }
 
 function ClaimSlideOver({ claim, client, onClose }) {
+  const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  useEffect(() => {
+    if (!claim) return;
+    setReportsLoading(true);
+    crmAPI.getClaimReports(getRecordId(claim))
+      .then(r => {
+        const nextReports = r.data?.reports ?? r.data?.data ?? [];
+        setReports(Array.isArray(nextReports) ? nextReports : []);
+      })
+      .catch(() => setReports([]))
+      .finally(() => setReportsLoading(false));
+  }, [claim]);
   useEscapeToClose(onClose, !!claim);
   if (!claim) return null;
 
@@ -310,6 +323,20 @@ function ClaimSlideOver({ claim, client, onClose }) {
             </div>
           ))}
         </dl>
+
+        <div className="mt-5">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">Linked Reports</h3>
+          {reportsLoading ? <div className="skeleton h-16 w-full" /> : reports.length === 0
+            ? <p className="text-sm text-gray-500">No reports linked to this claim yet.</p>
+            : <div className="space-y-2">
+                {reports.map(r => (
+                  <div key={getRecordId(r)} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div><p className="font-mono text-sm text-gray-900">{r.claimNumber}</p><p className="text-xs text-gray-500">{r.lossType}</p></div>
+                    <span className="text-xs text-gray-600">{formatStatus(r.status)}</span>
+                  </div>
+                ))}
+              </div>}
+        </div>
 
         {(claim.description || claim.notes) && (
           <div className="mt-5 space-y-4">

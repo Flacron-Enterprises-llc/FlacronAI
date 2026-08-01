@@ -134,7 +134,7 @@ const deleteAppointment = async (userId, apptId) => {
 
 // ── CLAIMS ────────────────────────────────────────────────────────────────
 
-const getClaims = async (userId, { page = 1, limit = 20, status } = {}) => {
+const getClaims = async (userId, { page = 1, limit = 20, status, search = '' } = {}) => {
   const db = getFirestore();
   let query = db.collection('crmClaims').where('userId', '==', userId);
   if (status) query = query.where('status', '==', status);
@@ -142,6 +142,16 @@ const getClaims = async (userId, { page = 1, limit = 20, status } = {}) => {
 
   let claims = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   claims.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  if (search) {
+    const s = search.toLowerCase();
+    claims = claims.filter(c =>
+      (c.claimNumber || '').toLowerCase().includes(s) ||
+      (c.lossType || '').toLowerCase().includes(s) ||
+      (c.propertyAddress || '').toLowerCase().includes(s)
+    );
+  }
+
   const total = claims.length;
   const offset = (page - 1) * limit;
   return { data: claims.slice(offset, offset + limit), total, page, limit, hasMore: offset + limit < total };
@@ -186,6 +196,16 @@ const getClaim = async (userId, claimId) => {
   return { id: doc.id, ...doc.data() };
 };
 
+const getClaimReports = async (userId, claimId) => {
+  const db = getFirestore();
+  const snap = await db.collection('reports')
+    .where('userId', '==', userId)
+    .where('claimId', '==', claimId)
+    .get();
+  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+};
+
 const updateClaim = async (userId, claimId, data) => {
   const db = getFirestore();
   const ref = db.collection('crmClaims').doc(claimId);
@@ -208,5 +228,5 @@ const deleteClaim = async (userId, claimId) => {
 module.exports = {
   getClients, createClient, getClient, updateClient, deleteClient, getClientReports,
   getAppointments, createAppointment, updateAppointment, deleteAppointment,
-  getClaims, createClaim, getClaim, updateClaim, deleteClaim, claimNumberExists,
+  getClaims, createClaim, getClaim, updateClaim, deleteClaim, claimNumberExists, getClaimReports,
 };

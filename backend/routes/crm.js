@@ -173,8 +173,8 @@ const claimValidators = (requireFields) => [
 
 router.get('/claims', authenticateToken, agencyPlus, async (req, res) => {
   try {
-    const { page = 1, limit = 20, status } = req.query;
-    const result = await crm.getClaims(req.user.uid, { page: parseInt(page), limit: parseInt(limit), status });
+    const { page = 1, limit = 20, status, search = '' } = req.query;
+    const result = await crm.getClaims(req.user.uid, { page: parseInt(page), limit: parseInt(limit), status, search });
     return res.json({ success: true, ...result });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, code: 'CRM_ERROR' });
@@ -199,6 +199,15 @@ router.get('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
   try {
     const claim = await crm.getClaim(req.user.uid, req.params.id);
     return res.json({ success: true, claim });
+  } catch (err) {
+    return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
+  }
+});
+
+router.get('/claims/:id/reports', authenticateToken, agencyPlus, async (req, res) => {
+  try {
+    const reports = await crm.getClaimReports(req.user.uid, req.params.id);
+    return res.json({ success: true, reports });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
   }

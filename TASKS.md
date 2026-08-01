@@ -444,9 +444,9 @@ Source: client walkthrough of the live product (screenshots of API keys, My Repo
 
 ### T-6.16 — Link claim number to a real CRM claim record (prevent duplicates)
 - **Client item:** #8 (dup claims), #29, P2-#1/#8.
-- **Status:** GAP CONFIRMED — `reports.js` `claimNumber` is free-typed text never validated against `crmClaims`; `crmService.js` has no call site from the report-generation path.
-- **Goal:** Report generation either selects an existing CRM claim (auto-populates claim #, insured, address, loss date/type) or creates a new claim inline — never a bare unlinked string. This is a real data-model change; scope and confirm with the client before starting (affects existing reports with only a text claim number — needs a migration/back-compat plan).
-- **Note:** flag as a bigger task — do not start without confirming migration approach for existing data.
+- **Status:** Plan approved 2026-08-01, Phase A shipped. Full plan: `C:\Users\umera\.claude\plans\happy-foraging-catmull.md` (also summarized in PROGRESS.md's 2026-08-01 changelog entry).
+- **Goal:** Report generation either selects an existing CRM claim (auto-populates claim #, insured, address, loss date/type) or creates a new claim inline — never a bare unlinked string. Agency/Enterprise only (CRM is tier-gated); Starter/Professional unaffected.
+- **Phases:** A (backend: `claimId` on reports, server-derives claim fields, `getClaimReports`, CRM `ClaimSlideOver` linked-reports UI) — DONE. B (Dashboard.jsx claim-picker) — TODO. C (EnterpriseDashboard.jsx claim-picker) — TODO. D (idempotent manually-run backfill script for existing claimNumber-only reports, matches exact `(userId, claimNumber)`) — TODO, ships after B.
 
 ### T-6.17 — Replace raw Markdown report editor with a sectioned rich editor
 - **Client item:** #9, P2-#4.
