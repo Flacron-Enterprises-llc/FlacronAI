@@ -624,6 +624,7 @@ export default function CRM() {
                   <input className="input pl-10" placeholder="Search clients..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
                 </div>
                 <div className="card overflow-hidden">
+                  <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className="border-b border-[#e5e7eb]">
                       {['Name', 'Email', 'Phone', 'Company', 'Created', 'Actions'].map(h => (
@@ -658,6 +659,7 @@ export default function CRM() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -745,6 +747,7 @@ export default function CRM() {
                   ))}
                 </div>
                 <div className="card overflow-hidden">
+                  <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className="border-b border-[#e5e7eb]">
                       {['Claim #', 'Client', 'Loss Type', 'Date', 'Status', 'Actions'].map(h => (
@@ -787,6 +790,7 @@ export default function CRM() {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </motion.div>
             )}

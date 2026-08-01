@@ -7,7 +7,7 @@ import {
   Download, RefreshCw, Search, Plus, Trash2, Copy, Check,
   TrendingUp, Shield, Star, X, ChevronRight, ExternalLink, Key,
   Crown, CreditCard, Upload, Eye, AlertCircle, CheckCircle,
-  Edit2, UserPlus, UserX, Save, ShieldCheck,
+  Edit2, UserPlus, UserX, Save, ShieldCheck, Menu, PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
@@ -97,6 +97,7 @@ export default function EnterpriseDashboard() {
   }, [tier, navigate]);
 
   const [activeView, setActiveView] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Report generation state
   const [form, setForm] = useState(FORM_INIT);
@@ -433,10 +434,21 @@ export default function EnterpriseDashboard() {
   return (
     <div className="min-h-screen flex bg-[#ffffff]">
 
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="w-64 shrink-0 flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] sticky top-0 h-screen">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] h-screen shadow-xl transition-transform duration-300 md:sticky md:top-0 md:z-20 md:translate-x-0 md:shadow-none ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
         {/* Logo */}
-        <div className="p-5 border-b border-[#e5e7eb]">
+        <div className="p-5 border-b border-[#e5e7eb] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
@@ -446,13 +458,17 @@ export default function EnterpriseDashboard() {
               </span>
             </div>
           </div>
+          <button onClick={() => setSidebarOpen(false)} aria-label="Close navigation"
+            className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm md:hidden">
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(item => (
             <NavItem key={item.id} item={item} active={activeView === item.id}
-              onClick={() => { setActiveView(item.id); if (item.id !== 'generate') setGeneratedReport(null); }} />
+              onClick={() => { setActiveView(item.id); if (item.id !== 'generate') setGeneratedReport(null); setSidebarOpen(false); }} />
           ))}
         </nav>
 
@@ -476,26 +492,32 @@ export default function EnterpriseDashboard() {
       </aside>
 
       {/* ── Main ── */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-[#e5e7eb] bg-white/95 backdrop-blur-sm">
-          <div>
-            <h1 className="text-lg font-black text-gray-900">{navItems.find(n => n.id === activeView)?.label}</h1>
-            <p className="text-xs text-gray-400">Enterprise Portal · Unlimited Access</p>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 border-b border-[#e5e7eb] bg-white/95 backdrop-blur-sm gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation"
+              className="md:hidden shrink-0 rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg font-black text-gray-900 truncate">{navItems.find(n => n.id === activeView)?.label}</h1>
+              <p className="text-xs text-gray-400 hidden sm:block">Enterprise Portal · Unlimited Access</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-xs text-green-700 font-medium">AI Online</span>
             </div>
             <button onClick={() => setActiveView('generate')}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
-              <Zap className="w-3.5 h-3.5" /> Generate Report
+              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
+              <Zap className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Generate Report</span>
             </button>
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           <AnimatePresence mode="wait">
 
             {/* ══ OVERVIEW ══════════════════════════════════════════════════════ */}
@@ -544,6 +566,7 @@ export default function EnterpriseDashboard() {
                       <p className="text-sm text-gray-400">No reports yet — generate your first one!</p>
                     </div>
                   ) : (
+                    <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#e5e7eb] bg-gray-50">
@@ -579,6 +602,7 @@ export default function EnterpriseDashboard() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -782,7 +806,7 @@ export default function EnterpriseDashboard() {
                         ) : (
                           <>
                             <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
-                            <div className="grid grid-cols-2 gap-2 mb-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
                                 <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
@@ -857,6 +881,7 @@ export default function EnterpriseDashboard() {
                   </button>
                 </div>
                 <div className={`${cardCls} overflow-hidden`}>
+                  <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#e5e7eb] bg-gray-50">
@@ -905,6 +930,7 @@ export default function EnterpriseDashboard() {
                             ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </motion.div>
             )}

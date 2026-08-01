@@ -1360,7 +1360,7 @@ export default function Dashboard() {
                         ) : (
                           <>
                             <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
-                            <div className="grid grid-cols-2 gap-2 mb-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
                                 <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
