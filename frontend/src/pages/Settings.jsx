@@ -16,6 +16,7 @@ import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI } from '../services/api';
 
@@ -29,6 +30,7 @@ const TABS = [
 
 function KeyModal({ apiKey, onClose }) {
   const [copied, setCopied] = useState(false);
+  useEscapeToClose(onClose);
   const handleCopy = () => {
     navigator.clipboard.writeText(apiKey);
     setCopied(true);
@@ -38,18 +40,18 @@ function KeyModal({ apiKey, onClose }) {
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-md p-6"
+      <motion.div className="card w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="key-modal-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900">API Key Created</h2>
+          <h2 id="key-modal-title" className="text-lg font-bold text-gray-900">API Key Created</h2>
           <button onClick={onClose} aria-label="Close" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex gap-2 mb-4">
-          <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-          <p className="text-yellow-300 text-sm">Copy this key now. It will never be shown again.</p>
+          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
+          <p className="text-yellow-800 text-sm">Copy this key now. It will never be shown again.</p>
         </div>
-        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-orange-300 break-all mb-4">{apiKey}</div>
+        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-orange-800 break-all mb-4">{apiKey}</div>
         <div className="flex gap-3">
           <button onClick={handleCopy} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm py-2">
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -63,18 +65,19 @@ function KeyModal({ apiKey, onClose }) {
 }
 
 function CancelModal({ onConfirm, onClose, loading }) {
+  useEscapeToClose(onClose, !loading);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-sm p-6"
+      <motion.div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="text-center mb-6">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6 text-red-400" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
+          <h2 id="cancel-modal-title" className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
           <p className="text-gray-600 text-sm">Your plan will remain active until the end of the billing period. You will be moved to the Starter plan.</p>
         </div>
         <div className="flex gap-3">
@@ -92,18 +95,19 @@ function DeleteAccountModal({ onConfirm, onClose, loading }) {
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const canSubmit = password.length > 0 && confirmText === 'DELETE';
+  useEscapeToClose(onClose, !loading);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-sm p-6"
+      <motion.div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="delete-account-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="text-center mb-6">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6 text-red-400" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Delete Your Account?</h2>
+          <h2 id="delete-account-title" className="text-lg font-bold text-gray-900 mb-2">Delete Your Account?</h2>
           <p className="text-gray-600 text-sm">This permanently deletes your account, all reports, photos, exports, templates, and API keys. This cannot be undone.</p>
         </div>
         <div className="space-y-3 mb-6">

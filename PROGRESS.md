@@ -98,7 +98,7 @@
 | T-6.22 | Icon tooltips + accessible labels | DONE | 2026-08-01 — 20 icon-only buttons across 8 files fixed; also found + fixed an unguarded API-key revoke in EnterpriseDashboard.jsx (separate from the one fixed in T-6.19) |
 | T-6.23 | Loading/empty/error states audit | TODO | |
 | T-6.24 | Mobile pass on authed report/CRM screens | TODO | T-1.11 only covered marketing pages |
-| T-6.25 | Accessibility pass (contrast/focus/ARIA) | TODO | |
+| T-6.25 | Accessibility pass (contrast/focus/ARIA) | PARTIAL | 2026-08-01 — fixed the client-flagged pale-orange badge/data-text contrast (4 sites); found + fixed a systemic gap: zero modals anywhere in the app supported Escape-key close — added a shared hook and wired it + role="dialog" into all 12 modal/slide-over components. Full focus-trapping (Tab-cycling) deferred as a bigger follow-up |
 | T-6.26 | Expand public API documentation | TODO | |
 | T-6.27 | API key scopes/permissions | TODO | Depends on T-3.8 |
 | T-6.28 | Separate API-key auth docs from login JWT | TODO | |
@@ -110,6 +110,16 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.25 — Accessibility: Escape-to-close on every modal + badge/data contrast fixes
+- **Status:** PARTIAL — contrast + keyboard dismissal done; full focus-trapping deferred.
+- **What changed:** Two workstreams:
+  1. **Contrast** — the client specifically flagged "pale orange text and status badges" as insufficient contrast. Found and fixed the concrete matches: `CRM.jsx`'s `APPT_STATUSES` (appointment `StatusPill`) and claims-table status badge both used `text-orange-400`/`text-yellow-400`/`text-green-400`/`text-red-400` on light translucent backgrounds — swapped to `-600`/`-700` weights for real WCAG-legible contrast. Also fixed claim-number and report-claim-number table-cell text (`CRM.jsx`, `Dashboard.jsx`) using the same too-light `text-orange-400`, and three badly-failing text colors in Settings.jsx's `KeyModal` (`text-yellow-300`/`text-orange-300` on light backgrounds — likely leftover from an earlier dark-themed version of this modal). Did **not** attempt an app-wide recolor of every `-400`-weight icon/accent use (that's a much larger design-system pass across dozens of files) — scoped to the specific "badge"/"data text" instances that match the client's literal complaint.
+  2. **Keyboard/ARIA** — audited every modal in the app for Escape-key dismissal and found **zero** supported it (the only `Escape` handler anywhere was an inline note-editor input, not a single modal). Added a new shared `frontend/src/hooks/useEscapeToClose.js` hook and wired it — plus `role="dialog"`/`aria-modal="true"`/`aria-labelledby` — into all 12 modal and slide-over components across the app: the shared `ConfirmDialog`, CRM's generic `Modal` + `ClientSlideOver` + `ClaimSlideOver`, Dashboard's `ReportDetailModal`, Settings' `KeyModal` + `CancelModal` + `DeleteAccountModal`, Pricing's `ContactSalesModal`, AdminDashboard's `UserSlideOver` + `EmailModal`, Subscriptions' `CancelModal`, and Auth's inline "Reset Password" modal. Escape is disabled while an action is mid-flight (e.g. `loading`) on modals where that matters, matching the existing disabled-button behavior.
+- **Files touched:** `frontend/src/hooks/useEscapeToClose.js` (new), `frontend/src/components/ConfirmDialog.jsx`, `frontend/src/pages/CRM.jsx`, `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/Settings.jsx`, `frontend/src/pages/Pricing.jsx`, `frontend/src/pages/AdminDashboard.jsx`, `frontend/src/pages/Subscriptions.jsx`, `frontend/src/pages/Auth.jsx`.
+- **QA done:** Targeted ESLint 0 errors across all 9 files (pre-existing warnings only — including a clean pass from the `react-hooks` plugin, confirming no Rules-of-Hooks violations from placing the new hook call before early-return guards in components like `ClaimSlideOver`/`ReportDetailModal`); frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** Full focus-trapping (cycling Tab/Shift+Tab within an open modal so it can't tab out to the page behind it) is a meaningfully bigger feature — would need either a hand-rolled trap or a small new dependency (e.g. `focus-trap-react`), which isn't a call to make unilaterally. Also flagged but not fixed: `AdminDashboard.jsx`'s `UserSlideOver` still uses a native `window.confirm()` for its delete action instead of the shared `ConfirmDialog` (T-6.19) — natively accessible, just visually inconsistent; low priority.
+- **Golden-rule check:** none violated.
 
 ### [2026-08-01] — T-6.20 — Field validation for CRM + report generation (address autocomplete deferred)
 - **Status:** PARTIAL — validation done; Google Places autocomplete needs a client decision/API key.

@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { authAPI, paymentAPI } from '../services/api.js';
 import { auth } from '../config/firebase.js';
 import Seo from '../components/Seo.jsx';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -21,6 +22,7 @@ const Auth = () => {
   const [errors, setErrors] = useState({});
   const [authState, setAuthState] = useState('form'); // 'form' | 'verifying' | 'processing'
   const [resendCooldown, setResendCooldown] = useState(0);
+  useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading);
 
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
   const { login, register, loginWithGoogle, emailVerified, reloadUser } = useAuth();
@@ -467,9 +469,10 @@ const Auth = () => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="card p-8 w-full max-w-sm"
+              role="dialog" aria-modal="true" aria-labelledby="reset-password-title"
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
+              <h3 id="reset-password-title" className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
               {forgotSent ? (
                 <div>
                   <p className="text-gray-600 text-sm mb-4">If that email exists, a reset link has been sent.</p>

@@ -13,6 +13,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { crmAPI } from '../services/api';
 import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const SIDEBAR_TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,7 +22,9 @@ const SIDEBAR_TABS = [
   { id: 'claims', label: 'Claims', icon: FileText },
 ];
 
-const APPT_STATUSES = { scheduled: 'bg-orange-500/20 text-orange-400 border-orange-500/30', completed: 'bg-green-500/20 text-green-400 border-green-500/30', cancelled: 'bg-red-500/20 text-red-400 border-red-500/30' };
+// -600/-700 text weights, not -400 -- -400 on these translucent light backgrounds
+// falls well below WCAG AA contrast (client-flagged: "pale orange status badges").
+const APPT_STATUSES = { scheduled: 'bg-orange-500/20 text-orange-700 border-orange-500/30', completed: 'bg-green-500/20 text-green-700 border-green-500/30', cancelled: 'bg-red-500/20 text-red-700 border-red-500/30' };
 const CLAIM_STATUSES = ['open', 'in-progress', 'pending-review', 'closed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -55,15 +58,16 @@ function StatusPill({ status }) {
 }
 
 function Modal({ title, onClose, children }) {
+  useEscapeToClose(onClose);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="crm-modal-title"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+          <h2 id="crm-modal-title" className="text-lg font-bold text-gray-900">{title}</h2>
           <button onClick={onClose} aria-label={`Close ${title}`} title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         {children}
@@ -200,15 +204,16 @@ function ClientSlideOver({ client, onClose }) {
       .catch(() => setReports([]))
       .finally(() => setLoading(false));
   }, [client]);
+  useEscapeToClose(onClose, !!client);
   if (!client) return null;
   return (
     <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="w-full max-w-md bg-[#f8f8f8] border-l border-[#e5e7eb] h-full overflow-y-auto p-6"
+      <motion.div className="w-full max-w-md bg-[#f8f8f8] border-l border-[#e5e7eb] h-full overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="client-slideover-title"
         initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-gray-900">{client.name}</h2>
+          <h2 id="client-slideover-title" className="text-lg font-bold text-gray-900">{client.name}</h2>
           <button onClick={onClose} aria-label="Close client details" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         <div className="space-y-3 mb-6 text-sm">
@@ -236,6 +241,7 @@ function ClientSlideOver({ client, onClose }) {
 }
 
 function ClaimSlideOver({ claim, client, onClose }) {
+  useEscapeToClose(onClose, !!claim);
   if (!claim) return null;
 
   const details = [
@@ -262,6 +268,7 @@ function ClaimSlideOver({ claim, client, onClose }) {
         exit={{ x: '100%' }}
         transition={{ type: 'tween', duration: 0.22 }}
         onClick={event => event.stopPropagation()}
+        role="dialog" aria-modal="true"
         aria-label={`Claim ${claim.claimNumber || ''} details`}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -756,14 +763,14 @@ export default function CRM() {
                         const client = clients.find(cl => getRecordId(cl) === c.clientId);
                         return (
                           <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100">
-                            <td className="px-4 py-3 text-sm font-mono text-orange-400">{c.claimNumber}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-orange-700">{c.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{client?.name || c.clientId}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{c.lossType}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{c.lossDate}</td>
                             <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                               c.status === 'closed' ? 'bg-gray-500/20 text-gray-600' :
-                              c.status === 'open' ? 'bg-orange-500/20 text-orange-400' :
-                              'bg-yellow-500/20 text-yellow-400'}`}>{formatStatus(c.status)}</span></td>
+                              c.status === 'open' ? 'bg-orange-500/20 text-orange-700' :
+                              'bg-yellow-500/20 text-yellow-700'}`}>{formatStatus(c.status)}</span></td>
                             <td className="px-4 py-3">
                               <button
                                 type="button"

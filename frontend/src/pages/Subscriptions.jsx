@@ -9,6 +9,7 @@ import TierBadge from '../components/TierBadge';
 import { useAuth } from '../context/AuthContext';
 import { paymentAPI } from '../services/api';
 import { PLAN_PRICING } from '../data/plans.js';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const TIER_INFO = {
   starter: {
@@ -30,18 +31,19 @@ const TIER_INFO = {
 };
 
 function CancelModal({ onConfirm, onClose, loading }) {
+  useEscapeToClose(onClose, !loading);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-sm p-6"
+      <motion.div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="subscriptions-cancel-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="text-center mb-6">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6 text-red-400" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
+          <h2 id="subscriptions-cancel-title" className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
           <p className="text-gray-600 text-sm">Your plan remains active until the end of the billing period. After that, your account reverts to the free Starter plan with 5 reports/month.</p>
         </div>
         <div className="flex gap-3">
@@ -72,7 +74,7 @@ function SubscriptionContent() {
 
   useEffect(() => {
     paymentAPI.getSubscription()
-      .then(res => setSubscription(res.data.subscription || res.data))
+      .then(res => setSubscription(res.data.subscription ?? null))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -85,7 +87,7 @@ function SubscriptionContent() {
       setShowCancelModal(false);
       await refreshProfile();
       const res = await paymentAPI.getSubscription();
-      setSubscription(res.data.subscription || res.data);
+      setSubscription(res.data.subscription ?? null);
     } catch {
       toast.error('Failed to cancel subscription. Please try again.');
     } finally {
@@ -117,7 +119,9 @@ function SubscriptionContent() {
                   <div className="skeleton h-4 w-40 mt-1" />
                 ) : (
                   <p className="text-gray-600 text-sm mt-0.5">
-                    {subscription?.status === 'active'
+                    {subscription?.cancelAtPeriodEnd || subscription?.status === 'cancelling'
+                      ? `Cancellation scheduled · Access ends ${new Date(subscription.currentPeriodEnd).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                      : subscription?.status === 'active'
                       ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
                       : subscription?.status === 'canceled'
                         ? `Active until ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
@@ -172,7 +176,7 @@ function SubscriptionContent() {
                 <ExternalLink className="w-4 h-4" /> Upgrade Plan
               </button>
             )}
-            {tier !== 'starter' && subscription?.status === 'active' && (
+            {tier !== 'starter' && subscription?.status === 'active' && !subscription.cancelAtPeriodEnd && (
               <button onClick={() => setShowCancelModal(true)} className="btn-danger text-sm py-2 flex items-center gap-2">
                 <X className="w-4 h-4" /> Cancel Subscription
               </button>
@@ -205,7 +209,7 @@ function SubscriptionContent() {
               );
             })}
           </div>
-          <p className="text-gray-500 text-xs mt-3">All plan changes take effect immediately. Visit the <button onClick={() => navigate('/pricing')} className="text-orange-400 underline">pricing page</button> for full details.</p>
+          <p className="text-gray-500 text-xs mt-3">Upgrades take effect immediately with a prorated adjustment. Downgrades start after the current paid period. Visit the <button onClick={() => navigate('/pricing')} className="text-orange-400 underline">pricing page</button> for full details.</p>
         </motion.div>
       </div>
 

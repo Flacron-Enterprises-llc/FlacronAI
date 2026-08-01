@@ -11,6 +11,7 @@ import Seo from '../components/Seo.jsx';
 import { PLAN_PRICING } from '../data/plans.js';
 import { PRODUCT_JSONLD } from '../data/structuredData.js';
 import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PLANS = [
   {
@@ -118,6 +119,7 @@ function ContactSalesModal({ onClose }) {
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  useEscapeToClose(onClose, !loading);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -137,7 +139,7 @@ function ContactSalesModal({ onClose }) {
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Contact Sales"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}>

@@ -12,6 +12,7 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { salesAPI } from '../services/api';
 import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const TIERS = ['starter', 'professional', 'agency', 'enterprise'];
 const TIER_COLORS = {
@@ -121,6 +122,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  useEscapeToClose(onClose, !!user);
 
   useEffect(() => {
     if (!user) return;
@@ -153,7 +155,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}>
-        <motion.div className="w-full max-w-lg bg-white border-l border-[#e5e7eb] h-full overflow-y-auto flex flex-col"
+        <motion.div className="w-full max-w-lg bg-white border-l border-[#e5e7eb] h-full overflow-y-auto flex flex-col" role="dialog" aria-modal="true" aria-labelledby="user-slideover-title"
           initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 280 }}
           onClick={e => e.stopPropagation()}>
 
@@ -164,7 +166,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                 {(user.displayName || user.email || 'U')[0].toUpperCase()}
               </div>
               <div>
-                <p className="font-semibold text-gray-900">{user.displayName || '—'}</p>
+                <p id="user-slideover-title" className="font-semibold text-gray-900">{user.displayName || '—'}</p>
                 <p className="text-sm text-gray-500">{user.email}</p>
               </div>
             </div>
@@ -294,6 +296,7 @@ function EmailModal({ to, onClose }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  useEscapeToClose(onClose, !sending);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -310,11 +313,11 @@ function EmailModal({ to, onClose }) {
     <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl"
+      <motion.div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="email-modal-title"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-gray-900">Email User</h3>
+          <h3 id="email-modal-title" className="text-lg font-bold text-gray-900">Email User</h3>
           <button onClick={onClose} aria-label="Close" title="Close" className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
         </div>
         <form onSubmit={handleSend} className="space-y-4">

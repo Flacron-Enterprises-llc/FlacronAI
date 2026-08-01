@@ -14,6 +14,7 @@ import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI } from '../services/api';
 import api from '../services/api';
@@ -152,18 +153,19 @@ function StatusBadge({ status }) {
 }
 
 function ReportDetailModal({ report, onClose }) {
+  useEscapeToClose(onClose, !!report);
   if (!report) return null;
   return (
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}>
-        <motion.div className="card w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto"
+        <motion.div className="card w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="report-detail-title"
           initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Report Details</h2>
+            <h2 id="report-detail-title" className="text-xl font-bold text-gray-900">Report Details</h2>
             <button onClick={onClose} aria-label="Close report details" title="Close" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <X className="w-5 h-5 text-gray-600" />
             </button>
@@ -190,7 +192,7 @@ function ReportDetailModal({ report, onClose }) {
             {report.qualityScore && (
               <div className="flex gap-3">
                 <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">Documentation Completeness:</span>
-                <span className="text-orange-400 font-semibold">{report.qualityScore}/100</span>
+                <span className="text-orange-700 font-semibold">{report.qualityScore}/100</span>
               </div>
             )}
           </div>
@@ -1541,7 +1543,7 @@ export default function Dashboard() {
                                 {selectedIds.includes(r.id) && <Check className="w-3 h-3 text-white" />}
                               </button>
                             </td>
-                            <td className="px-4 py-3 text-sm font-mono text-orange-400">{r.claimNumber}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-orange-700">{r.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{r.insuredName}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{r.lossType}</td>
