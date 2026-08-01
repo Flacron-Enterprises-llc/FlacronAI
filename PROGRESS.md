@@ -91,7 +91,7 @@
 | T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
 | T-6.16 | Link claim number to real CRM claim record | TODO | Confirmed gap — needs migration plan, large task |
 | T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
-| T-6.18 | Calendar layout/event display fixes | TODO | Not yet audited — needs live look |
+| T-6.18 | Calendar layout/event display fixes | DONE | 2026-08-01 — found and fixed the real bug: date-only appointment strings parsed as UTC midnight instead of local, causing "spans the wrong day" symptom in 3 places; "missing weekday columns" not reproducible in current code |
 | T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
 | T-6.20 | Field validation + address autocomplete | TODO | |
 | T-6.21 | Standardize capitalization of statuses | DONE | 2026-08-01 — new shared formatStatus() helper; applied at 13 raw-status display sites across Dashboard/CRM/Settings/EnterpriseDashboard/AdminDashboard |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.18 — Fix calendar/appointment timezone bug behind "wrong day" complaint
+- **Status:** DONE
+- **What changed:** Investigated the client's calendar complaints (`CRM.jsx`). "Missing weekday columns" — not reproducible; the month-grid header always renders all 7 `DAYS` unconditionally, so this was likely an older screenshot. Found the real, confirmed bug behind "the event created for July 30 should appear only on July 30, not stretch ambiguously from July 29": date-only strings from `<input type="date">` (e.g. `"2026-07-30"`) were being parsed with plain `new Date(a.date)`, which JS interprets as **UTC midnight** — in any timezone ahead of or behind UTC this shifts the local wall-clock time away from midnight (verified: in UTC+5 it resolved to 5:00 AM local instead of 00:00), which can flip which local day/week an appointment is bucketed into, or (for the "Upcoming Appointments" widget) incorrectly filter out an appointment scheduled for later today. Added a `parseLocalDate()` helper that parses the Y/M/D components directly into a local `Date`, and applied it at all 3 places this bug existed: the week-view filter, the CRM dashboard's "Appointments this week" stat, and the "Upcoming Appointments" widget filter (the month-grid itself was already safe — it does a plain string-prefix match, not `new Date()` parsing). Also fixed an adjacent off-by-one in the week-view boundary (it included next Sunday in "this week"), added the missing appointment time to the week view (list view already had it), and added `title` tooltips to week/list-view rows so the full title/location is available on hover, matching the month-view dot's existing pattern.
+- **Files touched:** `frontend/src/pages/CRM.jsx`.
+- **QA done:** Targeted ESLint 0 errors (pre-existing warnings only); frontend tests 2/2 passed; production build passed; verified the old-vs-new parsing behavior and the "today's appointment excluded from upcoming" bug standalone in Node — old code returned `false` for a same-day appointment at 10am local, new code correctly returns `true`.
+- **Left / follow-ups:** Did not implement week-view prev/next navigation (it's hardcoded to "this week" only) or redesign the month-cell to show untruncated titles — both are feature additions beyond a display-bug fix; noted here for a future task if wanted. Did not touch `claim.createdAt`/`c.createdAt` date handling — those are full ISO datetime strings (not date-only), so they don't have this bug.
+- **Golden-rule check:** none violated.
 
 ### [2026-08-01] — T-6.21 — Standardize status/label capitalization
 - **Status:** DONE

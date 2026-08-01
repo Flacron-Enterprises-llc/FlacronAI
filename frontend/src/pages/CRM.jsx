@@ -25,6 +25,15 @@ const APPT_STATUSES = { scheduled: 'bg-orange-500/20 text-orange-400 border-oran
 const CLAIM_STATUSES = ['open', 'in-progress', 'pending-review', 'closed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Date-only strings (e.g. from <input type="date">, "2026-07-30") are parsed by
+// `new Date(str)` as UTC midnight, which can shift to the previous day in any
+// timezone behind UTC. Parse as local midnight instead so an appointment on a
+// given date never appears to belong to the day before.
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
 const getRecordId = record => record?.id || record?._id;
 
 function StatusPill({ status }) {
@@ -377,9 +386,11 @@ export default function CRM() {
   const stats = {
     totalClients: clients.length,
     apptsThisWeek: appointments.filter(a => {
-      const d = new Date(a.date); const now = new Date();
-      const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
-      const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
+      const d = parseLocalDate(a.date);
+      if (!d) return false;
+      const now = new Date();
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      const weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
       return d >= weekStart && d <= weekEnd;
     }).length,
     openClaims: claims.filter(c => c.status === 'open' || c.status === 'in-progress').length,
@@ -557,7 +568,11 @@ export default function CRM() {
                   <div className="card p-5">
                     <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4" /> Upcoming Appointments</h3>
                     {apptsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
-                      : appointments.filter(a => new Date(a.date) >= new Date()).slice(0, 5).map(a => (
+                      : appointments.filter(a => {
+                        const d = parseLocalDate(a.date);
+                        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+                        return d && d >= startOfToday;
+                      }).slice(0, 5).map(a => (
                         <div key={getRecordId(a)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
                           <Calendar className="w-4 h-4 text-orange-400 shrink-0" />
                           <div><p className="text-gray-900 text-sm">{a.title}</p><p className="text-gray-500 text-xs">{a.date} {a.time}</p></div>
@@ -658,14 +673,16 @@ export default function CRM() {
                       <p className="text-gray-600 text-sm mb-4">Week view — showing all appointments this week:</p>
                       <div className="space-y-2">
                         {appointments.filter(a => {
-                          const d = new Date(a.date); const now = new Date();
-                          const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
-                          const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
+                          const d = parseLocalDate(a.date);
+                          if (!d) return false;
+                          const now = new Date();
+                          const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+                          const weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
                           return d >= weekStart && d <= weekEnd;
                         }).map(a => (
                           <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
-                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-24">{a.date}</div>
-                            <div className="min-w-0 flex-1"><p className="truncate text-sm text-gray-900">{a.title}</p><p className="truncate text-xs text-gray-500">{a.location}</p></div>
+                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-24">{a.date}{a.time ? ` ${a.time}` : ''}</div>
+                            <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
                             <StatusPill status={a.status} />
                           </div>
                         ))}
@@ -680,7 +697,7 @@ export default function CRM() {
                         ) : appointments.map(a => (
                           <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
                             <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-32">{a.date} {a.time}</div>
-                            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-gray-900">{a.title}</p><p className="truncate text-xs text-gray-500">{a.location}</p></div>
+                            <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm font-medium text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
                             <StatusPill status={a.status} />
                           </div>
                         ))}
