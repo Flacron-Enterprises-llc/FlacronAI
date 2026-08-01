@@ -96,7 +96,7 @@
 | T-6.20 | Field validation + address autocomplete | PARTIAL | 2026-08-01 — added phone/email/date/length/enum validation + duplicate-claim-number rejection to all CRM create/update endpoints (PUT endpoints previously had ZERO validation) and length/date caps to report generation. Address autocomplete (Google Places) needs a client-supplied API key — not started, flagged as a decision item |
 | T-6.21 | Standardize capitalization of statuses | DONE | 2026-08-01 — new shared formatStatus() helper; applied at 13 raw-status display sites across Dashboard/CRM/Settings/EnterpriseDashboard/AdminDashboard |
 | T-6.22 | Icon tooltips + accessible labels | DONE | 2026-08-01 — 20 icon-only buttons across 8 files fixed; also found + fixed an unguarded API-key revoke in EnterpriseDashboard.jsx (separate from the one fixed in T-6.19) |
-| T-6.23 | Loading/empty/error states audit | TODO | |
+| T-6.23 | Loading/empty/error states audit | PARTIAL | 2026-08-01 — fixed the exact client-cited case: billing/invoice fetch failures silently rendered "No invoices yet"/"Free Plan" (Dashboard.jsx + Settings.jsx) instead of an error; also fixed reports-list and API-keys-list the same way. CRM.jsx already had this right. EnterpriseDashboard/AdminDashboard sub-lists not yet swept (same pattern, lower priority) |
 | T-6.24 | Mobile pass on authed report/CRM screens | TODO | T-1.11 only covered marketing pages |
 | T-6.25 | Accessibility pass (contrast/focus/ARIA) | PARTIAL | 2026-08-01 — fixed the client-flagged pale-orange badge/data-text contrast (4 sites); found + fixed a systemic gap: zero modals anywhere in the app supported Escape-key close — added a shared hook and wired it + role="dialog" into all 12 modal/slide-over components. Full focus-trapping (Tab-cycling) deferred as a bigger follow-up |
 | T-6.26 | Expand public API documentation | TODO | |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.23 — Fix silent billing/reports fetch failures rendering as false empty states
+- **Status:** PARTIAL.
+- **What changed:** The client's own cited example — "We could not load your billing history" needing a distinct error state — turned out to be a real, reproducible bug, not a hypothetical: `Dashboard.jsx`'s and `Settings.jsx`'s billing-fetch functions caught errors with only a `console.error`/toast and left `invoices`/`subscription` as empty/null, so a fetch **failure** rendered identically to "No invoices yet" / a false **"Free Plan"** status badge — actively wrong information for a paying customer whose request failed, not just an unhelpful empty state. Added `billingError`/`reportsError`/`keysError` state to `Dashboard.jsx` (reports list, current-plan badge, invoice history) and `Settings.jsx` (current-plan card, invoice history, API keys list) with a distinct error message + Retry button at each of the 6 sites, instead of falling through to the empty-state branch.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/Settings.jsx`.
+- **QA done:** Targeted ESLint 0 errors on both files (pre-existing warnings only); frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** `CRM.jsx` already had this exact pattern right (its `crmError`/retry gate covers clients/appointments/claims together). Did not sweep `EnterpriseDashboard.jsx`'s or `AdminDashboard.jsx`'s parallel lists (team members, leads, its own reports view) for the same silent-failure gap — same fix pattern, lower priority since those are less-trafficked admin/enterprise-only surfaces; flagged as a follow-up rather than doing an exhaustive full-app sweep in one pass.
+- **Golden-rule check:** none violated — this specifically prevents a paying customer's billing status from silently misrepresenting as "Free Plan" when the real cause is a failed request.
 
 ### [2026-08-01] — T-6.25 — Accessibility: Escape-to-close on every modal + badge/data contrast fixes
 - **Status:** PARTIAL — contrast + keyboard dismissal done; full focus-trapping deferred.

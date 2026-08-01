@@ -324,6 +324,7 @@ export default function Dashboard() {
   const [generatedReport, setGeneratedReport] = useState(null);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -333,6 +334,7 @@ export default function Dashboard() {
   const [totalPages, setTotalPages] = useState(1);
   const [detailReport, setDetailReport] = useState(null);
   const [billingInfo, setBillingInfo] = useState(null);
+  const [billingError, setBillingError] = useState(false);
   const [invoices, setInvoices] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
@@ -368,6 +370,7 @@ export default function Dashboard() {
 
   const fetchReports = useCallback(async () => {
     setReportsLoading(true);
+    setReportsError(false);
     try {
       const params = { page, limit: 10 };
       if (search) params.search = search;
@@ -376,6 +379,7 @@ export default function Dashboard() {
       setReports(res.data.data || res.data.reports || res.data || []);
       setTotalPages(res.data.totalPages || Math.ceil((res.data.total || 0) / 10) || 1);
     } catch {
+      setReportsError(true);
       toast.error('Failed to load reports');
     } finally {
       setReportsLoading(false);
@@ -663,6 +667,7 @@ export default function Dashboard() {
 
   const fetchBilling = async () => {
     setBillingLoading(true);
+    setBillingError(false);
     try {
       const [subRes, invRes] = await Promise.all([
         paymentAPI.getSubscription(),
@@ -672,6 +677,7 @@ export default function Dashboard() {
       setInvoices(invRes.data?.invoices || []);
     } catch (err) {
       console.error('Billing fetch error:', err.message);
+      setBillingError(true);
     } finally {
       setBillingLoading(false);
     }
@@ -1516,6 +1522,17 @@ export default function Dashboard() {
                       <tbody>
                         {reportsLoading ? (
                           [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
+                        ) : reportsError ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-16 text-center">
+                              <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                              <p className="text-gray-600 font-medium">We couldn't load your reports</p>
+                              <p className="text-gray-600 text-sm mt-1">Check your connection and try again.</p>
+                              <button onClick={fetchReports} className="btn-secondary text-sm py-2 px-4 mt-4 inline-flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4" /> Retry
+                              </button>
+                            </td>
+                          </tr>
                         ) : reports.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-4 py-16 text-center">
@@ -1638,6 +1655,11 @@ export default function Dashboard() {
                     </div>
                     {billingLoading ? (
                       <div className="skeleton h-12 w-36" />
+                    ) : billingError ? (
+                      <div className="text-right">
+                        <span className="text-sm font-semibold px-3 py-1.5 rounded-full border bg-amber-50 text-amber-600 border-amber-200">Status unavailable</span>
+                        <button onClick={fetchBilling} className="block ml-auto mt-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium">Retry</button>
+                      </div>
                     ) : billingInfo ? (
                       <div className="text-right">
                         <p className="text-xs text-gray-500 mb-1">Subscription Status</p>
@@ -1676,6 +1698,15 @@ export default function Dashboard() {
                   </div>
                   {billingLoading ? (
                     <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="skeleton h-12 w-full rounded-xl" />)}</div>
+                  ) : billingError ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+                      <p className="text-gray-500 text-sm font-medium">We couldn't load your billing history</p>
+                      <p className="text-gray-400 text-xs mt-1">Check your connection and try again.</p>
+                      <button onClick={fetchBilling} className="mt-4 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4" /> Retry
+                      </button>
+                    </div>
                   ) : invoices.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full">

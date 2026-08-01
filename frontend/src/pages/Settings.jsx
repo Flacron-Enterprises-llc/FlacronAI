@@ -149,6 +149,7 @@ export default function Settings() {
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [keysLoading, setKeysLoading] = useState(false);
+  const [keysError, setKeysError] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
@@ -166,6 +167,7 @@ export default function Settings() {
   const [usage, setUsage] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -199,16 +201,21 @@ export default function Settings() {
 
   const fetchApiKeys = async () => {
     setKeysLoading(true);
+    setKeysError(false);
     try {
       const res = await usersAPI.getApiKeys();
       const keys = res.data.apiKeys || res.data;
       setApiKeys(Array.isArray(keys) ? keys : []);
-    } catch { toast.error('Failed to load API keys'); }
+    } catch {
+      toast.error('Failed to load API keys');
+      setKeysError(true);
+    }
     finally { setKeysLoading(false); }
   };
 
   const fetchBilling = async () => {
     setBillingLoading(true);
+    setBillingError(false);
     try {
       const [subRes, invRes, usageRes] = await Promise.all([
         paymentAPI.getSubscription(),
@@ -218,7 +225,10 @@ export default function Settings() {
       setSubscription(subRes.data.subscription ?? null);
       setInvoices(invRes.data.invoices || invRes.data || []);
       setUsage(usageRes.data.usage ?? null);
-    } catch { toast.error('Failed to load billing info'); }
+    } catch {
+      toast.error('Failed to load billing info');
+      setBillingError(true);
+    }
     finally { setBillingLoading(false); }
   };
 
@@ -599,6 +609,14 @@ export default function Settings() {
                           <div className="space-y-3">
                             {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-14 w-full" />)}
                           </div>
+                        ) : keysError ? (
+                          <div className="text-center py-8">
+                            <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                            <p className="text-gray-600 text-sm font-medium">We couldn't load your API keys</p>
+                            <button onClick={fetchApiKeys} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                              <RefreshCw className="w-4 h-4" /> Retry
+                            </button>
+                          </div>
                         ) : apiKeys.length === 0 ? (
                           <div className="text-center py-8">
                             <Key className="w-8 h-8 text-gray-600 mx-auto mb-2" />
@@ -668,6 +686,14 @@ export default function Settings() {
                       <h2 className="text-lg font-semibold text-gray-900 mb-4">Current Plan</h2>
                       {billingLoading ? (
                         <div className="space-y-3"><div className="skeleton h-8 w-32" /><div className="skeleton h-4 w-full" /></div>
+                      ) : billingError ? (
+                        <div className="text-center py-6">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                          <p className="text-gray-600 text-sm font-medium">We couldn't load your plan details</p>
+                          <button onClick={fetchBilling} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4" /> Retry
+                          </button>
+                        </div>
                       ) : (
                         <>
                           <div className="flex items-center justify-between mb-4">
@@ -714,6 +740,14 @@ export default function Settings() {
                       <h2 className="text-lg font-semibold text-gray-900 mb-4">Invoice History</h2>
                       {billingLoading ? (
                         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
+                      ) : billingError ? (
+                        <div className="text-center py-8">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                          <p className="text-gray-600 text-sm font-medium">We couldn't load your billing history</p>
+                          <button onClick={fetchBilling} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4" /> Retry
+                          </button>
+                        </div>
                       ) : invoices.length === 0 ? (
                         <div className="text-center py-8">
                           <CreditCard className="w-8 h-8 text-gray-600 mx-auto mb-2" />
