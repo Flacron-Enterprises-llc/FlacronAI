@@ -14,6 +14,7 @@ const {
 } = require('../config/storage');
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { getTier, canGenerate } = require('../config/tiers');
+const { recordAuditLog } = require('../services/auditLogService');
 
 // Reject any uploaded file whose actual bytes aren't a real image (defeats a
 // spoofed mimetype). Returns the offending filename, or null if all are valid.
@@ -408,6 +409,11 @@ router.post('/:id/approve', authenticateAny, async (req, res) => {
       content: updates.content || doc.data().content,
       note: `Reviewed and finalized by ${name} (${licenseState} ${licenseNumber}, ${company})`,
     });
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_approved_finalized',
+      targetType: 'report', targetId: req.params.id,
+      meta: { claimNumber: doc.data().claimNumber, reviewerName: name, licenseState, licenseNumber, company }, req,
+    });
     return res.json({ success: true, message: 'Report approved and finalized', report: { id: doc.id, ...doc.data(), ...updates } });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to approve report', code: 'APPROVE_ERROR' });
@@ -451,6 +457,10 @@ router.post('/:id/share', authenticateAny, async (req, res) => {
     if (!shareToken) {
       shareToken = uuidv4();
       await ref.update({ shareToken, sharedAt: new Date().toISOString() });
+      recordAuditLog({
+        actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_shared',
+        targetType: 'report', targetId: req.params.id, meta: { claimNumber: doc.data().claimNumber }, req,
+      });
     }
     const url = `${process.env.FRONTEND_URL || ''}/shared/${shareToken}`;
     return res.json({ success: true, shareToken, url });
@@ -469,6 +479,10 @@ router.delete('/:id/share', authenticateAny, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
     }
     await ref.update({ shareToken: null, sharedAt: null });
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_share_revoked',
+      targetType: 'report', targetId: req.params.id, req,
+    });
     return res.json({ success: true, message: 'Share link revoked' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to revoke share link', code: 'SHARE_ERROR' });
@@ -520,9 +534,18 @@ router.delete('/:id', authenticateAny, async (req, res) => {
         await deleteObjects(data.imagePaths);
       }
       await ref.delete();
+      recordAuditLog({
+        actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_deleted_permanent',
+        targetType: 'report', targetId: req.params.id,
+        meta: { claimNumber: data.claimNumber, status: data.status }, req,
+      });
       return res.json({ success: true, message: 'Report permanently deleted' });
     } else {
       await ref.update({ status: 'archived', updatedAt: new Date().toISOString() });
+      recordAuditLog({
+        actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_archived',
+        targetType: 'report', targetId: req.params.id, req,
+      });
       return res.json({ success: true, message: 'Report archived' });
     }
   } catch (err) {
@@ -623,6 +646,11 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const downloadUrl = `/api/reports/${req.params.id}/download?file=${filename}`;
 
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_exported',
+      targetType: 'report', targetId: req.params.id,
+      meta: { format, claimNumber: report.claimNumber, draft: !reviewed }, req,
+    });
     return res.json({ success: true, downloadUrl, expiresAt, format, filename });
   } catch (err) {
     console.error('Export error:', err.stack || err.message || err);

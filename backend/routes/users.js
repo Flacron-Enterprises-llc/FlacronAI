@@ -218,6 +218,11 @@ router.put('/change-password', authenticateToken, [body('newPassword').isLength(
 router.post('/api-keys', authenticateToken, requireApiAccess, [body('name').optional().trim()], async (req, res) => {
   try {
     const result = await generateApiKey(req.user.uid, req.body.name || 'API Key');
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'api_key_created',
+      targetType: 'apiKey', targetId: result.keyId || null,
+      meta: { name: req.body.name || 'API Key' }, req,
+    });
     return res.status(201).json({ success: true, ...result, warning: 'Save this key — it will not be shown again' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to create API key', code: 'APIKEY_ERROR' });
@@ -238,6 +243,10 @@ router.get('/api-keys', authenticateToken, requireApiAccess, async (req, res) =>
 router.delete('/api-keys/:keyId', authenticateToken, requireApiAccess, async (req, res) => {
   try {
     await revokeKey(req.params.keyId, req.user.uid);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'api_key_revoked',
+      targetType: 'apiKey', targetId: req.params.keyId, req,
+    });
     return res.json({ success: true, message: 'API key revoked' });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });

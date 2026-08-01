@@ -83,7 +83,7 @@
 | T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
 | T-6.9 | Progress modal reflects real backend stages | DONE | 2026-08-01 — confirmed gap in BOTH Dashboard.jsx and EnterpriseDashboard.jsx (separate hardcoded step lists); both now skip the AI-photo-analysis stage at 0 photos; also fixed an interval-leak-on-error bug found in both while there |
-| T-6.10 | Audit logging coverage check | TODO | |
+| T-6.10 | Audit logging coverage check | DONE | 2026-08-01 — confirmed report delete/export/share/approve and CRM/API-key actions wrote nothing to the central auditLogs collection; added 9 recordAuditLog call sites across reports.js/crm.js/users.js |
 | T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
 | T-6.12 | MFA recovery codes + password-gated disable | TODO | Confirmed gap |
 | T-6.13 | Rename "Quality Score" → "Documentation Completeness" | DONE | 2026-08-01 — 7 display sites across Dashboard.jsx, EnterpriseDashboard.jsx, and the Home.jsx marketing preview relabeled with tooltips; qualityScore backend field name unchanged (data shape, out of scope) |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.10 — Close audit-logging gaps on reports/CRM/API keys
+- **Status:** DONE
+- **What changed:** `recordAuditLog()` / the central `auditLogs` collection (`services/auditLogService.js`, read by the admin panel's audit viewer at `sales.js:362`) already covers every auth/security event (login, logout, MFA, password change, account deletion, suspicious login) — but had **zero** coverage for report or CRM actions. Confirmed via grep that `reports.js`, `crm.js`, and the API-key routes in `users.js` never called it at all. Most notably: **permanently deleting a report left no trace anywhere** — the report-local version-history subcollection (`recordVersion`, used for edit/approve tracking) is deleted along with the report itself, so a hard delete was completely unlogged. Added `recordAuditLog` calls at 9 sites: report permanent-delete, report archive, report export (with format + draft/final status), report share-link create/revoke, report approve/finalize (capturing the reviewing adjuster's name/license/firm), CRM client/appointment/claim delete, and API key create/revoke. The API-key routes are shared by both Settings.jsx and EnterpriseDashboard.jsx's separate key-management UIs (confirmed both call the same `/api/users/api-keys` endpoints), so one backend fix covers both.
+- **Files touched:** `backend/routes/reports.js`, `backend/routes/crm.js`, `backend/routes/users.js`.
+- **QA done:** Targeted ESLint 0 errors on all 3 files (pre-existing warnings only); all 3 modules load without syntax errors; backend tests 7/7 passed.
+- **Left / follow-ups:** Did not add logging for read-only actions (report view, list) — audit logging here is scoped to state-changing/destructive actions per the client's ask, not every request. Did not touch `payment.js` (Stripe webhook events are already independently tracked via the `processedWebhooks` idempotency collection).
+- **Golden-rule check:** directly strengthens Golden Rule #6 (security first) — destructive/high-stakes actions now leave a durable, centrally-queryable trail.
 
 ### [2026-08-01] — T-6.9 — Generation progress modal must reflect real backend stages
 - **Status:** DONE

@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { requireTier } = require('../middleware/auth');
 const crm = require('../services/crmService');
 const { body, validationResult } = require('express-validator');
+const { recordAuditLog } = require('../services/auditLogService');
 
 const agencyPlus = requireTier('agency');
 
@@ -54,6 +55,10 @@ router.put('/clients/:id', authenticateToken, agencyPlus, async (req, res) => {
 router.delete('/clients/:id', authenticateToken, agencyPlus, async (req, res) => {
   try {
     await crm.deleteClient(req.user.uid, req.params.id);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'crm_client_deleted',
+      targetType: 'crmClient', targetId: req.params.id, req,
+    });
     return res.json({ success: true, message: 'Client deleted' });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
@@ -107,6 +112,10 @@ router.put('/appointments/:id', authenticateToken, agencyPlus, async (req, res) 
 router.delete('/appointments/:id', authenticateToken, agencyPlus, async (req, res) => {
   try {
     await crm.deleteAppointment(req.user.uid, req.params.id);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'crm_appointment_deleted',
+      targetType: 'crmAppointment', targetId: req.params.id, req,
+    });
     return res.json({ success: true, message: 'Appointment deleted' });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
@@ -159,6 +168,10 @@ router.put('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
 router.delete('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
   try {
     await crm.deleteClaim(req.user.uid, req.params.id);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'crm_claim_deleted',
+      targetType: 'crmClaim', targetId: req.params.id, req,
+    });
     return res.json({ success: true, message: 'Claim deleted' });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
