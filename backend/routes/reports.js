@@ -334,11 +334,40 @@ router.put('/:id', authenticateAny, async (req, res) => {
     const updates = { updatedAt: new Date().toISOString() };
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 
+    const contentChanged = typeof req.body.content === 'string' && req.body.content !== doc.data().content;
+
+    // Editing the content of an already-approved report invalidates that
+    // approval — it no longer reflects what the adjuster actually reviewed.
+    // Reopen it as a draft so it must be re-reviewed and re-approved before
+    // it can export clean again (Golden Rule #3).
+    const wasReviewed = isReviewed(doc.data().status);
+    if (contentChanged && wasReviewed) {
+      updates.status = 'draft';
+      updates.reviewedBy = null;
+      updates.reviewedByUid = null;
+      updates.reviewedAt = null;
+      updates.reviewedFromIp = null;
+      updates.versionApproved = null;
+      updates.signature = null;
+    }
+
     await ref.update(updates);
 
     // Record a version snapshot when the report content actually changed.
-    if (typeof req.body.content === 'string' && req.body.content !== doc.data().content) {
-      await recordVersion(ref, { action: 'edited', by: req.user.email || req.user.uid, content: req.body.content });
+    if (contentChanged) {
+      await recordVersion(ref, {
+        action: wasReviewed ? 'edited_reopened' : 'edited',
+        by: req.user.email || req.user.uid,
+        content: req.body.content,
+        note: wasReviewed ? 'Edited after approval — report reopened as draft; prior approval invalidated.' : '',
+      });
+    }
+    if (contentChanged && wasReviewed) {
+      recordAuditLog({
+        actorUid: req.user.uid, actorEmail: req.user.email, action: 'report_reopened_after_edit',
+        targetType: 'report', targetId: req.params.id,
+        meta: { claimNumber: doc.data().claimNumber, previousStatus: doc.data().status }, req,
+      });
     }
     return res.json({ success: true, message: 'Report updated', updates });
   } catch (err) {

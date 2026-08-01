@@ -507,9 +507,15 @@ export default function Dashboard() {
     if (!generatedReport) return;
     setSavingContent(true);
     try {
-      await reportsAPI.update(generatedReport.id, { content: editableContent });
-      setGeneratedReport(prev => ({ ...prev, content: editableContent }));
-      toast.success('Changes saved');
+      const res = await reportsAPI.update(generatedReport.id, { content: editableContent });
+      const updates = res.data?.updates || { content: editableContent };
+      setGeneratedReport(prev => ({ ...prev, ...updates }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, ...updates } : r)));
+      if (updates.status === 'draft') {
+        toast('Report edited after approval — reopened as draft; re-approval required to export clean.', { icon: '⚠️' });
+      } else {
+        toast.success('Changes saved');
+      }
       handlePreviewPDF();
     } catch { toast.error('Save failed'); }
     finally { setSavingContent(false); }

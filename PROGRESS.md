@@ -80,7 +80,7 @@
 | T-6.4 | Harden report status transitions server-side | DONE | 2026-07-31 — found a real manual status dropdown in "My Reports" (missed by the initial audit) letting any user set draft/finalized/processing/failed/archived directly; removed it + backend accepted arbitrary status via PUT |
 | T-6.5 | Strengthen adjuster approval fields | DONE | 2026-07-31 — /approve now requires full name, license #, license state, company/firm + explicit confirmation checkbox; rejects with 400 if any missing; both Dashboard.jsx and EnterpriseDashboard.jsx updated to match |
 | T-6.6 | Re-verify billing/plan sync | TODO | Likely already fixed by T-3.2/T-3.4 — needs re-test against client's exact scenario |
-| T-6.7 | Confirm draft/final export separation complete | TODO | Likely already done (T-2.7) — verify edit-after-approval invalidation |
+| T-6.7 | Confirm draft/final export separation complete | DONE | 2026-08-01 — draft/final watermarking itself was fine, but found a real gap: editing a finalized report's content left status untouched, so it kept exporting "clean" under a stale approval/signature. Fixed — editing reverts status to draft and clears approval fields |
 | T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
 | T-6.9 | Progress modal reflects real backend stages | DONE | 2026-08-01 — confirmed gap in BOTH Dashboard.jsx and EnterpriseDashboard.jsx (separate hardcoded step lists); both now skip the AI-photo-analysis stage at 0 photos; also fixed an interval-leak-on-error bug found in both while there |
 | T-6.10 | Audit logging coverage check | DONE | 2026-08-01 — confirmed report delete/export/share/approve and CRM/API-key actions wrote nothing to the central auditLogs collection; added 9 recordAuditLog call sites across reports.js/crm.js/users.js |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.7 — Editing a finalized report now invalidates its approval
+- **Status:** DONE
+- **What changed:** This task was flagged as "likely already fixed" (T-2.7's draft/final watermarking) and needed only a re-verify of one specific requirement: "any later edit should create a new draft version and invalidate the previous approval." It was **not** actually true. `PUT /api/reports/:id` (the content-edit endpoint) never touched `status` — so editing a finalized report's content left `status: 'finalized'` (and the original `reviewedBy`/`reviewedAt`/`signature`) completely untouched. Since `isReviewed()` and the export watermark logic key off `status` alone, an edited report kept exporting as a clean, unwatermarked "final" document under the adjuster's original signature — even though the content no longer matched what they'd actually reviewed and signed off on. Confirmed reproducible: the Dashboard/EnterpriseDashboard content editor has no read-only gate once a report is finalized — "Save Changes" is always enabled. Fixed: editing the content of an already-approved report now reverts `status` to `'draft'` and clears `reviewedBy`/`reviewedByUid`/`reviewedAt`/`reviewedFromIp`/`versionApproved`/`signature`, forcing a fresh full re-approval (with the same license/firm/checkbox requirements from T-6.5) before it can export clean again. Also records a distinct `edited_reopened` version-history entry and a `report_reopened_after_edit` audit-log entry (using the T-6.10 infrastructure). Both frontend editors now surface a warning toast and update local state from the backend's actual returned fields instead of assuming only `content` changed.
+- **Files touched:** `backend/routes/reports.js`, `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors on all 3 files (pre-existing warnings only); backend module loads clean, backend tests 7/7 passed; frontend tests 2/2 passed; production build passed.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** Directly closes a real Golden Rule #3 gap — a finalized report's signature/approval now always corresponds to the content that was actually reviewed, never a stale approval on since-edited content.
 
 ### [2026-08-01] — T-6.10 — Close audit-logging gaps on reports/CRM/API keys
 - **Status:** DONE
