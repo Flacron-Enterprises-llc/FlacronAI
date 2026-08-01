@@ -81,7 +81,7 @@
 | T-6.5 | Strengthen adjuster approval fields | DONE | 2026-07-31 — /approve now requires full name, license #, license state, company/firm + explicit confirmation checkbox; rejects with 400 if any missing; both Dashboard.jsx and EnterpriseDashboard.jsx updated to match |
 | T-6.6 | Re-verify billing/plan sync | DONE | 2026-08-01 — core reconciliation confirmed sound (T-3.2 self-heals from live Stripe data); real gap was that invoice lists showed amount/date only, no plan name, so a legitimate old lower-priced invoice (from before an upgrade) looked like an unexplained mismatch. Added plan/description to all 3 invoice-list surfaces |
 | T-6.7 | Confirm draft/final export separation complete | DONE | 2026-08-01 — draft/final watermarking itself was fine, but found a real gap: editing a finalized report's content left status untouched, so it kept exporting "clean" under a stale approval/signature. Fixed — editing reverts status to draft and clears approval fields |
-| T-6.8 | Authorization/role audit pass | TODO | Folds into existing T-3.8 |
+| T-6.8 | Authorization/role audit pass | DONE (audit only, no gaps found) | 2026-08-01 — every ID-scoped endpoint across reports.js/crm.js/teams.js/whitelabel.js/users.js/payment.js checked for tenant-ownership verification; all clean. Admin gate + tier gates confirmed server-side only |
 | T-6.9 | Progress modal reflects real backend stages | DONE | 2026-08-01 — confirmed gap in BOTH Dashboard.jsx and EnterpriseDashboard.jsx (separate hardcoded step lists); both now skip the AI-photo-analysis stage at 0 photos; also fixed an interval-leak-on-error bug found in both while there |
 | T-6.10 | Audit logging coverage check | DONE | 2026-08-01 — confirmed report delete/export/share/approve and CRM/API-key actions wrote nothing to the central auditLogs collection; added 9 recordAuditLog call sites across reports.js/crm.js/users.js |
 | T-6.11 | Password min length 6→12 | DONE | 2026-08-01 — found a 3rd spot beyond the two the audit caught (`users.js` PUT /change-password); all 3 backend validators + Auth.jsx + Settings.jsx copy/validation raised to 12 |
@@ -110,6 +110,23 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.8 — Authorization/ownership audit (no code changes — clean result)
+- **Status:** DONE — audit only, no gaps found.
+- **What was checked:** Every ID-scoped (`:id`/`:tid`/`:uid`/`:memberId`/`:keyId`/`:token`) endpoint across `reports.js`, `crm.js`, `teams.js`, `whitelabel.js`, `users.js`, and `payment.js`, specifically for IDOR risk — i.e., does the handler verify the resource actually belongs to the requesting user (or their enterprise) before returning/mutating it, rather than trusting the ID alone.
+- **Findings:**
+  - `reports.js` — all 9 ID-scoped routes (get/update/delete/approve/share/unshare/export/download/add-images/template-delete) check `doc.data().userId !== req.user.uid` before doing anything.
+  - `crm.js` / `crmService.js` — every client/appointment/claim get/update/delete passes `userId` through to the service layer, which checks ownership before every read and write.
+  - `teams.js` — member role-update/remove check `ownerId !== req.user.uid`; the invite-accept-by-token flow cross-checks the invited email against the authenticated user and is single-use (token is nulled after acceptance).
+  - `whitelabel.js` — the one public route (`/portal/:subdomain`) explicitly whitelists only public-safe fields (company name, colors, logo, header/footer text) — no private data exposed; all other routes operate only on the caller's own config (no arbitrary ID to guess).
+  - `users.js` / `apiKeyService.js` — profile/API-key routes only ever operate on `req.user.uid`'s own data; `revokeKey`/`getKeyUsage` both verify `keyDoc.data().userId !== userId`.
+  - `payment.js` — checkout/subscription/invoice routes only ever touch the caller's own Stripe customer/subscription ID pulled from their own Firestore doc; `confirm-checkout`'s client-supplied `sessionId` is cross-checked against `session.metadata.uid !== req.user.uid`.
+  - `sales.js` admin routes — all consistently gated by both `authenticateToken` and `requireAdmin`; `requireAdmin` checks `req.user.email` (from the verified token) against `process.env.ADMIN_EMAIL`, not any client-controlled value.
+  - `authenticateAny`/`authenticateApiKey` — API-key auth correctly sets `req.user.uid` to the key's actual owner, so downstream ownership checks work identically regardless of auth method.
+  - `requireTier`/`requireApiAccess` — both check `req.user.tier`, which is populated server-side from the Firestore user document on every request, never trusted from a client header (Golden Rule #4).
+- **Files touched:** none — audit only.
+- **Left / follow-ups:** Confirms `T-3.8` (roles & permissions, still TODO) doesn't need to fix any existing authorization holes — it's purely additive work (adding a proper role/permission model on top of an already-safe ownership foundation).
+- **Golden-rule check:** Confirms Golden Rule #4 (server-side entitlement enforcement) and general tenant isolation are solid across the current route surface.
 
 ### [2026-08-01] — T-6.6 — Show plan name on invoices to explain historical price differences
 - **Status:** DONE
