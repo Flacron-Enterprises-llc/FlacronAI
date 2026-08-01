@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
+import { formatStatus } from '../utils/formatStatus';
 
 // ── Quick Demos ───────────────────────────────────────────────────────────────
 const QUICK_DEMOS = [
@@ -1059,7 +1060,7 @@ export default function EnterpriseDashboard() {
                         <p className="text-xs text-gray-400">Invited {new Date(m.invitedAt).toLocaleDateString()}</p>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {m.status}
+                        {formatStatus(m.status)}
                       </span>
                       {editingRole === m.id ? (
                         <div className="flex items-center gap-2">

@@ -94,7 +94,7 @@
 | T-6.18 | Calendar layout/event display fixes | TODO | Not yet audited — needs live look |
 | T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
 | T-6.20 | Field validation + address autocomplete | TODO | |
-| T-6.21 | Standardize capitalization of statuses | TODO | Small — good next pick |
+| T-6.21 | Standardize capitalization of statuses | DONE | 2026-08-01 — new shared formatStatus() helper; applied at 13 raw-status display sites across Dashboard/CRM/Settings/EnterpriseDashboard/AdminDashboard |
 | T-6.22 | Icon tooltips + accessible labels | TODO | |
 | T-6.23 | Loading/empty/error states audit | TODO | |
 | T-6.24 | Mobile pass on authed report/CRM screens | TODO | T-1.11 only covered marketing pages |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.21 — Standardize status/label capitalization
+- **Status:** DONE
+- **What changed:** Report/claim/appointment/lead/invoice/team-member statuses were displayed exactly as stored — lowercase, and hyphenated for multi-word values (`in-progress`, `pending-review`). Added a shared `frontend/src/utils/formatStatus.js` (`formatStatus()`) that Title-Cases and de-hyphenates for display only — database/API values are untouched. Applied it at all 13 raw-status render sites found across the app: `Dashboard.jsx` (report `StatusBadge`, invoice status), `CRM.jsx` (appointment `StatusPill`, claim table row, claim status filter buttons, claim status `<select>` — which needed an explicit `value={s}` added since it previously relied on the option's text content as its value), `Settings.jsx` (invoice status), `EnterpriseDashboard.jsx` (team member status), `AdminDashboard.jsx` (report status, invoice status, lead status `<select>`). Left one existing correct implementation alone (`CRM.jsx` `ClaimSlideOver` claim badge already used a CSS `capitalize` class + hyphen replace — already produced the same Title Case result).
+- **Files touched:** `frontend/src/utils/formatStatus.js` (new), `frontend/src/pages/Dashboard.jsx`, `frontend/src/pages/CRM.jsx`, `frontend/src/pages/Settings.jsx`, `frontend/src/pages/EnterpriseDashboard.jsx`, `frontend/src/pages/AdminDashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors across all 6 files (pre-existing warnings only); frontend tests 2/2 passed; production build passed; `formatStatus` exercised standalone against all known status values (draft/finalized/processing/failed/archived/open/in-progress/pending-review/closed/paid/scheduled/cancelled/completed/complete/active/new/contacted/qualified/converted plus null/empty) — all produced correct Title Case output.
+- **Left / follow-ups:** None.
+- **Golden-rule check:** none violated — display-only change, no data model impact. Verified the CRM claim-status `<select>` fix didn't change the submitted value (added explicit `value={s}` precisely so the underlying lowercase-hyphenated value keeps flowing to the backend unchanged).
 
 ### [2026-08-01] — T-6.19 — Confirmation dialogs for destructive actions
 - **Status:** DONE

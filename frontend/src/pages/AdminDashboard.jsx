@@ -11,6 +11,7 @@ import {
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { salesAPI } from '../services/api';
+import { formatStatus } from '../utils/formatStatus';
 
 const TIERS = ['starter', 'professional', 'agency', 'enterprise'];
 const TIER_COLORS = {
@@ -226,7 +227,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                         <p className="text-xs text-gray-500">{r.lossType} · {r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${r.status === 'completed' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                        {r.status}
+                        {formatStatus(r.status)}
                       </span>
                     </div>
                   ))}
@@ -261,7 +262,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                               <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full border ${inv.status === 'paid' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{inv.status}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full border ${inv.status === 'paid' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{formatStatus(inv.status)}</span>
                               {inv.pdf && <a href={inv.pdf} target="_blank" rel="noreferrer" className="p-1 hover:bg-gray-100 rounded"><ExternalLink className="w-3.5 h-3.5 text-gray-400" /></a>}
                             </div>
                           </div>
@@ -674,7 +675,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3">
                           <select value={l.status} onChange={e => handleLeadUpdate(l.id, { status: e.target.value })}
                             className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none ${LEAD_STATUS_COLORS[l.status] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                            {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => <option key={s} value={s}>{s}</option>)}
+                            {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => <option key={s} value={s}>{formatStatus(s)}</option>)}
                           </select>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500">

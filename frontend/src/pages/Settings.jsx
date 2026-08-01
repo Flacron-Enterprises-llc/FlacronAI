@@ -15,6 +15,7 @@ import {
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { formatStatus } from '../utils/formatStatus';
 import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI } from '../services/api';
 
@@ -729,7 +730,7 @@ export default function Settings() {
                                   <td className="px-3 py-3 text-sm text-gray-900 font-medium">${inv.amount.toFixed(2)}</td>
                                   <td className="px-3 py-3">
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                      {inv.status}
+                                      {formatStatus(inv.status)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-3">

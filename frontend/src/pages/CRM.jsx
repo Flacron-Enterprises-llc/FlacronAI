@@ -12,6 +12,7 @@ import PageLoader from '../components/PageLoader';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { crmAPI } from '../services/api';
+import { formatStatus } from '../utils/formatStatus';
 
 const SIDEBAR_TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,7 +29,7 @@ const getRecordId = record => record?.id || record?._id;
 
 function StatusPill({ status }) {
   const cls = APPT_STATUSES[status] || 'bg-gray-500/20 text-gray-600 border-gray-500/30';
-  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>{status}</span>;
+  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>{formatStatus(status)}</span>;
 }
 
 function Modal({ title, onClose, children }) {
@@ -148,7 +149,7 @@ function NewClaimModal({ clients, onClose, onSaved }) {
           </div>
           <div><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {CLAIM_STATUSES.map(s => <option key={s}>{s}</option>)}
+              {CLAIM_STATUSES.map(s => <option key={s} value={s}>{formatStatus(s)}</option>)}
             </select>
           </div>
         </div>
@@ -201,7 +202,7 @@ function ClientSlideOver({ client, onClose }) {
                 {reports.map(r => (
                   <div key={getRecordId(r)} className="flex items-center justify-between p-3 rounded-xl bg-gray-100 border border-gray-200">
                     <div><p className="text-gray-900 text-sm font-mono">{r.claimNumber}</p><p className="text-gray-500 text-xs">{r.lossType}</p></div>
-                    <span className="text-xs text-gray-600">{r.status}</span>
+                    <span className="text-xs text-gray-600">{formatStatus(r.status)}</span>
                   </div>
                 ))}
               </div>}
@@ -702,7 +703,7 @@ export default function CRM() {
                   {['all', ...CLAIM_STATUSES].map(s => (
                     <button key={s} onClick={() => setClaimStatusFilter(s)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${claimStatusFilter === s ? 'bg-orange-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
-                      {s === 'all' ? 'All' : s}
+                      {s === 'all' ? 'All' : formatStatus(s)}
                     </button>
                   ))}
                 </div>
@@ -732,7 +733,7 @@ export default function CRM() {
                             <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                               c.status === 'closed' ? 'bg-gray-500/20 text-gray-600' :
                               c.status === 'open' ? 'bg-orange-500/20 text-orange-400' :
-                              'bg-yellow-500/20 text-yellow-400'}`}>{c.status}</span></td>
+                              'bg-yellow-500/20 text-yellow-400'}`}>{formatStatus(c.status)}</span></td>
                             <td className="px-4 py-3">
                               <button
                                 type="button"

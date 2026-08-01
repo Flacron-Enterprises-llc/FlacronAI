@@ -13,6 +13,7 @@ import Navbar from '../components/Navbar';
 import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { formatStatus } from '../utils/formatStatus';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI } from '../services/api';
 import api from '../services/api';
@@ -134,7 +135,7 @@ const STATUS_STYLES = {
 
 function StatusBadge({ status }) {
   const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
-  const label = status === 'complete' ? 'completed' : (status || 'unknown');
+  const label = formatStatus(status === 'complete' ? 'completed' : status);
   return (
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>
       {label}
@@ -1683,7 +1684,7 @@ export default function Dashboard() {
                                   'bg-gray-100 text-gray-500 border-gray-200'
                                 }`}>
                                   {inv.status === 'paid' && <Check className="w-3 h-3" />}
-                                  {inv.status}
+                                  {formatStatus(inv.status)}
                                 </span>
                               </td>
                               <td className="py-3">
