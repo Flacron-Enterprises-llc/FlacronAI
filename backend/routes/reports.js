@@ -180,6 +180,21 @@ router.post('/generate', authenticateAny, (req, res, next) => {
       });
     }
 
+    // Reject obviously malformed/oversized input before it reaches the AI prompt.
+    const fieldLimits = {
+      claimNumber: 50, insuredName: 200, propertyAddress: 300, lossType: 100, reportType: 100,
+      additionalNotes: 5000, propertyDetails: 5000, lossDescription: 5000, damagesObserved: 5000, recommendations: 5000,
+    };
+    for (const [field, max] of Object.entries(fieldLimits)) {
+      const value = req.body[field];
+      if (typeof value === 'string' && value.length > max) {
+        return res.status(400).json({ success: false, error: `${field} exceeds the ${max}-character limit`, code: 'VALIDATION_ERROR' });
+      }
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lossDate)) {
+      return res.status(400).json({ success: false, error: 'Date of loss must be a valid date (YYYY-MM-DD)', code: 'VALIDATION_ERROR' });
+    }
+
     const reportId = req.reportId;
 
     // Reject spoofed/non-image uploads before doing any work.

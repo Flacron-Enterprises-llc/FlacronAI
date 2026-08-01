@@ -34,6 +34,19 @@ const parseLocalDate = (dateStr) => {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
 };
+
+// Surfaces the backend's actual validation/error message instead of a generic
+// fallback -- express-validator errors come back as { errors: { field: { msg } } }.
+const apiErrorMessage = (err, fallback) => {
+  const data = err?.response?.data;
+  if (!data) return fallback;
+  if (data.error) return data.error;
+  if (data.errors) {
+    const first = Object.values(data.errors)[0];
+    if (first?.msg) return first.msg;
+  }
+  return fallback;
+};
 const getRecordId = record => record?.id || record?._id;
 
 function StatusPill({ status }) {
@@ -67,7 +80,7 @@ function NewClientModal({ onClose, onSaved }) {
     try {
       await crmAPI.createClient(form);
       toast.success('Client created'); onSaved();
-    } catch { toast.error('Failed to create client'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create client')); }
     finally { setLoading(false); }
   };
   return (
@@ -98,7 +111,7 @@ function NewAppointmentModal({ clients, onClose, onSaved }) {
     try {
       await crmAPI.createAppointment(form);
       toast.success('Appointment scheduled'); onSaved();
-    } catch { toast.error('Failed to schedule appointment'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to schedule appointment')); }
     finally { setLoading(false); }
   };
   return (
@@ -134,7 +147,7 @@ function NewClaimModal({ clients, onClose, onSaved }) {
     try {
       await crmAPI.createClaim(form);
       toast.success('Claim created'); onSaved();
-    } catch { toast.error('Failed to create claim'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create claim')); }
     finally { setLoading(false); }
   };
   return (

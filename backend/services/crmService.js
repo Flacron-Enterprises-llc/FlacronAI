@@ -147,6 +147,17 @@ const getClaims = async (userId, { page = 1, limit = 20, status } = {}) => {
   return { data: claims.slice(offset, offset + limit), total, page, limit, hasMore: offset + limit < total };
 };
 
+// Checks whether another claim already uses this claim number for this user.
+// Pass excludeId when checking during an update so a claim doesn't collide with itself.
+const claimNumberExists = async (userId, claimNumber, excludeId = null) => {
+  const db = getFirestore();
+  const snap = await db.collection('crmClaims')
+    .where('userId', '==', userId)
+    .where('claimNumber', '==', claimNumber)
+    .get();
+  return snap.docs.some(d => d.id !== excludeId);
+};
+
 const createClaim = async (userId, data) => {
   const db = getFirestore();
   const id = uuidv4();
@@ -158,6 +169,8 @@ const createClaim = async (userId, data) => {
     lossDate: data.lossDate || '',
     status: data.status || 'Open',
     description: data.description || '',
+    propertyAddress: data.propertyAddress || '',
+    notes: data.notes || '',
     linkedReports: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -195,5 +208,5 @@ const deleteClaim = async (userId, claimId) => {
 module.exports = {
   getClients, createClient, getClient, updateClient, deleteClient, getClientReports,
   getAppointments, createAppointment, updateAppointment, deleteAppointment,
-  getClaims, createClaim, getClaim, updateClaim, deleteClaim,
+  getClaims, createClaim, getClaim, updateClaim, deleteClaim, claimNumberExists,
 };
