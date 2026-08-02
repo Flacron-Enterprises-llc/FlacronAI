@@ -16,7 +16,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { reportsAPI, paymentAPI } from '../services/api';
+import { reportsAPI, paymentAPI, crmAPI } from '../services/api';
 import api from '../services/api';
 
 const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Other'];
@@ -231,6 +231,175 @@ function ReportDetailModal({ report, onClose }) {
   );
 }
 
+function ClaimIdentityFields({ form, setForm, disabled = false }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label className="label">Claim Number *</label>
+        <input className="input" placeholder="e.g. CLM-2024-001" disabled={disabled}
+          value={form.claimNumber} onChange={e => setForm(p => ({ ...p, claimNumber: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Insured Name *</label>
+        <input className="input" placeholder="Full name of insured" disabled={disabled}
+          value={form.insuredName} onChange={e => setForm(p => ({ ...p, insuredName: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Loss Date *</label>
+        <input type="date" className="input" disabled={disabled} value={form.lossDate}
+          onChange={e => setForm(p => ({ ...p, lossDate: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Loss Type *</label>
+        <select className="input" disabled={disabled} value={form.lossType}
+          onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}>
+          {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// Agency/Enterprise claim picker (T-6.16 Phase B): select an existing CRM claim or
+// create one inline, instead of free-typing claim details that can drift/duplicate.
+function ClaimLinkSection({ linkedClaim, linkedClientName, onSelect, onClear }) {
+  const [mode, setMode] = useState('search');
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [newForm, setNewForm] = useState({ clientId: '', claimNumber: '', lossType: LOSS_TYPES[0], lossDate: '', propertyAddress: '' });
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    crmAPI.getClients({ limit: 100 }).then(r => {
+      const list = r.data?.data ?? r.data?.clients ?? [];
+      setClients(Array.isArray(list) ? list : []);
+    }).catch(() => setClients([]));
+  }, []);
+
+  useEffect(() => {
+    if (linkedClaim) return;
+    setSearching(true);
+    const t = setTimeout(() => {
+      crmAPI.getClaims({ search, limit: 8 })
+        .then(r => setResults(r.data?.data ?? []))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, linkedClaim]);
+
+  const resolveClientName = (clientId) => clients.find(c => (c.id || c._id) === clientId)?.name || '';
+
+  const handleCreateClaim = async () => {
+    if (!newForm.clientId || !newForm.claimNumber.trim() || !newForm.lossDate) {
+      toast.error('Client, claim number, and loss date are required');
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await crmAPI.createClaim(newForm);
+      const claim = res.data.claim;
+      onSelect(claim, resolveClientName(claim.clientId));
+      setMode('search');
+      setNewForm({ clientId: '', claimNumber: '', lossType: LOSS_TYPES[0], lossDate: '', propertyAddress: '' });
+      toast.success('Claim created and linked');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create claim');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (linkedClaim) {
+    return (
+      <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-sm space-y-1 min-w-0">
+            <p className="font-mono font-semibold text-gray-900">{linkedClaim.claimNumber}</p>
+            <p className="text-gray-600">{linkedClientName || 'No client assigned'} — {linkedClaim.lossType}</p>
+            {linkedClaim.propertyAddress && <p className="text-gray-500 text-xs truncate">{linkedClaim.propertyAddress}</p>}
+          </div>
+          <button type="button" onClick={onClear} className="text-xs text-brand-600 hover:text-brand-700 underline shrink-0">Change claim</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setMode('search')}
+          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${mode === 'search' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Select Existing Claim
+        </button>
+        <button type="button" onClick={() => setMode('new')}
+          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${mode === 'new' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          + New Claim
+        </button>
+      </div>
+
+      {mode === 'search' ? (
+        <div>
+          <input className="input" placeholder="Search by claim number, loss type, or address…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {searching ? (
+              <p className="text-xs text-gray-400 px-1">Searching…</p>
+            ) : results.length === 0 ? (
+              <p className="text-xs text-gray-400 px-1">{search ? 'No matching claims.' : 'No claims yet — create one with "+ New Claim".'}</p>
+            ) : results.map(c => (
+              <button key={c.id || c._id} type="button" onClick={() => onSelect(c, resolveClientName(c.clientId))}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 text-sm transition-colors">
+                <span className="font-mono font-semibold text-gray-900">{c.claimNumber}</span>
+                <span className="text-gray-500"> — {resolveClientName(c.clientId) || 'Unassigned'} — {c.lossType}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="label">Client *</label>
+            <select className="input" value={newForm.clientId} onChange={e => setNewForm(p => ({ ...p, clientId: e.target.value }))}>
+              <option value="">Select a client…</option>
+              {clients.map(c => <option key={c.id || c._id} value={c.id || c._id}>{c.name}</option>)}
+            </select>
+            {clients.length === 0 && <p className="text-xs text-gray-400 mt-1">No CRM clients yet — add one in CRM → Clients first.</p>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Claim Number *</label>
+              <input className="input" placeholder="e.g. CLM-2024-001" value={newForm.claimNumber}
+                onChange={e => setNewForm(p => ({ ...p, claimNumber: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Loss Date *</label>
+              <input type="date" className="input" value={newForm.lossDate}
+                onChange={e => setNewForm(p => ({ ...p, lossDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Loss Type</label>
+              <select className="input" value={newForm.lossType} onChange={e => setNewForm(p => ({ ...p, lossType: e.target.value }))}>
+                {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Property Address</label>
+              <input className="input" placeholder="Street, city, state, zip" value={newForm.propertyAddress}
+                onChange={e => setNewForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+            </div>
+          </div>
+          <button type="button" onClick={handleCreateClaim} disabled={creating} className="btn-primary text-sm py-2 px-4 disabled:opacity-50">
+            {creating ? 'Creating…' : 'Create & Link Claim'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, userProfile, tier, canGenerate, reportsRemaining, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -317,6 +486,12 @@ export default function Dashboard() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(FORM_INITIAL);
   const [photos, setPhotos] = useState([]);
+  // Agency/Enterprise: link report generation to a real CRM claim instead of free-typing
+  // claim details (T-6.16). claimMode only matters for those tiers; Starter/Professional
+  // have no CRM access and always see the manual fields.
+  const [claimMode, setClaimMode] = useState('linked');
+  const [linkedClaim, setLinkedClaim] = useState(null);
+  const [linkedClientName, setLinkedClientName] = useState('');
   const [dragging, setDragging] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
@@ -410,6 +585,28 @@ export default function Dashboard() {
     setPhotos(prev => { const next = [...prev]; URL.revokeObjectURL(next[idx].url); next.splice(idx, 1); return next; });
   };
 
+  // Selecting/creating a CRM claim fills the display fields from it; the backend
+  // re-derives the same fields from the claim record at generate-time regardless,
+  // so this is for a consistent preview, not the source of truth.
+  const handleSelectClaim = (claim, clientName) => {
+    setLinkedClaim(claim);
+    setLinkedClientName(clientName || '');
+    setForm(p => ({
+      ...p,
+      claimNumber: claim.claimNumber || '',
+      insuredName: clientName || '',
+      propertyAddress: claim.propertyAddress || '',
+      lossDate: claim.lossDate || '',
+      lossType: claim.lossType || p.lossType,
+    }));
+  };
+
+  const handleClearClaim = () => {
+    setLinkedClaim(null);
+    setLinkedClientName('');
+    setForm(p => ({ ...p, claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '' }));
+  };
+
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
     const steps = photos.length > 0 ? GENERATION_STEPS_WITH_PHOTOS : GENERATION_STEPS_NO_PHOTOS;
@@ -420,6 +617,7 @@ export default function Dashboard() {
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      if (linkedClaim) fd.append('claimId', linkedClaim.id || linkedClaim._id);
       photos.forEach(p => fd.append('images', p.file));
 
       stepInterval = setInterval(() => {
@@ -432,6 +630,9 @@ export default function Dashboard() {
       setGeneratedReport(report);
       setForm(FORM_INITIAL);
       setPhotos([]);
+      setLinkedClaim(null);
+      setLinkedClientName('');
+      setClaimMode('linked');
       setStep(1);
       localStorage.removeItem(LS_KEY);
       toast.success('Report generated successfully!');
@@ -977,7 +1178,13 @@ export default function Dashboard() {
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {QUICK_DEMOS.map(demo => (
                                   <button key={demo.label}
-                                    onClick={() => { setForm(prev => ({ ...prev, ...demo.data })); toast.success(`${demo.label} template loaded!`); }}
+                                    onClick={() => {
+                                      setForm(prev => ({ ...prev, ...demo.data }));
+                                      // A demo fills its own claim identity fields -- drop any linked CRM
+                                      // claim so it doesn't silently override the demo data at generate-time.
+                                      setLinkedClaim(null); setLinkedClientName(''); setClaimMode('manual');
+                                      toast.success(`${demo.label} template loaded!`);
+                                    }}
                                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-500/5 transition-all text-center group">
                                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors group-hover:bg-orange-50 group-hover:text-orange-500">
                                       <demo.icon className="h-5 w-5" aria-hidden="true" />
@@ -1017,37 +1224,35 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            <div className="border-t border-gray-100 pt-4">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                  <label className="label">Claim Number *</label>
-                                  <input className="input" placeholder="e.g. CLM-2024-001"
-                                    value={form.claimNumber} onChange={e => setForm(p => ({ ...p, claimNumber: e.target.value }))} />
+                            <div className="border-t border-gray-100 pt-4 space-y-4">
+                              {(tier === 'agency' || tier === 'enterprise') ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="label mb-0">Claim</label>
+                                    {!linkedClaim && (
+                                      <button type="button"
+                                        onClick={() => setClaimMode(m => (m === 'manual' ? 'linked' : 'manual'))}
+                                        className="text-xs text-gray-500 hover:text-brand-600 underline">
+                                        {claimMode === 'manual' ? 'Link to a CRM claim instead' : 'Enter details manually instead'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {(claimMode === 'manual' && !linkedClaim) ? (
+                                    <ClaimIdentityFields form={form} setForm={setForm} />
+                                  ) : (
+                                    <ClaimLinkSection linkedClaim={linkedClaim} linkedClientName={linkedClientName}
+                                      onSelect={handleSelectClaim} onClear={handleClearClaim} />
+                                  )}
                                 </div>
-                                <div>
-                                  <label className="label">Insured Name *</label>
-                                  <input className="input" placeholder="Full name of insured"
-                                    value={form.insuredName} onChange={e => setForm(p => ({ ...p, insuredName: e.target.value }))} />
-                                </div>
-                                <div>
-                                  <label className="label">Loss Date *</label>
-                                  <input type="date" className="input" value={form.lossDate}
-                                    onChange={e => setForm(p => ({ ...p, lossDate: e.target.value }))} />
-                                </div>
-                                <div>
-                                  <label className="label">Loss Type *</label>
-                                  <select className="input" value={form.lossType}
-                                    onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}>
-                                    {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="label">Report Type</label>
-                                  <select className="input" value={form.reportType}
-                                    onChange={e => setForm(p => ({ ...p, reportType: e.target.value }))}>
-                                    {REPORT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                </div>
+                              ) : (
+                                <ClaimIdentityFields form={form} setForm={setForm} />
+                              )}
+                              <div>
+                                <label className="label">Report Type</label>
+                                <select className="input" value={form.reportType}
+                                  onChange={e => setForm(p => ({ ...p, reportType: e.target.value }))}>
+                                  {REPORT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
                               </div>
                             </div>
                           </motion.div>
@@ -1063,8 +1268,9 @@ export default function Dashboard() {
                             </div>
                             <div>
                               <label className="label">Property Address *</label>
-                              <input className="input" placeholder="Full street address, city, state, zip"
+                              <input className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
                                 value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                              {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
                             </div>
                             <div>
                               <label className="label">Property Description</label>

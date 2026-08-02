@@ -89,7 +89,7 @@
 | T-6.13 | Rename "Quality Score" → "Documentation Completeness" | DONE | 2026-08-01 — 7 display sites across Dashboard.jsx, EnterpriseDashboard.jsx, and the Home.jsx marketing preview relabeled with tooltips; qualityScore backend field name unchanged (data shape, out of scope) |
 | T-6.14 | Zero-photo disclaimer text | DONE | 2026-08-01 — disclaimer deterministically inserted into report content (not LLM-dependent) under Section 8; propagates to preview + PDF/DOCX/HTML exports automatically since all render from the same content field |
 | T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
-| T-6.16 | Link claim number to real CRM claim record | IN PROGRESS (Phase A done) | 2026-08-01 — full 4-phase plan approved (see PROGRESS.md changelog). Phase A (backend: claimId on reports, server-derives claim fields, getClaimReports, ClaimSlideOver linked-reports UI) shipped. Phases B/C (wizard claim-pickers) and D (backfill script) remain |
+| T-6.16 | Link claim number to real CRM claim record | IN PROGRESS (Phases A+B done) | 2026-08-01 — Phase A (backend) + Phase B (Dashboard.jsx claim-picker for Agency/Enterprise) shipped. Phase C (EnterpriseDashboard.jsx equivalent) and D (backfill script) remain |
 | T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
 | T-6.18 | Calendar layout/event display fixes | DONE | 2026-08-01 — found and fixed the real bug: date-only appointment strings parsed as UTC midnight instead of local, causing "spans the wrong day" symptom in 3 places; "missing weekday columns" not reproducible in current code |
 | T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-01] — T-6.16 Phase B — Dashboard.jsx claim-picker (Agency/Enterprise)
+- **Status:** IN PROGRESS (Phase B of 4 shipped; C/D remain).
+- **What changed:** Step 1 of the report-generation wizard now branches by tier. Starter/Professional: unchanged free-text fields (`ClaimIdentityFields`, extracted from the original inline JSX with zero behavior change other than pulling "Report Type" out into its own always-shown row, since report type isn't a claim property). Agency/Enterprise: defaults to a new `ClaimLinkSection` — search-select an existing CRM claim, or a "+ New Claim" inline mini-form (client select + claim number + loss type + loss date + property address, calling the existing `crmAPI.createClaim`) that creates and immediately links a claim. Once linked, the section collapses to a read-only summary card with a "Change claim" action; Step 2's Property Address field also locks (disabled + explanatory hint) since it's now sourced from the claim. A small "Enter details manually instead" escape hatch stays available (and vice versa) for Agency/Enterprise — deliberately not a hard requirement, since some users won't have CRM data set up yet and Quick Demo templates need an unlinked path to work. Selecting a Quick Demo template explicitly clears any linked claim first (a demo fills its own claim-identity fields; leaving a stale `claimId` attached would have let the server silently override the demo data at generate-time). `claimId` rides along in the generate request's FormData when a claim is linked; cleared alongside the rest of the form on successful generation.
+- **Files touched:** `frontend/src/pages/Dashboard.jsx`.
+- **QA done:** Targeted ESLint 0 errors (pre-existing warnings only); production build passed; frontend tests 2/2 passed. Traced the full state machine by hand (default picker → manual toggle → select/create claim → linked summary → change claim → back to picker; Quick Demo interaction; submission payload) rather than relying on build success alone, since there's no test harness exercising this wizard's interactive flow.
+- **Left / follow-ups:** Phase C (EnterpriseDashboard.jsx — same concept, different form layout) and Phase D (backfill script) remain. Not manually walked in a live browser this session (no running dev server / test account in this pass) — recommend a real click-through QA pass before considering the Agency/Enterprise UI fully done, per this repo's "actually test it" convention.
+- **Golden-rule check:** none violated.
 
 ### [2026-08-01] — T-6.16 Phase A — Link report generation to real CRM claims (backend core)
 - **Status:** IN PROGRESS (Phase A of 4 shipped; B/C/D remain).
