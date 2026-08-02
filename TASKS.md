@@ -503,5 +503,11 @@ Source: client walkthrough of the live product (screenshots of API keys, My Repo
 ### T-6.32 — Homepage precision + audience clarity + trust content
 - **Client item:** #36, #37, #38, #39. Status: T-1.4 hero rebuild already emphasizes AI-assisted/draft/human-review framing — re-check current copy against the client's suggested safer headline variant before assuming more work is needed; verify no unsupported response-time promises remain on Contact page.
 
+### T-6.33 — Fix missing Firestore composite index for `enterpriseTeams` (GET /api/teams/members 500s)
+- **Found:** 2026-08-02, during T-6.16 Phase C live-browser QA — not a client-reported item, an incidental discovery.
+- **Status:** GAP CONFIRMED — `backend/routes/teams.js` `GET /members` queries `.where('ownerId','==',uid).orderBy('invitedAt','desc')` on `enterpriseTeams`. This equality-filter + different-field-orderBy combo requires a Firestore composite index. Reproduced live: a fresh Enterprise-tier account with zero team members gets a 500 from this endpoint every time (confirmed via console errors + backend logs in a real local run against the production Firestore project).
+- **Goal:** Create the composite index (Firestore emits the exact creation link in the error/log when the query fails — check Render logs or reproduce locally to get it) and deploy it. Likely affects every real Enterprise customer's Team tab today, not just test accounts.
+- **QA:** Load `/enterprise-dashboard` as an Enterprise user → Team tab loads without a 500, member list (even if empty) renders normally.
+
 ---
 **Sequencing note:** P1 items are the only ones recommended as near-term picks (T-6.4, T-6.5, T-6.11, T-6.13, T-6.14 are small and self-contained — good next commits). T-6.16/T-6.17/T-6.29 are large and need their own scoping/planning session before implementation, per Golden Rule #7. T-6.3/T-6.6(business-decision part)/T-6.30 need client input, not just code.
