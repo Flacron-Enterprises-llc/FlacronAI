@@ -444,9 +444,9 @@ Source: client walkthrough of the live product (screenshots of API keys, My Repo
 
 ### T-6.16 — Link claim number to a real CRM claim record (prevent duplicates)
 - **Client item:** #8 (dup claims), #29, P2-#1/#8.
-- **Status:** Plan approved 2026-08-01, Phase A shipped. Full plan: `C:\Users\umera\.claude\plans\happy-foraging-catmull.md` (also summarized in PROGRESS.md's 2026-08-01 changelog entry).
+- **Status:** DONE (2026-08-02) — all 4 phases shipped. Full plan: `C:\Users\umera\.claude\plans\happy-foraging-catmull.md` (also summarized across PROGRESS.md's 2026-08-01/02 changelog entries).
 - **Goal:** Report generation either selects an existing CRM claim (auto-populates claim #, insured, address, loss date/type) or creates a new claim inline — never a bare unlinked string. Agency/Enterprise only (CRM is tier-gated); Starter/Professional unaffected.
-- **Phases:** A (backend: `claimId` on reports, server-derives claim fields, `getClaimReports`, CRM `ClaimSlideOver` linked-reports UI) — DONE. B (Dashboard.jsx claim-picker) — TODO. C (EnterpriseDashboard.jsx claim-picker) — TODO. D (idempotent manually-run backfill script for existing claimNumber-only reports, matches exact `(userId, claimNumber)`) — TODO, ships after B.
+- **Phases:** A (backend: `claimId` on reports, server-derives claim fields, `getClaimReports`, CRM `ClaimSlideOver` linked-reports UI) — DONE. B (Dashboard.jsx claim-picker) — DONE, live-browser verified. C (EnterpriseDashboard.jsx claim-picker, shared `ClaimLinkSection` component extracted) — DONE, live-browser verified. D (idempotent manually-run backfill script, `backend/scripts/backfill-claim-links.js`) — DONE, dry-run verified against real data + a synthetic correctness test.
 
 ### T-6.17 — Replace raw Markdown report editor with a sectioned rich editor
 - **Client item:** #9, P2-#4.

@@ -89,7 +89,7 @@
 | T-6.13 | Rename "Quality Score" → "Documentation Completeness" | DONE | 2026-08-01 — 7 display sites across Dashboard.jsx, EnterpriseDashboard.jsx, and the Home.jsx marketing preview relabeled with tooltips; qualityScore backend field name unchanged (data shape, out of scope) |
 | T-6.14 | Zero-photo disclaimer text | DONE | 2026-08-01 — disclaimer deterministically inserted into report content (not LLM-dependent) under Section 8; propagates to preview + PDF/DOCX/HTML exports automatically since all render from the same content field |
 | T-6.15 | Unify CRM nav across Dashboard/EnterpriseDashboard/Navbar | TODO | Confirmed partial |
-| T-6.16 | Link claim number to real CRM claim record | IN PROGRESS (Phases A+B+C done) | 2026-08-02 — Phase C (EnterpriseDashboard.jsx claim-picker) shipped + live-browser verified. Only Phase D (backfill script) remains |
+| T-6.16 | Link claim number to real CRM claim record | DONE (all 4 phases shipped) | 2026-08-02 — Phase D (backfill script) shipped, verified via dry-run against real data + a synthetic unit test of the matching logic |
 | T-6.17 | Rich sectioned report editor (replace Markdown textarea) | TODO | Confirmed gap — large task, overlaps T-2.6 |
 | T-6.18 | Calendar layout/event display fixes | DONE | 2026-08-01 — found and fixed the real bug: date-only appointment strings parsed as UTC midnight instead of local, causing "spans the wrong day" symptom in 3 places; "missing weekday columns" not reproducible in current code |
 | T-6.19 | Confirmation dialogs for destructive actions | DONE | 2026-08-01 — 5 confirmed gaps fixed: report delete, bulk delete, template delete (Dashboard), client delete (CRM), API key revoke (Settings); subscription cancel + account deletion already had confirms |
@@ -110,6 +110,14 @@
 ---
 
 ## Changelog (newest on top)
+
+### [2026-08-02] — T-6.16 Phase D — Backfill script (T-6.16 now fully DONE)
+- **Status:** DONE — all 4 phases of T-6.16 shipped.
+- **What changed:** `backend/scripts/backfill-claim-links.js` — one-time, idempotent, manually-run script that links existing reports (created before Phases B/C shipped, which only ever had a free-typed `claimNumber`) to a real CRM claim, by matching `(userId, claimNumber)` exactly. Indexes all claims into a `Map` keyed by that pair; if two claims somehow share the same pair (only possible from data predating T-6.20's uniqueness check), marks it `AMBIGUOUS` and skips rather than guessing which one to link. Never touches `claimNumber`, never deletes anything, only adds `claimId` — and skips any report that already has one, so it's always safe to rerun (e.g. during a rollout window where old free-text reports might still be trickling in). Supports `--dry-run` for a preview with zero writes.
+- **Files touched:** `backend/scripts/backfill-claim-links.js` (new).
+- **QA done:** ESLint 0 warnings/errors. Ran `--dry-run` against the real production Firestore data (read-only, no writes): connected cleanly, processed 148 existing reports, 0 matched (expected — these reports predate any CRM claims existing at all, so there's nothing yet for them to match against; the script's job is to catch matches as CRM adoption grows, or if the client wants to backfill after entering historical claims into CRM). Separately verified the actual matching algorithm correctness with a synthetic in-memory test covering all 4 branches (link / already-linked / no-match / ambiguous) plus the critical case of two different users sharing the same claim number (correctly does NOT cross-link between users) — all 5 test cases passed exactly as expected.
+- **Left / follow-ups:** None — T-6.16 (client items #8/#29/P2-#1/#8, "prevent duplicate/conflicting claim data") is complete. The script is available but intentionally not auto-run; the client/a developer runs it whenever there's existing legacy data worth backfilling.
+- **Golden-rule check:** none violated. Non-destructive by construction (additive-only, dry-run supported, ambiguous cases never guessed).
 
 ### [2026-08-02] — T-6.16 Phase C — EnterpriseDashboard.jsx claim-picker
 - **Status:** IN PROGRESS (Phase C of 4 shipped; only Phase D — the backfill script — remains).
