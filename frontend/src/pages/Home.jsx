@@ -3,20 +3,24 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Zap, FileText, Image, Users, Globe, Code2, ArrowRight, Check,
-  Star, ChevronDown, Play, Shield, Clock, BarChart3,
-  CheckCircle, Download, Eye, Cpu, RefreshCw
+  BarChart3, Lock, KeyRound, CreditCard, ServerCog, Star,
+  CheckCircle, Download, Eye, Cpu, RefreshCw, Droplets, Flame, Wind, Hammer
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
+import TESTIMONIALS from '../data/testimonials.js';
+import { PLAN_PRICING } from '../data/plans.js';
+import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
+import Seo from '../components/Seo.jsx';
 
 // ── Mock Dashboard UI ──────────────────────────────────────────────────────
 const REPORT_LINES = [
   { type: 'h2', text: 'SECTION 5: DAMAGE ASSESSMENT' },
   { type: 'h3', text: 'Master Bathroom' },
-  { type: 'p',  text: 'Saturated subfloor beneath tile; visible buckling across 38 sq ft. Supply line failure caused prolonged water exposure.' },
+  { type: 'p',  text: 'Visible buckling of subfloor beneath tile across approx. 38 sq ft. Conditions appear consistent with prolonged water exposure near the supply line — plumber confirmation recommended.' },
   { type: 'h3', text: 'Kitchen Ceiling' },
-  { type: 'p',  text: 'Complete drywall collapse — 40 sq ft section fallen. Structural joist exposure noted; secondary water staining.' },
-  { type: 'h2', text: 'SECTION 7: ESTIMATED LOSS SUMMARY' },
+  { type: 'p',  text: 'Partial drywall collapse — approx. 40 sq ft section fallen. Joists visible with secondary water staining; professional structural assessment recommended.' },
+  { type: 'h2', text: 'SECTION 7: ESTIMATED LOSS SUMMARY (DRAFT)' },
   { type: 'table', rows: [
     ['Category', 'Description', 'Cost'],
     ['Demo / Removal', 'Saturated materials', '$1,850'],
@@ -91,9 +95,7 @@ const DashboardMock = () => {
         {/* App header */}
         <div className="bg-white border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-white" fill="white" />
-            </div>
+            <img src="/logo-mark.svg" alt="" className="w-6 h-6 object-contain" />
             <span className="font-bold text-sm text-gray-900">FlacronAI</span>
           </div>
           <div className="flex items-center gap-2">
@@ -144,10 +146,22 @@ const DashboardMock = () => {
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold text-gray-700">New Report</p>
                     <div className="flex gap-1">
-                      {['💧','🔥','🌪️','🔨'].map((e, i) => (
-                        <div key={i} className={`text-xs px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                      {[
+                        { label: 'Water damage', icon: Droplets },
+                        { label: 'Fire damage', icon: Flame },
+                        { label: 'Wind or hail', icon: Wind },
+                        { label: 'Vandalism', icon: Hammer },
+                      ].map(({ label, icon: LossIcon }, i) => (
+                        <div
+                          key={label}
+                          title={label}
+                          aria-label={label}
+                          className={`flex h-6 w-7 items-center justify-center rounded-md border transition-colors ${
                           i === 0 ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-400'
-                        }`}>{e}</div>
+                        }`}
+                        >
+                          <LossIcon className="h-3.5 w-3.5" strokeWidth={1.8} />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -235,8 +249,9 @@ const DashboardMock = () => {
                       <span className="text-xs font-bold text-gray-700">Report Generated</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100">
-                        Quality 94/100
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100"
+                        title="Documentation completeness — not the accuracy of the AI's findings.">
+                        Completeness 94/100
                       </span>
                       <div className="flex gap-1">
                         {['PDF', 'DOCX', 'HTML'].map(f => (
@@ -324,8 +339,8 @@ const DashboardMock = () => {
           <CheckCircle className="w-4 h-4 text-green-500" />
         </div>
         <div>
-          <p className="text-[10px] text-gray-400">Report ready in</p>
-          <p className="text-xs font-bold text-gray-800">~60 seconds</p>
+          <p className="text-[10px] text-gray-400">Draft ready</p>
+          <p className="text-xs font-bold text-gray-800">for your review</p>
         </div>
       </motion.div>
     </div>
@@ -352,42 +367,38 @@ const Counter = ({ end, suffix = '' }) => {
 };
 
 const features = [
-  { icon: Zap, title: 'AI Report Generation', desc: 'FlacronAI generates full CRU GROUP-standard reports in 60 seconds.', color: 'from-orange-500 to-amber-500' },
-  { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.', color: 'from-orange-500 to-cyan-500' },
-  { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. AI Vision analyzes each one and integrates findings into the report.', color: 'from-emerald-500 to-teal-500' },
-  { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.', color: 'from-orange-500 to-amber-500' },
-  { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with custom domain, logo, colors, and report footer.', color: 'from-pink-500 to-rose-500' },
-  { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.', color: 'from-violet-500 to-orange-500' },
+  { icon: Zap, title: 'AI-Assisted Drafting', desc: 'FlacronAI organizes submitted claim details and supported photos into a structured draft ready for professional review.' },
+  { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.' },
+  { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
+  { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.' },
+  { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with a custom subdomain, logo, colors, and report footer.' },
+  { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.' },
 ];
 
 const steps = [
-  { num: '01', title: 'Upload & Fill Details', desc: 'Enter claim information and upload up to 100 damage photos. Takes less than 2 minutes.' },
-  { num: '02', title: 'AI Generates Report', desc: 'FlacronAI analyzes your inputs and processes each photo. Full report in ~60 seconds.' },
-  { num: '03', title: 'Export & Share', desc: 'Download as PDF with your logo, export to DOCX, or share a secure link. Watermark-free on paid plans.' },
-];
-
-const testimonials = [
-  { name: 'Marcus Johnson', role: 'Senior Insurance Adjuster, Nationwide', text: 'I used to spend 3-4 hours writing each report. FlacronAI cuts it to 10 minutes while producing more detailed, professional output than I wrote manually.', rating: 5 },
-  { name: 'Sarah Chen', role: 'Claims Director, Hartford TPA Group', text: 'We white-labeled FlacronAI for our 40-person adjusting team. The enterprise portal looks completely branded — clients think it\'s our own software.', rating: 5 },
-  { name: 'David Rodriguez', role: 'Independent Adjuster, Texas', text: 'The API integration let us connect FlacronAI to our claim management system in a weekend. Starter to Agency upgrade was worth every penny.', rating: 5 },
+  { num: '01', title: 'Add Documentation', desc: 'Enter or link claim information, then upload the available inspection photos and supporting notes.' },
+  { num: '02', title: 'Generate a Draft', desc: 'FlacronAI organizes the submitted information and supported photos into editable report sections.' },
+  { num: '03', title: 'Review, Approve & Export', desc: 'A qualified reviewer edits and approves the draft before final PDF, DOCX, HTML, or secure-link sharing.' },
 ];
 
 const Home = () => {
   const location = useLocation();
+  const scrollTo = location.state?.scrollTo;
 
   useEffect(() => {
-    if (location.state?.scrollTo) {
-      const el = document.getElementById(location.state.scrollTo);
+    if (scrollTo) {
+      const el = document.getElementById(scrollTo);
       if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
     }
-  }, []);
+  }, [scrollTo]);
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo title="FlacronAI — AI-Assisted Insurance Report Drafting" description="Turn claim details and inspection documentation into structured draft reports for professional review, approval, and export. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar transparent />
 
       {/* Hero */}
-      <section className="relative min-h-screen flex items-center overflow-hidden pt-16">
+      <section className="relative flex items-center overflow-hidden pt-16">
         {/* Background blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-blob" />
@@ -398,32 +409,32 @@ const Home = () => {
         {/* Grid */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(249,115,22,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-600 text-sm font-medium mb-6">
                 <Zap className="w-3.5 h-3.5" />
-                Powered by FlacronAI
+                AI-assisted reporting for insurance professionals
               </div>
-              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-black text-gray-900 leading-tight tracking-tight mb-6">
-                Generate Insurance Reports in{' '}
-                <span className="gradient-text">Minutes with AI</span>
+              <h1 className="text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 leading-tight tracking-tight mb-6">
+                Turn Inspection Documentation Into{' '}
+                <span className="gradient-text">Professional Draft Reports</span>
               </h1>
               <p className="text-xl text-gray-600 leading-relaxed mb-8 max-w-lg">
-                Stop spending hours writing reports. FlacronAI uses enterprise AI to generate professional, CRU GROUP-standard inspection reports instantly — complete with damage photo analysis.
+                FlacronAI organizes claim details, field notes, and supported damage photos into a structured draft. A qualified professional reviews, edits, and approves it before final use.
               </p>
               <div className="flex flex-wrap gap-4 mb-10">
                 <Link to="/auth?mode=signup" className="btn-primary flex items-center gap-2">
-                  Start Free — No Credit Card
+                  Generate My First Report Free
                   <ArrowRight className="w-4 h-4" />
                 </Link>
-                <a href="#how-it-works" className="btn-secondary flex items-center gap-2">
-                  <Play className="w-4 h-4 fill-current" />
-                  See How It Works
+                <a href="/sample-report.pdf" target="_blank" rel="noopener" className="btn-secondary flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  View Sample Report
                 </a>
               </div>
-              <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
-                {['Free to start', '1 report free/month', 'No setup required', 'Cancel anytime'].map(item => (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500">
+                {['No credit card required', '5 reports free/month', 'You approve every report', 'PDF & DOCX export', 'Cancel anytime'].map(item => (
                   <span key={item} className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-emerald-500" />
                     {item}
@@ -444,26 +455,19 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Scroll indicator */}
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-gray-600"
-        >
-          <ChevronDown className="w-6 h-6" />
-        </motion.div>
       </section>
 
       {/* Stats Bar */}
       <section className="border-y border-[#e5e7eb] bg-[#f8f8f8]/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {/* Product facts only — verifiable from the codebase (Golden Rule #1) */}
             {[
-              { label: 'Faster Reports', value: 10, suffix: 'x', icon: Clock },
-              { label: 'Reports Generated', value: 50000, suffix: '+', icon: FileText },
-              { label: 'Subscription Tiers', value: 4, suffix: '', icon: BarChart3 },
-              { label: 'AI Accuracy', value: 98, suffix: '%', icon: Shield },
-            ].map(({ label, value, suffix, icon: Icon }) => (
+              { label: 'Damage Photos per Report', value: 100, suffix: '' },
+              { label: 'Report Sections per Draft', value: 9, suffix: '' },
+              { label: 'Export Formats', value: 3, suffix: '' },
+              { label: 'Subscription Tiers', value: 4, suffix: '' },
+            ].map(({ label, value, suffix }) => (
               <div key={label} className="text-center">
                 <div className="flex items-center justify-center gap-1 text-3xl font-black text-gray-900 mb-1">
                   <Counter end={value} suffix={suffix} />
@@ -475,6 +479,54 @@ const Home = () => {
         </div>
       </section>
 
+      {/* Product showcase — real UI (T-1.5) */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <h2 className="text-4xl font-black text-gray-900 mb-4">The Actual Product, Not a Mockup</h2>
+            <p className="text-gray-600 text-lg max-w-2xl mx-auto">
+              A five-step guided wizard takes you from claim details and damage photos to a structured draft report ready for your review.
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="relative"
+          >
+            <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-transparent to-navy-500/10 rounded-3xl blur-xl pointer-events-none" />
+            <div className="relative rounded-card overflow-hidden border border-border shadow-card bg-white">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 bg-surface border-b border-border">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-3 text-xs text-gray-400 truncate">app.flacronai.com/dashboard</span>
+              </div>
+              <img
+                src="/product-generate-report.webp"
+                alt="FlacronAI dashboard showing the five-step Generate Report wizard with claim information filled in"
+                loading="lazy"
+                width="2400"
+                height="1500"
+                className="w-full h-auto"
+              />
+            </div>
+          </motion.div>
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Want to see the output?{' '}
+            <a href="/sample-report.pdf" download className="text-brand-600 font-medium hover:underline">
+              Download the sample report (PDF)
+            </a>{' '}
+            — fictional data, real structure and language.
+          </p>
+        </div>
+      </section>
+
       {/* Features */}
       <section id="features" className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <motion.div
@@ -483,14 +535,14 @@ const Home = () => {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-600 text-sm mb-4">
             Everything you need
           </div>
           <h2 className="text-4xl font-black text-gray-900 mb-4">
             Built for Insurance Professionals
           </h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            From independent adjusters to enterprise TPAs — FlacronAI scales with your workflow.
+            Designed for independent adjusters, inspection firms, claims teams, TPAs, and restoration documentation workflows. Templates and required review steps should match each organization’s role and jurisdiction.
           </p>
         </motion.div>
 
@@ -502,10 +554,10 @@ const Home = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
-              className="card p-6 hover:border-orange-500/30 transition-all duration-300 group"
+              className="card p-6 hover:border-brand-500/30 transition-all duration-300 group"
             >
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
-                <feature.icon className="w-5 h-5 text-gray-900" />
+              <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <feature.icon className="w-5 h-5 text-brand-600" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">{feature.title}</h3>
               <p className="text-gray-600 text-sm leading-relaxed">{feature.desc}</p>
@@ -524,7 +576,7 @@ const Home = () => {
             className="text-center mb-16"
           >
             <h2 className="text-4xl font-black text-gray-900 mb-4">How It Works</h2>
-            <p className="text-gray-600 text-lg">Three steps from photos to professional report</p>
+            <p className="text-gray-600 text-lg">Three steps from submitted documentation to a reviewed report</p>
           </motion.div>
 
           <div className="relative">
@@ -555,6 +607,9 @@ const Home = () => {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+          <div className="mt-8 rounded-card border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+            <strong>AI limitations:</strong> FlacronAI drafts documentation; it does not perform an inspection or make final decisions about coverage, liability, cause of loss, safety, code compliance, or repair cost. A qualified professional must independently verify and approve every report.
+          </div>
         </div>
       </section>
 
@@ -572,10 +627,10 @@ const Home = () => {
 
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           {[
-            { tier: 'Starter', price: 0, reports: 1, features: ['1 report/month', 'PDF export', 'Watermarked'], highlight: false },
-            { tier: 'Professional', price: 39.99, reports: 20, features: ['20 reports/month', 'PDF + DOCX export', 'No watermark', 'Priority support'], highlight: true },
-            { tier: 'Agency', price: 99.99, reports: 100, features: ['100 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
-            { tier: 'Enterprise', price: 499, reports: '∞', features: ['Unlimited reports', 'White-label portal', 'Custom domain', 'Dedicated support'], highlight: false },
+            { tier: 'Starter', price: PLAN_PRICING.starter.monthly, reports: 5, features: ['5 reports/month', 'PDF export', 'Watermarked'], highlight: false },
+            { tier: 'Professional', price: PLAN_PRICING.professional.monthly, reports: 50, features: ['50 reports/month', 'PDF, DOCX + HTML export', 'No watermark', 'Priority support'], highlight: true },
+            { tier: 'Agency', price: PLAN_PRICING.agency.monthly, reports: 200, features: ['200 reports/month', 'API access', 'CRM module', 'Custom logo on reports'], highlight: false },
+            { tier: 'Enterprise', price: PLAN_PRICING.enterprise.monthly, reports: '∞', features: ['Unlimited reports', 'White-label portal', 'Custom subdomain', 'Dedicated support'], highlight: false },
           ].map((plan, i) => (
             <motion.div
               key={plan.tier}
@@ -603,7 +658,7 @@ const Home = () => {
                   </li>
                 ))}
               </ul>
-              <Link to={plan.price === 0 ? '/auth?mode=signup' : '/pricing'} className={`block text-center text-sm py-2 rounded-lg font-medium transition-colors ${plan.highlight ? 'bg-orange-500 hover:bg-orange-600 text-gray-900' : 'bg-gray-100 hover:bg-gray-100 text-gray-900 border border-gray-200'}`}>
+              <Link to={plan.price === 0 ? '/auth?mode=signup' : '/pricing'} className={`block text-center text-sm py-2 rounded-lg font-medium transition-colors ${plan.highlight ? 'bg-primary hover:bg-primary-hover text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-200'}`}>
                 {plan.price === 0 ? 'Get Started Free' : 'Get Started'}
               </Link>
             </motion.div>
@@ -618,38 +673,94 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="py-24 bg-[#f8f8f8]/30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Testimonials — renders ONLY when real, approved feedback exists (Golden Rule #1) */}
+      {TESTIMONIALS.length > 0 && (
+        <section className="py-24 bg-[#f8f8f8]/30">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-16"
+            >
+              <h2 className="text-4xl font-black text-gray-900 mb-4">What Customers Say</h2>
+            </motion.div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {TESTIMONIALS.map((t, i) => (
+                <motion.div
+                  key={`${t.name}-${t.date}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="card p-6"
+                >
+                  {t.rating > 0 && (
+                    <div className="flex items-center gap-1 mb-4">
+                      {[...Array(t.rating)].map((_, j) => (
+                        <Star key={j} className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.benefit}"</p>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-gray-900 font-semibold text-sm">{t.name}</p>
+                      <p className="text-gray-500 text-xs">
+                        {t.role}
+                        {t.reportType ? ` · ${t.reportType} reports` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {t.verified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                          <CheckCircle className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                      {t.date && <p className="text-gray-400 text-[11px] mt-0.5">{t.date}</p>}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Trust & security — verifiable facts only, no compliance badges (Golden Rule #6) */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
+        <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-10"
           >
-            <h2 className="text-4xl font-black text-gray-900 mb-4">Trusted by Insurance Professionals</h2>
+            <h2 className="text-3xl font-black text-gray-900 mb-3">Security, Stated Plainly</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              No badge wall — just what the platform actually does today.
+            </p>
           </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              { icon: Lock, title: 'Encrypted in Transit', desc: 'All traffic between your browser and FlacronAI runs over HTTPS.' },
+              { icon: KeyRound, title: 'Firebase Authentication', desc: 'Sign-in handled by Google’s Firebase Auth — email/password or Google account. Passwords are never stored by us.' },
+              { icon: CreditCard, title: 'Stripe-Hosted Payments', desc: 'Checkout and card handling happen on Stripe. Card numbers never touch FlacronAI servers.' },
+              { icon: ServerCog, title: 'Server-Side Plan Limits', desc: 'Report limits and plan features are enforced on the server, not in the browser — covered by automated tests.' },
+            ].map(({ icon: Icon, title, desc }, i) => (
               <motion.div
-                key={t.name}
+                key={title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="card p-6"
+                transition={{ delay: i * 0.07 }}
+                className="bg-white border border-border rounded-card p-5"
               >
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(t.rating)].map((_, j) => (
-                    <Star key={j} className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  ))}
+                <div className="w-10 h-10 rounded-xl bg-navy-800/5 border border-navy-800/10 flex items-center justify-center mb-4">
+                  <Icon className="w-5 h-5 text-navy-700" />
                 </div>
-                <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.text}"</p>
-                <div>
-                  <p className="text-gray-900 font-semibold text-sm">{t.name}</p>
-                  <p className="text-gray-500 text-xs">{t.role}</p>
-                </div>
+                <h3 className="text-gray-900 font-semibold mb-1.5">{title}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">{desc}</p>
               </motion.div>
             ))}
           </div>
@@ -671,7 +782,7 @@ const Home = () => {
                   Ready to Transform Your Workflow?
                 </h2>
                 <p className="text-gray-600 text-lg mb-8">
-                  Join thousands of insurance professionals using AI to generate better reports faster.
+                  Draft professional inspection reports with AI — you review and approve every finding before it ships.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link to="/auth?mode=signup" className="btn-primary flex items-center justify-center gap-2">

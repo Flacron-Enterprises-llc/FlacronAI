@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const sharp = require('sharp');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken, optionalAuth, requireApiAccess } = require('../middleware/auth');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
+const { API_KEY_SCOPES, normalizeApiKeyScopes } = require('../config/apiScopes');
 const { sendWelcomeEmail } = require('../services/emailService');
-const { getLogoPath, getFileUrl } = require('../config/storage');
+const { logoObject, uploadBuffer, deleteObject, deletePrefix } = require('../config/storage');
+const { recordAuditLog } = require('../services/auditLogService');
 const { body, validationResult } = require('express-validator');
 
 const logoUpload = multer({
@@ -103,19 +103,22 @@ router.post('/profile/logo', authenticateToken, logoUpload.single('logo'), async
   if (!req.file) return res.status(400).json({ success: false, error: 'No logo file provided' });
 
   try {
-    const logoDir = getLogoPath(req.user.uid);
     const filename = `logo_${Date.now()}.png`;
-    const outputPath = path.join(logoDir, filename);
+    const objectPath = logoObject(req.user.uid, filename);
 
-    // Resize and convert to PNG
-    await sharp(req.file.buffer)
+    // Resize and convert to PNG in memory
+    const buf = await sharp(req.file.buffer)
       .resize(300, 150, { fit: 'inside', withoutEnlargement: true })
       .png()
-      .toFile(outputPath);
+      .toBuffer();
 
-    const logoUrl = getFileUrl(outputPath);
+    // Remove the previous logo object, if any, then store the new one.
     const db = getFirestore();
-    await db.collection('users').doc(req.user.uid).update({ logoUrl, logoPath: outputPath, updatedAt: new Date().toISOString() });
+    const prev = (await db.collection('users').doc(req.user.uid).get()).data() || {};
+    if (prev.logoPath) await deleteObject(prev.logoPath);
+
+    const { url: logoUrl } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true });
+    await db.collection('users').doc(req.user.uid).update({ logoUrl, logoPath: objectPath, updatedAt: new Date().toISOString() });
 
     return res.json({ success: true, logoUrl });
   } catch (err) {
@@ -131,7 +134,7 @@ router.delete('/profile/logo', authenticateToken, async (req, res) => {
     const doc = await db.collection('users').doc(req.user.uid).get();
     const { logoPath } = doc.data() || {};
 
-    if (logoPath && fs.existsSync(logoPath)) fs.unlinkSync(logoPath);
+    if (logoPath) await deleteObject(logoPath);
     await db.collection('users').doc(req.user.uid).update({ logoUrl: null, logoPath: null, updatedAt: new Date().toISOString() });
 
     return res.json({ success: true, message: 'Logo removed' });
@@ -195,11 +198,17 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 });
 
 // PUT /api/users/change-password
-router.put('/change-password', authenticateToken, [body('newPassword').isLength({ min: 6 })], async (req, res) => {
+router.put('/change-password', authenticateToken, [body('newPassword').isLength({ min: 12 })], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
+    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    }).catch(() => {});
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password changed' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to change password', code: 'PASSWORD_ERROR' });
@@ -207,9 +216,21 @@ router.put('/change-password', authenticateToken, [body('newPassword').isLength(
 });
 
 // POST /api/users/api-keys
-router.post('/api-keys', authenticateToken, requireApiAccess, [body('name').optional().trim()], async (req, res) => {
+router.post('/api-keys', authenticateToken, requireApiAccess, [
+  body('name').optional().trim().isLength({ max: 100 }),
+  body('scopes').isArray({ min: 1 }).withMessage('Select at least one API-key scope'),
+  body('scopes.*').isIn(API_KEY_SCOPES).withMessage('Invalid API-key scope'),
+], async (req, res) => {
   try {
-    const result = await generateApiKey(req.user.uid, req.body.name || 'API Key');
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+    const scopes = normalizeApiKeyScopes(req.body.scopes);
+    const result = await generateApiKey(req.user.uid, req.body.name || 'API Key', scopes);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'api_key_created',
+      targetType: 'apiKey', targetId: result.keyId || null,
+      meta: { name: req.body.name || 'API Key', scopes }, req,
+    });
     return res.status(201).json({ success: true, ...result, warning: 'Save this key — it will not be shown again' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to create API key', code: 'APIKEY_ERROR' });
@@ -230,6 +251,10 @@ router.get('/api-keys', authenticateToken, requireApiAccess, async (req, res) =>
 router.delete('/api-keys/:keyId', authenticateToken, requireApiAccess, async (req, res) => {
   try {
     await revokeKey(req.params.keyId, req.user.uid);
+    recordAuditLog({
+      actorUid: req.user.uid, actorEmail: req.user.email, action: 'api_key_revoked',
+      targetType: 'apiKey', targetId: req.params.keyId, req,
+    });
     return res.json({ success: true, message: 'API key revoked' });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
@@ -273,6 +298,79 @@ router.get('/api-usage', authenticateToken, requireApiAccess, async (req, res) =
     return res.json({ success: true, analytics: { totalCalls, byDay, byEndpoint, period: '30 days' } });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to get API usage', code: 'USAGE_ERROR' });
+  }
+});
+
+// DELETE /api/users/account — self-service, irreversible account + data deletion
+router.delete('/account', authenticateToken, [
+  body('password').notEmpty().withMessage('Current password is required to confirm deletion'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+
+  const uid = req.user.uid;
+
+  try {
+    const firebaseApiKey = process.env.FIREBASE_API_KEY;
+    if (!firebaseApiKey) {
+      return res.status(500).json({ success: false, error: 'Firebase API key not configured', code: 'CONFIG_ERROR' });
+    }
+
+    // Re-verify current password before an irreversible delete.
+    const axios = require('axios');
+    try {
+      await axios.post(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
+        { email: req.user.email, password: req.body.password, returnSecureToken: true }
+      );
+    } catch {
+      return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+    }
+
+    const db = getFirestore();
+
+    // Refuse to orphan a team — owner must remove members / transfer first.
+    const teamSnap = await db.collection('enterpriseTeams').where('ownerId', '==', uid).limit(1).get();
+    if (!teamSnap.empty) {
+      return res.status(409).json({
+        success: false,
+        error: 'You still own an enterprise team. Remove all team members before deleting your account.',
+        code: 'TEAM_OWNER_BLOCKED',
+      });
+    }
+
+    // Reports (+ their versions subcollection) need a recursive delete.
+    const reportsSnap = await db.collection('reports').where('userId', '==', uid).get();
+    await Promise.all(reportsSnap.docs.map((d) => db.recursiveDelete(d.ref)));
+
+    const flatCollections = [
+      { name: 'reportTemplates', field: 'userId' },
+      { name: 'apiKeys', field: 'userId' },
+      { name: 'crmClients', field: 'userId' },
+      { name: 'crmAppointments', field: 'userId' },
+      { name: 'crmClaims', field: 'userId' },
+      { name: 'enterpriseClients', field: 'userId' },
+    ];
+    for (const { name, field } of flatCollections) {
+      const snap = await db.collection(name).where(field, '==', uid).get();
+      if (snap.empty) continue;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Wipe all Storage objects (report photos, exports, logos).
+    await deletePrefix(`users/${uid}/`);
+
+    await db.collection('users').doc(uid).delete();
+    await getAuth().deleteUser(uid);
+
+    recordAuditLog({ actorUid: uid, actorEmail: req.user.email, action: 'account_self_delete', req });
+
+    return res.json({ success: true, message: 'Account and all associated data deleted' });
+  } catch (err) {
+    console.error('Account deletion error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to delete account', code: 'DELETE_ACCOUNT_ERROR' });
   }
 });
 

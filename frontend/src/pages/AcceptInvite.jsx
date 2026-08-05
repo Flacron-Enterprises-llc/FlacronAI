@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { teamsAPI } from '../services/api';
+import Seo from '../components/Seo.jsx';
 
 export default function AcceptInvite() {
   const { token } = useParams();
@@ -39,6 +40,7 @@ export default function AcceptInvite() {
 
   return (
     <div className="min-h-screen bg-[#ffffff] flex items-center justify-center p-4">
+      <Seo title="Team Invitation — FlacronAI" description="Accept your FlacronAI team invitation." path="/invite" noindex />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}

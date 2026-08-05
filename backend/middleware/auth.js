@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { getAuth, getFirestore } = require('../config/firebase');
+const { getAuth, getFirestore, FieldValue } = require('../config/firebase');
 const { isAtLeastTier, getTier } = require('../config/tiers');
+const { normalizeApiKeyScopes } = require('../config/apiScopes');
 
 // Verify Firebase ID token or custom JWT
 const authenticateToken = async (req, res, next) => {
@@ -35,6 +36,12 @@ const authenticateToken = async (req, res, next) => {
         const db = getFirestore();
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         const userData = userDoc.exists ? userDoc.data() : {};
+
+        // tokenVersion is bumped on logout/password-change to revoke all
+        // previously issued custom JWTs (they're otherwise stateless for 7 days).
+        if ((decoded.tokenVersion || 0) !== (userData.tokenVersion || 0)) {
+          return res.status(401).json({ success: false, error: 'Session revoked, please log in again', code: 'TOKEN_REVOKED' });
+        }
 
         req.user = {
           uid: decoded.uid,
@@ -87,10 +94,12 @@ const authenticateApiKey = async (req, res, next) => {
       displayName: userData.displayName || '',
       ...userData,
     };
-    req.apiKey = { id: keyDoc.id, ...keyData };
+    req.apiKey = {
+      id: keyDoc.id,
+      ...keyData,
+      scopes: normalizeApiKeyScopes(keyData.scopes, { legacy: true }),
+    };
 
-    // Update last used
-    keyDoc.ref.update({ lastUsedAt: new Date().toISOString() }).catch(() => {});
     return next();
   } catch (err) {
     console.error('API key auth error:', err);
@@ -133,7 +142,11 @@ const optionalAuth = async (req, res, next) => {
       const db = getFirestore();
       const userDoc = await db.collection('users').doc(decoded.uid).get();
       const userData = userDoc.exists ? userDoc.data() : {};
-      req.user = { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+      if ((decoded.tokenVersion || 0) !== (userData.tokenVersion || 0)) {
+        req.user = null;
+      } else {
+        req.user = { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+      }
     } catch {
       req.user = null;
     }
@@ -176,21 +189,50 @@ const requireApiAccess = (req, res, next) => {
   return next();
 };
 
+// Browser bearer sessions continue through normal RBAC. API-key requests must
+// carry the explicit permission required by the endpoint.
+const requireApiScope = (scope) => (req, res, next) => {
+  if (!req.apiKey) return next();
+  const grantedScopes = normalizeApiKeyScopes(req.apiKey.scopes);
+  if (!grantedScopes.includes(scope)) {
+    return res.status(403).json({
+      success: false,
+      error: `API key requires the ${scope} scope`,
+      code: 'API_SCOPE_REQUIRED',
+      requiredScope: scope,
+      grantedScopes,
+    });
+  }
+  return next();
+};
+
 // Track API key usage after response
 const trackApiUsage = (req, res, next) => {
   const originalEnd = res.end.bind(res);
   res.end = function (...args) {
     if (req.apiKey) {
       const db = getFirestore();
-      db.collection('apiUsage').add({
+      const timestamp = new Date().toISOString();
+      const usageRef = db.collection('apiUsage').doc();
+      const keyRef = db.collection('apiKeys').doc(req.apiKey.id);
+      const batch = db.batch();
+
+      batch.set(usageRef, {
         keyId: req.apiKey.id,
         userId: req.user?.uid,
         endpoint: req.path,
         method: req.method,
         statusCode: res.statusCode,
-        timestamp: new Date().toISOString(),
+        timestamp,
         ip: req.ip,
-      }).catch(() => {});
+      });
+      batch.update(keyRef, {
+        usageCount: FieldValue.increment(1),
+        lastUsedAt: timestamp,
+      });
+      batch.commit().catch(err => {
+        console.error('API usage tracking error:', err.message);
+      });
     }
     return originalEnd(...args);
   };
@@ -204,5 +246,6 @@ module.exports = {
   optionalAuth,
   requireTier,
   requireApiAccess,
+  requireApiScope,
   trackApiUsage,
 };

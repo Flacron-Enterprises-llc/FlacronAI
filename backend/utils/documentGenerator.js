@@ -1,11 +1,13 @@
 const PizZip = require('pizzip');
-const Docxtemplater = require('docxtemplater');
-const fs = require('fs');
-const path = require('path');
 
-// Generate DOCX from report data
+// Generate DOCX from report data. Returns a Buffer (no disk I/O).
 const generateDOCX = async (report, options = {}) => {
-  const { outputPath, companyName = 'FlacronAI', hideFlacronBranding = false } = options;
+  const {
+    companyName = 'FlacronAI',
+    hideFlacronBranding = false,
+    watermark = false,
+    watermarkText = 'DRAFT - PENDING ADJUSTER REVIEW',
+  } = options;
 
   // Build a DOCX from scratch using XML template
   const brandName = hideFlacronBranding ? companyName : 'FlacronAI';
@@ -116,6 +118,15 @@ const generateDOCX = async (report, options = {}) => {
     ${xmlParts.join('\n')}`;
   }).join('\n');
 
+  // E-signature (T-2.12): statement of electronic sign-off, if the adjuster signed.
+  const sig = report.signature;
+  const signedByLine = sig?.name
+    ? `<w:p><w:r><w:rPr><w:i/><w:color w:val="0F172A"/></w:rPr><w:t xml:space="preserve">Electronically signed by ${escapeXml(sig.name)}${sig.title ? `, ${escapeXml(sig.title)}` : ''}${sig.confirmedAt ? ` on ${new Date(sig.confirmedAt).toLocaleString()}` : ''}.</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>License: </w:t></w:r><w:r><w:t>${escapeXml(sig.licenseState)} ${escapeXml(sig.licenseNumber)}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Company / Firm: </w:t></w:r><w:r><w:t>${escapeXml(sig.company)}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Report version approved: </w:t></w:r><w:r><w:t>${escapeXml(report.versionApproved || '')}</w:t></w:r></w:p>`
+    : '';
+
   const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -139,6 +150,7 @@ const generateDOCX = async (report, options = {}) => {
       <w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr>
       <w:r><w:t>INSURANCE INSPECTION REPORT</w:t></w:r>
     </w:p>
+    ${watermark ? `<w:p><w:pPr><w:jc w:val="center"/><w:shd w:val="clear" w:fill="FEE2E2"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="991B1B"/><w:sz w:val="36"/></w:rPr><w:t>${escapeXml(watermarkText)}</w:t></w:r></w:p>` : ''}
     <w:p>
       <w:pPr><w:jc w:val="center"/></w:pPr>
       <w:r><w:rPr><w:b/><w:color w:val="F97316"/></w:rPr><w:t>Prepared by ${escapeXml(brandName)}</w:t></w:r>
@@ -183,15 +195,17 @@ const generateDOCX = async (report, options = {}) => {
     <w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>
 
     <!-- Report Content -->
+    ${watermark ? `<w:p><w:pPr><w:jc w:val="center"/><w:shd w:val="clear" w:fill="FEE2E2"/><w:spacing w:after="160"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="991B1B"/><w:sz w:val="28"/></w:rPr><w:t>${escapeXml(watermarkText)}</w:t></w:r></w:p>` : ''}
     ${sectionXml}
 
     <!-- Signature Block -->
     <w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>
     <w:p>
       <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
-      <w:r><w:t>Adjuster Certification</w:t></w:r>
+      <w:r><w:t>Reviewing Adjuster Sign-Off</w:t></w:r>
     </w:p>
-    <w:p><w:r><w:t>I certify that the information contained in this report is accurate and complete to the best of my knowledge.</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">This report was prepared with AI assistance and is provided as a draft for professional review. It does not constitute a final determination of cause, coverage, liability, or loss value. The reviewing adjuster's signature below indicates that they have reviewed, corrected as needed, and approved its contents.</w:t></w:r></w:p>
+    ${signedByLine}
     <w:p><w:r><w:t></w:t></w:r></w:p>
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Signature</w:t></w:r></w:p>
     <w:p><w:r><w:t></w:t></w:r></w:p>
@@ -200,10 +214,16 @@ const generateDOCX = async (report, options = {}) => {
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Adjuster Name (Print)</w:t></w:r></w:p>
     <w:p><w:r><w:t></w:t></w:r></w:p>
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  License Number</w:t></w:r></w:p>
+    <w:p><w:r><w:t></w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  License State</w:t></w:r></w:p>
+    <w:p><w:r><w:t></w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Company / Firm Name</w:t></w:r></w:p>
 
     <w:sectPr>
+      <w:headerReference w:type="default" r:id="rId2"/>
+      <w:footerReference w:type="default" r:id="rId3"/>
       <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="1080" w:right="1080" w:bottom="1800" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;
@@ -217,6 +237,8 @@ const generateDOCX = async (report, options = {}) => {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`);
 
   zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -227,14 +249,28 @@ const generateDOCX = async (report, options = {}) => {
   zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
 </Relationships>`);
 
   zip.file('word/document.xml', docXml);
   zip.file('word/styles.xml', getDefaultStyles());
+  zip.file('word/header1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r><w:rPr><w:b/><w:color w:val="${watermark ? '991B1B' : '64748B'}"/></w:rPr><w:t>${watermark ? escapeXml(watermarkText) : `Claim ${escapeXml(report.claimNumber || '')}`}</w:t></w:r>
+  </w:p>
+</w:hdr>`);
+  zip.file('word/footer1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r><w:rPr><w:color w:val="64748B"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(brandName)} - Page </w:t></w:r>
+    <w:fldSimple w:instr="PAGE"><w:r><w:rPr><w:color w:val="64748B"/><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>
+  </w:p>
+</w:ftr>`);
 
   const buf = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-  fs.writeFileSync(outputPath, buf);
-  return outputPath;
+  return buf;
 };
 
 const parseReportSections = (content) => {

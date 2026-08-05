@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Zap, ChevronDown, LogOut, User, Settings } from 'lucide-react';
+import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import TierBadge from './TierBadge.jsx';
 
-const Navbar = ({ transparent = false }) => {
+const Navbar = ({
+  transparent = false,
+  mobileMenuLabel,
+  mobileMenuItems = [],
+}) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -48,6 +52,9 @@ const Navbar = ({ transparent = false }) => {
     { label: 'Pricing', href: '/pricing' },
     { label: 'Docs', href: '/docs/api' },
     ...(isAuthenticated ? [{ label: 'Dashboard', href: '/dashboard' }] : []),
+    ...(isAuthenticated && (tier === 'agency' || tier === 'enterprise')
+      ? [{ label: 'CRM', href: '/crm' }]
+      : []),
   ];
 
   const bgClass = scrolled || !transparent
@@ -60,9 +67,7 @@ const Navbar = ({ transparent = false }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/25 group-hover:shadow-orange-500/50 transition-shadow">
-              <Zap className="w-4 h-4 text-gray-900" fill="white" />
-            </div>
+            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg text-gray-900 tracking-tight">FlacronAI</span>
           </Link>
 
@@ -83,7 +88,7 @@ const Navbar = ({ transparent = false }) => {
                   key={link.label}
                   to={link.href}
                   className={`text-sm transition-colors font-medium ${
-                    location.pathname === link.href
+                    (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
                       ? 'text-orange-500 font-semibold'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
@@ -126,6 +131,12 @@ const Navbar = ({ transparent = false }) => {
                           <Zap className="w-4 h-4 text-orange-500" />
                           Dashboard
                         </Link>
+                        {(tier === 'agency' || tier === 'enterprise') && (
+                          <Link to="/crm" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                            <Users className="w-4 h-4 text-orange-500" />
+                            CRM
+                          </Link>
+                        )}
                         <Link to="/settings" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                           <Settings className="w-4 h-4 text-gray-400" />
                           Settings
@@ -156,6 +167,9 @@ const Navbar = ({ transparent = false }) => {
           <button
             className="md:hidden p-2 text-gray-600 hover:text-gray-900"
             onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileOpen}
+            title={mobileOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -187,7 +201,7 @@ const Navbar = ({ transparent = false }) => {
                     key={link.label}
                     to={link.href}
                     className={`block px-3 py-2.5 rounded-lg transition-colors ${
-                      location.pathname === link.href
+                      (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
                         ? 'text-orange-500 font-semibold bg-orange-50'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }`}
@@ -195,6 +209,35 @@ const Navbar = ({ transparent = false }) => {
                     {link.label}
                   </Link>
                 )
+              )}
+              {mobileMenuItems.length > 0 && (
+                <div className="mt-3 border-t border-[#e5e7eb] pt-3">
+                  {mobileMenuLabel && (
+                    <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                      {mobileMenuLabel}
+                    </p>
+                  )}
+                  <div className="space-y-1">
+                    {mobileMenuItems.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          item.onSelect();
+                          setMobileOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                          item.active
+                            ? 'bg-orange-50 font-semibold text-orange-600'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="pt-3 border-t border-[#e5e7eb] space-y-1">
                 {isAuthenticated ? (

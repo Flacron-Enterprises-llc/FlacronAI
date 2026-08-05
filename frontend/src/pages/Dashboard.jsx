@@ -6,21 +6,36 @@ import {
   FileText, Upload, ChevronRight, ChevronLeft, X, Download, RefreshCw,
   Search, Trash2, Eye, Lock, ExternalLink, BarChart3, Users,
   Zap, Clock, AlertCircle, CheckCircle, Settings,
-  Star, Image as ImageIcon, CreditCard, Check
+  Star, Image as ImageIcon, CreditCard, Check, Save, ShieldCheck,
+  Menu, PanelLeftClose, Droplets, Flame, Wind, Hammer
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
+import ClaimLinkSection from '../components/ClaimLinkSection';
+import SectionedReportEditor from '../components/SectionedReportEditor';
+import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI } from '../services/api';
 import api from '../services/api';
 
 const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Other'];
 const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'];
-const STATUSES = ['All', 'completed', 'processing', 'failed', 'archived'];
+const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived'];
 
-const GENERATION_STEPS = [
+// Only shows "Analyzing damage photos" when photos were actually uploaded --
+// the backend skips AI image analysis entirely at 0 photos (see T-6.14), so
+// showing that stage regardless would misrepresent what's actually happening.
+const GENERATION_STEPS_WITH_PHOTOS = [
   'Uploading photos...',
   'Analyzing damage photos with AI...',
+  'Generating report with FlacronAI...',
+  'Finalizing...',
+];
+const GENERATION_STEPS_NO_PHOTOS = [
+  'Validating claim details...',
   'Generating report with FlacronAI...',
   'Finalizing...',
 ];
@@ -34,7 +49,7 @@ const FORM_INITIAL = {
 const QUICK_DEMOS = [
   {
     label: 'Water Damage',
-    icon: '💧',
+    icon: Droplets,
     color: 'blue',
     data: {
       claimNumber: 'CLM-2024-WD-001',
@@ -52,7 +67,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Fire Damage',
-    icon: '🔥',
+    icon: Flame,
     color: 'red',
     data: {
       claimNumber: 'CLM-2024-FD-042',
@@ -70,7 +85,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Wind / Hail',
-    icon: '🌪️',
+    icon: Wind,
     color: 'gray',
     data: {
       claimNumber: 'CLM-2024-WH-118',
@@ -88,7 +103,7 @@ const QUICK_DEMOS = [
   },
   {
     label: 'Vandalism',
-    icon: '🔨',
+    icon: Hammer,
     color: 'purple',
     data: {
       claimNumber: 'CLM-2024-VN-007',
@@ -119,18 +134,19 @@ function SkeletonRow() {
 }
 
 const STATUS_STYLES = {
+  finalized: 'bg-green-500/20 text-green-600 border-green-500/30',
+  approved: 'bg-green-500/20 text-green-600 border-green-500/30',
   completed: 'bg-green-500/20 text-green-600 border-green-500/30',
   complete: 'bg-green-500/20 text-green-600 border-green-500/30',
+  draft: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
   processing: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30',
   failed: 'bg-red-500/20 text-red-500 border-red-500/30',
   archived: 'bg-gray-400/20 text-gray-500 border-gray-400/30',
 };
 
-const STATUS_LABELS = ['completed', 'processing', 'failed', 'archived'];
-
 function StatusBadge({ status }) {
   const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
-  const label = status === 'complete' ? 'completed' : (status || 'unknown');
+  const label = formatStatus(status === 'complete' ? 'completed' : status);
   return (
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>
       {label}
@@ -138,77 +154,21 @@ function StatusBadge({ status }) {
   );
 }
 
-function StatusToggle({ reportId, status, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleSelect = async (newStatus) => {
-    setOpen(false);
-    if (newStatus === status || newStatus === 'complete') return;
-    setUpdating(true);
-    try {
-      await reportsAPI.update(reportId, { status: newStatus });
-      onUpdate(reportId, newStatus);
-    } catch {
-      toast.error('Failed to update status');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const normalised = status === 'complete' ? 'completed' : status;
-  const cls = STATUS_STYLES[status] || 'bg-gray-400/20 text-gray-500 border-gray-400/30';
-
-  return (
-    <div ref={ref} className="relative inline-block">
-      <button
-        disabled={updating}
-        onClick={() => setOpen(o => !o)}
-        className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1 transition-opacity ${cls} ${updating ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 cursor-pointer'}`}
-      >
-        {updating ? '…' : normalised}
-        <svg className="w-2.5 h-2.5 opacity-60" viewBox="0 0 10 6" fill="currentColor">
-          <path d="M0 0l5 6 5-6z" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {STATUS_LABELS.map(s => (
-            <button
-              key={s}
-              onClick={() => handleSelect(s)}
-              className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 ${s === normalised ? 'text-orange-500 bg-orange-50/50' : 'text-gray-700'}`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ReportDetailModal({ report, onClose }) {
+  useEscapeToClose(onClose, !!report);
   if (!report) return null;
   return (
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}>
-        <motion.div className="card w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto"
+        <motion.div className="card w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="report-detail-title"
           initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Report Details</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <h2 id="report-detail-title" className="text-xl font-bold text-gray-900">Report Details</h2>
+            <button onClick={onClose} aria-label="Close report details" title="Close" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <X className="w-5 h-5 text-gray-600" />
             </button>
           </div>
@@ -233,17 +193,18 @@ function ReportDetailModal({ report, onClose }) {
             </div>
             {report.qualityScore && (
               <div className="flex gap-3">
-                <span className="text-gray-600 w-32 shrink-0">Quality Score:</span>
-                <span className="text-orange-400 font-semibold">{report.qualityScore}/100</span>
+                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">Documentation Completeness:</span>
+                <span className="text-orange-700 font-semibold">{report.qualityScore}/100</span>
               </div>
             )}
           </div>
           {report.content && (
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Report Content</h3>
-              <div className="bg-black/30 rounded-xl p-4 text-sm text-gray-700 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                {report.content}
-              </div>
+              <ReportMarkdown
+                content={report.content}
+                className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-4"
+              />
             </div>
           )}
           <div className="flex gap-3 mt-6">
@@ -272,6 +233,37 @@ function ReportDetailModal({ report, onClose }) {
   );
 }
 
+function ClaimIdentityFields({ form, setForm, disabled = false }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label className="label">Claim Number *</label>
+        <input className="input" placeholder="e.g. CLM-2024-001" disabled={disabled}
+          value={form.claimNumber} onChange={e => setForm(p => ({ ...p, claimNumber: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Insured Name *</label>
+        <input className="input" placeholder="Full name of insured" disabled={disabled}
+          value={form.insuredName} onChange={e => setForm(p => ({ ...p, insuredName: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Loss Date *</label>
+        <input type="date" className="input" disabled={disabled} value={form.lossDate}
+          onChange={e => setForm(p => ({ ...p, lossDate: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Loss Type *</label>
+        <select className="input" disabled={disabled} value={form.lossType}
+          onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}>
+          {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// Agency/Enterprise claim picker (T-6.16 Phase B): select an existing CRM claim or
+// create one inline, instead of free-typing claim details that can drift/duplicate.
 export default function Dashboard() {
   const { user, userProfile, tier, canGenerate, reportsRemaining, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -282,22 +274,31 @@ export default function Dashboard() {
     const params = new URLSearchParams(location.search);
     if (params.get('upgrade') === 'success') {
       const upgradedTier = params.get('tier');
+      const expectedTier = upgradedTier?.replace('_annual', '');
+      const sessionId = params.get('session_id');
       // Clean URL immediately so refresh doesn't re-trigger
       navigate('/dashboard', { replace: true });
 
-      // Poll Firestore until webhook updates the tier (Stripe webhooks can lag 2-10s)
+      // Confirm the completed Stripe session directly, then poll as a webhook fallback.
       let attempts = 0;
       const maxAttempts = 10;
       const poll = async () => {
         attempts++;
+        if (attempts === 1 && sessionId) {
+          try {
+            await paymentAPI.confirmCheckout(sessionId);
+          } catch {
+            // Webhook reconciliation below remains the fallback.
+          }
+        }
         const profile = await refreshProfile();
         const currentTier = profile?.tier || 'starter';
 
-        if (!upgradedTier || currentTier === upgradedTier) {
+        if (!expectedTier || currentTier === expectedTier) {
           // Tier confirmed — show success and switch to billing view
           toast.success(
-            upgradedTier
-              ? `Plan upgraded to ${upgradedTier.charAt(0).toUpperCase() + upgradedTier.slice(1)}! Welcome aboard.`
+            expectedTier
+              ? `Plan upgraded to ${expectedTier.charAt(0).toUpperCase() + expectedTier.slice(1)}! Welcome aboard.`
               : 'Plan upgraded successfully!'
           );
           setActiveView('billing');
@@ -312,7 +313,10 @@ export default function Dashboard() {
           setTimeout(poll, 2000);
         }
       };
-      setTimeout(poll, 2000);
+      poll();
+    } else if (params.get('billing') === 'updated') {
+      navigate('/dashboard', { replace: true });
+      refreshProfile().finally(() => setActiveView('billing'));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -331,6 +335,7 @@ export default function Dashboard() {
       paymentAPI.createCheckout(planToCheckout)
         .then(res => {
           if (res.data?.url) window.location.href = res.data.url;
+          else if (res.data?.changeType) navigate('/dashboard?billing=updated');
           else navigate('/pricing');
         })
         .catch(() => {
@@ -341,26 +346,52 @@ export default function Dashboard() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [activeView, setActiveView] = useState('generate');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(FORM_INITIAL);
   const [photos, setPhotos] = useState([]);
+  // Agency/Enterprise: link report generation to a real CRM claim instead of free-typing
+  // claim details (T-6.16). claimMode only matters for those tiers; Starter/Professional
+  // have no CRM access and always see the manual fields.
+  const [claimMode, setClaimMode] = useState('linked');
+  const [linkedClaim, setLinkedClaim] = useState(null);
+  const [linkedClientName, setLinkedClientName] = useState('');
   const [dragging, setDragging] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+  const [genSteps, setGenSteps] = useState(GENERATION_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { type: 'report'|'bulk'|'template', id }
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [detailReport, setDetailReport] = useState(null);
   const [billingInfo, setBillingInfo] = useState(null);
+  const [billingError, setBillingError] = useState(false);
   const [invoices, setInvoices] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [previewing, setPreviewing] = useState(false);
+  const [editableContent, setEditableContent] = useState('');
+  const [savingContent, setSavingContent] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [showVersions, setShowVersions] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templateName, setTemplateName] = useState('');
+  const [signatureName, setSignatureName] = useState('');
+  const [signatureTitle, setSignatureTitle] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [licenseState, setLicenseState] = useState('');
+  const [company, setCompany] = useState('');
+  const [confirmReview, setConfirmReview] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const fileInputRef = useRef();
   const autoSaveRef = useRef();
 
@@ -378,6 +409,7 @@ export default function Dashboard() {
 
   const fetchReports = useCallback(async () => {
     setReportsLoading(true);
+    setReportsError(false);
     try {
       const params = { page, limit: 10 };
       if (search) params.search = search;
@@ -386,6 +418,7 @@ export default function Dashboard() {
       setReports(res.data.data || res.data.reports || res.data || []);
       setTotalPages(res.data.totalPages || Math.ceil((res.data.total || 0) / 10) || 1);
     } catch {
+      setReportsError(true);
       toast.error('Failed to load reports');
     } finally {
       setReportsLoading(false);
@@ -416,26 +449,54 @@ export default function Dashboard() {
     setPhotos(prev => { const next = [...prev]; URL.revokeObjectURL(next[idx].url); next.splice(idx, 1); return next; });
   };
 
+  // Selecting/creating a CRM claim fills the display fields from it; the backend
+  // re-derives the same fields from the claim record at generate-time regardless,
+  // so this is for a consistent preview, not the source of truth.
+  const handleSelectClaim = (claim, clientName) => {
+    setLinkedClaim(claim);
+    setLinkedClientName(clientName || '');
+    setForm(p => ({
+      ...p,
+      claimNumber: claim.claimNumber || '',
+      insuredName: clientName || '',
+      propertyAddress: claim.propertyAddress || '',
+      lossDate: claim.lossDate || '',
+      lossType: claim.lossType || p.lossType,
+    }));
+  };
+
+  const handleClearClaim = () => {
+    setLinkedClaim(null);
+    setLinkedClientName('');
+    setForm(p => ({ ...p, claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '' }));
+  };
+
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
+    const steps = photos.length > 0 ? GENERATION_STEPS_WITH_PHOTOS : GENERATION_STEPS_NO_PHOTOS;
+    setGenSteps(steps);
     setGenerating(true);
     setGenStep(0);
+    let stepInterval;
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      if (linkedClaim) fd.append('claimId', linkedClaim.id || linkedClaim._id);
       photos.forEach(p => fd.append('images', p.file));
 
-      const stepInterval = setInterval(() => {
-        setGenStep(prev => Math.min(prev + 1, GENERATION_STEPS.length - 1));
+      stepInterval = setInterval(() => {
+        setGenStep(prev => Math.min(prev + 1, steps.length - 1));
       }, 4000);
 
       const res = await reportsAPI.generate(fd);
-      clearInterval(stepInterval);
-      setGenStep(GENERATION_STEPS.length - 1);
+      setGenStep(steps.length - 1);
       const report = res.data.report || res.data;
       setGeneratedReport(report);
       setForm(FORM_INITIAL);
       setPhotos([]);
+      setLinkedClaim(null);
+      setLinkedClientName('');
+      setClaimMode('linked');
       setStep(1);
       localStorage.removeItem(LS_KEY);
       toast.success('Report generated successfully!');
@@ -448,6 +509,7 @@ export default function Dashboard() {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Generation failed');
     } finally {
+      clearInterval(stepInterval);
       setGenerating(false);
     }
   };
@@ -504,30 +566,161 @@ export default function Dashboard() {
     finally { setPreviewing(false); }
   };
 
-  const handleDeleteReport = async (id) => {
+  // Keep the editable draft in sync when a new report is generated/opened
+  useEffect(() => {
+    if (generatedReport?.content != null) setEditableContent(generatedReport.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedReport?.id]);
+
+  const reportReviewed = ['finalized', 'approved', 'completed'].includes(generatedReport?.status);
+
+  const handleSaveContent = async () => {
+    if (!generatedReport) return;
+    setSavingContent(true);
     try {
-      await reportsAPI.delete(id, true);
-      toast.success('Report deleted');
-      fetchReports();
-    } catch { toast.error('Delete failed'); }
+      const res = await reportsAPI.update(generatedReport.id, { content: editableContent });
+      const updates = res.data?.updates || { content: editableContent };
+      setGeneratedReport(prev => ({ ...prev, ...updates }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, ...updates } : r)));
+      if (updates.status === 'draft') {
+        toast('Report edited after approval — reopened as draft; re-approval required to export clean.', { icon: '⚠️' });
+      } else {
+        toast.success('Changes saved');
+      }
+      handlePreviewPDF();
+    } catch { toast.error('Save failed'); }
+    finally { setSavingContent(false); }
   };
 
-  const handleBulkDelete = async () => {
-    if (!selectedIds.length) return;
+  const handleApprove = async () => {
+    if (!generatedReport) return;
+    if (!signatureName.trim() || !licenseNumber.trim() || !licenseState.trim() || !company.trim()) {
+      toast.error('Full name, license number, license state, and company/firm are required to approve.');
+      return;
+    }
+    if (!confirmReview) {
+      toast.error('You must confirm you have reviewed the report before approving.');
+      return;
+    }
+    setApproving(true);
     try {
-      await Promise.all(selectedIds.map(id => reportsAPI.delete(id, true)));
-      toast.success(`Deleted ${selectedIds.length} reports`);
-      setSelectedIds([]);
-      fetchReports();
-    } catch { toast.error('Bulk delete failed'); }
+      const signature = {
+        name: signatureName.trim(),
+        title: signatureTitle.trim(),
+        licenseNumber: licenseNumber.trim(),
+        licenseState: licenseState.trim(),
+        company: company.trim(),
+      };
+      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent, signature, confirmReview: true });
+      const updated = res.data?.report || {};
+      setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
+      toast.success('Report approved & finalized — exports are now clean');
+      handlePreviewPDF();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Approval failed');
+    } finally { setApproving(false); }
+  };
+
+  const handleShare = async () => {
+    if (!generatedReport) return;
+    setSharing(true);
+    try {
+      const res = await reportsAPI.share(generatedReport.id);
+      try { await navigator.clipboard.writeText(res.data.url); toast.success('Share link copied to clipboard'); }
+      catch { toast.success(`Share link: ${res.data.url}`); }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Could not create share link');
+    } finally { setSharing(false); }
+  };
+
+  const loadVersions = async () => {
+    if (!generatedReport) return;
+    const next = !showVersions;
+    setShowVersions(next);
+    if (next) {
+      try {
+        const res = await reportsAPI.versions(generatedReport.id);
+        setVersions(res.data.versions || []);
+      } catch { toast.error('Could not load history'); }
+    }
+  };
+
+  const handleRestoreVersion = (v) => {
+    if (v?.content == null) return;
+    setEditableContent(v.content);
+    toast.success('Version loaded into editor — Save to keep it');
+  };
+
+  // ── Report templates (T-2.10) ──
+  const fetchTemplates = useCallback(async () => {
+    try { const r = await reportsAPI.listTemplates(); setTemplates(r.data.templates || []); } catch { /* non-critical */ }
+  }, []);
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+
+  const handleSaveTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) { toast.error('Enter a template name'); return; }
+    try {
+      const fields = {
+        lossType: form.lossType, reportType: form.reportType, propertyDetails: form.propertyDetails,
+        lossDescription: form.lossDescription, damagesObserved: form.damagesObserved,
+        recommendations: form.recommendations, additionalNotes: form.additionalNotes,
+      };
+      await reportsAPI.saveTemplate({ name, fields });
+      setTemplateName('');
+      toast.success('Template saved');
+      fetchTemplates();
+    } catch { toast.error('Could not save template'); }
+  };
+
+  const handleLoadTemplate = (t) => {
+    setForm(prev => ({ ...prev, ...t.fields }));
+    toast.success(`Loaded "${t.name}"`);
+  };
+
+  const handleDeleteTemplate = (id, e) => {
+    e.stopPropagation();
+    setConfirmTarget({ type: 'template', id });
+  };
+
+  const handleDeleteReport = (id) => {
+    setConfirmTarget({ type: 'report', id });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedIds.length) return;
+    setConfirmTarget({ type: 'bulk' });
+  };
+
+  const runConfirmedDelete = async () => {
+    if (!confirmTarget) return;
+    setConfirmLoading(true);
+    try {
+      if (confirmTarget.type === 'template') {
+        await reportsAPI.deleteTemplate(confirmTarget.id);
+        setTemplates(prev => prev.filter(t => t.id !== confirmTarget.id));
+        toast.success('Template deleted');
+      } else if (confirmTarget.type === 'report') {
+        await reportsAPI.delete(confirmTarget.id, true);
+        toast.success('Report deleted');
+        fetchReports();
+      } else if (confirmTarget.type === 'bulk') {
+        await Promise.all(selectedIds.map(id => reportsAPI.delete(id, true)));
+        toast.success(`Deleted ${selectedIds.length} reports`);
+        setSelectedIds([]);
+        fetchReports();
+      }
+      setConfirmTarget(null);
+    } catch {
+      toast.error('Delete failed');
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleStatusUpdate = (id, newStatus) => {
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
   };
 
   const TIER_LIMITS = { starter: 5, professional: 50, agency: 200, enterprise: -1 };
@@ -539,6 +732,7 @@ export default function Dashboard() {
 
   const fetchBilling = async () => {
     setBillingLoading(true);
+    setBillingError(false);
     try {
       const [subRes, invRes] = await Promise.all([
         paymentAPI.getSubscription(),
@@ -548,6 +742,7 @@ export default function Dashboard() {
       setInvoices(invRes.data?.invoices || []);
     } catch (err) {
       console.error('Billing fetch error:', err.message);
+      setBillingError(true);
     } finally {
       setBillingLoading(false);
     }
@@ -566,8 +761,34 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#ffffff] flex flex-col">
       <Navbar />
       <div className="flex flex-1 pt-16">
+        {sidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close dashboard navigation"
+            className="fixed inset-0 top-16 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 hidden md:flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] px-3 py-5 gap-4">
+        <aside
+          className={`fixed bottom-0 left-0 top-16 z-50 flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r border-[#e5e7eb] bg-[#f8f8f8] px-3 py-4 shadow-xl transition-transform duration-300 scrollbar-hide md:sticky md:top-16 md:z-20 md:h-[calc(100vh-4rem)] md:w-64 md:translate-x-0 md:rounded-r-3xl md:shadow-sm ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between px-1 md:hidden">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+              Dashboard
+            </p>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm"
+              aria-label="Close dashboard navigation"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
 
           {/* Profile Card */}
           <div className="rounded-2xl overflow-hidden border border-[#e5e7eb] bg-white">
@@ -638,7 +859,11 @@ export default function Dashboard() {
           <nav className="flex flex-col gap-0.5 flex-1">
             {navLinks.map(link => (
               <button key={link.id}
-                onClick={() => link.href ? navigate(link.href) : setActiveView(link.id)}
+                onClick={() => {
+                  setSidebarOpen(false);
+                  if (link.href) navigate(link.href);
+                  else setActiveView(link.id);
+                }}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeView === link.id
                     ? 'bg-orange-500 text-white shadow-sm shadow-orange-200'
@@ -675,12 +900,21 @@ export default function Dashboard() {
         </aside>
 
         {/* Main */}
-        <main className="flex-1 overflow-auto">
+        <main className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="fixed bottom-5 left-4 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-700 text-white shadow-lg shadow-navy-900/20 md:hidden"
+            aria-label="Open dashboard navigation"
+            aria-expanded={sidebarOpen}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
 
           {/* Mobile/tablet usage panel — visible only below md breakpoint */}
-          <div className="md:hidden border-b border-[#e5e7eb] bg-[#f8f8f8]">
+          <div className="mx-3 mt-4 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] shadow-sm md:hidden">
             {/* User row */}
-            <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+            <div className="flex items-center gap-3 px-4 pt-4 pb-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                 {(userProfile?.displayName || user?.email || 'U')[0].toUpperCase()}
               </div>
@@ -694,7 +928,7 @@ export default function Dashboard() {
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-3 gap-2 px-4 pb-2">
+            <div className="grid grid-cols-3 gap-2 px-4 pb-3">
               <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
                 <p className="text-lg font-bold text-orange-500 leading-none">{usedThisMonth}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Used</p>
@@ -718,7 +952,7 @@ export default function Dashboard() {
             </div>
 
             {/* Progress bar */}
-            <div className="px-4 pb-3">
+            <div className="px-4 pb-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-medium text-gray-500">Monthly reports</span>
                 <span className="text-[10px] font-semibold text-gray-600">
@@ -741,8 +975,9 @@ export default function Dashboard() {
                 </p>
               )}
               {reportsRemaining !== -1 && reportsRemaining > 0 && usagePercent >= 80 && (
-                <p className="text-[10px] text-amber-600 font-medium mt-1">
-                  ⚠️ {reportsRemaining} report{reportsRemaining !== 1 ? 's' : ''} remaining this month
+                <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-600">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {reportsRemaining} report{reportsRemaining !== 1 ? 's' : ''} remaining this month
                 </p>
               )}
             </div>
@@ -750,7 +985,7 @@ export default function Dashboard() {
 
           <AnimatePresence mode="wait">
             {activeView === 'generate' && (
-              <motion.div key="generate" className="p-6 max-w-5xl mx-auto"
+              <motion.div key="generate" className="mx-auto max-w-5xl px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
 
                 {tier === 'starter' && (
@@ -807,9 +1042,17 @@ export default function Dashboard() {
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {QUICK_DEMOS.map(demo => (
                                   <button key={demo.label}
-                                    onClick={() => { setForm(prev => ({ ...prev, ...demo.data })); toast.success(`${demo.label} template loaded!`); }}
+                                    onClick={() => {
+                                      setForm(prev => ({ ...prev, ...demo.data }));
+                                      // A demo fills its own claim identity fields -- drop any linked CRM
+                                      // claim so it doesn't silently override the demo data at generate-time.
+                                      setLinkedClaim(null); setLinkedClientName(''); setClaimMode('manual');
+                                      toast.success(`${demo.label} template loaded!`);
+                                    }}
                                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-500/5 transition-all text-center group">
-                                    <span className="text-2xl">{demo.icon}</span>
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors group-hover:bg-orange-50 group-hover:text-orange-500">
+                                      <demo.icon className="h-5 w-5" aria-hidden="true" />
+                                    </span>
                                     <span className="text-xs font-medium text-gray-700 group-hover:text-orange-500">{demo.label}</span>
                                   </button>
                                 ))}
@@ -817,37 +1060,63 @@ export default function Dashboard() {
                               <p className="text-xs text-gray-400 mt-1.5">Click a template to auto-fill all fields for a demo report</p>
                             </div>
 
-                            <div className="border-t border-gray-100 pt-4">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                  <label className="label">Claim Number *</label>
-                                  <input className="input" placeholder="e.g. CLM-2024-001"
-                                    value={form.claimNumber} onChange={e => setForm(p => ({ ...p, claimNumber: e.target.value }))} />
+                            {/* My Templates (T-2.10) — saved, reusable claim structures */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">My Templates</p>
+                                <div className="flex items-center gap-1.5">
+                                  <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name"
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-400 w-32" />
+                                  <button onClick={handleSaveTemplate} className="text-xs btn-secondary py-1 px-2.5 flex items-center gap-1">
+                                    <Save className="w-3 h-3" /> Save current
+                                  </button>
                                 </div>
-                                <div>
-                                  <label className="label">Insured Name *</label>
-                                  <input className="input" placeholder="Full name of insured"
-                                    value={form.insuredName} onChange={e => setForm(p => ({ ...p, insuredName: e.target.value }))} />
+                              </div>
+                              {templates.length === 0 ? (
+                                <p className="text-xs text-gray-400">Save the current claim details (property, loss, damages, recommendations) as a reusable template.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {templates.map(t => (
+                                    <div key={t.id} className="group flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-200 hover:border-brand-400 hover:bg-brand-50 transition-all">
+                                      <button onClick={() => handleLoadTemplate(t)} className="text-xs font-medium text-gray-700 group-hover:text-brand-600">{t.name}</button>
+                                      <button onClick={(e) => handleDeleteTemplate(t.id, e)} className="w-4 h-4 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50" title="Delete template">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ))}
                                 </div>
-                                <div>
-                                  <label className="label">Loss Date *</label>
-                                  <input type="date" className="input" value={form.lossDate}
-                                    onChange={e => setForm(p => ({ ...p, lossDate: e.target.value }))} />
+                              )}
+                            </div>
+
+                            <div className="border-t border-gray-100 pt-4 space-y-4">
+                              {(tier === 'agency' || tier === 'enterprise') ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="label mb-0">Claim</label>
+                                    {!linkedClaim && (
+                                      <button type="button"
+                                        onClick={() => setClaimMode(m => (m === 'manual' ? 'linked' : 'manual'))}
+                                        className="text-xs text-gray-500 hover:text-brand-600 underline">
+                                        {claimMode === 'manual' ? 'Link to a CRM claim instead' : 'Enter details manually instead'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {(claimMode === 'manual' && !linkedClaim) ? (
+                                    <ClaimIdentityFields form={form} setForm={setForm} />
+                                  ) : (
+                                    <ClaimLinkSection linkedClaim={linkedClaim} linkedClientName={linkedClientName}
+                                      onSelect={handleSelectClaim} onClear={handleClearClaim} lossTypes={LOSS_TYPES} />
+                                  )}
                                 </div>
-                                <div>
-                                  <label className="label">Loss Type *</label>
-                                  <select className="input" value={form.lossType}
-                                    onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}>
-                                    {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="label">Report Type</label>
-                                  <select className="input" value={form.reportType}
-                                    onChange={e => setForm(p => ({ ...p, reportType: e.target.value }))}>
-                                    {REPORT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                </div>
+                              ) : (
+                                <ClaimIdentityFields form={form} setForm={setForm} />
+                              )}
+                              <div>
+                                <label className="label">Report Type</label>
+                                <select className="input" value={form.reportType}
+                                  onChange={e => setForm(p => ({ ...p, reportType: e.target.value }))}>
+                                  {REPORT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
                               </div>
                             </div>
                           </motion.div>
@@ -863,8 +1132,9 @@ export default function Dashboard() {
                             </div>
                             <div>
                               <label className="label">Property Address *</label>
-                              <input className="input" placeholder="Full street address, city, state, zip"
+                              <input className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
                                 value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                              {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
                             </div>
                             <div>
                               <label className="label">Property Description</label>
@@ -940,7 +1210,7 @@ export default function Dashboard() {
                                 {photos.map((p, i) => (
                                   <div key={i} className="relative group aspect-square">
                                     <img src={p.url} alt={p.name} className="w-full h-full object-cover rounded-lg" />
-                                    <button onClick={() => removePhoto(i)}
+                                    <button onClick={() => removePhoto(i)} aria-label={`Remove photo ${i + 1}`} title="Remove photo"
                                       className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                       <X className="w-3 h-3 text-white" />
                                     </button>
@@ -967,14 +1237,17 @@ export default function Dashboard() {
                                 ['Loss Type', form.lossType],
                                 ['Report Type', form.reportType],
                                 ['Photos', `${photos.length} uploaded`],
-                                ['Property Description', form.propertyDetails ? '✓ Provided' : 'Not provided'],
-                                ['Loss Description', form.lossDescription ? '✓ Provided' : 'Not provided'],
-                                ['Damages Observed', form.damagesObserved ? '✓ Provided' : 'Not provided'],
-                                ['Recommendations', form.recommendations ? '✓ Provided' : 'Not provided'],
-                              ].map(([label, val]) => (
+                                ['Property Description', form.propertyDetails ? 'Provided' : 'Not provided', Boolean(form.propertyDetails)],
+                                ['Loss Description', form.lossDescription ? 'Provided' : 'Not provided', Boolean(form.lossDescription)],
+                                ['Damages Observed', form.damagesObserved ? 'Provided' : 'Not provided', Boolean(form.damagesObserved)],
+                                ['Recommendations', form.recommendations ? 'Provided' : 'Not provided', Boolean(form.recommendations)],
+                              ].map(([label, val, provided]) => (
                                 <div key={label} className="flex gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
                                   <span className="text-gray-500 text-xs w-36 shrink-0 pt-0.5">{label}</span>
-                                  <span className={`text-sm font-medium ${val?.startsWith('✓') ? 'text-green-600' : 'text-gray-900'}`}>{val || '—'}</span>
+                                  <span className={`flex items-center gap-1.5 text-sm font-medium ${provided ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {provided && <CheckCircle className="h-3.5 w-3.5 shrink-0" />}
+                                    {val || '—'}
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -1029,7 +1302,7 @@ export default function Dashboard() {
                         <h2 className="text-xl font-bold text-gray-900 mb-2">Generating Your Report</h2>
                         <p className="text-gray-600 text-sm mb-6">Please wait while our AI processes your claim...</p>
                         <div className="space-y-3">
-                          {GENERATION_STEPS.map((s, i) => (
+                          {genSteps.map((s, i) => (
                             <div key={i} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
                               i < genStep ? 'bg-green-500/10 text-green-400' :
                               i === genStep ? 'bg-orange-500/10 text-orange-400' :
@@ -1062,8 +1335,9 @@ export default function Dashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
-                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                                Quality {generatedReport.qualityScore}/100
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30"
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
                             <button onClick={handlePreviewPDF} disabled={previewing}
@@ -1073,6 +1347,7 @@ export default function Dashboard() {
                             </button>
                             {pdfPreviewUrl && (
                               <button onClick={() => { window.URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }}
+                                aria-label="Close PDF preview" title="Close PDF preview"
                                 className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
                                 <X className="w-4 h-4 text-gray-500" />
                               </button>
@@ -1108,18 +1383,113 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {/* Raw content collapsible */}
-                      <details className="card p-4">
-                        <summary className="text-sm font-semibold text-gray-700 cursor-pointer select-none">
-                          Raw Report Content
-                        </summary>
-                        <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700 max-h-[500px] overflow-y-auto leading-relaxed whitespace-pre-wrap font-mono">
-                          {generatedReport.content || 'Report content generated successfully.'}
+                      {/* Editable draft content — mandatory human review (Golden Rule #3) */}
+                      <div className="card p-4">
+                        <div className="flex items-center justify-between mb-3 gap-3">
+                          <div>
+                            <h2 className="text-sm font-semibold text-gray-900">Review &amp; Edit Report</h2>
+                            <p className="text-xs text-gray-500 mt-0.5">AI-generated draft — review and edit any section, then approve to finalize.</p>
+                          </div>
+                          <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
+                            className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50 shrink-0">
+                            {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
+                          </button>
                         </div>
-                      </details>
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
+                      </div>
                     </div>
 
                     <div className="space-y-4">
+                      {/* Human-review gate (Golden Rule #3) */}
+                      <div className={`card p-4 border ${reportReviewed ? 'border-green-200' : 'border-amber-300 bg-amber-50/40'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <ShieldCheck className={`w-4 h-4 ${reportReviewed ? 'text-green-600' : 'text-amber-600'}`} />
+                          <h3 className="text-sm font-semibold text-gray-800">Review &amp; Approval</h3>
+                        </div>
+                        {reportReviewed ? (
+                          <>
+                            <div className="flex items-center gap-2 text-sm text-green-700 mb-2">
+                              <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
+                            </div>
+                            {generatedReport.signature?.name && (
+                              <div className="text-xs text-gray-500 mb-3 space-y-0.5">
+                                <p>Approved by <span className="font-medium text-gray-700">{generatedReport.signature.name}</span>{generatedReport.signature.title ? `, ${generatedReport.signature.title}` : ''}</p>
+                                {generatedReport.signature.licenseNumber && (
+                                  <p>License {generatedReport.signature.licenseState} {generatedReport.signature.licenseNumber}</p>
+                                )}
+                                {generatedReport.signature.company && <p>{generatedReport.signature.company}</p>}
+                              </div>
+                            )}
+                            <button onClick={handleShare} disabled={sharing}
+                              className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
+                              {sharing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />} Copy Share Link
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
+                                <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                                <input value={signatureTitle} onChange={e => setSignatureTitle(e.target.value)} placeholder="Senior Adjuster"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License number *</label>
+                                <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="TX-ADJ-583920"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License state *</label>
+                                <input value={licenseState} onChange={e => setLicenseState(e.target.value)} placeholder="TX"
+                                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                              </div>
+                            </div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Company / adjusting firm *</label>
+                            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="ABC Claims Services"
+                              className="w-full mb-3 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+                            <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
+                              <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
+                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that AI-generated content must be independently verified.</span>
+                            </label>
+                            <button onClick={handleApprove} disabled={approving}
+                              className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
+                              {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {/* Version history & audit trail (T-2.13) */}
+                      <div className="card p-4">
+                        <button onClick={loadVersions} className="w-full flex items-center justify-between text-sm font-semibold text-gray-700">
+                          <span className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" /> Version History</span>
+                          <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showVersions ? 'rotate-90' : ''}`} />
+                        </button>
+                        {showVersions && (
+                          <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                            {versions.length === 0 ? (
+                              <p className="text-xs text-gray-400">No history yet.</p>
+                            ) : versions.map((v) => (
+                              <div key={v.id} className="flex items-center justify-between gap-2 text-xs border border-gray-100 rounded-lg px-2.5 py-2">
+                                <div className="min-w-0">
+                                  <span className={`font-semibold ${v.action === 'approved' ? 'text-green-600' : v.action === 'generated' ? 'text-brand-600' : 'text-gray-700'}`}>{v.action}</span>
+                                  <span className="text-gray-400"> · {new Date(v.at).toLocaleString()}</span>
+                                  <p className="text-gray-400 truncate">{v.by}</p>
+                                </div>
+                                {v.content != null && (
+                                  <button onClick={() => handleRestoreVersion(v)} className="shrink-0 text-brand-600 hover:underline font-medium">Restore</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div className="card p-4">
                         <h3 className="text-sm font-semibold text-gray-700 mb-3">Export Options</h3>
                         <div className="space-y-2">
@@ -1164,7 +1534,7 @@ export default function Dashboard() {
             )}
 
             {activeView === 'reports' && (
-              <motion.div key="reports" className="p-6"
+              <motion.div key="reports" className="px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
@@ -1220,6 +1590,17 @@ export default function Dashboard() {
                       <tbody>
                         {reportsLoading ? (
                           [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
+                        ) : reportsError ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-16 text-center">
+                              <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                              <p className="text-gray-600 font-medium">We couldn't load your reports</p>
+                              <p className="text-gray-600 text-sm mt-1">Check your connection and try again.</p>
+                              <button onClick={fetchReports} className="btn-secondary text-sm py-2 px-4 mt-4 inline-flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4" /> Retry
+                              </button>
+                            </td>
+                          </tr>
                         ) : reports.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-4 py-16 text-center">
@@ -1247,19 +1628,23 @@ export default function Dashboard() {
                                 {selectedIds.includes(r.id) && <Check className="w-3 h-3 text-white" />}
                               </button>
                             </td>
-                            <td className="px-4 py-3 text-sm font-mono text-orange-400">{r.claimNumber}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-orange-700">{r.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{r.insuredName}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{r.lossType}</td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                              <StatusToggle reportId={r.id} status={r.status} onUpdate={handleStatusUpdate} />
+                              <StatusBadge status={r.status} />
                             </td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
-                                <button onClick={() => setDetailReport(r)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
+                                <button onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
+                                  aria-label="Review and edit report" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
+                                  <ShieldCheck className="w-4 h-4 text-amber-600" />
+                                </button>
+                                <button onClick={() => setDetailReport(r)} aria-label="View report details" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
                                   <Eye className="w-4 h-4 text-gray-600" />
                                 </button>
-                                <button onClick={() => handleDeleteReport(r.id)} className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
+                                <button onClick={() => handleDeleteReport(r.id)} aria-label="Delete report" className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
                                   <Trash2 className="w-4 h-4 text-red-400" />
                                 </button>
                               </div>
@@ -1287,7 +1672,7 @@ export default function Dashboard() {
 
             {/* ── BILLING VIEW ── */}
             {activeView === 'billing' && (
-              <motion.div key="billing" className="p-6 max-w-3xl mx-auto"
+              <motion.div key="billing" className="mx-auto max-w-3xl px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                 <div className="mb-6">
                   <h1 className="text-2xl font-bold text-gray-900">Usage & Billing</h1>
@@ -1319,7 +1704,10 @@ export default function Dashboard() {
                       style={{ width: `${usagePercent}%` }} />
                   </div>
                   {usagePercent >= 80 && (
-                    <p className="text-xs text-amber-600 mt-2 font-medium">⚠️ You are approaching your monthly limit</p>
+                    <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      You are approaching your monthly limit
+                    </p>
                   )}
                 </div>
 
@@ -1335,6 +1723,11 @@ export default function Dashboard() {
                     </div>
                     {billingLoading ? (
                       <div className="skeleton h-12 w-36" />
+                    ) : billingError ? (
+                      <div className="text-right">
+                        <span className="text-sm font-semibold px-3 py-1.5 rounded-full border bg-amber-50 text-amber-600 border-amber-200">Status unavailable</span>
+                        <button onClick={fetchBilling} className="block ml-auto mt-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium">Retry</button>
+                      </div>
                     ) : billingInfo ? (
                       <div className="text-right">
                         <p className="text-xs text-gray-500 mb-1">Subscription Status</p>
@@ -1373,6 +1766,15 @@ export default function Dashboard() {
                   </div>
                   {billingLoading ? (
                     <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="skeleton h-12 w-full rounded-xl" />)}</div>
+                  ) : billingError ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+                      <p className="text-gray-500 text-sm font-medium">We couldn't load your billing history</p>
+                      <p className="text-gray-400 text-xs mt-1">Check your connection and try again.</p>
+                      <button onClick={fetchBilling} className="mt-4 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4" /> Retry
+                      </button>
+                    </div>
                   ) : invoices.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -1402,7 +1804,7 @@ export default function Dashboard() {
                                   'bg-gray-100 text-gray-500 border-gray-200'
                                 }`}>
                                   {inv.status === 'paid' && <Check className="w-3 h-3" />}
-                                  {inv.status}
+                                  {formatStatus(inv.status)}
                                 </span>
                               </td>
                               <td className="py-3">
@@ -1440,6 +1842,23 @@ export default function Dashboard() {
       </div>
 
       <ReportDetailModal report={detailReport} onClose={() => setDetailReport(null)} />
+
+      <AnimatePresence>
+        {confirmTarget && (
+          <ConfirmDialog
+            title={confirmTarget.type === 'bulk' ? `Delete ${selectedIds.length} reports?` : confirmTarget.type === 'template' ? 'Delete template?' : 'Delete report?'}
+            message={confirmTarget.type === 'bulk'
+              ? 'This permanently deletes the selected reports, including their photos and exports. This cannot be undone.'
+              : confirmTarget.type === 'template'
+                ? 'This template will no longer be available to load for future reports.'
+                : 'This permanently deletes the report, including its photos and exports. This cannot be undone.'}
+            confirmLabel="Delete"
+            loading={confirmLoading}
+            onConfirm={runConfirmedDelete}
+            onClose={() => setConfirmTarget(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

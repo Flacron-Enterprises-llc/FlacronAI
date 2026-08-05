@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
 const SECTIONS = [
   {
@@ -77,13 +78,13 @@ We do not use advertising cookies or share data with advertising networks. You c
     title: '6. Security',
     content: `We take the security of your data seriously and implement industry-standard measures to protect it.
 
-**Encryption:** All data is encrypted at rest using AES-256 encryption. All data in transit is protected using TLS 1.3 with certificate pinning on API endpoints.
+**Encryption:** Data stored in our primary database (Google Cloud Firestore) is encrypted at rest by Google Cloud. All data in transit between your browser and our services is protected using HTTPS/TLS.
 
-**Infrastructure:** We use Google Cloud Platform (via Firebase) and MongoDB Atlas for data storage, both of which maintain SOC 2 Type II, ISO 27001, and GDPR-compliant certifications.
+**Infrastructure:** Our platform uses Google Cloud Platform services (via Firebase) for authentication and primary data storage.
 
 **Authentication:** User authentication is handled through Firebase Authentication, which implements industry-standard OAuth 2.0 and JWT token management. Passwords are never stored in plaintext.
 
-**Access controls:** Data access within our systems is governed by the principle of least privilege. Employee access to customer data requires approval and is logged.
+**Access controls:** Data access within our systems is governed by the principle of least privilege.
 
 **Incident response:** In the event of a data breach affecting your personal data, we will notify affected users within 72 hours as required by GDPR Article 33, and as required by applicable US state laws.
 
@@ -129,6 +130,7 @@ If you are not satisfied with our response, you have the right to lodge a compla
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Privacy Policy — FlacronAI" description="How FlacronAI collects, uses, stores, and protects your data, and the rights you have over it." path="/privacy-policy" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

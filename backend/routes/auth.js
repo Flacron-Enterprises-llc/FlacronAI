@@ -1,15 +1,110 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const axios = require('axios');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
 
 const jwt = require('jsonwebtoken');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
 const { body, validationResult } = require('express-validator');
+const { recordAuditLog } = require('../services/auditLogService');
+const { sendNewDeviceLoginAlert } = require('../services/emailService');
+
+const RECOVERY_CODE_COUNT = 8;
+const normalizeRecoveryCode = code => String(code || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+const hashRecoveryCode = code => crypto.createHash('sha256').update(normalizeRecoveryCode(code)).digest('hex');
+const generateRecoveryCodes = () => Array.from({ length: RECOVERY_CODE_COUNT }, () => {
+  const raw = crypto.randomBytes(8).toString('hex').toUpperCase();
+  return `${raw.slice(0, 8)}-${raw.slice(8)}`;
+});
+
+const verifyPassword = async (email, password) => {
+  const firebaseApiKey = process.env.FIREBASE_API_KEY;
+  if (!firebaseApiKey) {
+    const err = new Error('Firebase API key not configured');
+    err.code = 'CONFIG_ERROR';
+    throw err;
+  }
+  await axios.post(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
+    { email, password, returnSecureToken: true }
+  );
+};
+
+const verifySecondFactor = async ({ db, userRef, userData, code }) => {
+  const normalized = normalizeRecoveryCode(code);
+  if (/^\d{6}$/.test(normalized) && speakeasy.totp.verify({
+    secret: userData.mfaSecret, encoding: 'base32', token: normalized, window: 1,
+  })) return { verified: true, method: 'totp' };
+
+  if (!/^[A-Z0-9]{16}$/.test(normalized)) return { verified: false };
+  const wantedHash = hashRecoveryCode(normalized);
+  let consumed = false;
+  await db.runTransaction(async transaction => {
+    const freshDoc = await transaction.get(userRef);
+    const hashes = freshDoc.data()?.mfaRecoveryCodeHashes || [];
+    if (!hashes.includes(wantedHash)) return;
+    transaction.update(userRef, { mfaRecoveryCodeHashes: hashes.filter(hash => hash !== wantedHash) });
+    consumed = true;
+  });
+  return consumed ? { verified: true, method: 'recovery_code' } : { verified: false };
+};
+
+// A short-lived MFA challenge token is signed with a DIFFERENT secret than
+// real session JWTs, so it can never be mistaken for (or replayed as) a full
+// login token by the normal authenticateToken middleware.
+const MFA_CHALLENGE_SECRET = `${process.env.JWT_SECRET}::mfa-challenge`;
+
+// Brute-force guard for 6-digit TOTP codes — much tighter than authLimiter
+// since a code only has 1,000,000 possibilities.
+const mfaLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many verification attempts, please try again later', code: 'MFA_RATE_LIMITED' },
+  keyGenerator: (req) => req.user?.uid || req.body?.mfaToken || req.ip,
+});
+
+// Compares this login's IP/device against the last-known one on the user doc.
+// Sends an alert (and records the audit event) only when there IS a prior
+// login to compare against — the very first login on a brand-new account
+// is never "suspicious".
+const notifyIfNewDevice = async (uid, userProfile, req) => {
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+  const last = userProfile.lastLogin;
+  const isNewDevice = last && (last.ip !== ip || last.userAgent !== userAgent);
+
+  const db = getFirestore();
+  await db.collection('users').doc(uid).update({
+    lastLogin: { ip, userAgent, at: new Date().toISOString() },
+  });
+
+  if (isNewDevice) {
+    recordAuditLog({ actorUid: uid, actorEmail: userProfile.email, action: 'suspicious_login_new_device', meta: { previousIp: last.ip }, req });
+    await sendNewDeviceLoginAlert(userProfile.email, userProfile.displayName, { ip, userAgent, at: new Date().toISOString() });
+  }
+};
+
+// Tighter brute-force guard for credential-related endpoints — the global
+// 100/15min limiter (server.js) is shared across the whole API and too loose
+// to stop password-guessing on its own.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many attempts, please try again later', code: 'AUTH_RATE_LIMITED' },
+});
 
 // POST /api/auth/register
-router.post('/register', [
+router.post('/register', authLimiter, [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
+  body('password').isLength({ min: 12 }),
   body('displayName').trim().notEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -42,12 +137,14 @@ router.post('/register', [
       address: '',
       logoUrl: null,
       notificationsEnabled: true,
+      tokenVersion: 0,
     };
 
     await db.collection('users').doc(userRecord.uid).set(userProfile);
+    recordAuditLog({ actorUid: userRecord.uid, actorEmail: email, action: 'register', req });
 
-    // Create custom JWT
-    const token = jwt.sign({ uid: userRecord.uid, email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Create custom JWT (tokenVersion lets logout/password-change revoke it early)
+    const token = jwt.sign({ uid: userRecord.uid, email, tokenVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     return res.status(201).json({
       success: true,
@@ -65,7 +162,7 @@ router.post('/register', [
 });
 
 // POST /api/auth/login
-router.post('/login', [
+router.post('/login', authLimiter, [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
 ], async (req, res) => {
@@ -78,7 +175,6 @@ router.post('/login', [
 
   try {
     // Firebase Admin doesn't support password verification directly — use REST API
-    const axios = require('axios');
     const firebaseApiKey = process.env.FIREBASE_API_KEY;
 
     if (!firebaseApiKey) {
@@ -90,23 +186,213 @@ router.post('/login', [
       { email, password, returnSecureToken: true }
     );
 
-    const { localId: uid, idToken } = loginRes.data;
+    const { localId: uid } = loginRes.data;
     const db = getFirestore();
     const userDoc = await db.collection('users').doc(uid).get();
     const userProfile = userDoc.exists ? userDoc.data() : { uid, email, tier: 'starter' };
 
+    if (userProfile.mfaEnabled) {
+      // Password was correct, but a second factor is required. Deliberately
+      // discard the real Firebase idToken — it must never reach the client
+      // before MFA passes, or it would be a fully usable credential on its own.
+      const mfaToken = jwt.sign({ uid, pending: true }, MFA_CHALLENGE_SECRET, { expiresIn: '5m' });
+      recordAuditLog({ actorUid: uid, actorEmail: email, action: 'login_mfa_challenge', req });
+      return res.json({ success: true, mfaRequired: true, mfaToken });
+    }
+
+    recordAuditLog({ actorUid: uid, actorEmail: email, action: 'login_success', req });
+    notifyIfNewDevice(uid, userProfile, req).catch((err) => console.error('New-device login alert error:', err));
+
     return res.json({
       success: true,
-      token: idToken,
+      token: loginRes.data.idToken,
       user: userProfile,
     });
   } catch (err) {
     const firebaseError = err.response?.data?.error?.message;
     if (firebaseError === 'INVALID_PASSWORD' || firebaseError === 'EMAIL_NOT_FOUND' || firebaseError === 'INVALID_LOGIN_CREDENTIALS') {
+      recordAuditLog({ actorEmail: email, action: 'login_failed', meta: { reason: firebaseError }, req });
       return res.status(401).json({ success: false, error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
     }
     console.error('Login error:', err.message);
     return res.status(500).json({ success: false, error: 'Login failed', code: 'LOGIN_ERROR' });
+  }
+});
+
+// POST /api/auth/mfa/login-verify — completes a login that returned mfaRequired.
+// No authenticateToken here (there's no session yet); the short-lived, separately
+// signed mfaToken is what proves the password step already succeeded.
+router.post('/mfa/login-verify', mfaLimiter, [
+  body('mfaToken').notEmpty(),
+  body('code').isLength({ min: 6, max: 17 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+
+  let decoded;
+  try {
+    decoded = jwt.verify(req.body.mfaToken, MFA_CHALLENGE_SECRET);
+  } catch {
+    return res.status(401).json({ success: false, error: 'MFA session expired, please log in again', code: 'MFA_SESSION_EXPIRED' });
+  }
+
+  try {
+    const db = getFirestore();
+    const userDoc = await db.collection('users').doc(decoded.uid).get();
+    if (!userDoc.exists) {
+      return res.status(401).json({ success: false, error: 'Account not found', code: 'INVALID_MFA_TOKEN' });
+    }
+    const userProfile = userDoc.data();
+    if (!userProfile.mfaEnabled || !userProfile.mfaSecret) {
+      return res.status(400).json({ success: false, error: 'MFA is not enabled for this account', code: 'MFA_NOT_ENABLED' });
+    }
+
+    const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: userProfile, code: req.body.code });
+    if (!verification.verified) {
+      recordAuditLog({ actorUid: decoded.uid, actorEmail: userProfile.email, action: 'mfa_verify_failed', req });
+      return res.status(401).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+    }
+
+    const token = jwt.sign(
+      { uid: decoded.uid, email: userProfile.email, tokenVersion: userProfile.tokenVersion || 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    recordAuditLog({ actorUid: decoded.uid, actorEmail: userProfile.email, action: 'login_success', meta: { mfa: true, method: verification.method }, req });
+    notifyIfNewDevice(decoded.uid, userProfile, req).catch((err) => console.error('New-device login alert error:', err));
+
+    return res.json({ success: true, token, user: userProfile });
+  } catch (err) {
+    console.error('MFA login-verify error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
+  }
+});
+
+// POST /api/auth/mfa/setup — start enrollment; returns a QR code + the raw secret.
+router.post('/mfa/setup', authenticateToken, async (req, res) => {
+  try {
+    const secret = speakeasy.generateSecret({ name: `FlacronAI (${req.user.email})`, length: 20 });
+    await getFirestore().collection('users').doc(req.user.uid).update({ mfaPendingSecret: secret.base32 });
+    const qrCode = await qrcode.toDataURL(secret.otpauth_url);
+    return res.json({ success: true, secret: secret.base32, qrCode });
+  } catch (err) {
+    console.error('MFA setup error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to start MFA setup', code: 'MFA_SETUP_ERROR' });
+  }
+});
+
+// POST /api/auth/mfa/verify-setup — confirm the enrollment code and turn MFA on.
+router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
+  body('code').isLength({ min: 6, max: 8 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+  try {
+    const db = getFirestore();
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const pending = userDoc.data()?.mfaPendingSecret;
+    if (!pending) return res.status(400).json({ success: false, error: 'No MFA setup in progress', code: 'NO_PENDING_MFA' });
+
+    const verified = speakeasy.totp.verify({ secret: pending, encoding: 'base32', token: req.body.code, window: 1 });
+    if (!verified) return res.status(400).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+
+    const recoveryCodes = generateRecoveryCodes();
+    await db.collection('users').doc(req.user.uid).update({
+      mfaEnabled: true,
+      mfaSecret: pending,
+      mfaRecoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
+      mfaPendingSecret: null,
+      mfaEnabledAt: new Date().toISOString(),
+    });
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_enabled', req });
+    return res.json({ success: true, message: 'Two-factor authentication enabled', recoveryCodes });
+  } catch (err) {
+    console.error('MFA verify-setup error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
+  }
+});
+
+// POST /api/auth/mfa/disable
+router.post('/mfa/disable', authenticateToken, mfaLimiter, [
+  body('password').optional().isString().notEmpty(),
+  body('code').optional().isLength({ min: 6, max: 17 }),
+  body().custom(value => {
+    if (!value.password && !value.code) throw new Error('Password or authentication code is required');
+    return true;
+  }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+  try {
+    const db = getFirestore();
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const data = userDoc.data() || {};
+    if (!data.mfaEnabled || !data.mfaSecret) {
+      return res.status(400).json({ success: false, error: 'MFA is not enabled', code: 'MFA_NOT_ENABLED' });
+    }
+
+    if (req.body.password) {
+      await verifyPassword(data.email || req.user.email, req.body.password);
+    } else {
+      const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: data, code: req.body.code });
+      if (!verification.verified) return res.status(400).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+    }
+
+    await db.collection('users').doc(req.user.uid).update({
+      mfaEnabled: false,
+      mfaSecret: null,
+      mfaRecoveryCodeHashes: [],
+    });
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_disabled', req });
+    return res.json({ success: true, message: 'Two-factor authentication disabled' });
+  } catch (err) {
+    const firebaseError = err.response?.data?.error?.message;
+    if (firebaseError === 'INVALID_PASSWORD' || firebaseError === 'INVALID_LOGIN_CREDENTIALS') {
+      return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+    }
+    if (err.code === 'CONFIG_ERROR') {
+      return res.status(500).json({ success: false, error: err.message, code: err.code });
+    }
+    console.error('MFA disable error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to disable MFA', code: 'MFA_DISABLE_ERROR' });
+  }
+});
+
+// GET /api/auth/mfa/status
+router.get('/mfa/status', authenticateToken, async (req, res) => {
+  try {
+    const userDoc = await getFirestore().collection('users').doc(req.user.uid).get();
+    return res.json({ success: true, mfaEnabled: !!userDoc.data()?.mfaEnabled });
+  } catch (err) {
+    console.error('MFA status error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to get MFA status', code: 'MFA_STATUS_ERROR' });
+  }
+});
+
+// POST /api/auth/mfa/verify — post-login gate for the web app, which authenticates
+// via the Firebase client SDK directly (never touches /login above). The frontend
+// already holds a valid Firebase idToken at this point; this only confirms
+// possession of the second factor before unlocking the app UI.
+router.post('/mfa/verify', authenticateToken, mfaLimiter, [
+  body('code').isLength({ min: 6, max: 17 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+  try {
+    const db = getFirestore();
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const data = userDoc.data() || {};
+    if (!data.mfaEnabled || !data.mfaSecret) return res.json({ success: true, mfaEnabled: false });
+
+    const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: data, code: req.body.code });
+    if (!verification.verified) {
+      recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_verify_failed', req });
+      return res.status(401).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+    }
+    return res.json({ success: true, method: verification.method });
+  } catch (err) {
+    console.error('MFA verify error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
   }
 });
 
@@ -126,11 +412,21 @@ router.post('/verify', authenticateToken, async (req, res) => {
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     await getAuth().revokeRefreshTokens(req.user.uid);
-    return res.json({ success: true, message: 'Logged out successfully' });
   } catch (err) {
-    console.error('Logout error:', err);
-    return res.json({ success: true, message: 'Logged out' });
+    console.error('Logout revokeRefreshTokens error:', err);
   }
+  try {
+    // Bumping tokenVersion invalidates any outstanding custom JWT (Firebase
+    // idTokens are covered by revokeRefreshTokens above, but that call doesn't
+    // touch already-issued custom JWTs, which are otherwise stateless for 7 days).
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    });
+  } catch (err) {
+    console.error('Logout tokenVersion bump error:', err);
+  }
+  recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'logout', req });
+  return res.json({ success: true, message: 'Logged out successfully' });
 });
 
 // POST /api/auth/refresh
@@ -152,7 +448,7 @@ router.post('/refresh', async (req, res) => {
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], async (req, res) => {
+router.post('/forgot-password', authLimiter, [body('email').isEmail().normalizeEmail()], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.mapped() });
@@ -164,12 +460,13 @@ router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyn
     return res.json({ success: true, message: 'Password reset email sent' });
   } catch (err) {
     // Don't reveal if email exists
+    console.error('[forgot-password] Failed to generate or send reset email:', err.message);
     return res.json({ success: true, message: 'If that email exists, a reset link was sent' });
   }
 });
 
 // POST /api/auth/send-verification
-router.post('/send-verification', authenticateToken, async (req, res) => {
+router.post('/send-verification', authLimiter, authenticateToken, async (req, res) => {
   try {
     const { pendingPlan } = req.body;
     const auth = getAuth();
@@ -210,7 +507,7 @@ router.post('/send-verification', authenticateToken, async (req, res) => {
 
 // POST /api/auth/change-password
 router.post('/change-password', authenticateToken, [
-  body('newPassword').isLength({ min: 6 }),
+  body('newPassword').isLength({ min: 12 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -218,6 +515,12 @@ router.post('/change-password', authenticateToken, [
   }
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
+    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
+    await getFirestore().collection('users').doc(req.user.uid).update({
+      tokenVersion: (req.user.tokenVersion || 0) + 1,
+    }).catch(() => {});
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password updated successfully' });
   } catch (err) {
     console.error('Change password error:', err);
@@ -225,4 +528,5 @@ router.post('/change-password', authenticateToken, [
   }
 });
 
+router._mfaRecovery = { generateRecoveryCodes, hashRecoveryCode, normalizeRecoveryCode, verifySecondFactor };
 module.exports = router;

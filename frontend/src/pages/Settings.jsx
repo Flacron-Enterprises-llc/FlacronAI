@@ -5,20 +5,21 @@ import toast from 'react-hot-toast';
 import {
   User, Lock, Key, Bell, CreditCard, Eye, EyeOff, Plus,
   Trash2, Copy, Check, AlertTriangle, ExternalLink, Download, X,
-  Shield, RefreshCw, Mail
+  Shield, ShieldCheck, RefreshCw, Mail
 } from 'lucide-react';
 import {
   reauthenticateWithCredential,
   EmailAuthProvider,
   updatePassword,
-  sendPasswordResetEmail,
-  reauthenticateWithPopup,
-  GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { usersAPI, paymentAPI } from '../services/api';
+import { usersAPI, paymentAPI, authAPI } from '../services/api';
+import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -30,6 +31,7 @@ const TABS = [
 
 function KeyModal({ apiKey, onClose }) {
   const [copied, setCopied] = useState(false);
+  useEscapeToClose(onClose);
   const handleCopy = () => {
     navigator.clipboard.writeText(apiKey);
     setCopied(true);
@@ -39,18 +41,18 @@ function KeyModal({ apiKey, onClose }) {
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-md p-6"
+      <motion.div className="card w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="key-modal-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900">API Key Created</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-600" /></button>
+          <h2 id="key-modal-title" className="text-lg font-bold text-gray-900">API Key Created</h2>
+          <button onClick={onClose} aria-label="Close" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
         <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex gap-2 mb-4">
-          <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-          <p className="text-yellow-300 text-sm">Copy this key now. It will never be shown again.</p>
+          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
+          <p className="text-yellow-800 text-sm">Copy this key now. It will never be shown again.</p>
         </div>
-        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-orange-300 break-all mb-4">{apiKey}</div>
+        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-orange-800 break-all mb-4">{apiKey}</div>
         <div className="flex gap-3">
           <button onClick={handleCopy} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm py-2">
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -64,18 +66,19 @@ function KeyModal({ apiKey, onClose }) {
 }
 
 function CancelModal({ onConfirm, onClose, loading }) {
+  useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-sm p-6"
+      <motion.div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title"
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="text-center mb-6">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6 text-red-400" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
+          <h2 id="cancel-modal-title" className="text-lg font-bold text-gray-900 mb-2">Cancel Subscription?</h2>
           <p className="text-gray-600 text-sm">Your plan will remain active until the end of the billing period. You will be moved to the Starter plan.</p>
         </div>
         <div className="flex gap-3">
@@ -89,8 +92,48 @@ function CancelModal({ onConfirm, onClose, loading }) {
   );
 }
 
+function DeleteAccountModal({ onConfirm, onClose, loading }) {
+  const [password, setPassword] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const canSubmit = password.length > 0 && confirmText === 'DELETE';
+  useEscapeToClose(onClose, !loading, true);
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}>
+      <motion.div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="delete-account-title"
+        initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+        onClick={e => e.stopPropagation()}>
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-red-400" />
+          </div>
+          <h2 id="delete-account-title" className="text-lg font-bold text-gray-900 mb-2">Delete Your Account?</h2>
+          <p className="text-gray-600 text-sm">This permanently deletes your account, all reports, photos, exports, templates, and API keys. This cannot be undone.</p>
+        </div>
+        <div className="space-y-3 mb-6">
+          <div>
+            <label className="label">Current Password</label>
+            <input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Type DELETE to confirm</label>
+            <input type="text" className="input" value={confirmText} onChange={e => setConfirmText(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-secondary flex-1 text-sm py-2">Cancel</button>
+          <button onClick={() => onConfirm(password)} disabled={!canSubmit || loading} className="btn-danger flex-1 text-sm py-2 disabled:opacity-50">
+            {loading ? 'Deleting...' : 'Delete Account'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function Settings() {
-  const { userProfile, tier, refreshProfile } = useAuth();
+  const { userProfile, tier, refreshProfile, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -102,13 +145,18 @@ export default function Settings() {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
+  const [resetEmailLoading, setResetEmailLoading] = useState(false);
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [keysLoading, setKeysLoading] = useState(false);
+  const [keysError, setKeysError] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState(DEFAULT_API_KEY_SCOPES);
   const [createdKey, setCreatedKey] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [revokeKeyId, setRevokeKeyId] = useState(null);
+  const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
 
   // Notifications state
   const [notifications, setNotifications] = useState({
@@ -118,10 +166,22 @@ export default function Settings() {
 
   // Billing state
   const [subscription, setSubscription] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSetupData, setMfaSetupData] = useState(null); // { secret, qrCode } while mid-enrollment
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState([]);
+  const [mfaLoading, setMfaLoading] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -138,25 +198,41 @@ export default function Settings() {
   useEffect(() => {
     if (activeTab === 'api-keys' && ['agency', 'enterprise'].includes(tier)) fetchApiKeys();
     if (activeTab === 'billing') fetchBilling();
+    if (activeTab === 'security') {
+      authAPI.mfaStatus().then(res => setMfaEnabled(!!res.data.mfaEnabled)).catch(() => {});
+    }
   }, [activeTab, tier]);
 
   const fetchApiKeys = async () => {
     setKeysLoading(true);
+    setKeysError(false);
     try {
       const res = await usersAPI.getApiKeys();
       const keys = res.data.apiKeys || res.data;
       setApiKeys(Array.isArray(keys) ? keys : []);
-    } catch { toast.error('Failed to load API keys'); }
+    } catch {
+      toast.error('Failed to load API keys');
+      setKeysError(true);
+    }
     finally { setKeysLoading(false); }
   };
 
   const fetchBilling = async () => {
     setBillingLoading(true);
+    setBillingError(false);
     try {
-      const [subRes, invRes] = await Promise.all([paymentAPI.getSubscription(), paymentAPI.getInvoices()]);
-      setSubscription(subRes.data.subscription || subRes.data);
+      const [subRes, invRes, usageRes] = await Promise.all([
+        paymentAPI.getSubscription(),
+        paymentAPI.getInvoices(),
+        usersAPI.getUsage(),
+      ]);
+      setSubscription(subRes.data.subscription ?? null);
       setInvoices(invRes.data.invoices || invRes.data || []);
-    } catch { toast.error('Failed to load billing info'); }
+      setUsage(usageRes.data.usage ?? null);
+    } catch {
+      toast.error('Failed to load billing info');
+      setBillingError(true);
+    }
     finally { setBillingLoading(false); }
   };
 
@@ -176,7 +252,7 @@ export default function Settings() {
     e.preventDefault();
     if (!pwForm.currentPassword) { toast.error('Enter your current password'); return; }
     if (!pwForm.newPassword) { toast.error('Enter a new password'); return; }
-    if (pwForm.newPassword.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+    if (pwForm.newPassword.length < 12) { toast.error('New password must be at least 12 characters'); return; }
     if (pwForm.newPassword !== pwForm.confirmPassword) { toast.error('New passwords do not match'); return; }
     if (pwForm.currentPassword === pwForm.newPassword) { toast.error('New password must be different from current password'); return; }
 
@@ -201,7 +277,7 @@ export default function Settings() {
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         toast.error('Current password is incorrect');
       } else if (err.code === 'auth/weak-password') {
-        toast.error('New password is too weak — use at least 8 characters');
+        toast.error('New password is too weak — use at least 12 characters');
       } else if (err.code === 'auth/too-many-requests') {
         toast.error('Too many attempts. Please try again later.');
       } else if (err.code === 'auth/requires-recent-login') {
@@ -217,36 +293,46 @@ export default function Settings() {
   const handleSendResetEmail = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser?.email) { toast.error('No email address found on your account'); return; }
+    setResetEmailLoading(true);
     try {
-      await sendPasswordResetEmail(auth, currentUser.email);
+      await authAPI.forgotPassword(currentUser.email);
       toast.success(`Reset email sent to ${currentUser.email}`);
     } catch (err) {
-      if (err.code === 'auth/too-many-requests') {
+      if (err?.response?.status === 429) {
         toast.error('Too many requests. Please wait a few minutes and try again.');
       } else {
-        toast.error(err.message || 'Failed to send reset email');
+        toast.error(err?.response?.data?.error || err.message || 'Failed to send reset email');
       }
+    } finally {
+      setResetEmailLoading(false);
     }
   };
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) { toast.error('Enter a name for the API key'); return; }
+    if (newKeyScopes.length === 0) { toast.error('Select at least one permission'); return; }
     setCreatingKey(true);
     try {
-      const res = await usersAPI.createApiKey(newKeyName.trim());
+      const res = await usersAPI.createApiKey(newKeyName.trim(), newKeyScopes);
       setCreatedKey(res.data.key || res.data.apiKey);
       setNewKeyName('');
+      setNewKeyScopes(DEFAULT_API_KEY_SCOPES);
       fetchApiKeys();
     } catch { toast.error('Failed to create API key'); }
     finally { setCreatingKey(false); }
   };
 
-  const handleRevokeKey = async (keyId) => {
+  const handleRevokeKey = (keyId) => setRevokeKeyId(keyId);
+
+  const confirmRevokeKey = async () => {
+    setRevokeKeyLoading(true);
     try {
-      await usersAPI.revokeApiKey(keyId);
+      await usersAPI.revokeApiKey(revokeKeyId);
       toast.success('API key revoked');
       fetchApiKeys();
+      setRevokeKeyId(null);
     } catch { toast.error('Failed to revoke key'); }
+    finally { setRevokeKeyLoading(false); }
   };
 
   const handleNotifSave = async () => {
@@ -269,9 +355,74 @@ export default function Settings() {
     finally { setCancelLoading(false); }
   };
 
-  const usagePercent = userProfile?.usage
-    ? Math.round((userProfile.usage.reportsThisMonth / (userProfile.usage.monthlyLimit || 1)) * 100)
-    : 0;
+  const handleDeleteAccount = async (password) => {
+    setDeleteLoading(true);
+    try {
+      await usersAPI.deleteAccount(password);
+      toast.success('Your account has been deleted');
+      setShowDeleteModal(false);
+      await logout();
+      navigate('/');
+    } catch (err) {
+      const code = err.response?.data?.code;
+      if (code === 'INVALID_PASSWORD') toast.error('Incorrect password');
+      else if (code === 'TEAM_OWNER_BLOCKED') toast.error(err.response.data.error);
+      else toast.error('Failed to delete account');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleMfaSetupStart = async () => {
+    setMfaLoading(true);
+    try {
+      const res = await authAPI.mfaSetup();
+      setMfaSetupData({ secret: res.data.secret, qrCode: res.data.qrCode });
+    } catch {
+      toast.error('Failed to start two-factor setup');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaConfirm = async () => {
+    if (mfaCode.length < 6) return;
+    setMfaLoading(true);
+    try {
+      const res = await authAPI.mfaVerifySetup(mfaCode);
+      toast.success('Two-factor authentication enabled');
+      setMfaEnabled(true);
+      setMfaSetupData(null);
+      setMfaCode('');
+      setMfaRecoveryCodes(res.data.recoveryCodes || []);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid code');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaDisable = async () => {
+    if (!mfaDisablePassword) return;
+    setMfaLoading(true);
+    try {
+      await authAPI.mfaDisable({ password: mfaDisablePassword });
+      toast.success('Two-factor authentication disabled');
+      setMfaEnabled(false);
+      setMfaCode('');
+      setMfaDisablePassword('');
+      setMfaRecoveryCodes([]);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid code');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const reportsUsed = usage?.reportsThisMonth ?? userProfile?.reportsThisMonth ?? 0;
+  const reportsLimit = usage?.reportsLimit ?? 0;
+  const usagePercent =
+    reportsLimit > 0 ? Math.round((reportsUsed / reportsLimit) * 100) : 0;
 
   const filteredTabs = TABS;
 
@@ -336,7 +487,7 @@ export default function Settings() {
                 <motion.div key="security" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                   <div className="card p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h2>
-                    <p className="text-gray-500 text-sm mb-6">Must be at least 8 characters and different from your current password.</p>
+                    <p className="text-gray-500 text-sm mb-6">Must be at least 12 characters and different from your current password.</p>
                     <form onSubmit={handlePasswordChange} className="space-y-4 max-w-sm">
                       {[
                         { key: 'currentPassword', label: 'Current Password', show: 'current' },
@@ -349,6 +500,8 @@ export default function Settings() {
                             <input type={showPw[f.show] ? 'text' : 'password'} className="input pr-10"
                               value={pwForm[f.key]} onChange={e => setPwForm(p => ({ ...p, [f.key]: e.target.value }))} />
                             <button type="button" onClick={() => setShowPw(p => ({ ...p, [f.show]: !p[f.show] }))}
+                              aria-label={showPw[f.show] ? `Hide ${f.label.toLowerCase()}` : `Show ${f.label.toLowerCase()}`}
+                              title={showPw[f.show] ? 'Hide' : 'Show'}
                               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
                               {showPw[f.show] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
@@ -363,12 +516,97 @@ export default function Settings() {
                   </div>
 
                   <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Two-Factor Authentication</h2>
+                    <p className="text-gray-500 text-sm mb-4">
+                      {mfaEnabled
+                        ? 'Enabled. An authenticator app code is required each time you sign in.'
+                        : 'Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.).'}
+                    </p>
+
+                    {!mfaEnabled && !mfaSetupData && (
+                      <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="btn-primary flex items-center gap-2 text-sm py-2 disabled:opacity-50">
+                        <ShieldCheck className="w-4 h-4" /> {mfaLoading ? 'Starting...' : 'Enable Two-Factor Authentication'}
+                      </button>
+                    )}
+
+                    {mfaSetupData && (
+                      <div className="max-w-sm space-y-4">
+                        <p className="text-gray-600 text-sm">Scan this QR code with your authenticator app, then enter the 6-digit code it shows.</p>
+                        <img src={mfaSetupData.qrCode} alt="Two-factor authentication QR code" className="w-40 h-40 border border-gray-200 rounded-xl" />
+                        <div>
+                          <label className="label">Can't scan? Enter this key manually:</label>
+                          <code className="block bg-gray-100 rounded-lg px-3 py-2 text-xs break-all">{mfaSetupData.secret}</code>
+                        </div>
+                        <div>
+                          <label className="label">Authentication Code</label>
+                          <input type="text" inputMode="numeric" maxLength={8} className="input"
+                            value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
+                        </div>
+                        <div className="flex gap-3">
+                          <button onClick={() => { setMfaSetupData(null); setMfaCode(''); }} className="btn-secondary text-sm py-2 px-4">Cancel</button>
+                          <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaCode.length < 6} className="btn-primary text-sm py-2 px-4 disabled:opacity-50">
+                            {mfaLoading ? 'Confirming...' : 'Confirm & Enable'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {mfaRecoveryCodes.length > 0 && (
+                      <div className="max-w-md rounded-xl border border-amber-300 bg-amber-50 p-4" role="status">
+                        <h3 className="font-semibold text-gray-900">Save your recovery codes now</h3>
+                        <p className="mt-1 text-sm text-gray-700">
+                          Each code works once if you lose access to your authenticator. They are not shown again.
+                        </p>
+                        <div className="my-3 grid grid-cols-2 gap-2 font-mono text-sm text-gray-900">
+                          {mfaRecoveryCodes.map(code => <code key={code}>{code}</code>)}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary px-4 py-2 text-sm"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(mfaRecoveryCodes.join('\n'));
+                            toast.success('Recovery codes copied');
+                          }}
+                        >
+                          Copy recovery codes
+                        </button>
+                      </div>
+                    )}
+
+                    {mfaEnabled && (
+                      <div className="max-w-sm space-y-3">
+                        <label className="label">Enter your account password to disable</label>
+                        <input type="password" autoComplete="current-password" className="input"
+                          value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} />
+                        <button onClick={handleMfaDisable} disabled={mfaLoading || !mfaDisablePassword} className="btn-danger text-sm py-2 px-4 disabled:opacity-50">
+                          {mfaLoading ? 'Disabling...' : 'Disable Two-Factor Authentication'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="card p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-1">Forgot Your Password?</h2>
                     <p className="text-gray-500 text-sm mb-4">
                       We'll send a password reset link to <span className="font-medium text-gray-700">{auth.currentUser?.email}</span>.
                     </p>
-                    <button onClick={handleSendResetEmail} className="btn-secondary flex items-center gap-2 text-sm">
-                      <Mail className="w-4 h-4" /> Send Reset Email
+                    <button
+                      onClick={handleSendResetEmail}
+                      disabled={resetEmailLoading}
+                      className="btn-secondary flex items-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resetEmailLoading
+                        ? <RefreshCw className="w-4 h-4 animate-spin" />
+                        : <Mail className="w-4 h-4" />}
+                      {resetEmailLoading ? 'Sending...' : 'Send Reset Email'}
+                    </button>
+                  </div>
+
+                  <div className="card p-6 border-red-500/30">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Danger Zone</h2>
+                    <p className="text-gray-500 text-sm mb-4">Permanently delete your account, reports, photos, exports, and API keys. This cannot be undone.</p>
+                    <button onClick={() => setShowDeleteModal(true)} className="btn-danger flex items-center gap-2 text-sm py-2">
+                      <Trash2 className="w-4 h-4" /> Delete Account
                     </button>
                   </div>
                 </motion.div>
@@ -388,6 +626,19 @@ export default function Settings() {
                     <div className="space-y-4">
                       <div className="card p-6">
                         <h2 className="text-lg font-semibold text-gray-900 mb-4">Create API Key</h2>
+                        <fieldset className="mb-4">
+                          <legend className="text-sm font-medium text-gray-900 mb-2">Permissions</legend>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {API_KEY_SCOPES.map(scope => (
+                              <label key={scope.id} className="flex gap-2 rounded-lg border border-gray-200 p-3 cursor-pointer hover:border-orange-300">
+                                <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                                  onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
+                                <span><span className="block text-sm font-medium text-gray-900">{scope.label}</span><span className="block text-xs text-gray-500 mt-0.5">{scope.description}</span></span>
+                              </label>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-xs text-gray-500">Use the minimum permissions this integration needs. Permissions cannot be changed after creation.</p>
+                        </fieldset>
                         <div className="flex gap-3">
                           <input className="input flex-1" placeholder="Key name (e.g. Production App)"
                             value={newKeyName} onChange={e => setNewKeyName(e.target.value)} />
@@ -402,6 +653,14 @@ export default function Settings() {
                           <div className="space-y-3">
                             {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-14 w-full" />)}
                           </div>
+                        ) : keysError ? (
+                          <div className="text-center py-8">
+                            <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                            <p className="text-gray-600 text-sm font-medium">We couldn't load your API keys</p>
+                            <button onClick={fetchApiKeys} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                              <RefreshCw className="w-4 h-4" /> Retry
+                            </button>
+                          </div>
                         ) : apiKeys.length === 0 ? (
                           <div className="text-center py-8">
                             <Key className="w-8 h-8 text-gray-600 mx-auto mb-2" />
@@ -415,8 +674,11 @@ export default function Settings() {
                                   <p className="text-gray-900 text-sm font-medium">{key.name}</p>
                                   <div className="flex gap-3 mt-1">
                                     <span className="text-gray-500 text-xs">Created {new Date(key.createdAt).toLocaleDateString()}</span>
-                                    {key.lastUsed && <span className="text-gray-500 text-xs">Last used {new Date(key.lastUsed).toLocaleDateString()}</span>}
+                                    {key.lastUsedAt && <span className="text-gray-500 text-xs">Last used {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
                                     {key.usageCount !== undefined && <span className="text-gray-500 text-xs">{key.usageCount} calls</span>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {(key.scopes || []).map(scope => <span key={scope} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">{formatApiScope(scope)}</span>)}
                                   </div>
                                 </div>
                                 <button onClick={() => handleRevokeKey(key._id || key.id)} className="p-2 hover:bg-red-500/10 rounded-lg transition-colors" title="Revoke">
@@ -471,14 +733,30 @@ export default function Settings() {
                       <h2 className="text-lg font-semibold text-gray-900 mb-4">Current Plan</h2>
                       {billingLoading ? (
                         <div className="space-y-3"><div className="skeleton h-8 w-32" /><div className="skeleton h-4 w-full" /></div>
+                      ) : billingError ? (
+                        <div className="text-center py-6">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                          <p className="text-gray-600 text-sm font-medium">We couldn't load your plan details</p>
+                          <button onClick={fetchBilling} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4" /> Retry
+                          </button>
+                        </div>
                       ) : (
                         <>
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-gray-900 font-semibold capitalize text-xl">{tier} Plan</p>
-                              {subscription && <p className="text-gray-600 text-sm mt-1">
-                                {subscription.status === 'active' ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : `Status: ${subscription.status}`}
-                              </p>}
+                              <p className="text-gray-600 text-sm mt-1">
+                                {subscription?.cancelAtPeriodEnd || subscription?.status === 'cancelling'
+                                  ? `Cancellation scheduled · Access ends ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                                  : subscription?.status === 'active' && subscription.currentPeriodEnd
+                                  ? `Active · Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                                  : subscription?.status
+                                    ? `Status: ${subscription.status.replaceAll('_', ' ')}`
+                                    : tier === 'starter'
+                                      ? 'Free plan · No recurring billing'
+                                      : 'Plan access managed by your account'}
+                              </p>
                             </div>
                             <button onClick={() => navigate('/pricing')} className="btn-secondary text-sm py-2 px-4 flex items-center gap-2">
                               <ExternalLink className="w-4 h-4" /> Change Plan
@@ -487,14 +765,16 @@ export default function Settings() {
                           <div className="mb-2">
                             <div className="flex justify-between text-xs text-gray-600 mb-1.5">
                               <span>Monthly Reports Used</span>
-                              <span>{userProfile?.usage?.reportsThisMonth || 0} / {userProfile?.usage?.monthlyLimit || 0}</span>
+                              <span>
+                                {reportsUsed} / {reportsLimit === -1 ? 'Unlimited' : reportsLimit}
+                              </span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full transition-all ${usagePercent > 80 ? 'bg-red-500' : 'bg-orange-500'}`}
                                 style={{ width: `${Math.min(usagePercent, 100)}%` }} />
                             </div>
                           </div>
-                          {tier !== 'starter' && subscription?.status === 'active' && (
+                          {tier !== 'starter' && subscription?.status === 'active' && !subscription.cancelAtPeriodEnd && (
                             <button onClick={() => setShowCancelModal(true)} className="btn-danger text-sm py-2 mt-4 flex items-center gap-2">
                               <X className="w-4 h-4" /> Cancel Subscription
                             </button>
@@ -507,6 +787,14 @@ export default function Settings() {
                       <h2 className="text-lg font-semibold text-gray-900 mb-4">Invoice History</h2>
                       {billingLoading ? (
                         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
+                      ) : billingError ? (
+                        <div className="text-center py-8">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                          <p className="text-gray-600 text-sm font-medium">We couldn't load your billing history</p>
+                          <button onClick={fetchBilling} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4" /> Retry
+                          </button>
+                        </div>
                       ) : invoices.length === 0 ? (
                         <div className="text-center py-8">
                           <CreditCard className="w-8 h-8 text-gray-600 mx-auto mb-2" />
@@ -517,7 +805,7 @@ export default function Settings() {
                           <table className="w-full">
                             <thead>
                               <tr className="border-b border-[#e5e7eb]">
-                                {['Date', 'Amount', 'Status', 'Download'].map(h => (
+                                {['Date', 'Plan', 'Amount', 'Status', 'Download'].map(h => (
                                   <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                                 ))}
                               </tr>
@@ -526,10 +814,11 @@ export default function Settings() {
                               {invoices.map(inv => (
                                 <tr key={inv.id} className="border-b border-[#e5e7eb]">
                                   <td className="px-3 py-3 text-sm text-gray-700">{new Date(inv.date).toLocaleDateString()}</td>
+                                  <td className="px-3 py-3 text-sm text-gray-600 max-w-[180px] truncate" title={inv.description}>{inv.description || 'Subscription'}</td>
                                   <td className="px-3 py-3 text-sm text-gray-900 font-medium">${inv.amount.toFixed(2)}</td>
                                   <td className="px-3 py-3">
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                      {inv.status}
+                                      {formatStatus(inv.status)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-3">
@@ -561,6 +850,23 @@ export default function Settings() {
             onConfirm={handleCancelSubscription}
             onClose={() => setShowCancelModal(false)}
             loading={cancelLoading}
+          />
+        )}
+        {showDeleteModal && (
+          <DeleteAccountModal
+            onConfirm={handleDeleteAccount}
+            onClose={() => setShowDeleteModal(false)}
+            loading={deleteLoading}
+          />
+        )}
+        {revokeKeyId && (
+          <ConfirmDialog
+            title="Revoke API key?"
+            message="Any application using this key will immediately lose access. This cannot be undone."
+            confirmLabel="Revoke"
+            loading={revokeKeyLoading}
+            onConfirm={confirmRevokeKey}
+            onClose={() => setRevokeKeyId(null)}
           />
         )}
       </AnimatePresence>

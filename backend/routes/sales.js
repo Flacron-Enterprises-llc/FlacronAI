@@ -5,6 +5,7 @@ const { sendSalesNotificationEmail } = require('../services/emailService');
 const { authenticateToken } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
+const { recordAuditLog } = require('../services/auditLogService');
 
 // Stripe — instantiated once at module level
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -22,9 +23,29 @@ router.post('/contact', [
     return res.status(400).json({ success: false, errors: errors.mapped() });
   }
 
+  // Consent is required before we may store or act on a lead (Golden Rule #5).
+  const consentIn = req.body.consent;
+  if (!consentIn || consentIn.agreed !== true) {
+    return res.status(400).json({
+      success: false,
+      error: 'Consent to be contacted is required before submitting.',
+      code: 'CONSENT_REQUIRED',
+    });
+  }
+
   try {
     const db = getFirestore();
     const { name, email, subject, message, company, phone, companyType, monthlyVolume } = req.body;
+
+    // Compliance record: what was agreed, which version, when, and from where.
+    const consent = {
+      agreed: true,
+      version: typeof consentIn.version === 'string' ? consentIn.version : 'unknown',
+      channels: Array.isArray(consentIn.channels) && consentIn.channels.length ? consentIn.channels : ['email'],
+      consentedAt: new Date().toISOString(),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || '',
+    };
 
     const lead = {
       id: uuidv4(),
@@ -36,6 +57,7 @@ router.post('/contact', [
       phone: phone || '',
       companyType: companyType || '',
       monthlyVolume: monthlyVolume || '',
+      consent,
       status: 'new',
       notes: '',
       createdAt: new Date().toISOString(),
@@ -196,11 +218,20 @@ router.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => 
 router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getFirestore();
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const [usersSnap, reportsSnap, leadsSnap] = await Promise.all([
+    // Growing collections (reports, salesLeads) use count() aggregation instead of
+    // reading every document — O(1) billed reads vs O(n). `users` is read in full
+    // because tier tallying must default a missing `tier` field to 'starter'.
+    const reportsCol = db.collection('reports');
+    const leadsCol = db.collection('salesLeads');
+    const [usersSnap, totalReportsAgg, reportsMonthAgg, totalLeadsAgg, leadsMonthAgg] = await Promise.all([
       db.collection('users').get(),
-      db.collection('reports').get(),
-      db.collection('salesLeads').get(),
+      reportsCol.count().get(),
+      reportsCol.where('createdAt', '>=', monthStart).count().get(),
+      leadsCol.count().get(),
+      leadsCol.where('createdAt', '>=', monthStart).count().get(),
     ]);
 
     const users = usersSnap.docs.map(d => d.data());
@@ -210,27 +241,26 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
     const TIER_PRICE = { starter: 0, professional: 39.99, agency: 99.99, enterprise: 499 };
     const mrr = Object.entries(tierCounts).reduce((sum, [t, count]) => sum + (TIER_PRICE[t] || 0) * count, 0);
 
-    // Total reports generated
-    const totalReports = reportsSnap.size;
+    const totalReports = totalReportsAgg.data().count;
+    const reportsThisMonth = reportsMonthAgg.data().count;
+    const newLeadsThisMonth = leadsMonthAgg.data().count;
 
-    // Reports this month
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const reportsThisMonth = reportsSnap.docs.filter(d => (d.data().createdAt || '') >= monthStart).length;
-
-    // Stripe revenue — last 30 days
+    // Stripe revenue — last 30 days. Time-boxed so a slow/unreachable Stripe API
+    // can never hang the whole stats response (previously left the dashboard on
+    // its loading skeletons indefinitely).
     let stripeRevenue = null;
     if (stripe) {
       try {
         const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-        const charges = await stripe.charges.list({ limit: 100, created: { gte: thirtyDaysAgo } });
+        const charges = await Promise.race([
+          stripe.charges.list({ limit: 100, created: { gte: thirtyDaysAgo } }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('stripe-timeout')), 4000)),
+        ]);
         stripeRevenue = charges.data
           .filter(c => c.status === 'succeeded')
           .reduce((sum, c) => sum + c.amount, 0) / 100;
-      } catch { /* Stripe not configured */ }
+      } catch { /* Stripe not configured or timed out — leave null */ }
     }
-
-    const newLeadsThisMonth = leadsSnap.docs.filter(d => (d.data().createdAt || '') >= monthStart).length;
 
     return res.json({
       success: true,
@@ -241,7 +271,7 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
         totalReports,
         reportsThisMonth,
         stripeRevenue30d: stripeRevenue,
-        totalLeads: leadsSnap.size,
+        totalLeads: totalLeadsAgg.data().count,
         newLeadsThisMonth,
         paidUsers: tierCounts.professional + tierCounts.agency + tierCounts.enterprise,
       },
@@ -269,6 +299,16 @@ router.put('/admin/update-tier', authenticateToken, requireAdmin, [
       updatedAt: new Date().toISOString(),
       adminUpdated: true,
       adminUpdatedAt: new Date().toISOString(),
+    });
+
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'admin_tier_update',
+      targetType: 'user',
+      targetId: userRecord.uid,
+      meta: { targetEmail: req.body.email, newTier: req.body.tier },
+      req,
     });
 
     return res.json({ success: true, message: `User ${req.body.email} updated to ${req.body.tier} tier` });
@@ -299,9 +339,36 @@ router.delete('/admin/user/:uid', authenticateToken, requireAdmin, async (req, r
     // Delete Firebase Auth account
     await getAuth().deleteUser(uid);
 
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'admin_user_delete',
+      targetType: 'user',
+      targetId: uid,
+      req,
+    });
+
     return res.json({ success: true, message: 'User deleted' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, code: 'ADMIN_ERROR' });
+  }
+});
+
+// GET /api/sales/admin/audit-logs — recent security-relevant events, admin only
+router.get('/admin/audit-logs', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    let query = db.collection('auditLogs').orderBy('timestamp', 'desc');
+    if (req.query.before) {
+      query = query.where('timestamp', '<', req.query.before);
+    }
+    const snap = await query.limit(limit).get();
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.json({ success: true, logs, nextBefore: logs.length ? logs[logs.length - 1].timestamp : null });
+  } catch (err) {
+    console.error('Audit log fetch error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load audit logs', code: 'AUDIT_LOG_ERROR' });
   }
 });
 
@@ -355,6 +422,7 @@ router.get('/admin/user/:uid/billing', authenticateToken, requireAdmin, async (r
           status: inv.status,
           date: new Date(inv.created * 1000).toISOString(),
           pdf: inv.invoice_pdf,
+          description: inv.lines.data[0]?.description || '',
         })),
       },
     });

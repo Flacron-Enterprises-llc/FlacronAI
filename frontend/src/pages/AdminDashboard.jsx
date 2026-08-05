@@ -11,6 +11,8 @@ import {
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { salesAPI } from '../services/api';
+import { formatStatus } from '../utils/formatStatus';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const TIERS = ['starter', 'professional', 'agency', 'enterprise'];
 const TIER_COLORS = {
@@ -118,21 +120,25 @@ function UserSlideOver({ user, onClose, onDeleted }) {
   const [reports, setReports] = useState([]);
   const [billing, setBilling] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  useEscapeToClose(onClose, !!user);
 
-  useEffect(() => {
+  const fetchDetails = useCallback(() => {
     if (!user) return;
     setLoading(true);
+    setLoadError(false);
     Promise.all([
       salesAPI.getUserReports(user.uid),
       salesAPI.getUserBilling(user.uid),
     ]).then(([r, b]) => {
       setReports(r.data.reports || []);
       setBilling(b.data.billing || null);
-    }).catch(() => toast.error('Failed to load user details'))
+    }).catch(() => { setLoadError(true); toast.error('Failed to load user details'); })
       .finally(() => setLoading(false));
   }, [user]);
+  useEffect(() => { fetchDetails(); }, [fetchDetails]);
 
   const handleDelete = async () => {
     if (!window.confirm(`Permanently delete ${user.email} and all their reports? This cannot be undone.`)) return;
@@ -152,7 +158,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}>
-        <motion.div className="w-full max-w-lg bg-white border-l border-[#e5e7eb] h-full overflow-y-auto flex flex-col"
+        <motion.div className="w-full max-w-lg bg-white border-l border-[#e5e7eb] h-full overflow-y-auto flex flex-col" role="dialog" aria-modal="true" aria-labelledby="user-slideover-title"
           initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 280 }}
           onClick={e => e.stopPropagation()}>
 
@@ -163,11 +169,11 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                 {(user.displayName || user.email || 'U')[0].toUpperCase()}
               </div>
               <div>
-                <p className="font-semibold text-gray-900">{user.displayName || '—'}</p>
+                <p id="user-slideover-title" className="font-semibold text-gray-900">{user.displayName || '—'}</p>
                 <p className="text-sm text-gray-500">{user.email}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+            <button onClick={onClose} aria-label="Close user details" title="Close" className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
           </div>
 
           {/* Stats row */}
@@ -210,6 +216,8 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           <div className="flex-1 overflow-y-auto p-4">
             {loading ? (
               <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />)}</div>
+            ) : loadError ? (
+              <div className="py-12 text-center"><AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" /><p className="text-sm text-gray-600">User details could not be loaded.</p><button onClick={fetchDetails} className="mt-3 text-sm font-semibold text-orange-600">Retry</button></div>
             ) : tab === 'reports' ? (
               reports.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
@@ -226,7 +234,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                         <p className="text-xs text-gray-500">{r.lossType} · {r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${r.status === 'completed' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                        {r.status}
+                        {formatStatus(r.status)}
                       </span>
                     </div>
                   ))}
@@ -258,10 +266,10 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                           <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border border-[#e5e7eb] text-sm">
                             <div>
                               <p className="text-gray-900 font-medium">{fmtMoney(inv.amount)}</p>
-                              <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}</p>
+                              <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}{inv.description ? ` · ${inv.description}` : ''}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full border ${inv.status === 'paid' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{inv.status}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full border ${inv.status === 'paid' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{formatStatus(inv.status)}</span>
                               {inv.pdf && <a href={inv.pdf} target="_blank" rel="noreferrer" className="p-1 hover:bg-gray-100 rounded"><ExternalLink className="w-3.5 h-3.5 text-gray-400" /></a>}
                             </div>
                           </div>
@@ -293,6 +301,7 @@ function EmailModal({ to, onClose }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  useEscapeToClose(onClose, !sending, true);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -309,12 +318,12 @@ function EmailModal({ to, onClose }) {
     <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl"
+      <motion.div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="email-modal-title"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-gray-900">Email User</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+          <h3 id="email-modal-title" className="text-lg font-bold text-gray-900">Email User</h3>
+          <button onClick={onClose} aria-label="Close" title="Close" className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
         </div>
         <form onSubmit={handleSend} className="space-y-4">
           <div>
@@ -355,8 +364,8 @@ function LeadNoteEditor({ lead, onSave, onCancel }) {
         className="text-xs border border-orange-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-orange-400"
         value={notes} onChange={e => setNotes(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') onSave(notes); if (e.key === 'Escape') onCancel(); }} />
-      <button onClick={() => onSave(notes)} className="p-1 hover:bg-green-50 rounded text-green-600"><Check className="w-3.5 h-3.5" /></button>
-      <button onClick={onCancel} className="p-1 hover:bg-gray-100 rounded text-gray-400"><X className="w-3.5 h-3.5" /></button>
+      <button onClick={() => onSave(notes)} aria-label="Save note" title="Save note" className="p-1 hover:bg-green-50 rounded text-green-600"><Check className="w-3.5 h-3.5" /></button>
+      <button onClick={onCancel} aria-label="Cancel" title="Cancel" className="p-1 hover:bg-gray-100 rounded text-gray-400"><X className="w-3.5 h-3.5" /></button>
     </div>
   );
 }
@@ -369,11 +378,12 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
-  const [allUsers, setAllUsers] = useState([]); // full list for CSV export
   const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState(false);
   const [userSearchInput, setUserSearchInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [userTierFilter, setUserTierFilter] = useState('');
@@ -384,6 +394,7 @@ export default function AdminDashboard() {
   // Leads
   const [leads, setLeads] = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState(false);
   const [leadsStatus, setLeadsStatus] = useState('');
   const [editingLead, setEditingLead] = useState(null);
 
@@ -403,18 +414,20 @@ export default function AdminDashboard() {
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
+    setStatsError(false);
     try { const res = await salesAPI.getAdminStats(); setStats(res.data.stats); }
-    catch { toast.error('Failed to load stats'); }
+    catch { setStatsError(true); toast.error('Failed to load stats'); }
     finally { setStatsLoading(false); }
   }, []);
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
+    setUsersError(false);
     try {
       const res = await salesAPI.getAdminUsers({ search: userSearch, tier: userTierFilter, page: userPage, limit: 50 });
       setUsers(res.data.data);
       setUserTotal(res.data.total);
-    } catch { toast.error('Failed to load users'); }
+    } catch { setUsersError(true); toast.error('Failed to load users'); }
     finally { setUsersLoading(false); }
   }, [userSearch, userTierFilter, userPage]);
 
@@ -427,8 +440,9 @@ export default function AdminDashboard() {
 
   const fetchLeads = useCallback(async () => {
     setLeadsLoading(true);
+    setLeadsError(false);
     try { const res = await salesAPI.getLeads({ status: leadsStatus, limit: 100 }); setLeads(res.data.data || []); }
-    catch { toast.error('Failed to load leads'); }
+    catch { setLeadsError(true); toast.error('Failed to load leads'); }
     finally { setLeadsLoading(false); }
   }, [leadsStatus]);
 
@@ -461,7 +475,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-[#f8f8f8]">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 pt-24 pb-8">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -499,6 +513,8 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 animate-pulse" />)}
               </div>
+            ) : statsError ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-orange-600 shadow-sm">Retry</button></div>
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -552,7 +568,7 @@ export default function AdminDashboard() {
                 className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <Download className="w-4 h-4" /> Export CSV
               </button>
-              <button onClick={fetchUsers}
+              <button onClick={fetchUsers} aria-label="Refresh users" title="Refresh users"
                 className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -578,6 +594,8 @@ export default function AdminDashboard() {
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
+                    ) : usersError ? (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Customers could not be loaded.</p><button onClick={fetchUsers} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
                     ) : users.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No users found</td></tr>
                     ) : users.map(u => (
@@ -600,8 +618,7 @@ export default function AdminDashboard() {
                             <button onClick={() => setSelectedUser(u)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="View details">
                               <Eye className="w-4 h-4 text-gray-500" />
                             </button>
-                            <button onClick={() => { setSelectedUser(u); setTimeout(() => {}, 50); }}
-                              className="p-1.5 hover:bg-blue-50 rounded-lg" title="Email user"
+                            <button className="p-1.5 hover:bg-blue-50 rounded-lg" title="Email user"
                               onClick={(e) => { e.stopPropagation(); setSelectedUser(u); }}>
                               <Mail className="w-4 h-4 text-blue-400" />
                             </button>
@@ -638,7 +655,7 @@ export default function AdminDashboard() {
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                 ))}
               </select>
-              <button onClick={fetchLeads}
+              <button onClick={fetchLeads} aria-label="Refresh leads" title="Refresh leads"
                 className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -661,6 +678,8 @@ export default function AdminDashboard() {
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
+                    ) : leadsError ? (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Sales leads could not be loaded.</p><button onClick={fetchLeads} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
                     ) : leads.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No leads yet</td></tr>
                     ) : leads.map(l => (
@@ -674,7 +693,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3">
                           <select value={l.status} onChange={e => handleLeadUpdate(l.id, { status: e.target.value })}
                             className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none ${LEAD_STATUS_COLORS[l.status] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                            {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => <option key={s} value={s}>{s}</option>)}
+                            {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => <option key={s} value={s}>{formatStatus(s)}</option>)}
                           </select>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500">

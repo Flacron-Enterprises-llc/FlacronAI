@@ -7,10 +7,15 @@ import {
   Download, RefreshCw, Search, Plus, Trash2, Copy, Check,
   TrendingUp, Shield, Star, X, ChevronRight, ExternalLink, Key,
   Crown, CreditCard, Upload, Eye, AlertCircle, CheckCircle,
-  Edit2, UserPlus, UserX,
+  Edit2, UserPlus, UserX, Save, ShieldCheck, Menu, PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
+import { formatStatus } from '../utils/formatStatus';
+import ConfirmDialog from '../components/ConfirmDialog';
+import ClaimLinkSection from '../components/ClaimLinkSection';
+import SectionedReportEditor from '../components/SectionedReportEditor';
+import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 
 // ── Quick Demos ───────────────────────────────────────────────────────────────
 const QUICK_DEMOS = [
@@ -23,7 +28,10 @@ const QUICK_DEMOS = [
 const FORM_INIT = { claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '', lossType: 'Water Damage', reportType: 'Initial', propertyDetails: '', lossDescription: '', damagesObserved: '', recommendations: '', additionalNotes: '' };
 const LOSS_TYPES = ['Water Damage','Fire Damage','Wind/Hail Damage','Vandalism','Theft','Flood','Earthquake','Smoke Damage','Vehicle Impact','Other'];
 const REPORT_TYPES = ['Initial','Supplemental','Final','Re-inspection','Catastrophe'];
-const GEN_STEPS = ['Analyzing claim data…','Running AI vision on photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
+// Only shows "Running AI vision on photos" when photos were actually uploaded --
+// the backend skips AI image analysis entirely at 0 photos (see T-6.14).
+const GEN_STEPS_WITH_PHOTOS = ['Analyzing claim data…','Running AI vision on photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
+const GEN_STEPS_NO_PHOTOS = ['Analyzing claim data…','Generating report with FlacronAI…','Scoring & finalizing…'];
 
 const ROLE_COLORS = {
   owner:  'bg-orange-100 text-orange-700 border border-orange-200',
@@ -38,14 +46,14 @@ const ROLE_PERMS = {
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon: Icon, color, trend }) {
+function StatCard({ label, value, sub, icon: Icon, trend, tooltip }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white border border-[#e5e7eb] rounded-2xl p-6 relative overflow-hidden">
-      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-8 ${color}`} />
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-          <Icon className="w-5 h-5 text-white" />
+      <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-brand-50" />
+      <div className="flex items-start justify-between mb-4 relative">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-brand-50 border border-brand-100">
+          <Icon className="w-5 h-5 text-brand-600" />
         </div>
         {trend !== undefined && (
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${trend >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -54,7 +62,7 @@ function StatCard({ label, value, sub, icon: Icon, color, trend }) {
         )}
       </div>
       <p className="text-3xl font-black text-gray-900 mb-1">{value}</p>
-      <p className="text-sm font-semibold text-gray-700">{label}</p>
+      <p className="text-sm font-semibold text-gray-700" title={tooltip}>{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </motion.div>
   );
@@ -92,26 +100,44 @@ export default function EnterpriseDashboard() {
   }, [tier, navigate]);
 
   const [activeView, setActiveView] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Report generation state
   const [form, setForm] = useState(FORM_INIT);
   const [photos, setPhotos] = useState([]);
+  // Link report generation to a real CRM claim instead of free-typing claim details
+  // (T-6.16) -- every user on this page is Enterprise tier, so CRM is always available.
+  const [claimMode, setClaimMode] = useState('linked');
+  const [linkedClaim, setLinkedClaim] = useState(null);
+  const [linkedClientName, setLinkedClientName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+  const [genSteps, setGenSteps] = useState(GEN_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [editableContent, setEditableContent] = useState('');
+  const [savingContent, setSavingContent] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [signatureName, setSignatureName] = useState('');
+  const [signatureTitle, setSignatureTitle] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [licenseState, setLicenseState] = useState('');
+  const [company, setCompany] = useState('');
+  const [confirmReview, setConfirmReview] = useState(false);
   const fileInputRef = useRef();
 
   // Reports list state
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState(false);
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState({ total: 0, thisMonth: 0, apiCalls: 0, qualityAvg: 0 });
 
   // White-label state
-  const [wlConfig, setWlConfig] = useState({ companyName: '', subdomain: '', reportFooter: '', supportEmail: '', primaryColor: '#f97316', hideFlacronBranding: false });
+  const [wlConfig, setWlConfig] = useState({ companyName: '', subdomain: '', reportFooter: '', supportEmail: '', primaryColor: '#FD4403', hideFlacronBranding: false });
   const [wlLoading, setWlLoading] = useState(false);
+  const [wlError, setWlError] = useState(false);
   const [wlSaving, setWlSaving] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -120,6 +146,7 @@ export default function EnterpriseDashboard() {
   // Team state
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('editor');
   const [inviting, setInviting] = useState(false);
@@ -129,12 +156,17 @@ export default function EnterpriseDashboard() {
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [apiKeysError, setApiKeysError] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState(DEFAULT_API_KEY_SCOPES);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [revokeKeyId, setRevokeKeyId] = useState(null);
+  const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
 
   // ── Fetch functions ───────────────────────────────────────────────────────
   const fetchReports = useCallback(async () => {
     setReportsLoading(true);
+    setReportsError(false);
     try {
       const res = await reportsAPI.getAll({ limit: 50 });
       const list = res.data.data || res.data.reports || res.data || [];
@@ -147,38 +179,41 @@ export default function EnterpriseDashboard() {
       }).length;
       const quals = arr.filter(r => r.qualityScore).map(r => r.qualityScore);
       setStats(s => ({ ...s, total: arr.length, thisMonth, qualityAvg: quals.length ? Math.round(quals.reduce((a, b) => a + b, 0) / quals.length) : 0 }));
-    } catch { toast.error('Failed to load reports'); }
+    } catch { setReportsError(true); toast.error('Failed to load reports'); }
     finally { setReportsLoading(false); }
   }, []);
 
   const fetchWlConfig = useCallback(async () => {
     setWlLoading(true);
+    setWlError(false);
     try {
       const res = await whiteLabelAPI.getConfig();
       if (res.data?.config) {
         const c = res.data.config;
-        setWlConfig({ companyName: c.companyName || '', subdomain: c.subdomain || '', reportFooter: c.reportFooter || '', supportEmail: c.emailFromAddress || '', primaryColor: c.primaryColor || '#f97316', hideFlacronBranding: c.hideFlacronBranding || false });
+        setWlConfig({ companyName: c.companyName || '', subdomain: c.subdomain || '', reportFooter: c.reportFooter || '', supportEmail: c.emailFromAddress || '', primaryColor: c.primaryColor || '#FD4403', hideFlacronBranding: c.hideFlacronBranding || false });
       }
-    } catch { /* no config yet */ }
+    } catch { setWlError(true); }
     finally { setWlLoading(false); }
   }, []);
 
   const fetchMembers = useCallback(async () => {
     setMembersLoading(true);
+    setMembersError(false);
     try {
       const res = await teamsAPI.getMembers();
       setMembers(res.data?.members || []);
-    } catch { /* optional */ }
+    } catch { setMembersError(true); }
     finally { setMembersLoading(false); }
   }, []);
 
   const fetchApiKeys = useCallback(async () => {
     setApiKeysLoading(true);
+    setApiKeysError(false);
     try {
       const res = await usersAPI.getApiKeys();
       const keys = res.data?.apiKeys || res.data || [];
       setApiKeys(Array.isArray(keys) ? keys : []);
-    } catch { /* optional */ }
+    } catch { setApiKeysError(true); }
     finally { setApiKeysLoading(false); }
   }, []);
 
@@ -188,19 +223,47 @@ export default function EnterpriseDashboard() {
   const applyDemo = (d) => {
     const { emoji, label, ...fields } = d;
     setForm(prev => ({ ...prev, ...fields }));
+    // A demo fills its own claim-identity fields -- drop any linked CRM claim so it
+    // doesn't silently override the demo data at generate-time.
+    setLinkedClaim(null); setLinkedClientName(''); setClaimMode('manual');
     toast.success(`${label} template loaded!`);
+  };
+
+  // Selecting/creating a CRM claim fills the display fields from it; the backend
+  // re-derives the same fields from the claim record at generate-time regardless,
+  // so this is for a consistent preview, not the source of truth.
+  const handleSelectClaim = (claim, clientName) => {
+    setLinkedClaim(claim);
+    setLinkedClientName(clientName || '');
+    setForm(p => ({
+      ...p,
+      claimNumber: claim.claimNumber || '',
+      insuredName: clientName || '',
+      propertyAddress: claim.propertyAddress || '',
+      lossDate: claim.lossDate || '',
+      lossType: claim.lossType || p.lossType,
+    }));
+  };
+
+  const handleClearClaim = () => {
+    setLinkedClaim(null);
+    setLinkedClientName('');
+    setForm(p => ({ ...p, claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '' }));
   };
 
   const handleGenerate = async () => {
     if (!form.claimNumber || !form.insuredName) { toast.error('Claim Number and Insured Name are required'); return; }
+    const steps = photos.length > 0 ? GEN_STEPS_WITH_PHOTOS : GEN_STEPS_NO_PHOTOS;
+    setGenSteps(steps);
     setGenerating(true); setGenStep(0); setGeneratedReport(null); setPdfUrl(null);
+    let interval;
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => v && fd.append(k, v));
+      if (linkedClaim) fd.append('claimId', linkedClaim.id || linkedClaim._id);
       photos.forEach(p => fd.append('images', p.file));
-      const interval = setInterval(() => setGenStep(prev => Math.min(prev + 1, GEN_STEPS.length - 1)), 4000);
+      interval = setInterval(() => setGenStep(prev => Math.min(prev + 1, steps.length - 1)), 4000);
       const res = await reportsAPI.generate(fd);
-      clearInterval(interval);
       const report = res.data.report || res.data;
       setGeneratedReport(report);
       setReports(prev => [report, ...prev]);
@@ -209,7 +272,10 @@ export default function EnterpriseDashboard() {
       autoPreviewPdf(report);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Generation failed');
-    } finally { setGenerating(false); }
+    } finally {
+      clearInterval(interval);
+      setGenerating(false);
+    }
   };
 
   const autoPreviewPdf = async (report) => {
@@ -223,6 +289,62 @@ export default function EnterpriseDashboard() {
       setPdfUrl(url);
     } catch (err) { console.warn('PDF preview failed:', err.message); }
     finally { setPdfLoading(false); }
+  };
+
+  // Sync editable draft when a report is opened/generated
+  useEffect(() => {
+    if (generatedReport?.content != null) setEditableContent(generatedReport.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedReport?.id]);
+
+  const reportReviewed = ['finalized', 'approved', 'completed'].includes(generatedReport?.status);
+
+  const handleSaveContent = async () => {
+    if (!generatedReport) return;
+    setSavingContent(true);
+    try {
+      const res = await reportsAPI.update(generatedReport.id, { content: editableContent });
+      const updates = res.data?.updates || { content: editableContent };
+      setGeneratedReport(prev => ({ ...prev, ...updates }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, ...updates } : r)));
+      if (updates.status === 'draft') {
+        toast('Report edited after approval — reopened as draft; re-approval required to export clean.', { icon: '⚠️' });
+      } else {
+        toast.success('Changes saved');
+      }
+      autoPreviewPdf({ ...generatedReport, ...updates });
+    } catch { toast.error('Save failed'); }
+    finally { setSavingContent(false); }
+  };
+
+  const handleApprove = async () => {
+    if (!generatedReport) return;
+    if (!signatureName.trim() || !licenseNumber.trim() || !licenseState.trim() || !company.trim()) {
+      toast.error('Full name, license number, license state, and company/firm are required to approve.');
+      return;
+    }
+    if (!confirmReview) {
+      toast.error('You must confirm you have reviewed the report before approving.');
+      return;
+    }
+    setApproving(true);
+    try {
+      const signature = {
+        name: signatureName.trim(),
+        title: signatureTitle.trim(),
+        licenseNumber: licenseNumber.trim(),
+        licenseState: licenseState.trim(),
+        company: company.trim(),
+      };
+      const res = await reportsAPI.approve(generatedReport.id, { content: editableContent, signature, confirmReview: true });
+      const updated = res.data?.report || {};
+      setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
+      setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
+      toast.success('Report approved & finalized — exports are now clean');
+      autoPreviewPdf({ ...generatedReport, status: 'finalized' });
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Approval failed');
+    } finally { setApproving(false); }
   };
 
   const handleExport = async (reportId, format) => {
@@ -310,15 +432,28 @@ export default function EnterpriseDashboard() {
   // ── API Keys ──────────────────────────────────────────────────────────────
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) { toast.error('Enter a key name'); return; }
+    if (newKeyScopes.length === 0) { toast.error('Select at least one permission'); return; }
     setCreatingKey(true);
     try {
-      const res = await usersAPI.createApiKey(newKeyName.trim());
+      const res = await usersAPI.createApiKey(newKeyName.trim(), newKeyScopes);
       toast.success('API key created');
       setNewKeyName('');
+      setNewKeyScopes(DEFAULT_API_KEY_SCOPES);
       if (res.data?.key) { navigator.clipboard.writeText(res.data.key); toast.success("Key copied — save it now, it won't show again"); }
       fetchApiKeys();
     } catch { toast.error('Failed to create key'); }
     finally { setCreatingKey(false); }
+  };
+
+  const confirmRevokeKey = async () => {
+    setRevokeKeyLoading(true);
+    try {
+      await usersAPI.revokeApiKey(revokeKeyId);
+      toast.success('Key revoked');
+      fetchApiKeys();
+      setRevokeKeyId(null);
+    } catch { toast.error('Failed to revoke key'); }
+    finally { setRevokeKeyLoading(false); }
   };
 
   // ── Nav ───────────────────────────────────────────────────────────────────
@@ -326,6 +461,7 @@ export default function EnterpriseDashboard() {
     { id: 'overview',    label: 'Overview',       icon: BarChart3 },
     { id: 'generate',    label: 'Generate Report', icon: Zap },
     { id: 'reports',     label: 'My Reports',      icon: FileText, badge: stats.total || undefined },
+    { id: 'crm',         label: 'CRM',             icon: Users, href: '/crm' },
     { id: 'whitelabel',  label: 'White-Label',     icon: Globe },
     { id: 'team',        label: 'Team',            icon: Users, badge: members.length || undefined },
     { id: 'api',         label: 'API & Keys',      icon: Code2 },
@@ -344,14 +480,23 @@ export default function EnterpriseDashboard() {
   return (
     <div className="min-h-screen flex bg-[#ffffff]">
 
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="w-64 shrink-0 flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] sticky top-0 h-screen">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] h-screen shadow-xl transition-transform duration-300 md:sticky md:top-0 md:z-20 md:translate-x-0 md:shadow-none ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
         {/* Logo */}
-        <div className="p-5 border-b border-[#e5e7eb]">
+        <div className="p-5 border-b border-[#e5e7eb] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/25">
-              <Zap className="w-5 h-5 text-white" fill="white" />
-            </div>
+            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
               <p className="text-sm font-black text-gray-900 leading-none">FlacronAI</p>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500 text-white uppercase tracking-wide">
@@ -359,13 +504,24 @@ export default function EnterpriseDashboard() {
               </span>
             </div>
           </div>
+          <button onClick={() => setSidebarOpen(false)} aria-label="Close navigation"
+            className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm md:hidden">
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(item => (
-            <NavItem key={item.id} item={item} active={activeView === item.id}
-              onClick={() => { setActiveView(item.id); if (item.id !== 'generate') setGeneratedReport(null); }} />
+            <NavItem key={item.id} item={item} active={item.href ? false : activeView === item.id}
+              onClick={() => {
+                if (item.href) navigate(item.href);
+                else {
+                  setActiveView(item.id);
+                  if (item.id !== 'generate') setGeneratedReport(null);
+                }
+                setSidebarOpen(false);
+              }} />
           ))}
         </nav>
 
@@ -376,7 +532,7 @@ export default function EnterpriseDashboard() {
             <ChevronRight className="w-3.5 h-3.5 rotate-180" /> Standard Dashboard
           </button>
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-[#e5e7eb]">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-xs font-black text-white shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-xs font-black text-white shrink-0">
               {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -389,36 +545,43 @@ export default function EnterpriseDashboard() {
       </aside>
 
       {/* ── Main ── */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-[#e5e7eb] bg-white/95 backdrop-blur-sm">
-          <div>
-            <h1 className="text-lg font-black text-gray-900">{navItems.find(n => n.id === activeView)?.label}</h1>
-            <p className="text-xs text-gray-400">Enterprise Portal · Unlimited Access</p>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 border-b border-[#e5e7eb] bg-white/95 backdrop-blur-sm gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation"
+              className="md:hidden shrink-0 rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg font-black text-gray-900 truncate">{navItems.find(n => n.id === activeView)?.label}</h1>
+              <p className="text-xs text-gray-400 hidden sm:block">Enterprise Portal · Unlimited Access</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-xs text-green-700 font-medium">AI Online</span>
             </div>
             <button onClick={() => setActiveView('generate')}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
-              <Zap className="w-3.5 h-3.5" /> Generate Report
+              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
+              <Zap className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Generate Report</span>
             </button>
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           <AnimatePresence mode="wait">
 
             {/* ══ OVERVIEW ══════════════════════════════════════════════════════ */}
             {activeView === 'overview' && (
               <motion.div key="overview" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-                  <StatCard label="Total Reports" value={stats.total} sub="All time" icon={FileText} color="bg-gradient-to-br from-orange-500 to-amber-500" trend={12} />
-                  <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} color="bg-gradient-to-br from-blue-500 to-cyan-500" trend={8} />
-                  <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} color="bg-gradient-to-br from-violet-500 to-purple-600" />
-                  <StatCard label="Avg Quality" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="AI report score" icon={Shield} color="bg-gradient-to-br from-emerald-500 to-teal-500" trend={3} />
+                  <StatCard label="Total Reports" value={stats.total} sub="All time" icon={FileText} trend={12} />
+                  <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} trend={8} />
+                  <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} />
+                  <StatCard label="Avg Completeness" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="Documentation completeness" icon={Shield} trend={3}
+                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings." />
                 </div>
 
                 {/* Quick-action cards */}
@@ -450,17 +613,25 @@ export default function EnterpriseDashboard() {
                   </div>
                   {reportsLoading ? (
                     <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                  ) : reportsError ? (
+                    <div className="flex flex-col items-center py-12 gap-2">
+                      <AlertCircle className="w-8 h-8 text-amber-500" />
+                      <p className="text-sm text-gray-400">We couldn't load your reports.</p>
+                      <button onClick={fetchReports} className="text-xs text-orange-600 hover:text-orange-700 font-medium mt-1">Retry</button>
+                    </div>
                   ) : reports.length === 0 ? (
                     <div className="flex flex-col items-center py-12 gap-2">
                       <FileText className="w-8 h-8 text-gray-300" />
                       <p className="text-sm text-gray-400">No reports yet — generate your first one!</p>
                     </div>
                   ) : (
+                    <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#e5e7eb] bg-gray-50">
-                          {['Claim #','Insured','Loss Type','Date','Quality','Export'].map(h => (
-                            <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                          {['Claim #','Insured','Loss Type','Date','Completeness','Export'].map(h => (
+                            <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -490,6 +661,7 @@ export default function EnterpriseDashboard() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -512,24 +684,43 @@ export default function EnterpriseDashboard() {
                         ))}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        {[
-                          { label: 'Claim Number *', key: 'claimNumber', placeholder: 'CLM-2024-001' },
-                          { label: 'Insured Name *', key: 'insuredName', placeholder: 'John Smith' },
-                          { label: 'Date of Loss *', key: 'lossDate', type: 'date' },
-                          { label: 'Property Address *', key: 'propertyAddress', placeholder: '123 Main St, City, ST' },
-                        ].map(f => (
-                          <div key={f.key}>
-                            <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">{f.label}</label>
-                            <input type={f.type || 'text'} value={form[f.key]}
-                              onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                              placeholder={f.placeholder} className={inputCls} />
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider">Claim</label>
+                          {!linkedClaim && (
+                            <button type="button" onClick={() => setClaimMode(m => (m === 'manual' ? 'linked' : 'manual'))}
+                              className="text-xs text-gray-500 hover:text-orange-600 underline">
+                              {claimMode === 'manual' ? 'Link to a CRM claim instead' : 'Enter details manually instead'}
+                            </button>
+                          )}
+                        </div>
+                        {(claimMode === 'manual' && !linkedClaim) ? (
+                          <div className="grid grid-cols-2 gap-4">
+                            {[
+                              { label: 'Claim Number *', key: 'claimNumber', placeholder: 'CLM-2024-001' },
+                              { label: 'Insured Name *', key: 'insuredName', placeholder: 'John Smith' },
+                              { label: 'Date of Loss *', key: 'lossDate', type: 'date' },
+                              { label: 'Property Address *', key: 'propertyAddress', placeholder: '123 Main St, City, ST' },
+                            ].map(f => (
+                              <div key={f.key}>
+                                <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">{f.label}</label>
+                                <input type={f.type || 'text'} value={form[f.key]}
+                                  onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                                  placeholder={f.placeholder} className={inputCls} />
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          <ClaimLinkSection linkedClaim={linkedClaim} linkedClientName={linkedClientName}
+                            onSelect={handleSelectClaim} onClear={handleClearClaim} lossTypes={LOSS_TYPES} />
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Loss Type</label>
                           <select value={form.lossType} onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}
-                            className={`${selectCls} w-full`}>
+                            disabled={!!linkedClaim} className={`${selectCls} w-full`}>
                             {LOSS_TYPES.map(t => <option key={t}>{t}</option>)}
                           </select>
                         </div>
@@ -572,6 +763,7 @@ export default function EnterpriseDashboard() {
                               <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border border-[#e5e7eb]">
                                 <img src={p.url} alt="" className="w-full h-full object-cover" />
                                 <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
+                                  aria-label={`Remove photo ${i + 1}`} title="Remove photo"
                                   className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 hover:opacity-100 transition-opacity">
                                   <X className="w-3 h-3 text-white" />
                                 </button>
@@ -591,7 +783,7 @@ export default function EnterpriseDashboard() {
                           </div>
                           <p className="text-base font-bold text-gray-900">Generating Report…</p>
                           <div className="w-full max-w-sm space-y-2">
-                            {GEN_STEPS.map((s, i) => (
+                            {genSteps.map((s, i) => (
                               <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all ${
                                 i < genStep ? 'bg-green-50 text-green-700 border border-green-200' :
                                 i === genStep ? 'bg-orange-50 text-orange-700 border border-orange-200' :
@@ -626,8 +818,9 @@ export default function EnterpriseDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
-                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-                                Quality {generatedReport.qualityScore}/100
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700"
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
                             <button onClick={() => autoPreviewPdf(generatedReport)} disabled={pdfLoading}
@@ -649,12 +842,83 @@ export default function EnterpriseDashboard() {
                           </div>
                         )}
                       </div>
-                      <details className={`${cardCls} p-4`}>
-                        <summary className="text-sm font-semibold text-gray-700 cursor-pointer select-none">Raw Report Content</summary>
-                        <pre className="mt-3 text-xs text-gray-500 whitespace-pre-wrap leading-relaxed overflow-auto max-h-96 font-mono">{generatedReport.content}</pre>
-                      </details>
+                      {/* Editable draft — mandatory human review (Golden Rule #3) */}
+                      <div className={`${cardCls} p-4`}>
+                        <div className="flex items-center justify-between mb-3 gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">Review &amp; Edit Report</p>
+                            <p className="text-xs text-gray-500 mt-0.5">AI-generated draft — review and edit, then approve to finalize.</p>
+                          </div>
+                          <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
+                            {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
+                          </button>
+                        </div>
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
+                      </div>
                     </div>
                     <div className="space-y-4">
+                      {/* Human-review gate */}
+                      <div className={`${cardCls} p-4 border ${reportReviewed ? 'border-green-200' : 'border-amber-300 bg-amber-50/40'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <ShieldCheck className={`w-4 h-4 ${reportReviewed ? 'text-green-600' : 'text-amber-600'}`} />
+                          <p className="text-sm font-bold text-gray-800">Review &amp; Approval</p>
+                        </div>
+                        {reportReviewed ? (
+                          <>
+                            <div className="flex items-center gap-2 text-sm text-green-700 mb-2">
+                              <CheckCircle className="w-4 h-4" /> Finalized{generatedReport.reviewedAt ? ` · ${new Date(generatedReport.reviewedAt).toLocaleDateString()}` : ''}
+                            </div>
+                            {generatedReport.signature?.name && (
+                              <div className="text-xs text-gray-500 space-y-0.5">
+                                <p>Approved by <span className="font-medium text-gray-700">{generatedReport.signature.name}</span>{generatedReport.signature.title ? `, ${generatedReport.signature.title}` : ''}</p>
+                                {generatedReport.signature.licenseNumber && (
+                                  <p>License {generatedReport.signature.licenseState} {generatedReport.signature.licenseNumber}</p>
+                                )}
+                                {generatedReport.signature.company && <p>{generatedReport.signature.company}</p>}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
+                                <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                                <input value={signatureTitle} onChange={e => setSignatureTitle(e.target.value)} placeholder="Senior Adjuster"
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License number *</label>
+                                <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="TX-ADJ-583920"
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">License state *</label>
+                                <input value={licenseState} onChange={e => setLicenseState(e.target.value)} placeholder="TX"
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                              </div>
+                            </div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Company / adjusting firm *</label>
+                            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="ABC Claims Services"
+                              className="w-full mb-3 text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                            <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
+                              <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-orange-600 focus:ring-orange-400" />
+                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that AI-generated content must be independently verified.</span>
+                            </label>
+                            <button onClick={handleApprove} disabled={approving}
+                              className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                              {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
+                            </button>
+                          </>
+                        )}
+                      </div>
                       <div className={`${cardCls} p-4 space-y-2`}>
                         <p className="text-sm font-bold text-gray-900 mb-3">Export</p>
                         {['pdf', 'docx', 'html'].map(f => (
@@ -664,7 +928,7 @@ export default function EnterpriseDashboard() {
                           </button>
                         ))}
                       </div>
-                      <button onClick={() => { setGeneratedReport(null); setPdfUrl(null); setForm(FORM_INIT); setPhotos([]); }}
+                      <button onClick={() => { setGeneratedReport(null); setPdfUrl(null); setForm(FORM_INIT); setPhotos([]); setLinkedClaim(null); setLinkedClientName(''); setClaimMode('linked'); }}
                         className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2">
                         <Zap className="w-4 h-4" /> Generate Another
                       </button>
@@ -693,11 +957,13 @@ export default function EnterpriseDashboard() {
                   </button>
                 </div>
                 <div className={`${cardCls} overflow-hidden`}>
+                  <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#e5e7eb] bg-gray-50">
-                        {['Claim #','Insured','Loss Type','Report Type','Date','Quality','Export'].map(h => (
-                          <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        {['Claim #','Insured','Loss Type','Report Type','Date','Completeness','Export'].map(h => (
+                          <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -712,9 +978,17 @@ export default function EnterpriseDashboard() {
                               ))}
                             </tr>
                           ))
-                        : filteredReports.length === 0
-                          ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
-                          : filteredReports.map((r, i) => (
+                        : reportsError
+                          ? <tr><td colSpan={7} className="text-center py-16">
+                              <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                              <p className="text-gray-500 text-sm">We couldn't load your reports.</p>
+                              <button onClick={fetchReports} className="btn-secondary text-sm py-2 px-4 mt-3 inline-flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4" /> Retry
+                              </button>
+                            </td></tr>
+                          : filteredReports.length === 0
+                            ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
+                            : filteredReports.map((r, i) => (
                               <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-orange-50/30 transition-colors">
                                 <td className="px-5 py-3.5 text-sm font-mono font-semibold text-orange-500">{r.claimNumber || '—'}</td>
                                 <td className="px-5 py-3.5 text-sm text-gray-900">{r.insuredName || '—'}</td>
@@ -740,6 +1014,7 @@ export default function EnterpriseDashboard() {
                             ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -757,6 +1032,8 @@ export default function EnterpriseDashboard() {
 
                 {wlLoading ? (
                   <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                ) : wlError ? (
+                  <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 py-12 text-center"><AlertCircle className="h-8 w-8 text-amber-600" /><p className="text-sm text-amber-800">White-label settings could not be loaded.</p><button onClick={fetchWlConfig} className="btn-secondary px-4 py-2 text-sm">Retry</button></div>
                 ) : (
                   <>
                     {/* Logo upload */}
@@ -893,14 +1170,14 @@ export default function EnterpriseDashboard() {
                 <div className={`${cardCls} overflow-hidden`}>
                   <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
                     <p className="text-sm font-bold text-gray-900">Team Members ({members.length + 1})</p>
-                    <button onClick={fetchMembers} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                    <button onClick={fetchMembers} aria-label="Refresh team members" title="Refresh team members" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
                       <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${membersLoading ? 'animate-spin' : ''}`} />
                     </button>
                   </div>
 
                   {/* Owner row */}
                   <div className="flex items-center gap-4 px-5 py-4 border-b border-[#e5e7eb] bg-orange-50/30">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-sm font-black text-white shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-sm font-black text-white shrink-0">
                       {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -913,6 +1190,8 @@ export default function EnterpriseDashboard() {
 
                   {membersLoading ? (
                     <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                  ) : membersError ? (
+                    <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Team members could not be loaded.</p><button onClick={fetchMembers} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
                   ) : members.length === 0 ? (
                     <p className="text-center text-gray-400 text-sm py-8">No team members yet. Invite someone above.</p>
                   ) : members.map(m => (
@@ -925,7 +1204,7 @@ export default function EnterpriseDashboard() {
                         <p className="text-xs text-gray-400">Invited {new Date(m.invitedAt).toLocaleDateString()}</p>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {m.status}
+                        {formatStatus(m.status)}
                       </span>
                       {editingRole === m.id ? (
                         <div className="flex items-center gap-2">
@@ -935,7 +1214,8 @@ export default function EnterpriseDashboard() {
                             <option value="editor">Editor</option>
                             <option value="viewer">Viewer</option>
                           </select>
-                          <button onClick={() => setEditingRole(null)} className="p-1 hover:bg-gray-100 rounded transition-colors">
+                          <button onClick={() => setEditingRole(null)} aria-label="Cancel role edit" title="Cancel"
+                            className="p-1 hover:bg-gray-100 rounded transition-colors">
                             <X className="w-3 h-3 text-gray-400" />
                           </button>
                         </div>
@@ -963,7 +1243,18 @@ export default function EnterpriseDashboard() {
               <motion.div key="api" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-3xl space-y-5">
                 <div className={`${cardCls} p-5`}>
                   <h2 className="text-sm font-bold text-gray-900 mb-1">Create API Key</h2>
-                  <p className="text-xs text-gray-400 mb-4">Keys grant full REST API access. Store them securely — only shown once.</p>
+                  <p className="text-xs text-gray-400 mb-4">Grant only the permissions this integration needs. Keys are shown once.</p>
+                  <fieldset className="grid gap-2 sm:grid-cols-2 mb-4">
+                    <legend className="sr-only">API key permissions</legend>
+                    {API_KEY_SCOPES.map(scope => (
+                      <label key={scope.id} className="flex gap-2 rounded-xl border border-[#e5e7eb] bg-gray-50 p-3 cursor-pointer hover:border-orange-300">
+                        <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                          onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
+                        <span><span className="block text-xs font-semibold text-gray-900">{scope.label}</span><span className="block text-[11px] text-gray-400 mt-0.5">{scope.description}</span></span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <p className="text-[11px] text-gray-400 mb-3">Permissions are immutable. Revoke and replace a key to change them.</p>
                   <div className="flex gap-3">
                     <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
                       placeholder="Key name (e.g. Production Server)"
@@ -982,6 +1273,8 @@ export default function EnterpriseDashboard() {
                   <div className="p-4 space-y-2">
                     {apiKeysLoading ? (
                       <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                    ) : apiKeysError ? (
+                      <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">API keys could not be loaded.</p><button onClick={fetchApiKeys} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
                     ) : apiKeys.length === 0 ? (
                       <p className="text-center text-gray-400 text-sm py-8">No API keys yet.</p>
                     ) : apiKeys.map(k => (
@@ -990,11 +1283,14 @@ export default function EnterpriseDashboard() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{k.name || 'API Key'}</p>
                           <p className="text-xs text-gray-400 font-mono">{k.keyPrefix ? `${k.keyPrefix}••••••••` : '••••••••••••••••'}</p>
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {(k.scopes || []).map(scope => <span key={scope} className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">{formatApiScope(scope)}</span>)}
+                          </div>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${k.active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                           {k.active !== false ? 'Active' : 'Revoked'}
                         </span>
-                        <button onClick={async () => { await usersAPI.revokeApiKey(k.id); toast.success('Key revoked'); fetchApiKeys(); }}
+                        <button onClick={() => setRevokeKeyId(k.id)} aria-label={`Revoke key ${k.name || 'API Key'}`} title="Revoke key"
                           className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
                           <Trash2 className="w-3.5 h-3.5 text-red-400" />
                         </button>
@@ -1005,7 +1301,7 @@ export default function EnterpriseDashboard() {
 
                 <div className={`${cardCls} p-5`}>
                   <h3 className="text-sm font-bold text-gray-900 mb-3">Quick Start</h3>
-                  <pre className="text-xs text-gray-600 bg-gray-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://api.flacronai.com/api/reports/generate \\
+                  <pre className="text-xs text-gray-600 bg-gray-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{ "claimNumber": "CLM-001", "insuredName": "John Smith",
@@ -1066,6 +1362,19 @@ export default function EnterpriseDashboard() {
           </AnimatePresence>
         </div>
       </main>
+
+      <AnimatePresence>
+        {revokeKeyId && (
+          <ConfirmDialog
+            title="Revoke API key?"
+            message="Any application using this key will immediately lose access. This cannot be undone."
+            confirmLabel="Revoke"
+            loading={revokeKeyLoading}
+            onConfirm={confirmRevokeKey}
+            onClose={() => setRevokeKeyId(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

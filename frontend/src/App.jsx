@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-rou
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import PageLoader from './components/PageLoader.jsx';
+import Seo from './components/Seo.jsx';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -18,6 +20,8 @@ const Pricing = lazy(() => import('./pages/Pricing.jsx'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const CRM = lazy(() => import('./pages/CRM.jsx'));
+const CRMClientProfile = lazy(() => import('./pages/CRMClientProfile.jsx'));
+const CRMClaimProfile = lazy(() => import('./pages/CRMClaimProfile.jsx'));
 const ApiDocs = lazy(() => import('./pages/ApiDocs.jsx'));
 const Developers = lazy(() => import('./pages/Developers.jsx'));
 
@@ -33,18 +37,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite.jsx'));
 const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
-
-const PageLoader = () => (
-  <div className="min-h-screen bg-bg flex items-center justify-center">
-    <div className="flex flex-col items-center gap-4">
-      <div className="relative">
-        <div className="w-12 h-12 border-2 border-orange-500/30 rounded-full" />
-        <div className="w-12 h-12 border-2 border-orange-500 border-t-transparent rounded-full animate-spin absolute inset-0" />
-      </div>
-      <p className="text-gray-500 text-sm">Loading...</p>
-    </div>
-  </div>
-);
+const SharedReport = lazy(() => import('./pages/SharedReport.jsx'));
 
 const AuthRedirect = ({ children }) => {
   const { isAuthenticated, loading, emailVerified, user } = useAuth();
@@ -62,7 +55,12 @@ const AuthRedirect = ({ children }) => {
   // Don't redirect if there's a pending paid plan — Auth.jsx handles checkout
   if (pendingPlan && pendingPlan !== 'starter') return children;
 
-  return <Navigate to="/dashboard" replace />;
+  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+  const destination = adminEmail && user?.email?.trim().toLowerCase() === adminEmail
+    ? '/admin'
+    : '/dashboard';
+
+  return <Navigate to={destination} replace />;
 };
 
 const App = () => {
@@ -84,6 +82,7 @@ const App = () => {
         <Route path="/terms-of-service" element={<TermsOfService />} />
         <Route path="/enterprise/:subdomain" element={<EnterpriseOnboarding />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />
+        <Route path="/shared/:token" element={<SharedReport />} />
         <Route path="/cookies-policy" element={<CookiesPolicy />} />
 
         {/* Protected routes */}
@@ -91,6 +90,8 @@ const App = () => {
         <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/crm" element={<ProtectedRoute requiredTier="agency"><CRM /></ProtectedRoute>} />
+        <Route path="/crm/clients/:clientId" element={<ProtectedRoute requiredTier="agency"><CRMClientProfile /></ProtectedRoute>} />
+        <Route path="/crm/claims/:claimId" element={<ProtectedRoute requiredTier="agency"><CRMClaimProfile /></ProtectedRoute>} />
         <Route path="/white-label" element={<ProtectedRoute requiredTier="enterprise"><WhiteLabelPortal /></ProtectedRoute>} />
         <Route path="/admin-tier-update" element={<ProtectedRoute><AdminTierUpdate /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
@@ -99,6 +100,7 @@ const App = () => {
         {/* 404 */}
         <Route path="*" element={
           <div className="min-h-screen bg-bg flex items-center justify-center text-center p-4">
+            <Seo title="Page Not Found — FlacronAI" description="The page you're looking for doesn't exist." path={null} noindex />
             <div>
               <h1 className="text-8xl font-black text-orange-500/20 mb-4">404</h1>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h2>

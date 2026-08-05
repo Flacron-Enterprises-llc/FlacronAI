@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Zap, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
 import { authAPI, paymentAPI } from '../services/api.js';
 import { auth } from '../config/firebase.js';
+import Seo from '../components/Seo.jsx';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -20,9 +22,11 @@ const Auth = () => {
   const [errors, setErrors] = useState({});
   const [authState, setAuthState] = useState('form'); // 'form' | 'verifying' | 'processing'
   const [resendCooldown, setResendCooldown] = useState(0);
+  useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading, forgotOpen);
 
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
   const { login, register, loginWithGoogle, emailVerified, reloadUser } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const pendingPlan = searchParams.get('plan');
@@ -34,7 +38,15 @@ const Auth = () => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePostAuth = useCallback(async () => {
+  const handlePostAuth = useCallback(async (authenticatedUser = auth.currentUser) => {
+    const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+    const signedInEmail = authenticatedUser?.email?.trim().toLowerCase();
+
+    if (adminEmail && signedInEmail === adminEmail) {
+      navigate('/admin', { replace: true });
+      return;
+    }
+
     const planToUse = pendingPlan || sessionStorage.getItem('flac_pending_plan');
     if (planToUse && planToUse !== 'starter') {
       try {
@@ -44,14 +56,21 @@ const Auth = () => {
           window.location.href = res.data.url;
           return;
         }
+        if (res.data?.changeType) {
+          sessionStorage.removeItem('flac_pending_plan');
+          navigate('/dashboard?billing=updated');
+          return;
+        }
       } catch {
         toast.error('Account created! Redirecting to plans...');
         navigate('/pricing');
         return;
       }
     }
-    navigate('/dashboard');
-  }, [pendingPlan, navigate]);
+    const requestedPath = location.state?.from?.pathname;
+    const destination = requestedPath && requestedPath !== '/auth' ? requestedPath : '/dashboard';
+    navigate(destination, { replace: true });
+  }, [location.state, pendingPlan, navigate]);
 
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -63,7 +82,7 @@ const Auth = () => {
     if (!form.email) errs.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Invalid email';
     if (!form.password) errs.password = 'Password is required';
-    else if (form.password.length < 6) errs.password = 'Password must be at least 6 characters';
+    else if (form.password.length < 12) errs.password = 'Password must be at least 12 characters';
     if (mode === 'signup') {
       if (!form.displayName) errs.displayName = 'Full name is required';
       if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
@@ -107,9 +126,9 @@ const Auth = () => {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await login(form.email, form.password);
+        const result = await login(form.email, form.password);
         toast.success('Welcome back!');
-        await handlePostAuth();
+        await handlePostAuth(result.user);
       } else {
         await register(form.email, form.password, form.displayName);
         toast.success('Account created! Please verify your email.');
@@ -133,6 +152,8 @@ const Auth = () => {
           ? 'Too many failed attempts. Please try again later or reset your password.'
           : code === 'auth/invalid-email'
           ? 'Invalid email address'
+          : code === 'auth/network-request-failed'
+          ? 'Unable to reach the sign-up service. Check your internet or DNS connection, then try again.'
           : err?.message || 'Authentication failed';
       toast.error(msg);
       setErrors({ general: msg });
@@ -144,10 +165,10 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      await loginWithGoogle();
+      const result = await loginWithGoogle();
       toast.success('Signed in with Google!');
       // Google users are already verified — go straight to post-auth
-      await handlePostAuth();
+      await handlePostAuth(result.user);
     } catch (err) {
       if (
         err?.code === 'auth/account-exists-with-different-credential' ||
@@ -187,6 +208,7 @@ const Auth = () => {
   if (authState === 'verifying' || authState === 'processing') {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first AI-assisted insurance inspection report." path="/auth" noindex />
         {/* Background */}
         <div className="absolute inset-0">
           <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/8 rounded-full blur-3xl" />
@@ -197,9 +219,7 @@ const Auth = () => {
         <div className="relative w-full max-w-md">
           {/* Logo */}
           <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
-              <Zap className="w-5 h-5 text-gray-900" fill="white" />
-            </div>
+            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
             <span className="font-bold text-xl text-gray-900">FlacronAI</span>
           </Link>
 
@@ -267,11 +287,11 @@ const Auth = () => {
       </div>
 
       <div className="relative w-full max-w-md">
+        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first AI-assisted insurance inspection report." path="/auth" noindex />
+        <h1 className="sr-only">Sign in or create your FlacronAI account</h1>
         {/* Logo */}
         <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
-            <Zap className="w-5 h-5 text-gray-900" fill="white" />
-          </div>
+          <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
           <span className="font-bold text-xl text-gray-900">FlacronAI</span>
         </Link>
 
@@ -359,10 +379,12 @@ const Auth = () => {
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={handleChange}
-                      placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'}
+                      placeholder={mode === 'signup' ? 'Min. 12 characters' : '••••••••'}
                       className={`input pl-10 pr-10 ${errors.password ? 'border-red-500' : ''}`}
                     />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
@@ -458,9 +480,10 @@ const Auth = () => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="card p-8 w-full max-w-sm"
+              role="dialog" aria-modal="true" aria-labelledby="reset-password-title"
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
+              <h3 id="reset-password-title" className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
               {forgotSent ? (
                 <div>
                   <p className="text-gray-600 text-sm mb-4">If that email exists, a reset link has been sent.</p>

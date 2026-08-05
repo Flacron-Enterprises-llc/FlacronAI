@@ -79,6 +79,11 @@ export const authAPI = {
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   changePassword: (newPassword) => api.post('/auth/change-password', { newPassword }),
   sendVerification: (pendingPlan) => api.post('/auth/send-verification', { pendingPlan }),
+  mfaSetup: () => api.post('/auth/mfa/setup'),
+  mfaVerifySetup: (code) => api.post('/auth/mfa/verify-setup', { code }),
+  mfaDisable: ({ password, code } = {}) => api.post('/auth/mfa/disable', { password, code }),
+  mfaStatus: () => api.get('/auth/mfa/status'),
+  mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
 };
 
 export const reportsAPI = {
@@ -89,6 +94,15 @@ export const reportsAPI = {
   getAll: (params) => api.get('/reports', { params }),
   getOne: (id) => api.get(`/reports/${id}`),
   update: (id, data) => api.put(`/reports/${id}`, data),
+  suggestSection: (id, data) => api.post(`/reports/${id}/sections/suggest`, data),
+  approve: (id, data) => api.post(`/reports/${id}/approve`, data),
+  versions: (id) => api.get(`/reports/${id}/versions`),
+  listTemplates: () => api.get('/reports/templates'),
+  saveTemplate: (data) => api.post('/reports/templates', data),
+  deleteTemplate: (id) => api.delete(`/reports/templates/${id}`),
+  share: (id) => api.post(`/reports/${id}/share`),
+  revokeShare: (id) => api.delete(`/reports/${id}/share`),
+  getShared: (token) => api.get(`/reports/shared/${token}`),
   delete: (id, permanent = false) => api.delete(`/reports/${id}`, { params: { permanent } }),
   export: (id, data) => api.post(`/reports/${id}/export`, data),
   getDownloadUrl: (id, filename) => `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
@@ -106,21 +120,24 @@ export const usersAPI = {
   getUsage: () => api.get('/users/usage'),
   updateName: (displayName) => api.put('/users/update-name', { displayName }),
   changePassword: (newPassword) => api.put('/users/change-password', { newPassword }),
-  createApiKey: (name) => api.post('/users/api-keys', { name }),
+  createApiKey: (name, scopes) => api.post('/users/api-keys', { name, scopes }),
   getApiKeys: () => api.get('/users/api-keys'),
   revokeApiKey: (keyId) => api.delete(`/users/api-keys/${keyId}`),
   getKeyUsage: (keyId) => api.get(`/users/api-keys/${keyId}/usage`),
   getApiUsage: () => api.get('/users/api-usage'),
+  deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
 };
 
 export const paymentAPI = {
   createCheckout: (tier) => api.post('/payment/create-checkout-session', { tier }),
+  confirmCheckout: (sessionId) => api.post('/payment/confirm-checkout', { sessionId }),
   getSubscription: () => api.get('/payment/current-subscription'),
   getInvoices: () => api.get('/payment/invoices'),
   cancelSubscription: () => api.post('/payment/cancel-subscription'),
 };
 
 export const crmAPI = {
+  getDashboardAnalytics: () => api.get('/crm/dashboard/analytics'),
   // Clients
   getClients: (params) => api.get('/crm/clients', { params }),
   createClient: (data) => api.post('/crm/clients', data),
@@ -128,6 +145,7 @@ export const crmAPI = {
   updateClient: (id, data) => api.put(`/crm/clients/${id}`, data),
   deleteClient: (id) => api.delete(`/crm/clients/${id}`),
   getClientReports: (id) => api.get(`/crm/clients/${id}/reports`),
+  getClientProfile: (id) => api.get(`/crm/clients/${id}/profile`),
   // Appointments
   getAppointments: (params) => api.get('/crm/appointments', { params }),
   createAppointment: (data) => api.post('/crm/appointments', data),
@@ -139,6 +157,8 @@ export const crmAPI = {
   getClaim: (id) => api.get(`/crm/claims/${id}`),
   updateClaim: (id, data) => api.put(`/crm/claims/${id}`, data),
   deleteClaim: (id) => api.delete(`/crm/claims/${id}`),
+  getClaimReports: (id) => api.get(`/crm/claims/${id}/reports`),
+  getClaimProfile: (id) => api.get(`/crm/claims/${id}/profile`),
 };
 
 export const whiteLabelAPI = {

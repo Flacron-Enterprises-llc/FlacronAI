@@ -1,0 +1,5 @@
+node_modules/
+docs/baseline/
+backend/uploads/
+package-lock.json
+*.md

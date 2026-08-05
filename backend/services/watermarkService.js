@@ -1,26 +1,24 @@
 const { PDFDocument, rgb, degrees, StandardFonts } = require('pdf-lib');
-const fs = require('fs');
-const path = require('path');
 
-const addWatermarkToPDF = async (inputPath, outputPath, text, logoPath) => {
+// Adds a diagonal text watermark (and optional logo) to a PDF.
+// Buffer in → Buffer out (no disk I/O — Render is ephemeral).
+const addWatermarkToPDF = async (inputBuffer, text, logoBuffer = null) => {
   try {
-    const existingPdfBytes = fs.readFileSync(inputPath);
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const pdfDoc = await PDFDocument.load(inputBuffer);
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const pages = pdfDoc.getPages();
 
     for (const page of pages) {
       const { width, height } = page.getSize();
 
-      if (logoPath && fs.existsSync(logoPath)) {
+      if (logoBuffer) {
         try {
-          const logoBytes = fs.readFileSync(logoPath);
-          const ext = path.extname(logoPath).toLowerCase();
+          // Try PNG first, fall back to JPG.
           let logoImage;
-          if (ext === '.png') {
-            logoImage = await pdfDoc.embedPng(logoBytes);
-          } else {
-            logoImage = await pdfDoc.embedJpg(logoBytes);
+          try {
+            logoImage = await pdfDoc.embedPng(logoBuffer);
+          } catch {
+            logoImage = await pdfDoc.embedJpg(logoBuffer);
           }
           const logoDims = logoImage.scale(0.3);
           page.drawImage(logoImage, {
@@ -52,16 +50,15 @@ const addWatermarkToPDF = async (inputPath, outputPath, text, logoPath) => {
     }
 
     const pdfBytes = await pdfDoc.save();
-    fs.writeFileSync(outputPath, pdfBytes);
-    return outputPath;
+    return Buffer.from(pdfBytes);
   } catch (err) {
     console.error('Watermark error:', err);
     throw err;
   }
 };
 
-const addCompanyWatermark = async (inputPath, outputPath, companyName, opacity = 0.3) => {
-  return addWatermarkToPDF(inputPath, outputPath, `DRAFT — ${companyName}`, null);
+const addCompanyWatermark = async (inputBuffer, companyName) => {
+  return addWatermarkToPDF(inputBuffer, `DRAFT — ${companyName}`, null);
 };
 
 module.exports = { addWatermarkToPDF, addCompanyWatermark };

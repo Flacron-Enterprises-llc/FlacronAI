@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Code, Key, Zap, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield, BarChart2 } from 'lucide-react';
+import { Code, Key, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield, BarChart2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Seo from '../components/Seo.jsx';
 
-const CURL_EXAMPLE = `curl -X POST https://api.flacronai.com/api/reports/generate \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
+const CURL_EXAMPLE = `curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
+  -H "X-API-Key: flac_live_xxxxxxxxxxxxxxxxxxxx" \\
   -H "Content-Type: multipart/form-data" \\
   -F "claimNumber=CLM-2024-001" \\
   -F "insuredName=John Smith" \\
@@ -43,14 +44,14 @@ export FLACRON_API_KEY="flac_live_xxxxxxxxxxxx"`,
   {
     step: '02',
     title: 'Make Your First Request',
-    desc: 'Use your API key in the X-API-Key header (or a JWT Bearer token) to authenticate all API requests. Generate your first report by sending claim data and damage photos.',
+    desc: 'Pass your API key in the X-API-Key header to authenticate integration requests. Generate your first report by sending claim data and damage photos.',
     code: CURL_EXAMPLE,
     icon: Terminal,
   },
   {
     step: '03',
     title: 'Handle the Response',
-    desc: 'The API returns a structured report object with the AI-generated content, quality score, and metadata. Generation typically takes 15–60 seconds depending on the number of photos.',
+    desc: 'The API returns a structured report object with the AI-generated content, quality score, and metadata. Generation time depends on the number of photos submitted.',
     code: RESPONSE_EXAMPLE,
     icon: Code,
   },
@@ -66,25 +67,25 @@ const FEATURES = [
   {
     icon: Key,
     title: 'API Keys',
-    desc: 'Create multiple named API keys for different environments (dev, staging, production). Revoke keys instantly from the dashboard. Per-key usage tracking.',
+    desc: 'Create multiple named API keys for different environments (dev, staging, production). Keys are stored hashed and can be revoked instantly from the dashboard.',
     color: 'text-amber-400 bg-amber-500/10',
   },
   {
     icon: BarChart2,
     title: 'Rate Limiting',
-    desc: 'Fair-use rate limits per plan tier. Agency: 60 req/min. Enterprise: 200 req/min. 429 responses include Retry-After headers for graceful backoff handling.',
+    desc: 'Fair-use limits keep the platform responsive: 100 requests per 15 minutes API-wide and 10 per minute on AI generation endpoints, with standard rate-limit headers on every response.',
     color: 'text-orange-400 bg-orange-500/10',
   },
   {
     icon: Webhook,
-    title: 'Webhooks',
-    desc: 'Subscribe to events like report.completed, report.failed, and subscription.updated. Configure your endpoint URL in the dashboard for real-time push notifications.',
+    title: 'Multi-Format Export',
+    desc: 'Generate a report once, export it as PDF, DOCX, or HTML through the export endpoint — the same formats available in the dashboard.',
     color: 'text-green-400 bg-green-500/10',
   },
   {
     icon: Shield,
     title: 'Secure by Design',
-    desc: 'All API traffic over HTTPS/TLS 1.3. Firebase Authentication or API key auth on every request. Data encrypted at rest. SOC 2 compliant infrastructure.',
+    desc: 'All API traffic runs over HTTPS. Every request is authenticated with Firebase Auth or an API key, and stored keys are SHA-256 hashed — never kept in plain text.',
     color: 'text-amber-400 bg-amber-500/10',
   },
   {
@@ -119,6 +120,7 @@ export default function Developers() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Developer API — FlacronAI" description="Integrate AI-assisted insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
       <Navbar />
 
       {/* Hero */}
@@ -131,10 +133,10 @@ export default function Developers() {
             Build with the <span className="gradient-text">FlacronAI API</span>
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-10">
-            Integrate AI-powered insurance claim report generation directly into your applications. REST API, API keys, webhooks, and full documentation.
+            Integrate AI-powered insurance claim report generation directly into your applications. REST API, API keys, multi-format export, and full documentation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/api-docs')} className="btn-primary flex items-center gap-2">
+            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
               <BookOpen className="w-4 h-4" /> View API Docs <ArrowRight className="w-4 h-4" />
             </button>
             <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">
@@ -146,11 +148,12 @@ export default function Developers() {
         {/* Stats */}
         <motion.div className="flex flex-wrap justify-center gap-8 mt-16"
           initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          {/* Verifiable product facts only (Golden Rule #1) */}
           {[
-            { label: 'API Endpoints', value: '20+' },
-            { label: 'Avg Response Time', value: '<2s' },
-            { label: 'Uptime SLA', value: '99.9%' },
-            { label: 'API Versions', value: 'v1 stable' },
+            { label: 'Auth Methods', value: '2' },
+            { label: 'Export Formats', value: '3' },
+            { label: 'Photos per Report', value: '100' },
+            { label: 'Response Format', value: 'JSON' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <p className="text-2xl font-bold text-gray-900">{s.value}</p>
@@ -166,7 +169,7 @@ export default function Developers() {
           <motion.div className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">Quick Start Guide</h2>
-            <p className="text-gray-600">From zero to your first AI-generated report in minutes.</p>
+            <p className="text-gray-600">Follow the authenticated workflow to create and retrieve an AI-assisted draft report.</p>
           </motion.div>
 
           <div className="space-y-8">
@@ -227,9 +230,9 @@ export default function Developers() {
         <motion.div className="max-w-2xl mx-auto text-center"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Build?</h2>
-          <p className="text-gray-600 mb-8">API access is available on Agency ($99/mo) and Enterprise ($499/mo) plans. Start with the docs, upgrade when ready.</p>
+          <p className="text-gray-600 mb-8">API-key access is available on Agency and Enterprise plans. Start with the docs, then choose the plan that matches your integration needs.</p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/api-docs')} className="btn-primary flex items-center gap-2">
+            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
               <BookOpen className="w-4 h-4" /> Read the Docs
             </button>
             <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">

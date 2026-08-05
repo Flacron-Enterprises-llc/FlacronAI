@@ -1,29 +1,61 @@
 import React, { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Mail } from 'lucide-react';
+import { AlertCircle, Mail, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
+import MfaGate from './MfaGate.jsx';
+import PageLoader from './PageLoader.jsx';
 
 const ProtectedRoute = ({ children, requiredTier }) => {
-  const { isAuthenticated, loading, tier, user, emailVerified, reloadUser } = useAuth();
+  const {
+    isAuthenticated,
+    loading,
+    profileLoading,
+    profileError,
+    retryProfile,
+    tier,
+    user,
+    emailVerified,
+    reloadUser,
+    userProfile,
+    mfaVerified,
+    markMfaVerified,
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [resending, setResending] = useState(false);
   const [resendDone, setResendDone] = useState(false);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-600 text-sm">Loading...</p>
-        </div>
-      </div>
-    );
+  if (loading || (!!user && profileLoading)) {
+    return <PageLoader />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
+  if (profileError || !userProfile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg p-4">
+        <div className="card w-full max-w-md p-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
+            <AlertCircle className="h-7 w-7 text-amber-600" />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900">Account data unavailable</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            {profileError || 'Your account data has not loaded yet.'}
+          </p>
+          <button
+            type="button"
+            onClick={retryProfile}
+            className="btn-primary mt-6 inline-flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry loading
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Check email verification for email/password users (Google users already verified)
@@ -77,6 +109,10 @@ const ProtectedRoute = ({ children, requiredTier }) => {
         </div>
       </div>
     );
+  }
+
+  if (userProfile?.mfaEnabled && !mfaVerified) {
+    return <MfaGate onVerified={markMfaVerified} />;
   }
 
   if (requiredTier) {

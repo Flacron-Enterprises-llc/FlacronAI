@@ -1,0 +1,75 @@
+import { useEffect } from 'react';
+
+const SITE_URL = 'https://flacronai.com';
+const SITE_NAME = 'FlacronAI';
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
+
+// Upsert a <meta> tag identified by `attr`="key" and set its content.
+const setMeta = (attr, key, content) => {
+  let el = document.head.querySelector(`meta[${attr}="${key}"]`);
+  if (!el) {
+    el = document.createElement('meta');
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('content', content);
+};
+
+const setLink = (rel, href) => {
+  let el = document.head.querySelector(`link[rel="${rel}"]`);
+  if (!el) {
+    el = document.createElement('link');
+    el.setAttribute('rel', rel);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('href', href);
+};
+
+/**
+ * Per-page SEO tags for the SPA (T-1.12). Mount once per page:
+ *   <Seo title="Pricing — FlacronAI" description="…" path="/pricing" />
+ * `path` builds the canonical URL; pass `noindex` for auth/app/404 pages.
+ */
+export default function Seo({ title, description, path = '/', noindex = false, jsonLd = null }) {
+  const jsonLdStr = jsonLd ? JSON.stringify(jsonLd) : null;
+  useEffect(() => {
+    document.title = title;
+    // path === null → a route with no canonical URL of its own (e.g. the 404 page)
+    const url = path == null ? SITE_URL : `${SITE_URL}${path}`;
+
+    setMeta('name', 'description', description);
+    setMeta('name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
+    if (path != null) {
+      setLink('canonical', url);
+    } else {
+      // 404 / no-canonical route: drop any canonical left from a previous page
+      document.head.querySelector('link[rel="canonical"]')?.remove();
+    }
+
+    setMeta('property', 'og:site_name', SITE_NAME);
+    setMeta('property', 'og:type', 'website');
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', description);
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:image', DEFAULT_OG_IMAGE);
+
+    setMeta('name', 'twitter:card', 'summary_large_image');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', description);
+    setMeta('name', 'twitter:image', DEFAULT_OG_IMAGE);
+
+    // JSON-LD structured data — single managed tag, replaced per page (null clears it)
+    const existing = document.head.querySelector('script[data-seo-jsonld]');
+    if (jsonLdStr) {
+      const el = existing || document.createElement('script');
+      el.setAttribute('type', 'application/ld+json');
+      el.setAttribute('data-seo-jsonld', '');
+      el.textContent = jsonLdStr;
+      if (!existing) document.head.appendChild(el);
+    } else if (existing) {
+      existing.remove();
+    }
+  }, [title, description, path, noindex, jsonLdStr]);
+
+  return null;
+}

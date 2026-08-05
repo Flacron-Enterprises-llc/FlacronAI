@@ -1,12 +1,14 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
 
+// Resolves with a Buffer of the generated PDF (no disk I/O — Render is ephemeral).
+// `logoBuffer` (Buffer|null) is embedded in the header; `images` (Buffer[]) is the
+// photo appendix — callers pre-download these from Firebase Storage.
 const generatePDF = async (report, options = {}) => {
   return new Promise((resolve, reject) => {
     try {
       const {
-        outputPath,
-        logoPath,
+        logoBuffer = null,
+        images = [],
         companyName = 'FlacronAI',
         primaryColor = [249, 115, 22],
         watermark = false,
@@ -30,8 +32,10 @@ const generatePDF = async (report, options = {}) => {
         },
       });
 
-      const stream = fs.createWriteStream(outputPath);
-      doc.pipe(stream);
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
       // Ensure every auto-flow page starts content below the header band
       doc.on('pageAdded', () => {
@@ -135,8 +139,8 @@ const generatePDF = async (report, options = {}) => {
 
       const cx = pageWidth / 2;
 
-      if (logoPath && fs.existsSync(logoPath)) {
-        try { doc.image(logoPath, cx - 55, 90, { width: 110, fit: [110, 70] }); } catch {}
+      if (logoBuffer) {
+        try { doc.image(logoBuffer, cx - 55, 90, { width: 110, fit: [110, 70] }); } catch {}
       }
 
       doc.fontSize(10).fillColor(accentHex).font('Helvetica')
@@ -317,11 +321,9 @@ const generatePDF = async (report, options = {}) => {
       // ══════════════════════════════════════════════════════════════════════
       // PHOTO APPENDIX — embed uploaded images if present
       // ══════════════════════════════════════════════════════════════════════
-      const validImagePaths = (report.imagePaths || []).filter(p => {
-        try { return p && fs.existsSync(p); } catch { return false; }
-      });
+      const validImages = (images || []).filter(Boolean);
 
-      if (validImagePaths.length > 0) {
+      if (validImages.length > 0) {
         addPage();
         doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
 
@@ -339,7 +341,7 @@ const generatePDF = async (report, options = {}) => {
         let col = 0;
         let rowStartY = doc.y;
 
-        validImagePaths.forEach((imgPath, idx) => {
+        validImages.forEach((imgBuffer, idx) => {
           const x = margin + col * (colW + colGap);
           const y = rowStartY;
 
@@ -353,7 +355,7 @@ const generatePDF = async (report, options = {}) => {
           doc.rect(x, y, colW, imgH).fill('#f8fafc').stroke('#e2e8f0');
 
           try {
-            doc.image(imgPath, x + 4, y + 4, { width: colW - 8, height: imgH - 8, fit: [colW - 8, imgH - 8], align: 'center', valign: 'center' });
+            doc.image(imgBuffer, x + 4, y + 4, { width: colW - 8, height: imgH - 8, fit: [colW - 8, imgH - 8], align: 'center', valign: 'center' });
           } catch {
             // If image can't be embedded, draw placeholder text
             doc.fontSize(8).fillColor('#94a3b8').font('Helvetica')
@@ -386,28 +388,56 @@ const generatePDF = async (report, options = {}) => {
       doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
       doc.y = 72;
 
-      doc.fontSize(18).fillColor('#0f172a').font('Helvetica-Bold').text('Adjuster Certification', margin, 72);
+      doc.fontSize(18).fillColor('#0f172a').font('Helvetica-Bold').text('Reviewing Adjuster Sign-Off', margin, 72);
       doc.rect(margin, 96, contentWidth, 2).fill(accentHex);
       doc.y = 114;
 
       doc.fontSize(10).fillColor('#374151').font('Helvetica')
         .text(
-          'I certify that the information contained in this report is accurate and complete to the best of my knowledge.',
+          'This report was prepared with AI assistance and is provided as a draft for professional review. ' +
+          'It does not constitute a final determination of cause, coverage, liability, or loss value. ' +
+          'The reviewing adjuster’s signature below indicates that they have reviewed, corrected as needed, and approved its contents.',
           margin, doc.y, { width: contentWidth }
         );
 
       doc.y += 50;
-      [['Adjuster Signature', margin], ['Date', margin + 310]].forEach(([label, x]) => {
-        doc.rect(x, doc.y + 36, 210, 1).fill('#374151');
-        doc.fontSize(8).fillColor('#94a3b8').text(label, x, doc.y + 42, { width: 210 });
+      // If the adjuster e-signed on approval, render their typed signature + date;
+      // otherwise leave blank lines for a wet/manual signature.
+      const sig = report.signature;
+      const sigDate = sig?.confirmedAt ? new Date(sig.confirmedAt).toLocaleDateString() : '';
+      const sigBaseY = doc.y;
+      [['Adjuster Signature', margin, sig?.name || '', 'signature'], ['Date', margin + 310, sigDate, 'date']].forEach(([label, x, value]) => {
+        if (value) {
+          doc.fontSize(13).fillColor('#0f172a').font('Helvetica-Oblique')
+            .text(value, x, sigBaseY + 14, { width: 210, lineBreak: false });
+        }
+        doc.rect(x, sigBaseY + 36, 210, 1).fill('#374151');
+        doc.fontSize(8).fillColor('#94a3b8').font('Helvetica').text(label, x, sigBaseY + 42, { width: 210 });
       });
+      if (sig?.name) {
+        doc.fontSize(8).fillColor('#94a3b8').font('Helvetica')
+          .text(`Electronically signed by ${sig.name}${sig.title ? `, ${sig.title}` : ''}${sig.confirmedAt ? ` on ${new Date(sig.confirmedAt).toLocaleString()}` : ''}.`,
+            margin, sigBaseY + 64, { width: contentWidth });
+      }
 
       doc.y += 90;
-      ['Adjuster Name (Print)', 'License Number', 'Company / Firm Name'].forEach(label => {
-        doc.rect(margin, doc.y + 30, contentWidth, 1).fill('#374151');
-        doc.fontSize(8).fillColor('#94a3b8').text(label, margin, doc.y + 36, { width: contentWidth });
-        doc.y += 62;
+      let fieldY = doc.y;
+      [
+        ['Adjuster Name (Print)', sig?.name],
+        ['License Number', sig?.licenseNumber],
+        ['License State', sig?.licenseState],
+        ['Company / Firm Name', sig?.company],
+        ['Report Version Approved', report.versionApproved],
+      ].forEach(([label, value]) => {
+        if (value) {
+          doc.fontSize(10).fillColor('#0f172a').font('Helvetica')
+            .text(String(value), margin, fieldY + 12, { width: contentWidth, lineBreak: false });
+        }
+        doc.rect(margin, fieldY + 30, contentWidth, 1).fill('#374151');
+        doc.fontSize(8).fillColor('#94a3b8').text(label, margin, fieldY + 36, { width: contentWidth });
+        fieldY += 62;
       });
+      doc.y = fieldY;
 
       // ══════════════════════════════════════════════════════════════════════
       // POST-PROCESS: add header/footer to every page except the cover
@@ -440,8 +470,8 @@ const generatePDF = async (report, options = {}) => {
         // Header bar
         doc.rect(0, 0, pageWidth, 42).fill(accentHex);
 
-        if (logoPath && fs.existsSync(logoPath)) {
-          try { doc.image(logoPath, margin, 7, { height: 26, fit: [110, 26] }); } catch {
+        if (logoBuffer) {
+          try { doc.image(logoBuffer, margin, 7, { height: 26, fit: [110, 26] }); } catch {
             doc.fontSize(13).fillColor('white').font('Helvetica-Bold')
               .text(hideFlacronBranding ? companyName : 'FlacronAI', margin, 14, { width: 200, lineBreak: false });
           }
@@ -466,9 +496,6 @@ const generatePDF = async (report, options = {}) => {
 
       doc.flushPages();
       doc.end();
-
-      stream.on('finish', () => resolve(outputPath));
-      stream.on('error', reject);
 
     } catch (err) {
       reject(err);

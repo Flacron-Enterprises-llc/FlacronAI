@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Palette, Globe, Upload, Eye, Download, Check, X, RefreshCw,
-  Shield, Copy, ExternalLink, Monitor, Mail, FileText, Layout
+  ExternalLink, Monitor, Mail, FileText, Layout
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
@@ -22,8 +22,8 @@ const WATERMARK_POSITIONS = ['Diagonal', 'Corner', 'None'];
 const DEFAULT_CONFIG = {
   companyName: '',
   subdomain: '',
-  primaryColor: '#f97316',
-  secondaryColor: '#8b5cf6',
+  primaryColor: '#FD4403',
+  secondaryColor: '#002A64',
   logoUrl: '',
   headerText: '',
   footerText: '',
@@ -151,11 +151,8 @@ export default function WhiteLabelPortal() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [previewMode, setPreviewMode] = useState('report-header');
-  const [verifyingDomain, setVerifyingDomain] = useState(false);
-  const [domainStatus, setDomainStatus] = useState(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [previewDownloading, setPreviewDownloading] = useState(false);
-  const [cnamecopied, setCnameCopied] = useState(false);
 
   useEffect(() => {
     whiteLabelAPI.getConfig().then(res => {
@@ -196,18 +193,6 @@ export default function WhiteLabelPortal() {
     finally { setPreviewDownloading(false); }
   };
 
-  const handleVerifyDomain = async () => {
-    if (!config.customDomain) { toast.error('Enter a domain first'); return; }
-    setVerifyingDomain(true);
-    try {
-      const res = await whiteLabelAPI.updateConfig({ customDomain: config.customDomain, verifyDomain: true });
-      setDomainStatus(res.data?.domainStatus || 'pending');
-      toast.success('Domain verification initiated');
-    } catch { toast.error('Verification failed'); setDomainStatus('error'); }
-    finally { setVerifyingDomain(false); }
-  };
-
-  const cnamValue = `${config.subdomain || 'yoursubdomain'}.flacronai.com`;
 
   if (tier !== 'enterprise') {
     return (
@@ -336,41 +321,16 @@ export default function WhiteLabelPortal() {
                 </div>
               </div>
 
-              {/* Custom Domain */}
-              <div className="card p-6">
-                <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2"><Globe className="w-4 h-4" /> Custom Domain</h2>
-                <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20 mb-4">
-                  <p className="text-blue-300 text-sm font-medium mb-2">CNAME Setup Instructions</p>
-                  <p className="text-blue-200 text-xs mb-2">Add this CNAME record to your DNS provider:</p>
-                  <div className="flex items-center gap-2 bg-black/30 rounded-lg p-2">
-                    <code className="text-xs font-mono text-green-300 flex-1 break-all">{cnamValue}</code>
-                    <button onClick={() => { navigator.clipboard.writeText(cnamValue); setCnameCopied(true); setTimeout(() => setCnameCopied(false), 2000); }}
-                      className="p-1 hover:bg-gray-100 rounded">
-                      {cnamecopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-gray-600" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="label">Your Domain</label>
-                    <input className="input" placeholder="reports.yourcompany.com" value={config.customDomain} onChange={e => setConfig(p => ({ ...p, customDomain: e.target.value }))} />
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={handleVerifyDomain} disabled={verifyingDomain} className="btn-secondary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-50">
-                      {verifyingDomain ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                      {verifyingDomain ? 'Verifying...' : 'Verify Domain'}
-                    </button>
-                    {domainStatus && (
-                      <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-xl border ${
-                        domainStatus === 'active' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
-                        domainStatus === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                        'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'}`}>
-                        {domainStatus === 'active' ? <Check className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
-                        {domainStatus === 'active' ? 'Verified + SSL Active' : domainStatus === 'error' ? 'Verification Failed' : 'Pending (DNS propagation)'}
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {/* Custom Domain — Coming Soon (backend supports subdomains only for now) */}
+              <div className="card p-6 opacity-90">
+                <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Globe className="w-4 h-4" /> Custom Domain
+                  <span className="ml-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-navy-800/10 text-navy-700 border border-navy-800/15">Coming Soon</span>
+                </h2>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  Connect your own domain (e.g. <span className="font-medium">reports.yourcompany.com</span>) with automatic SSL — coming soon.
+                  In the meantime, your white-label portal is available on your branded FlacronAI subdomain, configured above.
+                </p>
               </div>
 
               {/* Action Buttons */}

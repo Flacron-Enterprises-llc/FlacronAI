@@ -7,19 +7,24 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { paymentAPI, salesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import Seo from '../components/Seo.jsx';
+import { PLAN_PRICING } from '../data/plans.js';
+import { PRODUCT_JSONLD } from '../data/structuredData.js';
+import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PLANS = [
   {
     id: 'starter', name: 'Starter', icon: Zap,
-    monthly: 0, annual: 0,
+    ...PLAN_PRICING.starter,
     description: 'Perfect for independent adjusters getting started',
     color: 'gray',
     features: [
       { label: '5 reports/month', included: true },
-      { label: 'Basic AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'PDF export', included: true },
       { label: 'Email support', included: true },
-      { label: 'FlacronAI watermark on reports', included: false },
+      { label: 'Watermark-free reports', included: false },
       { label: 'DOCX/HTML export', included: false },
       { label: 'API access', included: false },
       { label: 'CRM features', included: false },
@@ -29,12 +34,12 @@ const PLANS = [
   },
   {
     id: 'professional', name: 'Professional', icon: Star,
-    monthly: 39.99, annual: 39.17,
+    ...PLAN_PRICING.professional,
     description: 'For active adjusters who need more power',
     color: 'blue', popular: true,
     features: [
       { label: '50 reports/month', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'PDF, DOCX, HTML export', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Priority email support', included: true },
@@ -47,12 +52,12 @@ const PLANS = [
   },
   {
     id: 'agency', name: 'Agency', icon: Users,
-    monthly: 149.99, annual: 119.17,
+    ...PLAN_PRICING.agency,
     description: 'For agencies managing multiple adjusters',
     color: 'purple',
     features: [
       { label: '200 reports/month', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },
@@ -60,17 +65,17 @@ const PLANS = [
       { label: 'Client management', included: true },
       { label: 'Priority support', included: true },
       { label: 'White-label portal', included: false },
-      { label: 'Custom AI training', included: false },
+      { label: 'Custom subdomain', included: false },
     ],
   },
   {
     id: 'enterprise', name: 'Enterprise', icon: Crown,
-    monthly: 299.99, annual: 239.17,
+    ...PLAN_PRICING.enterprise,
     description: 'Custom solutions for large organizations',
     color: 'amber',
     features: [
       { label: 'Unlimited reports', included: true },
-      { label: 'Advanced AI report generation', included: true },
+      { label: 'AI report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },
@@ -78,14 +83,13 @@ const PLANS = [
       { label: 'White-label portal', included: true },
       { label: 'Custom subdomain', included: true },
       { label: 'Dedicated success manager', included: true },
-      { label: 'Custom AI training', included: true },
+      { label: 'Team member management', included: true },
     ],
   },
 ];
 
 const COMPARISON_FEATURES = [
   { label: 'Reports per month', starter: '5', professional: '50', agency: '200', enterprise: 'Unlimited' },
-  { label: 'AI Model', starter: 'Standard', professional: 'Advanced', agency: 'Advanced', enterprise: 'Advanced' },
   { label: 'Export formats', starter: 'PDF', professional: 'PDF, DOCX, HTML', agency: 'All', enterprise: 'All' },
   { label: 'Watermarks', starter: 'Yes', professional: 'No', agency: 'No', enterprise: 'No' },
   { label: 'CRM', starter: false, professional: false, agency: true, enterprise: true },
@@ -112,14 +116,17 @@ const COLOR_MAP = {
 
 function ContactSalesModal({ onClose }) {
   const [form, setForm] = useState({ name: '', email: '', company: '', phone: '', companyType: '', monthlyVolume: '', message: '' });
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  useEscapeToClose(onClose, !loading);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!consent) { toast.error('Please agree to be contacted before submitting'); return; }
     setLoading(true);
     try {
-      await salesAPI.contact({ ...form, subject: 'Enterprise Plan Inquiry' });
+      await salesAPI.contact({ ...form, subject: 'Enterprise Plan Inquiry', consent: buildConsent(!!form.phone.trim()) });
       setSuccess(true);
     } catch {
       toast.error('Failed to send. Please try again.');
@@ -132,7 +139,7 @@ function ContactSalesModal({ onClose }) {
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+      <motion.div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Contact Sales"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}>
@@ -152,7 +159,7 @@ function ContactSalesModal({ onClose }) {
                 <h2 className="text-xl font-bold text-gray-900">Contact Sales</h2>
                 <p className="text-gray-600 text-sm mt-1">Tell us about your enterprise needs</p>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <button onClick={onClose} aria-label="Close" title="Close" className="p-2 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-gray-600" />
               </button>
             </div>
@@ -196,7 +203,8 @@ function ContactSalesModal({ onClose }) {
                 <textarea className="input min-h-[100px] resize-none" placeholder="Tell us about your requirements, integrations needed, or any questions..."
                   value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
               </div>
-              <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
+              <ConsentCheckbox checked={consent} onChange={setConsent} includeSms />
+              <button type="submit" disabled={loading || !consent} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 {loading ? 'Sending...' : 'Send Message'}
               </button>
             </form>
@@ -240,9 +248,17 @@ export default function Pricing() {
     setLoadingTier(planId);
     try {
       const res = await paymentAPI.createCheckout(planId + (annual ? '_annual' : ''));
-      if (res.data.url) window.location.href = res.data.url;
-    } catch {
-      toast.error('Failed to start checkout. Please try again.');
+      if (res.data.url) {
+        window.location.href = res.data.url;
+      } else if (res.data.changeType === 'scheduled') {
+        toast.success(`Plan change scheduled for ${new Date(res.data.effectiveAt).toLocaleDateString()}.`);
+        navigate('/dashboard?billing=updated');
+      } else {
+        toast.success(res.data.message || 'Plan updated successfully.');
+        navigate('/dashboard?billing=updated');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update your plan. Please try again.');
     } finally {
       setLoadingTier(null);
     }
@@ -250,6 +266,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
+      <Seo title="Pricing — FlacronAI" description="Start free with 5 reports a month. Professional, Agency, and Enterprise plans with PDF, DOCX and HTML export, CRM, API access, and white-label options." path="/pricing" jsonLd={PRODUCT_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4">
         <div className="max-w-7xl mx-auto">
@@ -332,6 +349,7 @@ export default function Pricing() {
           {/* Comparison Table */}
           <motion.div className="mb-20" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Full Feature Comparison</h2>
+            <p className="text-center text-sm text-gray-500 mb-3 sm:hidden">Swipe to compare plans →</p>
             <div className="card overflow-hidden overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>

@@ -3,7 +3,6 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 const morgan = require('morgan');
 
 // Initialize Firebase on startup
@@ -81,12 +80,10 @@ app.use((req, res, next) => {
 });
 
 // ── STATIC FILES ──────────────────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-  },
-}));
+// All uploads now live in Firebase Storage (see config/storage.js) — there is no
+// local /uploads route. Claim photos and exports are private (read server-side or
+// via the authenticated GET /api/reports/:id/download endpoint); branding logos
+// are served by Firebase's own download-token URLs.
 
 // ── HEALTH CHECKS ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
@@ -108,6 +105,10 @@ app.get('/health', (req, res) => {
 });
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
+// Record API-key usage (no-op for token/browser requests) so usage analytics work.
+const { trackApiUsage } = require('./middleware/auth');
+app.use('/api', trackApiUsage);
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', aiLimiter, require('./routes/reports'));

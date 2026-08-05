@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Zap } from 'lucide-react';
 
 const TikTokIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -86,19 +85,16 @@ const Footer = () => {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link to="/" className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center">
-                <Zap className="w-4 h-4 text-white" fill="white" />
-              </div>
+              <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
               <span className="font-bold text-lg text-gray-900">FlacronAI</span>
             </Link>
             <p className="text-gray-500 text-sm leading-relaxed mb-5 max-w-xs">
-              AI-powered insurance inspection reports. Generate professional CRU GROUP-standard reports in minutes.
+              AI-assisted insurance documentation. Build structured drafts from submitted claim information, then review and approve them before final use.
             </p>
             {/* Powered by badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-gray-400 font-medium">Powered by</span>
               <span className="text-xs bg-orange-500/10 text-orange-700 border border-orange-200 px-2 py-0.5 rounded font-semibold">FlacronAI Engine</span>
-              <span className="text-xs bg-sky-500/10 text-sky-700 border border-sky-200 px-2 py-0.5 rounded font-semibold">Microsoft</span>
             </div>
           </div>
 
@@ -150,10 +146,6 @@ const Footer = () => {
         {/* Bottom bar */}
         <div className="border-t border-[#e5e7eb] pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-gray-500 text-sm">© 2026 Flacron Enterprises. All rights reserved.</p>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            All systems operational
-          </div>
         </div>
       </div>
     </footer>

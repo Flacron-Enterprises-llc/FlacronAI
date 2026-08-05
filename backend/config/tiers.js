@@ -83,7 +83,29 @@ const getStripePriceId = (tierName) => {
   return map[tierName] || null;
 };
 
+const getTierKeyFromStripePriceId = (priceId) => {
+  const tierKeys = [
+    'professional',
+    'professional_annual',
+    'agency',
+    'agency_annual',
+    'enterprise',
+    'enterprise_annual',
+  ];
+
+  return tierKeys.find(tierKey => getStripePriceId(tierKey) === priceId) || null;
+};
+
 // Resolve the base tier name from a tier key (strips _annual suffix)
 const getBaseTier = (tierName) => (tierName || '').replace('_annual', '') || 'starter';
 
-module.exports = { TIERS, TIER_ORDER, getTier, isAtLeastTier, canGenerate, getStripePriceId, getBaseTier };
+module.exports = {
+  TIERS,
+  TIER_ORDER,
+  getTier,
+  isAtLeastTier,
+  canGenerate,
+  getStripePriceId,
+  getTierKeyFromStripePriceId,
+  getBaseTier,
+};

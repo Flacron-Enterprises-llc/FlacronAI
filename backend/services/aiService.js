@@ -1,7 +1,22 @@
-const { generateText, checkHealth: checkWatsonx } = require('../config/watsonx');
-const { getOpenAI } = require('../config/openai');
-const fs = require('fs');
-const path = require('path');
+const anthropic = require('../config/anthropic');
+const { generateText: watsonxGenerate, checkHealth: checkWatsonx } = require('../config/watsonx');
+
+// Provider strategy (client directive 2026-07-18): Claude (Anthropic) is primary,
+// IBM watsonx is the text-only fallback. OpenAI has been removed entirely.
+// Returns { text, modelUsed }.
+const generateWithFallback = async (prompt, { maxTokens = 4096, temperature = 0.5 } = {}) => {
+  try {
+    const text = await anthropic.generateText(prompt, { maxTokens });
+    return { text, modelUsed: `anthropic/${anthropic.MODEL}` };
+  } catch (claudeErr) {
+    console.warn('⚠️  Claude failed, falling back to watsonx:', claudeErr.message);
+    const text = await watsonxGenerate(prompt, { max_new_tokens: maxTokens, temperature });
+    return { text, modelUsed: 'watsonx/ibm/granite-3-8b-instruct' };
+  }
+};
+
+// Anthropic vision only accepts these image media types.
+const CLAUDE_IMAGE_TYPES = new Set(['jpeg', 'png', 'gif', 'webp']);
 
 const buildReportPrompt = (reportData, imageAnalysis) => {
   const {
@@ -12,7 +27,13 @@ const buildReportPrompt = (reportData, imageAnalysis) => {
     ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
     : '';
 
-  return `You are a professional insurance adjuster with 20+ years of experience. Generate a complete, professional CRU GROUP standard insurance inspection report in markdown format.
+  return `You are assisting a licensed insurance adjuster by preparing a DRAFT inspection report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations. A qualified professional will review, correct, and sign off on this draft before it is used.
+
+CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make final determinations about any of the following — instead, note them as items for the licensed adjuster to evaluate and confirm: cause of loss, coverage or exclusions, liability, fault, fraud, policy interpretation, structural safety, mold, engineering conclusions, code compliance, or final/binding repair costs.
+- Where a determination would normally be stated, write what the adjuster should assess and flag that no determination has been made.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.
 
 CLAIM DETAILS:
 - Claim Number: ${claimNumber}
@@ -27,16 +48,18 @@ ${lossDescription ? `- Loss Description (provided by adjuster): ${lossDescriptio
 ${damagesObserved ? `- Damages Observed (provided by adjuster): ${damagesObserved}` : ''}
 ${recommendations ? `- Adjuster Recommendations: ${recommendations}` : ''}${imageSection}
 
-Generate a thorough, professional report following this EXACT structure with all sections fully populated:
+Generate a thorough, professional DRAFT report following this EXACT structure with all sections fully populated:
 
 # INSURANCE INSPECTION REPORT
+
+> Prepared with AI assistance for review and approval by a licensed insurance adjuster. Observations are preliminary; this report does not constitute a final determination of cause, coverage, liability, or loss value.
 
 ## SECTION 1: REPORT HEADER
 - Report Type: ${reportType} Inspection Report
 - Claim Number: ${claimNumber}
 - Date of Inspection: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 - Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Prepared By: FlacronAI Automated Report System
+- Prepared By: FlacronAI (AI-assisted — for licensed adjuster review)
 
 ## SECTION 2: INSURED INFORMATION
 - Insured Name: ${insuredName}
@@ -47,70 +70,71 @@ Generate a thorough, professional report following this EXACT structure with all
 
 ## SECTION 3: PROPERTY DESCRIPTION
 ${propertyDetails
-    ? `Based on the following property details provided by the adjuster, expand into a professional property description:\n${propertyDetails}`
-    : `Write a professional property description for the ${lossType} loss site at ${propertyAddress}. Include: the type of structure (residential/commercial), likely construction type and materials, estimated age and condition, general layout, and any physical characteristics relevant to a ${lossType} loss assessment.`}
+    ? `Based on the following property details provided by the adjuster, expand into a professional property description (describe only what is provided; note assumptions the adjuster should confirm):\n${propertyDetails}`
+    : `Write a professional property description for the ${lossType} loss site at ${propertyAddress}. Describe the apparent type of structure (residential/commercial), likely construction type and materials, estimated age and condition, and general layout. Frame characteristics that are not directly provided as apparent/likely and note that the adjuster should confirm on site.`}
 
-## SECTION 4: SCOPE OF LOSS / CAUSE OF LOSS
+## SECTION 4: SCOPE OF LOSS / OBSERVATIONS
 ${lossDescription
-    ? `Based on the following loss description provided by the adjuster, expand into a professional analysis:\n${lossDescription}\n\nAlso include analysis of coverage implications and contributing factors.`
-    : `Write a detailed professional analysis of this ${lossType} loss at ${propertyAddress} on ${lossDate}. Cover all of the following in full sentences and paragraphs:
-- The most probable cause of this ${lossType} loss and how it typically occurs
-- How the damage developed, spread, and progressed at this property
-- The likely sequence of events from the initial incident through discovery
-- Coverage analysis: whether this ${lossType} loss is covered under standard insurance policy terms and any relevant exclusions to consider
-- Contributing factors, pre-existing conditions, or aggravating circumstances relevant to this loss${additionalNotes ? `\n- Additional context from adjuster notes: ${additionalNotes}` : ''}`}
+    ? `Based on the following loss description provided by the adjuster, expand into a professional narrative. Describe what appears to have occurred using cautious language, and list coverage-related considerations the adjuster should evaluate — do NOT make a coverage determination:\n${lossDescription}`
+    : `Write a professional narrative of this reported ${lossType} loss at ${propertyAddress} on ${lossDate}, using cautious, non-conclusive language. Cover:
+- Possible cause(s) that are consistent with this type of ${lossType} loss and how such losses typically occur — clearly framed as possibilities for the adjuster to confirm, not a finding
+- How the damage may have developed, spread, and progressed at this property (apparent, subject to verification)
+- The likely sequence of events, noting this is a preliminary reconstruction to be confirmed
+- Coverage-related considerations and potential exclusions the adjuster should evaluate — explicitly state that no coverage determination has been made
+- Possible contributing factors or pre-existing conditions the adjuster should investigate${additionalNotes ? `\n- Additional context from adjuster notes: ${additionalNotes}` : ''}`}
 
-## SECTION 5: DAMAGE ASSESSMENT
+## SECTION 5: DAMAGE ASSESSMENT (OBSERVED / APPARENT)
 ${damagesObserved
-    ? `Based on the following damages observed by the adjuster, expand into a professional room-by-room damage assessment:\n${damagesObserved}\n\nFor each area include severity (Minor/Moderate/Severe), affected materials, and estimated square footage.`
-    : `Provide a detailed room-by-room / area-by-area damage assessment. For each area, list:
+    ? `Based on the following damages observed by the adjuster, expand into a professional room-by-room assessment. For each area include apparent severity (Minor/Moderate/Severe), affected materials, and estimated square footage — noting that severity and extent are preliminary and subject to the adjuster's confirmation:\n${damagesObserved}`
+    : `Provide a detailed room-by-room / area-by-area assessment of apparent damage. For each area, list:
 - Location/Room Name
-- Type of damage observed
-- Severity (Minor/Moderate/Severe)
+- Type of damage that appears present
+- Apparent severity (Minor/Moderate/Severe) — preliminary, to be confirmed
 - Affected materials (e.g., drywall, flooring, cabinetry)
-- Square footage affected (estimated)
+- Estimated square footage affected (approximate)
 
-Include at minimum 5-7 damage areas relevant to the loss type: ${lossType}`}
+Include at minimum 5-7 areas relevant to the loss type: ${lossType}. Note any conditions (structural, electrical, mold, safety) that a qualified professional should evaluate further — do not conclude on them.`}
 
-## SECTION 6: SCOPE OF WORK (RECOMMENDED REPAIRS)
-Provide itemized repair recommendations:
-- Immediate emergency mitigation steps
-- Temporary repairs needed
-- Permanent repair scope by trade (demo, framing, drywall, flooring, painting, mechanical, etc.)
+## SECTION 6: SCOPE OF WORK (SUGGESTED REPAIRS FOR REVIEW)
+Provide itemized, suggested repair considerations for the adjuster and contractor to confirm:
+- Possible immediate mitigation steps
+- Temporary repairs that may be needed
+- Suggested permanent repair scope by trade (demo, framing, drywall, flooring, painting, mechanical, etc.)
 - Material specifications where applicable
 - Labor descriptions
+Frame these as suggestions to be validated, not directives.
 
-## SECTION 7: ESTIMATED LOSS SUMMARY
-Provide a structured cost estimate table with REAL calculated dollar amounts based on industry-standard restoration rates for a ${lossType} loss. Do NOT use placeholder values like $XXX.XX — use realistic specific numbers (e.g., $1,850.00, $3,200.00). Calculate each line item individually and sum them for the TOTAL.
+## SECTION 7: PRELIMINARY ESTIMATED COSTS (FOR PLANNING & REVIEW ONLY)
+Provide a structured, PRELIMINARY cost estimate table using approximate industry-standard restoration rates for a ${lossType} loss. These figures are for planning and adjuster review only — they are NOT a final, binding, or authoritative estimate, and must be verified against actual contractor bids and the policy. Use realistic approximate numbers (e.g., ~$1,850) rather than placeholders.
 
-| Category | Description | Estimated Cost |
-|----------|-------------|----------------|
-[Include 8-12 line items with REAL dollar amounts based on scope of damage, e.g. $1,250.00]
-| **TOTAL ESTIMATED LOSS** | | [sum of all line items above, e.g. $14,750.00] |
+| Category | Description | Estimated Cost (approx.) |
+|----------|-------------|--------------------------|
+[Include 8-12 line items with approximate dollar amounts based on the apparent scope, e.g. ~$1,250]
+| **PRELIMINARY ESTIMATED TOTAL** | Subject to verification | [approximate sum of the line items above] |
 
-IMPORTANT: Every dollar amount must be a specific calculated number. No placeholders. The TOTAL must equal the sum of all line items above it.
+Note directly beneath the table: "Preliminary estimate for planning only — not a final determination of loss value. Actual costs subject to contractor bids, measurement, and coverage review."
 
 ## SECTION 8: SUPPORTING DOCUMENTATION
-List all documentation reviewed and recommended:
-- Photos taken (reference image analysis if available)
+List documentation reviewed and recommended:
+- Photos provided (reference image analysis if available)
 - Documents reviewed
 - Additional documentation recommended
-- Third-party reports needed (if any)
+- Third-party/professional reports the adjuster may need (if any)
 
-## SECTION 9: CONCLUSION / ADJUSTER NOTES
+## SECTION 9: CONCLUSION / ITEMS FOR ADJUSTER REVIEW
 ${recommendations
-    ? `Include the following adjuster recommendations and expand professionally:\n${recommendations}\n\nAlso include:`
+    ? `Incorporate the following adjuster recommendations and expand professionally, keeping cautious language:\n${recommendations}\n\nAlso include:`
     : ''}
-- Summary of findings
-- Coverage determination notes
-- Recommended next steps
-- Special considerations
-- Adjuster certification statement
+- Summary of apparent findings (preliminary)
+- Coverage considerations for the adjuster to evaluate — state clearly that no coverage determination has been made
+- Recommended next steps and items requiring professional confirmation
+- Conditions a qualified professional should further evaluate (structural, mold, safety, engineering, etc.)
+- A note that this draft must be reviewed, corrected, and approved by a licensed adjuster before use. Do NOT write a certification or attestation on behalf of the adjuster; leave a blank line for the reviewing adjuster's own sign-off.
 
 ---
-*Report generated by FlacronAI AI System | ${new Date().toISOString()}*
+*AI-generated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*
 
-Write the complete report now with all sections fully populated with professional, realistic content appropriate for a ${lossType} loss at a residential/commercial property. Be specific, detailed, and professional.`;
+Write the complete DRAFT report now with all sections fully populated, using professional but cautious, non-conclusive language appropriate for a ${lossType} loss. Be specific and detailed where the inputs support it, and flag anything requiring professional confirmation.`;
 };
 
 // Checks if the generated content has a complete Section 7 cost table.
@@ -126,7 +150,7 @@ const ensureLossSummary = async (reportData, content) => {
 
   console.log('⚠️  Section 7 incomplete — generating cost summary separately...');
 
-  const summaryPrompt = `You are a professional insurance adjuster. Generate ONLY the estimated cost table for a ${reportData.lossType} insurance loss claim.
+  const summaryPrompt = `You are assisting a licensed adjuster. Generate ONLY a PRELIMINARY estimated cost table for a ${reportData.lossType} insurance loss claim. These figures are approximate, for planning and adjuster review only — NOT a final or binding determination of loss value.
 
 Property: ${reportData.propertyAddress}
 Damages: ${reportData.damagesObserved || 'Typical ' + reportData.lossType + ' damage to a residential property'}
@@ -134,31 +158,21 @@ Loss Description: ${reportData.lossDescription || ''}
 
 Output ONLY this markdown section (no preamble, no other text):
 
-## SECTION 7: ESTIMATED LOSS SUMMARY
+## SECTION 7: PRELIMINARY ESTIMATED COSTS (FOR PLANNING & REVIEW ONLY)
 
-| Category | Description | Estimated Cost |
-|----------|-------------|----------------|
-[8-10 rows with REAL specific dollar amounts, e.g. $1,850.00. No placeholders.]
-| **TOTAL ESTIMATED LOSS** | | [exact sum of all rows above] |`;
+| Category | Description | Estimated Cost (approx.) |
+|----------|-------------|--------------------------|
+[8-10 rows with approximate dollar amounts, e.g. ~$1,850]
+| **PRELIMINARY ESTIMATED TOTAL** | Subject to verification | [approximate sum of the rows above] |
+
+_Preliminary estimate for planning only — not a final determination of loss value. Actual costs subject to contractor bids and coverage review._`;
 
   let summaryText;
   try {
-    summaryText = await generateText(summaryPrompt, { max_new_tokens: 700, temperature: 0.3 });
-  } catch {
-    try {
-      const openai = getOpenAI();
-      if (!openai) return content;
-      const res = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [{ role: 'user', content: summaryPrompt }],
-        max_tokens: 700,
-        temperature: 0.3,
-      });
-      summaryText = res.choices[0].message.content;
-    } catch (err) {
-      console.warn('Loss summary fallback also failed:', err.message);
-      return content;
-    }
+    ({ text: summaryText } = await generateWithFallback(summaryPrompt, { maxTokens: 700, temperature: 0.3 }));
+  } catch (err) {
+    console.warn('Loss summary generation failed (Claude + watsonx):', err.message);
+    return content;
   }
 
   if (match) {
@@ -168,123 +182,109 @@ Output ONLY this markdown section (no preamble, no other text):
   return content.trimEnd() + '\n\n' + summaryText.trim();
 };
 
-const generateReport = async (reportData, imageAnalysis) => {
+const NO_PHOTO_DISCLAIMER = 'No photographs were provided. Damage observations in this draft are based exclusively on user-entered information and must be independently verified.';
+
+// Deterministic — does not rely on the LLM to remember to say this. Inserted
+// right under Section 8 (Supporting Documentation) where photos are referenced.
+const insertNoPhotoDisclaimer = (content) => {
+  const section8Re = /(##\s*SECTION\s*8[^\n]*\n)/i;
+  if (section8Re.test(content)) {
+    return content.replace(section8Re, (heading) => `${heading}\n**${NO_PHOTO_DISCLAIMER}**\n`);
+  }
+  return `${content.trimEnd()}\n\n**${NO_PHOTO_DISCLAIMER}**`;
+};
+
+const generateReport = async (reportData, imageAnalysis, photoCount = 0) => {
   const prompt = buildReportPrompt(reportData, imageAnalysis);
 
-  let content;
-  let modelUsed;
-
-  // Try WatsonX first
+  console.log('🤖 Generating report (Claude primary, watsonx fallback)...');
+  let content, modelUsed;
   try {
-    console.log('🤖 Attempting WatsonX report generation...');
-    content = await generateText(prompt, { max_new_tokens: 4096, temperature: 0.5 });
-    modelUsed = 'watsonx/ibm/granite-3-8b-instruct';
-    console.log('✅ Report generated via WatsonX');
-  } catch (watsonxErr) {
-    console.warn('⚠️  WatsonX failed, falling back to OpenAI:', watsonxErr.message);
-
-    // Fallback to OpenAI
-    const openai = getOpenAI();
-    if (!openai) throw new Error('No AI provider available. Please configure WATSONX_API_KEY or OPENAI_API_KEY.');
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [
-        { role: 'system', content: 'You are a professional insurance adjuster. Generate detailed, accurate insurance inspection reports.' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 4096,
-      temperature: 0.5,
-    });
-
-    content = completion.choices[0].message.content;
-    modelUsed = 'openai/gpt-4-turbo-preview';
-    console.log('✅ Report generated via OpenAI');
+    ({ text: content, modelUsed } = await generateWithFallback(prompt, { maxTokens: 4096, temperature: 0.5 }));
+  } catch (err) {
+    throw new Error(`No AI provider available (Claude + watsonx both failed): ${err.message}. Configure ANTHROPIC_API_KEY or WATSONX_API_KEY.`);
   }
+  console.log(`✅ Report generated via ${modelUsed}`);
 
   // Ensure Section 7 cost table is complete — patch it if truncated
   content = await ensureLossSummary(reportData, content);
 
+  if (photoCount === 0) {
+    content = insertNoPhotoDisclaimer(content);
+  }
+
   return { content, modelUsed };
 };
 
-const analyzeImages = async (imagePaths) => {
-  const openai = getOpenAI();
-  if (!openai) {
+// `images` is an array of { buffer, mimetype } (buffers are held in memory at
+// upload time — no disk reads). Limits to 10 images for the vision call.
+const analyzeImages = async (images) => {
+  if (!anthropic.getClient()) {
+    // watsonx (granite) has no vision capability, so there is no image-analysis
+    // fallback — degrade gracefully rather than blocking report generation.
     return {
-      summary: 'Image analysis unavailable — OpenAI not configured',
+      summary: 'Image analysis unavailable — ANTHROPIC_API_KEY not configured',
       damages: [],
       severity: 'Unknown',
     };
   }
 
-  // Limit to 10 images for analysis
-  const pathsToAnalyze = imagePaths.slice(0, 10);
-  const imageContents = [];
+  const toAnalyze = (images || []).slice(0, 10);
+  const imageBlocks = [];
 
-  for (const imgPath of pathsToAnalyze) {
+  for (const img of toAnalyze) {
     try {
-      if (!fs.existsSync(imgPath)) continue;
-      const imageData = fs.readFileSync(imgPath);
-      const base64 = imageData.toString('base64');
-      const ext = path.extname(imgPath).toLowerCase().replace('.', '');
-      const mimeType = ext === 'jpg' ? 'jpeg' : ext;
-      imageContents.push({
-        type: 'image_url',
-        image_url: { url: `data:image/${mimeType};base64,${base64}`, detail: 'high' },
+      if (!img || !img.buffer) continue;
+      // Normalize "image/jpeg" | "jpg" → "jpeg"
+      let mediaType = String(img.mimetype || '').toLowerCase().replace('image/', '');
+      if (mediaType === 'jpg') mediaType = 'jpeg';
+      if (!CLAUDE_IMAGE_TYPES.has(mediaType)) {
+        console.warn(`Skipping image: ${mediaType || 'unknown type'} not supported by Claude vision`);
+        continue;
+      }
+      const base64 = Buffer.from(img.buffer).toString('base64');
+      imageBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: `image/${mediaType}`, data: base64 },
       });
     } catch (err) {
-      console.warn(`Could not read image ${imgPath}:`, err.message);
+      console.warn('Could not read image buffer:', err.message);
     }
   }
 
-  if (imageContents.length === 0) {
+  if (imageBlocks.length === 0) {
     return { summary: 'No valid images provided for analysis', damages: [], severity: 'Unknown' };
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4-vision-preview',
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `You are an expert insurance damage assessor. Analyze these ${imageContents.length} damage photos and provide:
-1. A detailed damage assessment for each visible area
-2. Overall severity (Minor/Moderate/Severe/Total Loss)
-3. Estimated affected areas (rooms, surfaces)
-4. Materials damaged (drywall, flooring, roofing, etc.)
-5. Immediate concerns (structural, safety, mold risk)
+  const promptText = `You are an expert insurance damage assessor reviewing photos for a draft report that a licensed adjuster will review. Describe only what is visible; use cautious language ("appears", "may indicate") and defer final determinations to the adjuster. Analyze these ${imageBlocks.length} damage photos and provide:
+1. A damage assessment for each visible area
+2. Overall apparent severity (Minor/Moderate/Severe)
+3. Apparent affected areas (rooms, surfaces)
+4. Materials that appear damaged (drywall, flooring, roofing, etc.)
+5. Conditions a professional should evaluate further (structural, safety, mold)
 6. Documentation quality assessment
 
-Return as JSON with this structure:
+Return ONLY JSON with this structure:
 {
   "summary": "Overall assessment summary",
   "severity": "Moderate",
-  "totalImagesAnalyzed": ${imageContents.length},
+  "totalImagesAnalyzed": ${imageBlocks.length},
   "damages": [
-    {
-      "area": "Living Room",
-      "type": "Water damage",
-      "severity": "Severe",
-      "materials": ["drywall", "flooring"],
-      "description": "Detailed description"
-    }
+    { "area": "Living Room", "type": "Water damage", "severity": "Severe", "materials": ["drywall", "flooring"], "description": "Detailed description" }
   ],
-  "immediateConcerns": ["List of urgent concerns"],
+  "itemsForProfessionalReview": ["List of conditions a professional should confirm"],
   "estimatedAffectedSqFt": 450,
   "documentationNotes": "Photo quality assessment"
-}`,
-          },
-          ...imageContents,
-        ],
-      },
-    ],
-    max_tokens: 2000,
-  });
+}`;
 
-  const content = response.choices[0].message.content;
+  let content;
+  try {
+    content = await anthropic.analyzeImages(promptText, imageBlocks, { maxTokens: 2000 });
+  } catch (err) {
+    console.warn('Claude image analysis failed:', err.message);
+    return { summary: `Image analysis unavailable — ${err.message}`, damages: [], severity: 'Unknown' };
+  }
+
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: content, damages: [], severity: 'Unknown' };
@@ -294,35 +294,22 @@ Return as JSON with this structure:
 };
 
 const generateSummary = async (reportContent) => {
+  const prompt = `Summarize this insurance inspection report in 3-4 sentences highlighting the key findings, damage assessment, and recommended actions:\n\n${reportContent.substring(0, 3000)}`;
   try {
-    const prompt = `Summarize this insurance inspection report in 3-4 sentences highlighting the key findings, damage assessment, and recommended actions:\n\n${reportContent.substring(0, 3000)}`;
-    const result = await generateText(prompt, { max_new_tokens: 500, temperature: 0.3 });
-    return result;
+    const { text } = await generateWithFallback(prompt, { maxTokens: 500, temperature: 0.3 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return 'Summary unavailable';
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: `Summarize this insurance report in 3-4 sentences:\n\n${reportContent.substring(0, 3000)}` }],
-      max_tokens: 500,
-    });
-    return completion.choices[0].message.content;
+    return 'Summary unavailable';
   }
 };
 
 const generateScopeOfWork = async (reportContent, damageAssessment) => {
   const prompt = `Based on this insurance report and damage assessment, generate a detailed scope of work with itemized repair tasks, materials needed, and labor descriptions:\n\nReport:\n${reportContent.substring(0, 2000)}\n\nDamage Assessment:\n${JSON.stringify(damageAssessment, null, 2).substring(0, 1000)}`;
   try {
-    return await generateText(prompt, { max_new_tokens: 2000, temperature: 0.4 });
+    const { text } = await generateWithFallback(prompt, { maxTokens: 2000, temperature: 0.4 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return 'Scope of work generation unavailable';
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-    });
-    return completion.choices[0].message.content;
+    return 'Scope of work generation unavailable';
   }
 };
 
@@ -358,34 +345,47 @@ const checkQuality = async (reportContent) => {
 const enhanceContent = async (rawContent) => {
   const prompt = `Improve the professional quality of this insurance inspection report section. Make it more detailed, precise, and industry-standard. Return only the improved text:\n\n${rawContent}`;
   try {
-    return await generateText(prompt, { max_new_tokens: 1500, temperature: 0.4 });
+    const { text } = await generateWithFallback(prompt, { maxTokens: 1500, temperature: 0.4 });
+    return text;
   } catch {
-    const openai = getOpenAI();
-    if (!openai) return rawContent;
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1500,
-    });
-    return completion.choices[0].message.content;
+    return rawContent;
   }
 };
 
+const buildSectionSuggestionPrompt = ({ title, body, reportContext = '' }) => `You are assisting a licensed insurance adjuster with ONE SECTION of a DRAFT inspection report.
+
+SECTION: ${title}
+CURRENT SECTION TEXT:
+${body || '(empty)'}
+
+LIMITED REPORT CONTEXT:
+${reportContext || '(none provided)'}
+
+Return only a proposed replacement for the section body, without a heading or commentary.
+- Preserve supported facts and do not invent details.
+- Use cautious observational wording such as "appears", "may indicate", "is consistent with", and "should be verified".
+- Do not determine coverage, liability, cause of loss, fraud, policy interpretation, structural safety, mold, code compliance, engineering conclusions, or final repair costs.
+- Flag professional determinations for qualified human review.
+- This is only a suggestion. A human reviewer will explicitly accept, reject, or edit it.`;
+
+const suggestReportSection = async input => {
+  const prompt = buildSectionSuggestionPrompt(input);
+  const { text, modelUsed } = await generateWithFallback(prompt, { maxTokens: 1200, temperature: 0.3 });
+  const suggestion = text.replace(/^```(?:markdown)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  if (!suggestion) throw new Error('AI returned an empty section suggestion');
+  return { suggestion, modelUsed };
+};
+
 const checkAIHealth = async () => {
-  const watsonxOk = await checkWatsonx();
-  let openaiOk = false;
-  try {
-    const openai = getOpenAI();
-    if (openai) {
-      await openai.models.list();
-      openaiOk = true;
-    }
-  } catch {}
+  const [claudeOk, watsonxOk] = await Promise.all([anthropic.checkHealth(), checkWatsonx()]);
   return {
+    anthropic: claudeOk ? 'online' : 'offline',
     watsonx: watsonxOk ? 'online' : 'offline',
-    openai: openaiOk ? 'online' : 'offline',
-    primary: watsonxOk ? 'watsonx' : openaiOk ? 'openai' : 'none',
+    primary: claudeOk ? 'anthropic' : watsonxOk ? 'watsonx' : 'none',
   };
 };
 
-module.exports = { generateReport, analyzeImages, generateSummary, generateScopeOfWork, checkQuality, enhanceContent, checkAIHealth };
+module.exports = {
+  generateReport, analyzeImages, generateSummary, generateScopeOfWork, checkQuality,
+  enhanceContent, buildSectionSuggestionPrompt, suggestReportSection, checkAIHealth,
+};
