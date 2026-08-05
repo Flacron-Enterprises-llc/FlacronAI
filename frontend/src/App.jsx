@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-rou
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import PageLoader from './components/PageLoader.jsx';
 import Seo from './components/Seo.jsx';
 
 const ScrollToTop = () => {
@@ -19,6 +20,8 @@ const Pricing = lazy(() => import('./pages/Pricing.jsx'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const CRM = lazy(() => import('./pages/CRM.jsx'));
+const CRMClientProfile = lazy(() => import('./pages/CRMClientProfile.jsx'));
+const CRMClaimProfile = lazy(() => import('./pages/CRMClaimProfile.jsx'));
 const ApiDocs = lazy(() => import('./pages/ApiDocs.jsx'));
 const Developers = lazy(() => import('./pages/Developers.jsx'));
 
@@ -36,19 +39,6 @@ const AcceptInvite = lazy(() => import('./pages/AcceptInvite.jsx'));
 const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
 const SharedReport = lazy(() => import('./pages/SharedReport.jsx'));
 
-const PageLoader = () => (
-  <div className="min-h-screen bg-bg flex items-center justify-center">
-    <div className="flex flex-col items-center gap-4">
-      <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-12 h-12 object-contain animate-pulse-slow" />
-      <div className="relative">
-        <div className="w-12 h-12 border-2 border-orange-500/30 rounded-full" />
-        <div className="w-12 h-12 border-2 border-orange-500 border-t-transparent rounded-full animate-spin absolute inset-0" />
-      </div>
-      <p className="text-gray-500 text-sm">Loading...</p>
-    </div>
-  </div>
-);
-
 const AuthRedirect = ({ children }) => {
   const { isAuthenticated, loading, emailVerified, user } = useAuth();
   const [searchParams] = useSearchParams();
@@ -65,7 +55,12 @@ const AuthRedirect = ({ children }) => {
   // Don't redirect if there's a pending paid plan — Auth.jsx handles checkout
   if (pendingPlan && pendingPlan !== 'starter') return children;
 
-  return <Navigate to="/dashboard" replace />;
+  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+  const destination = adminEmail && user?.email?.trim().toLowerCase() === adminEmail
+    ? '/admin'
+    : '/dashboard';
+
+  return <Navigate to={destination} replace />;
 };
 
 const App = () => {
@@ -95,6 +90,8 @@ const App = () => {
         <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/crm" element={<ProtectedRoute requiredTier="agency"><CRM /></ProtectedRoute>} />
+        <Route path="/crm/clients/:clientId" element={<ProtectedRoute requiredTier="agency"><CRMClientProfile /></ProtectedRoute>} />
+        <Route path="/crm/claims/:claimId" element={<ProtectedRoute requiredTier="agency"><CRMClaimProfile /></ProtectedRoute>} />
         <Route path="/white-label" element={<ProtectedRoute requiredTier="enterprise"><WhiteLabelPortal /></ProtectedRoute>} />
         <Route path="/admin-tier-update" element={<ProtectedRoute><AdminTierUpdate /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />

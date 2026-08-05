@@ -5,6 +5,7 @@ const sharp = require('sharp');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken, optionalAuth, requireApiAccess } = require('../middleware/auth');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
+const { API_KEY_SCOPES, normalizeApiKeyScopes } = require('../config/apiScopes');
 const { sendWelcomeEmail } = require('../services/emailService');
 const { logoObject, uploadBuffer, deleteObject, deletePrefix } = require('../config/storage');
 const { recordAuditLog } = require('../services/auditLogService');
@@ -215,13 +216,20 @@ router.put('/change-password', authenticateToken, [body('newPassword').isLength(
 });
 
 // POST /api/users/api-keys
-router.post('/api-keys', authenticateToken, requireApiAccess, [body('name').optional().trim()], async (req, res) => {
+router.post('/api-keys', authenticateToken, requireApiAccess, [
+  body('name').optional().trim().isLength({ max: 100 }),
+  body('scopes').isArray({ min: 1 }).withMessage('Select at least one API-key scope'),
+  body('scopes.*').isIn(API_KEY_SCOPES).withMessage('Invalid API-key scope'),
+], async (req, res) => {
   try {
-    const result = await generateApiKey(req.user.uid, req.body.name || 'API Key');
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+    const scopes = normalizeApiKeyScopes(req.body.scopes);
+    const result = await generateApiKey(req.user.uid, req.body.name || 'API Key', scopes);
     recordAuditLog({
       actorUid: req.user.uid, actorEmail: req.user.email, action: 'api_key_created',
       targetType: 'apiKey', targetId: result.keyId || null,
-      meta: { name: req.body.name || 'API Key' }, req,
+      meta: { name: req.body.name || 'API Key', scopes }, req,
     });
     return res.status(201).json({ success: true, ...result, warning: 'Save this key — it will not be shown again' });
   } catch (err) {

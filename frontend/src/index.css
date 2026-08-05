@@ -100,6 +100,15 @@
 .animation-delay-2000 { animation-delay: 2s; }
 .animation-delay-4000 { animation-delay: 4s; }
 
+/* Keep scrollable drawers usable without showing browser scrollbars. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Custom checkbox */
 input[type="checkbox"] {
   accent-color: var(--brand-orange);

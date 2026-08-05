@@ -367,33 +367,34 @@ const Counter = ({ end, suffix = '' }) => {
 };
 
 const features = [
-  { icon: Zap, title: 'AI Report Generation', desc: 'FlacronAI drafts complete, consistently structured inspection reports in minutes — ready for your review.' },
+  { icon: Zap, title: 'AI-Assisted Drafting', desc: 'FlacronAI organizes submitted claim details and supported photos into a structured draft ready for professional review.' },
   { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.' },
-  { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. AI Vision analyzes each one and integrates findings into the report.' },
+  { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
   { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.' },
   { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with a custom subdomain, logo, colors, and report footer.' },
   { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.' },
 ];
 
 const steps = [
-  { num: '01', title: 'Upload & Fill Details', desc: 'Enter claim information and upload up to 100 damage photos. Takes less than 2 minutes.' },
-  { num: '02', title: 'AI Generates Draft', desc: 'FlacronAI analyzes your inputs and each photo, then assembles a structured draft report in minutes.' },
-  { num: '03', title: 'Export & Share', desc: 'Download as PDF with your logo, export to DOCX, or share a secure link. Watermark-free on paid plans.' },
+  { num: '01', title: 'Add Documentation', desc: 'Enter or link claim information, then upload the available inspection photos and supporting notes.' },
+  { num: '02', title: 'Generate a Draft', desc: 'FlacronAI organizes the submitted information and supported photos into editable report sections.' },
+  { num: '03', title: 'Review, Approve & Export', desc: 'A qualified reviewer edits and approves the draft before final PDF, DOCX, HTML, or secure-link sharing.' },
 ];
 
 const Home = () => {
   const location = useLocation();
+  const scrollTo = location.state?.scrollTo;
 
   useEffect(() => {
-    if (location.state?.scrollTo) {
-      const el = document.getElementById(location.state.scrollTo);
+    if (scrollTo) {
+      const el = document.getElementById(scrollTo);
       if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
     }
-  }, []);
+  }, [scrollTo]);
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="FlacronAI — AI-Assisted Insurance Inspection Reports" description="Draft professional insurance inspection reports in minutes. AI assembles the draft from your claim details and damage photos — you review and approve. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
+      <Seo title="FlacronAI — AI-Assisted Insurance Report Drafting" description="Turn claim details and inspection documentation into structured draft reports for professional review, approval, and export. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar transparent />
 
       {/* Hero */}
@@ -416,11 +417,11 @@ const Home = () => {
                 AI-assisted reporting for insurance professionals
               </div>
               <h1 className="text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 leading-tight tracking-tight mb-6">
-                Generate Professional Insurance Inspection Reports{' '}
-                <span className="gradient-text">in Minutes</span>
+                Turn Inspection Documentation Into{' '}
+                <span className="gradient-text">Professional Draft Reports</span>
               </h1>
               <p className="text-xl text-gray-600 leading-relaxed mb-8 max-w-lg">
-                FlacronAI assembles a structured draft report from your claim details and damage photos — you review, refine, and approve the final report. Built for independent adjusters, agencies, and TPA teams.
+                FlacronAI organizes claim details, field notes, and supported damage photos into a structured draft. A qualified professional reviews, edits, and approves it before final use.
               </p>
               <div className="flex flex-wrap gap-4 mb-10">
                 <Link to="/auth?mode=signup" className="btn-primary flex items-center gap-2">
@@ -541,7 +542,7 @@ const Home = () => {
             Built for Insurance Professionals
           </h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            From independent adjusters to enterprise TPAs — FlacronAI scales with your workflow.
+            Designed for independent adjusters, inspection firms, claims teams, TPAs, and restoration documentation workflows. Templates and required review steps should match each organization’s role and jurisdiction.
           </p>
         </motion.div>
 
@@ -575,7 +576,7 @@ const Home = () => {
             className="text-center mb-16"
           >
             <h2 className="text-4xl font-black text-gray-900 mb-4">How It Works</h2>
-            <p className="text-gray-600 text-lg">Three steps from photos to professional report</p>
+            <p className="text-gray-600 text-lg">Three steps from submitted documentation to a reviewed report</p>
           </motion.div>
 
           <div className="relative">
@@ -605,6 +606,9 @@ const Home = () => {
               Try It Free Now
               <ArrowRight className="w-4 h-4" />
             </Link>
+          </div>
+          <div className="mt-8 rounded-card border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+            <strong>AI limitations:</strong> FlacronAI drafts documentation; it does not perform an inspection or make final decisions about coverage, liability, cause of loss, safety, code compliance, or repair cost. A qualified professional must independently verify and approve every report.
           </div>
         </div>
       </section>

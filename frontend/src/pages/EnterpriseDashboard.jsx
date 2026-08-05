@@ -14,6 +14,8 @@ import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.j
 import { formatStatus } from '../utils/formatStatus';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
+import SectionedReportEditor from '../components/SectionedReportEditor';
+import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 
 // ── Quick Demos ───────────────────────────────────────────────────────────────
 const QUICK_DEMOS = [
@@ -128,12 +130,14 @@ export default function EnterpriseDashboard() {
   // Reports list state
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState(false);
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState({ total: 0, thisMonth: 0, apiCalls: 0, qualityAvg: 0 });
 
   // White-label state
   const [wlConfig, setWlConfig] = useState({ companyName: '', subdomain: '', reportFooter: '', supportEmail: '', primaryColor: '#FD4403', hideFlacronBranding: false });
   const [wlLoading, setWlLoading] = useState(false);
+  const [wlError, setWlError] = useState(false);
   const [wlSaving, setWlSaving] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -142,6 +146,7 @@ export default function EnterpriseDashboard() {
   // Team state
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('editor');
   const [inviting, setInviting] = useState(false);
@@ -151,7 +156,9 @@ export default function EnterpriseDashboard() {
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [apiKeysError, setApiKeysError] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState(DEFAULT_API_KEY_SCOPES);
   const [creatingKey, setCreatingKey] = useState(false);
   const [revokeKeyId, setRevokeKeyId] = useState(null);
   const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
@@ -159,6 +166,7 @@ export default function EnterpriseDashboard() {
   // ── Fetch functions ───────────────────────────────────────────────────────
   const fetchReports = useCallback(async () => {
     setReportsLoading(true);
+    setReportsError(false);
     try {
       const res = await reportsAPI.getAll({ limit: 50 });
       const list = res.data.data || res.data.reports || res.data || [];
@@ -171,38 +179,41 @@ export default function EnterpriseDashboard() {
       }).length;
       const quals = arr.filter(r => r.qualityScore).map(r => r.qualityScore);
       setStats(s => ({ ...s, total: arr.length, thisMonth, qualityAvg: quals.length ? Math.round(quals.reduce((a, b) => a + b, 0) / quals.length) : 0 }));
-    } catch { toast.error('Failed to load reports'); }
+    } catch { setReportsError(true); toast.error('Failed to load reports'); }
     finally { setReportsLoading(false); }
   }, []);
 
   const fetchWlConfig = useCallback(async () => {
     setWlLoading(true);
+    setWlError(false);
     try {
       const res = await whiteLabelAPI.getConfig();
       if (res.data?.config) {
         const c = res.data.config;
         setWlConfig({ companyName: c.companyName || '', subdomain: c.subdomain || '', reportFooter: c.reportFooter || '', supportEmail: c.emailFromAddress || '', primaryColor: c.primaryColor || '#FD4403', hideFlacronBranding: c.hideFlacronBranding || false });
       }
-    } catch { /* no config yet */ }
+    } catch { setWlError(true); }
     finally { setWlLoading(false); }
   }, []);
 
   const fetchMembers = useCallback(async () => {
     setMembersLoading(true);
+    setMembersError(false);
     try {
       const res = await teamsAPI.getMembers();
       setMembers(res.data?.members || []);
-    } catch { /* optional */ }
+    } catch { setMembersError(true); }
     finally { setMembersLoading(false); }
   }, []);
 
   const fetchApiKeys = useCallback(async () => {
     setApiKeysLoading(true);
+    setApiKeysError(false);
     try {
       const res = await usersAPI.getApiKeys();
       const keys = res.data?.apiKeys || res.data || [];
       setApiKeys(Array.isArray(keys) ? keys : []);
-    } catch { /* optional */ }
+    } catch { setApiKeysError(true); }
     finally { setApiKeysLoading(false); }
   }, []);
 
@@ -421,11 +432,13 @@ export default function EnterpriseDashboard() {
   // ── API Keys ──────────────────────────────────────────────────────────────
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) { toast.error('Enter a key name'); return; }
+    if (newKeyScopes.length === 0) { toast.error('Select at least one permission'); return; }
     setCreatingKey(true);
     try {
-      const res = await usersAPI.createApiKey(newKeyName.trim());
+      const res = await usersAPI.createApiKey(newKeyName.trim(), newKeyScopes);
       toast.success('API key created');
       setNewKeyName('');
+      setNewKeyScopes(DEFAULT_API_KEY_SCOPES);
       if (res.data?.key) { navigator.clipboard.writeText(res.data.key); toast.success("Key copied — save it now, it won't show again"); }
       fetchApiKeys();
     } catch { toast.error('Failed to create key'); }
@@ -448,6 +461,7 @@ export default function EnterpriseDashboard() {
     { id: 'overview',    label: 'Overview',       icon: BarChart3 },
     { id: 'generate',    label: 'Generate Report', icon: Zap },
     { id: 'reports',     label: 'My Reports',      icon: FileText, badge: stats.total || undefined },
+    { id: 'crm',         label: 'CRM',             icon: Users, href: '/crm' },
     { id: 'whitelabel',  label: 'White-Label',     icon: Globe },
     { id: 'team',        label: 'Team',            icon: Users, badge: members.length || undefined },
     { id: 'api',         label: 'API & Keys',      icon: Code2 },
@@ -499,8 +513,15 @@ export default function EnterpriseDashboard() {
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(item => (
-            <NavItem key={item.id} item={item} active={activeView === item.id}
-              onClick={() => { setActiveView(item.id); if (item.id !== 'generate') setGeneratedReport(null); setSidebarOpen(false); }} />
+            <NavItem key={item.id} item={item} active={item.href ? false : activeView === item.id}
+              onClick={() => {
+                if (item.href) navigate(item.href);
+                else {
+                  setActiveView(item.id);
+                  if (item.id !== 'generate') setGeneratedReport(null);
+                }
+                setSidebarOpen(false);
+              }} />
           ))}
         </nav>
 
@@ -592,6 +613,12 @@ export default function EnterpriseDashboard() {
                   </div>
                   {reportsLoading ? (
                     <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                  ) : reportsError ? (
+                    <div className="flex flex-col items-center py-12 gap-2">
+                      <AlertCircle className="w-8 h-8 text-amber-500" />
+                      <p className="text-sm text-gray-400">We couldn't load your reports.</p>
+                      <button onClick={fetchReports} className="text-xs text-orange-600 hover:text-orange-700 font-medium mt-1">Retry</button>
+                    </div>
                   ) : reports.length === 0 ? (
                     <div className="flex flex-col items-center py-12 gap-2">
                       <FileText className="w-8 h-8 text-gray-300" />
@@ -827,9 +854,7 @@ export default function EnterpriseDashboard() {
                             {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
                           </button>
                         </div>
-                        <textarea value={editableContent} onChange={e => setEditableContent(e.target.value)}
-                          className="w-full bg-gray-50 border border-[#e5e7eb] rounded-xl p-4 text-xs text-gray-700 leading-relaxed font-mono resize-y focus:outline-none focus:border-orange-500"
-                          style={{ minHeight: 340 }} spellCheck={false} />
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
                       </div>
                     </div>
                     <div className="space-y-4">
@@ -953,9 +978,17 @@ export default function EnterpriseDashboard() {
                               ))}
                             </tr>
                           ))
-                        : filteredReports.length === 0
-                          ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
-                          : filteredReports.map((r, i) => (
+                        : reportsError
+                          ? <tr><td colSpan={7} className="text-center py-16">
+                              <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                              <p className="text-gray-500 text-sm">We couldn't load your reports.</p>
+                              <button onClick={fetchReports} className="btn-secondary text-sm py-2 px-4 mt-3 inline-flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4" /> Retry
+                              </button>
+                            </td></tr>
+                          : filteredReports.length === 0
+                            ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
+                            : filteredReports.map((r, i) => (
                               <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-orange-50/30 transition-colors">
                                 <td className="px-5 py-3.5 text-sm font-mono font-semibold text-orange-500">{r.claimNumber || '—'}</td>
                                 <td className="px-5 py-3.5 text-sm text-gray-900">{r.insuredName || '—'}</td>
@@ -999,6 +1032,8 @@ export default function EnterpriseDashboard() {
 
                 {wlLoading ? (
                   <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                ) : wlError ? (
+                  <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 py-12 text-center"><AlertCircle className="h-8 w-8 text-amber-600" /><p className="text-sm text-amber-800">White-label settings could not be loaded.</p><button onClick={fetchWlConfig} className="btn-secondary px-4 py-2 text-sm">Retry</button></div>
                 ) : (
                   <>
                     {/* Logo upload */}
@@ -1155,6 +1190,8 @@ export default function EnterpriseDashboard() {
 
                   {membersLoading ? (
                     <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                  ) : membersError ? (
+                    <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Team members could not be loaded.</p><button onClick={fetchMembers} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
                   ) : members.length === 0 ? (
                     <p className="text-center text-gray-400 text-sm py-8">No team members yet. Invite someone above.</p>
                   ) : members.map(m => (
@@ -1206,7 +1243,18 @@ export default function EnterpriseDashboard() {
               <motion.div key="api" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-3xl space-y-5">
                 <div className={`${cardCls} p-5`}>
                   <h2 className="text-sm font-bold text-gray-900 mb-1">Create API Key</h2>
-                  <p className="text-xs text-gray-400 mb-4">Keys grant full REST API access. Store them securely — only shown once.</p>
+                  <p className="text-xs text-gray-400 mb-4">Grant only the permissions this integration needs. Keys are shown once.</p>
+                  <fieldset className="grid gap-2 sm:grid-cols-2 mb-4">
+                    <legend className="sr-only">API key permissions</legend>
+                    {API_KEY_SCOPES.map(scope => (
+                      <label key={scope.id} className="flex gap-2 rounded-xl border border-[#e5e7eb] bg-gray-50 p-3 cursor-pointer hover:border-orange-300">
+                        <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                          onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
+                        <span><span className="block text-xs font-semibold text-gray-900">{scope.label}</span><span className="block text-[11px] text-gray-400 mt-0.5">{scope.description}</span></span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <p className="text-[11px] text-gray-400 mb-3">Permissions are immutable. Revoke and replace a key to change them.</p>
                   <div className="flex gap-3">
                     <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
                       placeholder="Key name (e.g. Production Server)"
@@ -1225,6 +1273,8 @@ export default function EnterpriseDashboard() {
                   <div className="p-4 space-y-2">
                     {apiKeysLoading ? (
                       <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                    ) : apiKeysError ? (
+                      <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">API keys could not be loaded.</p><button onClick={fetchApiKeys} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
                     ) : apiKeys.length === 0 ? (
                       <p className="text-center text-gray-400 text-sm py-8">No API keys yet.</p>
                     ) : apiKeys.map(k => (
@@ -1233,6 +1283,9 @@ export default function EnterpriseDashboard() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{k.name || 'API Key'}</p>
                           <p className="text-xs text-gray-400 font-mono">{k.keyPrefix ? `${k.keyPrefix}••••••••` : '••••••••••••••••'}</p>
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {(k.scopes || []).map(scope => <span key={scope} className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">{formatApiScope(scope)}</span>)}
+                          </div>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${k.active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                           {k.active !== false ? 'Active' : 'Revoked'}

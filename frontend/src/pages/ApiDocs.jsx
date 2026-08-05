@@ -18,7 +18,7 @@ const ENDPOINTS = {
       method: 'POST', url: '/api/auth/register', description: 'Register a new user account.',
       params: [
         { name: 'email', type: 'string', required: true, desc: 'User email address' },
-        { name: 'password', type: 'string', required: true, desc: 'Minimum 8 characters' },
+        { name: 'password', type: 'string', required: true, desc: 'Minimum 12 characters' },
         { name: 'displayName', type: 'string', required: false, desc: 'User display name' },
       ],
       response: `{ "user": { "uid": "...", "email": "...", "tier": "starter" }, "token": "eyJ..." }`,
@@ -349,10 +349,8 @@ checkout_url = response.json()['url']`,
 };
 
 const RATE_LIMITS = [
-  { tier: 'Starter', rpm: '10 req/min', daily: '100 req/day', notes: 'No API key access' },
-  { tier: 'Professional', rpm: '30 req/min', daily: '500 req/day', notes: 'JWT only' },
-  { tier: 'Agency', rpm: '60 req/min', daily: '2,000 req/day', notes: 'API key supported' },
-  { tier: 'Enterprise', rpm: '200 req/min', daily: 'Unlimited', notes: 'Custom limits available' },
+  { tier: 'All API routes', rpm: '100 / 15 min', daily: 'Not defined', notes: 'Global limiter; health check excluded' },
+  { tier: 'Reports routes', rpm: '10 / min', daily: 'Not defined', notes: 'Additional limiter on /api/reports' },
 ];
 
 const ERROR_CODES = [
@@ -362,10 +360,10 @@ const ERROR_CODES = [
   { code: 404, name: 'Not Found', desc: 'The requested resource does not exist.' },
   { code: 429, name: 'Rate Limited', desc: 'Too many requests. Wait and retry with exponential backoff.' },
   { code: 500, name: 'Server Error', desc: 'Internal server error. Contact support if persistent.' },
-  { code: 503, name: 'AI Unavailable', desc: 'AI service temporarily unavailable. Retry after 30s.' },
+  { code: 503, name: 'Service Unavailable', desc: 'A provider-dependent operation is temporarily unavailable. Retry only when safe for that request type.' },
 ];
 
-function CodeBlock({ code, lang }) {
+function CodeBlock({ code, lang: _lang }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -470,7 +468,7 @@ export default function ApiDocs() {
                 </button>
               ))}
               <div className="border-t border-[#e5e7eb] my-3" />
-              {['Base URL', 'Auth Guide', 'Rate Limits', 'Errors'].map(s => (
+              {['Base URL', 'Auth Guide', 'Downloads', 'Reliability', 'Rate Limits', 'Errors'].map(s => (
                 <button key={s} onClick={() => setActiveSection(s)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                     activeSection === s ? 'bg-orange-500/20 text-orange-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
@@ -503,7 +501,7 @@ export default function ApiDocs() {
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Authentication Guide</h2>
                 <div className="card p-5 mb-4 border-orange-200 bg-orange-50/40">
                   <p className="text-gray-700 text-sm">
-                    <strong>For third-party integrations and server-to-server access, use an API key</strong> — it can be scoped, revoked, and rotated independently of any person's login. The email/password login below issues a session token for signing into the FlacronAI web app itself; it is not intended as an integration credential and should not be embedded in another application or server.
+                    <strong>For third-party integrations and server-to-server access, use an API key</strong> — it can be revoked and rotated independently of any person's login. Every key has immutable, least-privilege scopes selected at creation. The email/password login below issues a session token for signing into the FlacronAI web app itself; it is not intended as an integration credential and should not be embedded in another application or server.
                   </p>
                 </div>
                 <div className="space-y-4">
@@ -511,12 +509,41 @@ export default function ApiDocs() {
                     <h3 className="text-base font-semibold text-gray-900 mb-3">API Key (recommended for integrations — Agency/Enterprise)</h3>
                     <p className="text-gray-600 text-sm mb-3">Create an API key in Settings. Pass it via the X-API-Key header for server-to-server requests.</p>
                     <CodeBlock code={`X-API-Key: flac_live_xxxxxxxxxxxxxxxxxxxx`} lang="text" />
+                    <p className="text-gray-600 text-sm mt-3">Available scopes: <code className="font-mono text-xs">reports:read</code>, <code className="font-mono text-xs">reports:write</code>, <code className="font-mono text-xs">reports:generate</code>, <code className="font-mono text-xs">reports:export</code>, <code className="font-mono text-xs">crm:read</code>, and <code className="font-mono text-xs">crm:write</code>. A missing permission returns <code className="font-mono text-xs">403 API_SCOPE_REQUIRED</code>.</p>
                   </div>
                   <div className="card p-5">
                     <h3 className="text-base font-semibold text-gray-900 mb-3">Bearer Token (JWT) — web app sessions only</h3>
                     <p className="text-gray-600 text-sm mb-3">Returned by <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">/api/auth/login</code> for the FlacronAI web app's own sign-in flow. It represents a specific person's session, expires, and is invalidated on logout or password change — don't use it as a long-lived integration credential.</p>
                     <CodeBlock code={`Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...`} lang="text" />
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeSection === 'Downloads' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">API files and changelog</h2>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {[
+                    ['/openapi.json', 'OpenAPI 3.0', 'Machine-readable API definition for generators and validators.'],
+                    ['/flacronai.postman_collection.json', 'Postman collection', 'Importable requests with base URL, API-key, and report-ID variables.'],
+                    ['/api-changelog.md', 'API changelog', 'Dated behavior and compatibility notes.'],
+                  ].map(([href, title, description]) => (
+                    <a key={href} href={href} download className="card block p-5 transition-colors hover:border-orange-300">
+                      <h3 className="font-semibold text-gray-900">{title}</h3><p className="mt-2 text-sm text-gray-600">{description}</p><span className="mt-4 inline-block text-sm font-semibold text-orange-600">Download</span>
+                    </a>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {activeSection === 'Reliability' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Retries, idempotency, and test environments</h2>
+                <div className="space-y-4">
+                  <div className="card border-amber-200 bg-amber-50/50 p-5"><h3 className="font-semibold text-gray-900">Idempotency keys are not currently supported</h3><p className="mt-2 text-sm leading-6 text-gray-700">The API does not process an <code className="font-mono text-xs">Idempotency-Key</code> header. Do not automatically retry report generation, client creation, checkout creation, approval, deletion, or other mutating requests after an ambiguous timeout. First query the relevant list/detail endpoint and reconcile whether the operation succeeded. GET requests may be retried with bounded exponential backoff for transient 429/5xx responses.</p></div>
+                  <div className="card border-amber-200 bg-amber-50/50 p-5"><h3 className="font-semibold text-gray-900">No public sandbox is available</h3><p className="mt-2 text-sm leading-6 text-gray-700">Requests are sent to the backend host configured in your base URL and may change real tenant data or create provider-side activity. For integration testing, use a separate non-production deployment with separate Firebase, storage, AI-provider, email, and Stripe test-mode credentials. FlacronAI does not currently issue shared sandbox accounts or guarantee sandbox fixtures.</p></div>
+                  <div className="card p-5"><h3 className="font-semibold text-gray-900">Safe retry baseline</h3><ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-gray-600"><li>Honor HTTP 429 and rate-limit headers.</li><li>Use exponential backoff with jitter for retryable GET failures.</li><li>Do not retry validation, authentication, permission, or entitlement errors.</li><li>Log the response code and stable error <code className="font-mono text-xs">code</code> value without logging credentials or claim content.</li></ul></div>
                 </div>
               </motion.div>
             )}
@@ -529,7 +556,7 @@ export default function ApiDocs() {
                 <div className="card overflow-hidden">
                   <table className="w-full">
                     <thead><tr className="border-b border-[#e5e7eb]">
-                      {['Plan', 'Requests/Min', 'Requests/Day', 'Notes'].map(h => (
+                      {['Scope', 'Request window', 'Daily limit', 'Notes'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                       ))}
                     </tr></thead>

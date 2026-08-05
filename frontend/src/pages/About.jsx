@@ -63,7 +63,7 @@ export default function About() {
                 Insurance inspection reporting has a ratio problem: adjusters routinely spend more time writing up a claim than they spent inspecting it. Photos get organized by hand, findings get retyped into templates, and formatting eats the rest of the evening.
               </p>
               <p>
-                FlacronAI, a product of Flacron Enterprises LLC, attacks that bottleneck directly. Upload your inspection photos and claim details, and the platform assembles a structured draft report — damage observations, photo documentation, and standard report sections — in a fraction of the time it takes to write one from scratch.
+                FlacronAI, a product of Flacron Enterprises LLC, addresses that bottleneck directly. Upload your inspection photos and claim details, and the platform assembles an editable draft report with documented observations, photo references, and structured report sections.
               </p>
               <p>
                 The AI does the assembling; you stay the professional. Every draft is meant to be reviewed, edited, and approved by a qualified adjuster before it goes anywhere. We build tooling that makes your judgment faster to document — not a replacement for it.
@@ -103,7 +103,7 @@ export default function About() {
         <motion.div className="text-center max-w-xl mx-auto"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Ready to Try FlacronAI?</h2>
-          <p className="text-gray-600 mb-6">Start free — no credit card required. Generate your first AI-powered claim report in minutes.</p>
+          <p className="text-gray-600 mb-6">Start free — no credit card required. Create your first AI-assisted draft and review it before export.</p>
           <Link to="/auth?mode=signup" className="btn-primary inline-flex items-center gap-2">Get Started Free</Link>
         </motion.div>
       </section>

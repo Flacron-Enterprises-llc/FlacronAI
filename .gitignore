@@ -45,3 +45,7 @@ coverage/
 # Misc
 *.tgz
 *.zip
+
+# Local scratch / tooling (not for the repo)
+tmp/
+.claude/

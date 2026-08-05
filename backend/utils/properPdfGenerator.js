@@ -404,7 +404,7 @@ const generatePDF = async (report, options = {}) => {
       // If the adjuster e-signed on approval, render their typed signature + date;
       // otherwise leave blank lines for a wet/manual signature.
       const sig = report.signature;
-      const sigDate = sig?.signedAt ? new Date(sig.signedAt).toLocaleDateString() : '';
+      const sigDate = sig?.confirmedAt ? new Date(sig.confirmedAt).toLocaleDateString() : '';
       const sigBaseY = doc.y;
       [['Adjuster Signature', margin, sig?.name || '', 'signature'], ['Date', margin + 310, sigDate, 'date']].forEach(([label, x, value]) => {
         if (value) {
@@ -416,16 +416,28 @@ const generatePDF = async (report, options = {}) => {
       });
       if (sig?.name) {
         doc.fontSize(8).fillColor('#94a3b8').font('Helvetica')
-          .text(`Electronically signed by ${sig.name}${sig.title ? `, ${sig.title}` : ''}${sig.signedAt ? ` on ${new Date(sig.signedAt).toLocaleString()}` : ''}.`,
+          .text(`Electronically signed by ${sig.name}${sig.title ? `, ${sig.title}` : ''}${sig.confirmedAt ? ` on ${new Date(sig.confirmedAt).toLocaleString()}` : ''}.`,
             margin, sigBaseY + 64, { width: contentWidth });
       }
 
       doc.y += 90;
-      ['Adjuster Name (Print)', 'License Number', 'Company / Firm Name'].forEach(label => {
-        doc.rect(margin, doc.y + 30, contentWidth, 1).fill('#374151');
-        doc.fontSize(8).fillColor('#94a3b8').text(label, margin, doc.y + 36, { width: contentWidth });
-        doc.y += 62;
+      let fieldY = doc.y;
+      [
+        ['Adjuster Name (Print)', sig?.name],
+        ['License Number', sig?.licenseNumber],
+        ['License State', sig?.licenseState],
+        ['Company / Firm Name', sig?.company],
+        ['Report Version Approved', report.versionApproved],
+      ].forEach(([label, value]) => {
+        if (value) {
+          doc.fontSize(10).fillColor('#0f172a').font('Helvetica')
+            .text(String(value), margin, fieldY + 12, { width: contentWidth, lineBreak: false });
+        }
+        doc.rect(margin, fieldY + 30, contentWidth, 1).fill('#374151');
+        doc.fontSize(8).fillColor('#94a3b8').text(label, margin, fieldY + 36, { width: contentWidth });
+        fieldY += 62;
       });
+      doc.y = fieldY;
 
       // ══════════════════════════════════════════════════════════════════════
       // POST-PROCESS: add header/footer to every page except the cover

@@ -1,11 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { getFirestore, getAuth } = require('../config/firebase');
+const { getFirestore } = require('../config/firebase');
 const { authenticateToken, requireTier } = require('../middleware/auth');
 const { sendTeamInviteEmail } = require('../services/emailService');
 
 const enterpriseOnly = requireTier('enterprise');
+
+const byNewestInvite = (a, b) => {
+  const aTime = Date.parse(a.invitedAt || '') || 0;
+  const bTime = Date.parse(b.invitedAt || '') || 0;
+  return bTime - aTime;
+};
 
 // Role hierarchy
 const ROLES = {
@@ -21,13 +27,16 @@ router.get('/members', authenticateToken, enterpriseOnly, async (req, res) => {
     const db = getFirestore();
     const snap = await db.collection('enterpriseTeams')
       .where('ownerId', '==', req.user.uid)
-      .orderBy('invitedAt', 'desc')
       .get();
 
-    const members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Enterprise teams are plan-bounded and small. Sorting after the single-field
+    // owner query avoids a fragile Firestore composite-index dependency while
+    // preserving the existing newest-first API contract.
+    const members = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(byNewestInvite);
     return res.json({ success: true, members });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    console.error('List team members error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load team members', code: 'TEAM_LIST_ERROR' });
   }
 });
 
@@ -177,4 +186,5 @@ router.post('/accept/:token', authenticateToken, async (req, res) => {
   }
 });
 
+router._test = { byNewestInvite };
 module.exports = router;

@@ -8,7 +8,7 @@ export default function ConfirmDialog({
   title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
   loading = false, danger = true, onConfirm, onClose,
 }) {
-  useEscapeToClose(onClose, !loading);
+  useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

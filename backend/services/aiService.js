@@ -352,6 +352,30 @@ const enhanceContent = async (rawContent) => {
   }
 };
 
+const buildSectionSuggestionPrompt = ({ title, body, reportContext = '' }) => `You are assisting a licensed insurance adjuster with ONE SECTION of a DRAFT inspection report.
+
+SECTION: ${title}
+CURRENT SECTION TEXT:
+${body || '(empty)'}
+
+LIMITED REPORT CONTEXT:
+${reportContext || '(none provided)'}
+
+Return only a proposed replacement for the section body, without a heading or commentary.
+- Preserve supported facts and do not invent details.
+- Use cautious observational wording such as "appears", "may indicate", "is consistent with", and "should be verified".
+- Do not determine coverage, liability, cause of loss, fraud, policy interpretation, structural safety, mold, code compliance, engineering conclusions, or final repair costs.
+- Flag professional determinations for qualified human review.
+- This is only a suggestion. A human reviewer will explicitly accept, reject, or edit it.`;
+
+const suggestReportSection = async input => {
+  const prompt = buildSectionSuggestionPrompt(input);
+  const { text, modelUsed } = await generateWithFallback(prompt, { maxTokens: 1200, temperature: 0.3 });
+  const suggestion = text.replace(/^```(?:markdown)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  if (!suggestion) throw new Error('AI returned an empty section suggestion');
+  return { suggestion, modelUsed };
+};
+
 const checkAIHealth = async () => {
   const [claudeOk, watsonxOk] = await Promise.all([anthropic.checkHealth(), checkWatsonx()]);
   return {
@@ -361,4 +385,7 @@ const checkAIHealth = async () => {
   };
 };
 
-module.exports = { generateReport, analyzeImages, generateSummary, generateScopeOfWork, checkQuality, enhanceContent, checkAIHealth };
+module.exports = {
+  generateReport, analyzeImages, generateSummary, generateScopeOfWork, checkQuality,
+  enhanceContent, buildSectionSuggestionPrompt, suggestReportSection, checkAIHealth,
+};

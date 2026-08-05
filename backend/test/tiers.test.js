@@ -7,6 +7,7 @@ const {
   isAtLeastTier,
   canGenerate,
   getBaseTier,
+  getTierKeyFromStripePriceId,
 } = require('../config/tiers');
 
 test('plan limits match the documented offer (5/50/200/unlimited)', () => {
@@ -48,4 +49,20 @@ test('every tier in TIER_ORDER exists in TIERS', () => {
   for (const name of TIER_ORDER) {
     assert.ok(TIERS[name], `missing tier config: ${name}`);
   }
+});
+
+test('Stripe price IDs resolve back to the correct monthly or annual tier key', () => {
+  const previousMonthly = process.env.STRIPE_PRICE_AGENCY;
+  const previousAnnual = process.env.STRIPE_PRICE_AGENCY_ANNUAL;
+  process.env.STRIPE_PRICE_AGENCY = 'price_agency_monthly_test';
+  process.env.STRIPE_PRICE_AGENCY_ANNUAL = 'price_agency_annual_test';
+
+  assert.equal(getTierKeyFromStripePriceId('price_agency_monthly_test'), 'agency');
+  assert.equal(getTierKeyFromStripePriceId('price_agency_annual_test'), 'agency_annual');
+  assert.equal(getTierKeyFromStripePriceId('price_unknown'), null);
+
+  if (previousMonthly === undefined) delete process.env.STRIPE_PRICE_AGENCY;
+  else process.env.STRIPE_PRICE_AGENCY = previousMonthly;
+  if (previousAnnual === undefined) delete process.env.STRIPE_PRICE_AGENCY_ANNUAL;
+  else process.env.STRIPE_PRICE_AGENCY_ANNUAL = previousAnnual;
 });

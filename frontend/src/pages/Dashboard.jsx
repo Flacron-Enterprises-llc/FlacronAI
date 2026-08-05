@@ -14,6 +14,7 @@ import ReportMarkdown from '../components/ReportMarkdown';
 import TierBadge from '../components/TierBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
+import SectionedReportEditor from '../components/SectionedReportEditor';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
@@ -1394,9 +1395,7 @@ export default function Dashboard() {
                             {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
                           </button>
                         </div>
-                        <textarea value={editableContent} onChange={e => setEditableContent(e.target.value)}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700 leading-relaxed font-mono resize-y focus:outline-none focus:ring-2 focus:ring-orange-400"
-                          style={{ minHeight: '360px' }} spellCheck={false} />
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
                       </div>
                     </div>
 

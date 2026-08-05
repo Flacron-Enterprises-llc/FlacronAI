@@ -12,17 +12,17 @@ const FAQS = [
   {
     category: 'General',
     q: 'What is FlacronAI?',
-    a: 'FlacronAI is an AI-powered insurance claim report generation platform. It analyzes damage photos and drafts professional, consistently structured claim reports in minutes rather than hours — ready for your review and approval.',
+    a: 'FlacronAI is an AI-assisted insurance documentation platform. It organizes submitted claim details, notes, and supported damage photos into a structured draft that must be reviewed, edited, and approved by a qualified professional.',
   },
   {
     category: 'General',
     q: 'What types of claims does FlacronAI support?',
-    a: 'FlacronAI supports all major property claim types: Water Damage, Fire, Wind, Hail, Mold, Vandalism, and Other. For each type, the AI applies appropriate documentation and language standards specific to that loss type.',
+    a: 'FlacronAI provides draft workflows for Water Damage, Fire, Wind, Hail, Mold, Vandalism, and Other property-loss documentation. Users remain responsible for selecting the appropriate workflow, template, disclaimers, and professional review requirements for their role and jurisdiction.',
   },
   {
     category: 'General',
     q: 'What report types can I generate?',
-    a: 'You can generate Initial, Supplemental, Final, and Re-Inspection reports. Each report type is formatted to meet industry standards for that specific document type.',
+    a: 'You can generate Initial, Supplemental, Final, and Re-Inspection report drafts. Your organization should verify that the selected template and final content meet its own carrier, client, contractual, and jurisdictional requirements.',
   },
   {
     category: 'General',
@@ -39,7 +39,7 @@ const FAQS = [
   {
     category: 'Billing',
     q: 'What are the plan differences?',
-    a: 'Starter: 5 free reports/month with watermark. Professional ($39.99/mo): 50 reports, no watermark, all export formats, API access. Agency ($99.99/mo): 200 reports, full CRM suite, API access. Enterprise ($499/mo): Unlimited reports, white-label portal, dedicated support, team management.',
+    a: 'Starter: 5 reports/month with watermark. Professional ($39.99/mo): 50 reports, no watermark, and all export formats. Agency ($99.99/mo): 200 reports, CRM, and API-key access. Enterprise ($499/mo): unlimited reports, white-label portal, API-key access, and team management.',
   },
   {
     category: 'Billing',
@@ -66,7 +66,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'What AI models does FlacronAI use?',
-    a: 'FlacronAI uses enterprise AI models — IBM watsonx for report drafting with OpenAI as fallback and for image analysis — combined with FlacronAI\'s own report structuring. Every draft is designed to be reviewed and approved by a professional before use.',
+    a: 'FlacronAI uses Anthropic models for report drafting and supported-image analysis, with IBM watsonx available as a text-only fallback. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
   },
   {
     category: 'Technical',
@@ -76,12 +76,12 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'How long does report generation take?',
-    a: 'Generation time depends on the number of photos uploaded and current AI service load — typically well under a few minutes. The report appears in your dashboard as soon as it is ready.',
+    a: 'Generation time varies with the amount of submitted documentation, supported photos, and current provider availability. The report appears in your dashboard when processing is complete.',
   },
   {
     category: 'Technical',
     q: 'What export formats are available?',
-    a: 'Professional, Agency, and Enterprise plans can export in PDF, DOCX (Word), and HTML formats. The Starter plan supports PDF export only.',
+    a: 'Professional, Agency, and Enterprise plans can export in PDF, DOCX (Word), and HTML formats. Starter exports are limited and remain watermarked. Unapproved drafts are clearly marked as drafts on every plan.',
   },
   {
     category: 'Technical',
@@ -93,7 +93,7 @@ const FAQS = [
   {
     category: 'API',
     q: 'Which plans include API access?',
-    a: 'API access is available on Professional, Agency, and Enterprise plans. Starter users can access the web interface only.',
+    a: 'API-key access is available on Agency and Enterprise plans. Starter and Professional users access FlacronAI through the web application.',
   },
   {
     category: 'API',
@@ -113,7 +113,7 @@ const FAQS = [
   {
     category: 'API',
     q: 'Does FlacronAI comply with GDPR and CCPA?',
-    a: 'Yes. FlacronAI is designed with privacy regulations in mind. You can request deletion of all your data at any time by contacting support@flacronenterprises.com. We process data only as described in our Privacy Policy and do not sell personal data to third parties. For enterprise customers with GDPR DPA requirements, please contact our sales team.',
+    a: 'FlacronAI includes privacy controls and processes data as described in the Privacy Policy, but this statement is not a legal certification of compliance. Account deletion is available in Settings, subject to the retention terms described in the Privacy Policy. Organizations that require a DPA or jurisdiction-specific review should contact the sales team before use.',
   },
 ];
 

@@ -19,6 +19,7 @@ import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI } from '../services/api';
+import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -65,7 +66,7 @@ function KeyModal({ apiKey, onClose }) {
 }
 
 function CancelModal({ onConfirm, onClose, loading }) {
-  useEscapeToClose(onClose, !loading);
+  useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -95,7 +96,7 @@ function DeleteAccountModal({ onConfirm, onClose, loading }) {
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const canSubmit = password.length > 0 && confirmText === 'DELETE';
-  useEscapeToClose(onClose, !loading);
+  useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -151,6 +152,7 @@ export default function Settings() {
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysError, setKeysError] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState(DEFAULT_API_KEY_SCOPES);
   const [createdKey, setCreatedKey] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
   const [revokeKeyId, setRevokeKeyId] = useState(null);
@@ -177,6 +179,8 @@ export default function Settings() {
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaSetupData, setMfaSetupData] = useState(null); // { secret, qrCode } while mid-enrollment
   const [mfaCode, setMfaCode] = useState('');
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState([]);
   const [mfaLoading, setMfaLoading] = useState(false);
 
   useEffect(() => {
@@ -306,11 +310,13 @@ export default function Settings() {
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) { toast.error('Enter a name for the API key'); return; }
+    if (newKeyScopes.length === 0) { toast.error('Select at least one permission'); return; }
     setCreatingKey(true);
     try {
-      const res = await usersAPI.createApiKey(newKeyName.trim());
+      const res = await usersAPI.createApiKey(newKeyName.trim(), newKeyScopes);
       setCreatedKey(res.data.key || res.data.apiKey);
       setNewKeyName('');
+      setNewKeyScopes(DEFAULT_API_KEY_SCOPES);
       fetchApiKeys();
     } catch { toast.error('Failed to create API key'); }
     finally { setCreatingKey(false); }
@@ -383,11 +389,12 @@ export default function Settings() {
     if (mfaCode.length < 6) return;
     setMfaLoading(true);
     try {
-      await authAPI.mfaVerifySetup(mfaCode);
+      const res = await authAPI.mfaVerifySetup(mfaCode);
       toast.success('Two-factor authentication enabled');
       setMfaEnabled(true);
       setMfaSetupData(null);
       setMfaCode('');
+      setMfaRecoveryCodes(res.data.recoveryCodes || []);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
     } finally {
@@ -396,13 +403,15 @@ export default function Settings() {
   };
 
   const handleMfaDisable = async () => {
-    if (mfaCode.length < 6) return;
+    if (!mfaDisablePassword) return;
     setMfaLoading(true);
     try {
-      await authAPI.mfaDisable(mfaCode);
+      await authAPI.mfaDisable({ password: mfaDisablePassword });
       toast.success('Two-factor authentication disabled');
       setMfaEnabled(false);
       setMfaCode('');
+      setMfaDisablePassword('');
+      setMfaRecoveryCodes([]);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
     } finally {
@@ -542,12 +551,34 @@ export default function Settings() {
                       </div>
                     )}
 
+                    {mfaRecoveryCodes.length > 0 && (
+                      <div className="max-w-md rounded-xl border border-amber-300 bg-amber-50 p-4" role="status">
+                        <h3 className="font-semibold text-gray-900">Save your recovery codes now</h3>
+                        <p className="mt-1 text-sm text-gray-700">
+                          Each code works once if you lose access to your authenticator. They are not shown again.
+                        </p>
+                        <div className="my-3 grid grid-cols-2 gap-2 font-mono text-sm text-gray-900">
+                          {mfaRecoveryCodes.map(code => <code key={code}>{code}</code>)}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary px-4 py-2 text-sm"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(mfaRecoveryCodes.join('\n'));
+                            toast.success('Recovery codes copied');
+                          }}
+                        >
+                          Copy recovery codes
+                        </button>
+                      </div>
+                    )}
+
                     {mfaEnabled && (
                       <div className="max-w-sm space-y-3">
-                        <label className="label">Enter your current code to disable</label>
-                        <input type="text" inputMode="numeric" maxLength={8} className="input"
-                          value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
-                        <button onClick={handleMfaDisable} disabled={mfaLoading || mfaCode.length < 6} className="btn-danger text-sm py-2 px-4 disabled:opacity-50">
+                        <label className="label">Enter your account password to disable</label>
+                        <input type="password" autoComplete="current-password" className="input"
+                          value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} />
+                        <button onClick={handleMfaDisable} disabled={mfaLoading || !mfaDisablePassword} className="btn-danger text-sm py-2 px-4 disabled:opacity-50">
                           {mfaLoading ? 'Disabling...' : 'Disable Two-Factor Authentication'}
                         </button>
                       </div>
@@ -595,6 +626,19 @@ export default function Settings() {
                     <div className="space-y-4">
                       <div className="card p-6">
                         <h2 className="text-lg font-semibold text-gray-900 mb-4">Create API Key</h2>
+                        <fieldset className="mb-4">
+                          <legend className="text-sm font-medium text-gray-900 mb-2">Permissions</legend>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {API_KEY_SCOPES.map(scope => (
+                              <label key={scope.id} className="flex gap-2 rounded-lg border border-gray-200 p-3 cursor-pointer hover:border-orange-300">
+                                <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                                  onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
+                                <span><span className="block text-sm font-medium text-gray-900">{scope.label}</span><span className="block text-xs text-gray-500 mt-0.5">{scope.description}</span></span>
+                              </label>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-xs text-gray-500">Use the minimum permissions this integration needs. Permissions cannot be changed after creation.</p>
+                        </fieldset>
                         <div className="flex gap-3">
                           <input className="input flex-1" placeholder="Key name (e.g. Production App)"
                             value={newKeyName} onChange={e => setNewKeyName(e.target.value)} />
@@ -632,6 +676,9 @@ export default function Settings() {
                                     <span className="text-gray-500 text-xs">Created {new Date(key.createdAt).toLocaleDateString()}</span>
                                     {key.lastUsedAt && <span className="text-gray-500 text-xs">Last used {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
                                     {key.usageCount !== undefined && <span className="text-gray-500 text-xs">{key.usageCount} calls</span>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {(key.scopes || []).map(scope => <span key={scope} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">{formatApiScope(scope)}</span>)}
                                   </div>
                                 </div>
                                 <button onClick={() => handleRevokeKey(key._id || key.id)} className="p-2 hover:bg-red-500/10 rounded-lg transition-colors" title="Revoke">

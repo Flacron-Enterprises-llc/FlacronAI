@@ -2,41 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Printer, FileText, ShieldCheck, AlertCircle } from 'lucide-react';
 import { reportsAPI } from '../services/api';
-
-// Lightweight markdown → elements for the read-only shared view.
-function renderContent(md) {
-  const lines = (md || '').split('\n');
-  const out = [];
-  let table = null;
-  let key = 0;
-  const flushTable = () => {
-    if (!table) return;
-    const [head, ...rows] = table.filter(r => !/^\|\s*[-:]+\s*\|/.test(r));
-    const cells = (r) => r.split('|').slice(1, -1).map(c => c.trim());
-    out.push(
-      <div key={`t${key++}`} className="overflow-x-auto my-4">
-        <table className="w-full text-sm border border-gray-200 rounded-lg">
-          {head && <thead><tr className="bg-gray-50">{cells(head).map((c, i) => <th key={i} className="text-left px-3 py-2 font-semibold text-gray-700 border-b border-gray-200">{c.replace(/\*\*/g, '')}</th>)}</tr></thead>}
-          <tbody>{rows.map((r, ri) => <tr key={ri} className="border-b border-gray-100 last:border-0">{cells(r).map((c, i) => <td key={i} className="px-3 py-2 text-gray-600">{c.replace(/\*\*/g, '')}</td>)}</tr>)}</tbody>
-        </table>
-      </div>
-    );
-    table = null;
-  };
-  const inline = (t) => t.replace(/\*\*(.+?)\*\*/g, '$1');
-  for (const line of lines) {
-    if (line.trim().startsWith('|')) { (table = table || []).push(line); continue; }
-    flushTable();
-    if (line.startsWith('# ')) out.push(<h1 key={key++} className="text-2xl font-bold text-gray-900 mt-6 mb-3">{inline(line.slice(2))}</h1>);
-    else if (line.startsWith('## ')) out.push(<h2 key={key++} className="text-lg font-bold text-white bg-brand-600 rounded-lg px-3 py-2 mt-6 mb-3">{inline(line.slice(3))}</h2>);
-    else if (line.startsWith('### ')) out.push(<h3 key={key++} className="text-base font-semibold text-gray-900 mt-4 mb-2">{inline(line.slice(4))}</h3>);
-    else if (line.startsWith('> ')) out.push(<p key={key++} className="text-sm text-gray-500 italic border-l-2 border-brand-200 pl-3 my-3">{inline(line.slice(2))}</p>);
-    else if (line.trim().startsWith('- ')) out.push(<li key={key++} className="text-sm text-gray-600 ml-5 list-disc">{inline(line.trim().slice(2))}</li>);
-    else if (line.trim()) out.push(<p key={key++} className="text-sm text-gray-700 leading-relaxed my-2">{inline(line)}</p>);
-  }
-  flushTable();
-  return out;
-}
+import ReportMarkdown from '../components/ReportMarkdown';
 
 export default function SharedReport() {
   const { token } = useParams();
@@ -88,7 +54,7 @@ export default function SharedReport() {
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
             <FileText className="w-4 h-4" /> Inspection Report · Claim {report.claimNumber || '—'}
           </div>
-          <div className="prose-report">{renderContent(report.content)}</div>
+          <ReportMarkdown content={report.content} />
 
           {report.signature?.name && (
             <div className="mt-8 pt-4 border-t border-gray-200 flex items-start gap-2 text-sm text-gray-600">

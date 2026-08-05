@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Mail, MapPin, Clock, CheckCircle, MessageSquare, Phone, ChevronRight } from 'lucide-react';
+import { Mail, MapPin, Clock, CheckCircle, MessageSquare, ChevronRight } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { salesAPI } from '../services/api';
@@ -52,12 +52,12 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="Contact FlacronAI — Sales and Support" description="Talk to the FlacronAI team about plans, Enterprise white-label options, or support. We answer every message." path="/contact" />
+      <Seo title="Contact FlacronAI — Sales and Support" description="Contact FlacronAI about product support, billing, plans, or Enterprise white-label options." path="/contact" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-6xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Get in <span className="gradient-text">Touch</span></h1>
-          <p className="text-gray-600 max-w-xl mx-auto">Have a question, need help, or want to discuss enterprise options? We respond to all inquiries within one business day.</p>
+          <p className="text-gray-600 max-w-xl mx-auto">Have a question, need help, or want to discuss enterprise options? Send the details below and our team will follow up by email.</p>
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -71,7 +71,7 @@ export default function Contact() {
                   </div>
                 </motion.div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-3">Message Received!</h2>
-                <p className="text-gray-600 max-w-sm">Thank you for reaching out. Our team reviews all inquiries and will respond to your message at <span className="text-gray-900">{form.email}</span> within one business day.</p>
+                <p className="text-gray-600 max-w-sm">Thank you for reaching out. Our team will review your inquiry and follow up at <span className="text-gray-900">{form.email}</span>.</p>
                 <p className="text-gray-500 text-sm mt-4">For urgent technical issues, please email <a href="mailto:support@flacronenterprises.com" className="text-orange-400 underline">support@flacronenterprises.com</a> directly.</p>
                 <button onClick={() => { setSuccess(false); setForm({ name: '', email: '', subject: '', message: '' }); }}
                   className="btn-secondary mt-6 text-sm py-2 px-6">Send Another Message</button>
@@ -108,7 +108,7 @@ export default function Contact() {
                   <button type="submit" disabled={loading || !consent} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     {loading ? 'Sending...' : 'Send Message'}
                   </button>
-                  <p className="text-xs text-gray-500 text-center">We typically respond within 1 business day. For urgent support, use the live chat widget.</p>
+                  <p className="text-xs text-gray-500 text-center">Response timing depends on the request and support availability.</p>
                 </form>
               </div>
             )}
@@ -129,8 +129,8 @@ export default function Contact() {
                   color: 'text-amber-400 bg-amber-500/10',
                 },
                 {
-                  icon: Clock, title: 'Response Time',
-                  lines: ['Standard: 1 business day', 'Enterprise: Same-day'],
+                  icon: Clock, title: 'Response Expectations',
+                  lines: ['Timing varies by request', 'No guaranteed response window'],
                   color: 'text-green-400 bg-green-500/10',
                 },
               ].map(info => {

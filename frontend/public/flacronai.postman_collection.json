@@ -1,0 +1,30 @@
+{
+  "info": {
+    "name": "FlacronAI API",
+    "description": "Set apiBaseUrl to your deployment's /api URL and apiKey to an Agency or Enterprise API key. Requests affect real data in the selected deployment; no public sandbox is provided.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "apiBaseUrl", "value": "https://YOUR_API_BASE_URL/api" },
+    { "key": "apiKey", "value": "" },
+    { "key": "reportId", "value": "" }
+  ],
+  "auth": { "type": "apikey", "apikey": [{ "key": "key", "value": "X-API-Key", "type": "string" }, { "key": "value", "value": "{{apiKey}}", "type": "string" }, { "key": "in", "value": "header", "type": "string" }] },
+  "item": [
+    { "name": "Reports", "item": [
+      { "name": "Generate draft report", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "claimNumber", "value": "CLM-EXAMPLE-001", "type": "text" }, { "key": "insuredName", "value": "Example Insured", "type": "text" }, { "key": "propertyAddress", "value": "Example property address", "type": "text" }, { "key": "lossDate", "value": "2026-01-15", "type": "text" }, { "key": "lossType", "value": "Water Damage", "type": "text" }, { "key": "reportType", "value": "Initial", "type": "text" }] }, "url": { "raw": "{{apiBaseUrl}}/reports/generate", "host": ["{{apiBaseUrl}}"], "path": ["reports", "generate"] }, "description": "Creates a draft and consumes a report entitlement. This request is not idempotent; do not retry automatically after an ambiguous timeout." } },
+      { "name": "List reports", "request": { "method": "GET", "url": { "raw": "{{apiBaseUrl}}/reports?page=1&limit=10", "host": ["{{apiBaseUrl}}"], "path": ["reports"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] } } },
+      { "name": "Get report", "request": { "method": "GET", "url": { "raw": "{{apiBaseUrl}}/reports/{{reportId}}", "host": ["{{apiBaseUrl}}"], "path": ["reports", "{{reportId}}"] } } },
+      { "name": "Update report content", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"content\": \"## Executive Summary\\n\\nReviewed draft content.\"\n}" }, "url": { "raw": "{{apiBaseUrl}}/reports/{{reportId}}", "host": ["{{apiBaseUrl}}"], "path": ["reports", "{{reportId}}"] } } },
+      { "name": "Export report", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"format\": \"pdf\" }" }, "url": { "raw": "{{apiBaseUrl}}/reports/{{reportId}}/export", "host": ["{{apiBaseUrl}}"], "path": ["reports", "{{reportId}}", "export"] } } },
+      { "name": "Archive report", "request": { "method": "DELETE", "url": { "raw": "{{apiBaseUrl}}/reports/{{reportId}}?permanent=false", "host": ["{{apiBaseUrl}}"], "path": ["reports", "{{reportId}}"], "query": [{ "key": "permanent", "value": "false" }] } } }
+    ] },
+    { "name": "CRM", "item": [
+      { "name": "List clients", "request": { "method": "GET", "url": { "raw": "{{apiBaseUrl}}/crm/clients?page=1&limit=20", "host": ["{{apiBaseUrl}}"], "path": ["crm", "clients"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+      { "name": "Create client", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Example Client\",\n  \"email\": \"client@example.com\"\n}" }, "url": { "raw": "{{apiBaseUrl}}/crm/clients", "host": ["{{apiBaseUrl}}"], "path": ["crm", "clients"] } } }
+    ] },
+    { "name": "Account", "item": [
+      { "name": "Get profile", "request": { "method": "GET", "url": { "raw": "{{apiBaseUrl}}/users/profile", "host": ["{{apiBaseUrl}}"], "path": ["users", "profile"] } } }
+    ] }
+  ]
+}

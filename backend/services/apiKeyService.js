@@ -1,8 +1,9 @@
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { getFirestore, FieldValue } = require('../config/firebase');
+const { getFirestore } = require('../config/firebase');
+const { normalizeApiKeyScopes } = require('../config/apiScopes');
 
-const generateApiKey = async (userId, keyName) => {
+const generateApiKey = async (userId, keyName, scopes) => {
   const rawKey = 'flac_live_' + crypto.randomBytes(16).toString('hex');
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
   const keyId = uuidv4();
@@ -17,9 +18,10 @@ const generateApiKey = async (userId, keyName) => {
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
     usageCount: 0,
+    scopes: normalizeApiKeyScopes(scopes),
   });
 
-  return { key: rawKey, keyId, name: keyName };
+  return { key: rawKey, keyId, name: keyName, scopes: normalizeApiKeyScopes(scopes) };
 };
 
 const validateApiKey = async (rawKey) => {
@@ -56,18 +58,26 @@ const getUserKeys = async (userId) => {
     .where('active', '==', true)
     .get();
 
-  return snapshot.docs.sort((a, b) =>
+  const sortedDocs = snapshot.docs.sort((a, b) =>
     new Date(b.data().createdAt) - new Date(a.data().createdAt)
-  ).map(doc => {
+  );
+
+  return Promise.all(sortedDocs.map(async doc => {
     const data = doc.data();
+    const usageAggregate = await db.collection('apiUsage')
+      .where('keyId', '==', doc.id)
+      .count()
+      .get();
+
     return {
       id: doc.id,
       name: data.name,
       createdAt: data.createdAt,
       lastUsedAt: data.lastUsedAt,
-      usageCount: data.usageCount || 0,
+      usageCount: usageAggregate.data().count,
+      scopes: normalizeApiKeyScopes(data.scopes, { legacy: true }),
     };
-  });
+  }));
 };
 
 const getKeyUsage = async (keyId, userId) => {
@@ -102,6 +112,7 @@ const getKeyUsage = async (keyId, userId) => {
       name: keyDoc.data().name,
       createdAt: keyDoc.data().createdAt,
       lastUsedAt: keyDoc.data().lastUsedAt,
+      scopes: normalizeApiKeyScopes(keyDoc.data().scopes, { legacy: true }),
     },
   };
 };

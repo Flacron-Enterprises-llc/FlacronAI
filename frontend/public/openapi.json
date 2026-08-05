@@ -1,0 +1,55 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FlacronAI API",
+    "version": "1.0.0",
+    "description": "REST API for draft insurance inspection reports. Replace the server URL with the backend host for your deployment. AI output requires human review before finalization."
+  },
+  "servers": [{ "url": "https://YOUR_API_BASE_URL/api", "description": "Deployment-specific backend" }],
+  "security": [{ "ApiKeyAuth": [] }],
+  "components": {
+    "parameters": { "ReportId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string" } } },
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key", "description": "Agency or Enterprise integration API key. Immutable scopes: reports:read, reports:write, reports:generate, reports:export, crm:read, crm:write. Missing permissions return 403 API_SCOPE_REQUIRED." },
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "Firebase ID token", "description": "Interactive web-session authentication; integrations should use API keys." }
+    },
+    "schemas": {
+      "Error": { "type": "object", "properties": { "success": { "type": "boolean", "example": false }, "error": { "type": "string" }, "code": { "type": "string" } } },
+      "Report": { "type": "object", "properties": { "id": { "type": "string" }, "claimNumber": { "type": "string" }, "status": { "type": "string", "enum": ["draft", "finalized", "archived", "failed", "processing"] }, "content": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "Client": { "type": "object", "required": ["name"], "properties": { "id": { "type": "string" }, "name": { "type": "string", "maxLength": 200 }, "email": { "type": "string", "format": "email" }, "phone": { "type": "string" }, "company": { "type": "string" }, "address": { "type": "string" }, "notes": { "type": "string" } } }
+    }
+  },
+  "paths": {
+    "/reports/generate": {
+      "post": {
+        "summary": "Generate a draft inspection report",
+        "x-required-scope": "reports:generate",
+        "description": "Consumes a monthly report entitlement. Generated content remains a draft until explicit professional review and approval.",
+        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "required": ["claimNumber", "insuredName", "propertyAddress", "lossDate", "lossType", "reportType"], "properties": { "claimId": { "type": "string", "description": "Agency+ CRM claim link" }, "claimNumber": { "type": "string" }, "insuredName": { "type": "string" }, "propertyAddress": { "type": "string" }, "lossDate": { "type": "string", "format": "date" }, "lossType": { "type": "string" }, "reportType": { "type": "string" }, "additionalNotes": { "type": "string" }, "photos": { "type": "array", "maxItems": 100, "items": { "type": "string", "format": "binary" } } } } } } },
+        "responses": { "201": { "description": "Draft report generated" }, "400": { "description": "Invalid input" }, "403": { "description": "Monthly entitlement exhausted" }, "429": { "description": "Rate limit exceeded" } }
+      }
+    },
+    "/reports": {
+      "get": { "summary": "List reports", "x-required-scope": "reports:read", "parameters": [{ "in": "query", "name": "page", "schema": { "type": "integer", "minimum": 1 } }, { "in": "query", "name": "limit", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }, { "in": "query", "name": "status", "schema": { "type": "string" } }, { "in": "query", "name": "search", "schema": { "type": "string" } }], "responses": { "200": { "description": "Paginated tenant-owned reports" }, "401": { "description": "Authentication required" } } }
+    },
+    "/reports/{id}": {
+      "get": { "summary": "Get a report", "parameters": [{ "$ref": "#/components/parameters/ReportId" }], "responses": { "200": { "description": "Tenant-owned report" }, "404": { "description": "Report not found" } } },
+      "put": { "summary": "Update editable report fields", "parameters": [{ "$ref": "#/components/parameters/ReportId" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "content": { "type": "string" }, "additionalNotes": { "type": "string" }, "clientId": { "type": "string", "nullable": true } } } } } }, "responses": { "200": { "description": "Report updated; finalized reports reopen as draft when content changes" } } },
+      "delete": { "summary": "Archive or permanently delete a report", "parameters": [{ "$ref": "#/components/parameters/ReportId" }, { "in": "query", "name": "permanent", "schema": { "type": "boolean", "default": false } }], "responses": { "200": { "description": "Report archived or deleted" } } }
+    },
+    "/reports/{id}/approve": {
+      "post": {
+        "summary": "Finalize after explicit professional review",
+        "parameters": [{ "$ref": "#/components/parameters/ReportId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["signature", "confirmReview"], "properties": { "content": { "type": "string" }, "confirmReview": { "type": "boolean", "enum": [true] }, "signature": { "type": "object", "description": "Requires name, licenseNumber, licenseState, and company." } } } } } },
+        "responses": { "200": { "description": "Report finalized" }, "400": { "description": "Review confirmation or signature incomplete" } }
+      }
+    },
+    "/reports/{id}/export": { "post": { "summary": "Create a PDF, DOCX, or HTML export", "parameters": [{ "$ref": "#/components/parameters/ReportId" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["format"], "properties": { "format": { "type": "string", "enum": ["pdf", "docx", "html"] } } } } } }, "responses": { "200": { "description": "Export metadata/download reference" } } } },
+    "/crm/clients": {
+      "get": { "summary": "List CRM clients (Agency+)", "responses": { "200": { "description": "Paginated tenant-owned clients" }, "403": { "description": "Agency or Enterprise tier required" } } },
+      "post": { "summary": "Create a CRM client (Agency+)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } }, "responses": { "201": { "description": "Client created" } } }
+    },
+    "/users/profile": { "get": { "summary": "Get the authenticated profile", "responses": { "200": { "description": "User profile and entitlement data" } } } }
+  }
+}

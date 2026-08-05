@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
@@ -22,10 +22,11 @@ const Auth = () => {
   const [errors, setErrors] = useState({});
   const [authState, setAuthState] = useState('form'); // 'form' | 'verifying' | 'processing'
   const [resendCooldown, setResendCooldown] = useState(0);
-  useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading);
+  useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading, forgotOpen);
 
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
   const { login, register, loginWithGoogle, emailVerified, reloadUser } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const pendingPlan = searchParams.get('plan');
@@ -37,7 +38,15 @@ const Auth = () => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePostAuth = useCallback(async () => {
+  const handlePostAuth = useCallback(async (authenticatedUser = auth.currentUser) => {
+    const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+    const signedInEmail = authenticatedUser?.email?.trim().toLowerCase();
+
+    if (adminEmail && signedInEmail === adminEmail) {
+      navigate('/admin', { replace: true });
+      return;
+    }
+
     const planToUse = pendingPlan || sessionStorage.getItem('flac_pending_plan');
     if (planToUse && planToUse !== 'starter') {
       try {
@@ -58,8 +67,10 @@ const Auth = () => {
         return;
       }
     }
-    navigate('/dashboard');
-  }, [pendingPlan, navigate]);
+    const requestedPath = location.state?.from?.pathname;
+    const destination = requestedPath && requestedPath !== '/auth' ? requestedPath : '/dashboard';
+    navigate(destination, { replace: true });
+  }, [location.state, pendingPlan, navigate]);
 
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -115,9 +126,9 @@ const Auth = () => {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await login(form.email, form.password);
+        const result = await login(form.email, form.password);
         toast.success('Welcome back!');
-        await handlePostAuth();
+        await handlePostAuth(result.user);
       } else {
         await register(form.email, form.password, form.displayName);
         toast.success('Account created! Please verify your email.');
@@ -154,10 +165,10 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      await loginWithGoogle();
+      const result = await loginWithGoogle();
       toast.success('Signed in with Google!');
       // Google users are already verified — go straight to post-auth
-      await handlePostAuth();
+      await handlePostAuth(result.user);
     } catch (err) {
       if (
         err?.code === 'auth/account-exists-with-different-credential' ||

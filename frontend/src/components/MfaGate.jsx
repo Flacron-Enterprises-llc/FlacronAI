@@ -15,7 +15,7 @@ const MfaGate = ({ onVerified }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (code.length < 6) return;
+    if (code.replace(/[^a-z0-9]/gi, '').length < 6) return;
     setLoading(true);
     try {
       await authAPI.mfaVerify(code);
@@ -34,19 +34,19 @@ const MfaGate = ({ onVerified }) => {
           <ShieldCheck className="w-8 h-8 text-orange-500" />
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Two-Factor Authentication</h2>
-        <p className="text-gray-600 text-sm mb-6">Enter the 6-digit code from your authenticator app.</p>
+        <p className="text-gray-600 text-sm mb-6">Enter the 6-digit code from your authenticator app or a recovery code.</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
-            inputMode="numeric"
-            maxLength={8}
+            autoComplete="one-time-code"
+            maxLength={17}
             autoFocus
             className="input text-center text-lg tracking-widest"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-            placeholder="000000"
+            onChange={(e) => setCode(e.target.value.replace(/[^a-z0-9-]/gi, '').toUpperCase())}
+            placeholder="000000 or XXXXXXXX-XXXXXXXX"
           />
-          <button type="submit" disabled={loading || code.length < 6} className="btn-primary w-full disabled:opacity-50">
+          <button type="submit" disabled={loading || code.replace(/[^a-z0-9]/gi, '').length < 6} className="btn-primary w-full disabled:opacity-50">
             {loading ? 'Verifying...' : 'Verify'}
           </button>
         </form>

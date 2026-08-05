@@ -1,12 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
-const { requireTier } = require('../middleware/auth');
+const { authenticateAny, requireTier, requireApiScope } = require('../middleware/auth');
 const crm = require('../services/crmService');
 const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
 
 const agencyPlus = requireTier('agency');
+const crmRead = requireApiScope('crm:read');
+const crmWrite = requireApiScope('crm:write');
+
+router.get('/dashboard/analytics', authenticateAny, crmRead, agencyPlus, async (req, res) => {
+  try {
+    const analytics = await crm.getDashboardAnalytics(req.user.uid);
+    return res.json({ success: true, analytics });
+  } catch (err) {
+    console.error('CRM analytics error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load CRM analytics', code: 'CRM_ANALYTICS_ERROR' });
+  }
+});
 
 // Loose but real phone check: digits/spaces/parens/dashes/dots, optional leading +, 7-20 chars.
 const PHONE_RE = /^[+]?[\d\s().-]{7,20}$/;
@@ -27,7 +38,7 @@ const clientValidators = (requireName) => [
 
 // ── CLIENTS ──────────────────────────────────────────────────────────────────
 
-router.get('/clients', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/clients', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const { page = 1, limit = 20, search = '' } = req.query;
     const result = await crm.getClients(req.user.uid, { page: parseInt(page), limit: parseInt(limit), search });
@@ -37,7 +48,7 @@ router.get('/clients', authenticateToken, agencyPlus, async (req, res) => {
   }
 });
 
-router.post('/clients', authenticateToken, agencyPlus, clientValidators(true), async (req, res) => {
+router.post('/clients', authenticateAny, crmWrite, agencyPlus, clientValidators(true), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -48,7 +59,7 @@ router.post('/clients', authenticateToken, agencyPlus, clientValidators(true), a
   }
 });
 
-router.get('/clients/:id', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/clients/:id', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const client = await crm.getClient(req.user.uid, req.params.id);
     return res.json({ success: true, client });
@@ -57,7 +68,7 @@ router.get('/clients/:id', authenticateToken, agencyPlus, async (req, res) => {
   }
 });
 
-router.put('/clients/:id', authenticateToken, agencyPlus, clientValidators(false), async (req, res) => {
+router.put('/clients/:id', authenticateAny, crmWrite, agencyPlus, clientValidators(false), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -68,7 +79,7 @@ router.put('/clients/:id', authenticateToken, agencyPlus, clientValidators(false
   }
 });
 
-router.delete('/clients/:id', authenticateToken, agencyPlus, async (req, res) => {
+router.delete('/clients/:id', authenticateAny, crmWrite, agencyPlus, async (req, res) => {
   try {
     await crm.deleteClient(req.user.uid, req.params.id);
     recordAuditLog({
@@ -81,12 +92,25 @@ router.delete('/clients/:id', authenticateToken, agencyPlus, async (req, res) =>
   }
 });
 
-router.get('/clients/:id/reports', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/clients/:id/reports', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const reports = await crm.getClientReports(req.user.uid, req.params.id);
     return res.json({ success: true, reports });
   } catch (err) {
     return res.status(404).json({ success: false, error: err.message, code: 'NOT_FOUND' });
+  }
+});
+
+router.get('/clients/:id/profile', authenticateAny, crmRead, agencyPlus, async (req, res) => {
+  try {
+    const profile = await crm.getClientProfile(req.user.uid, req.params.id);
+    return res.json({ success: true, profile });
+  } catch (err) {
+    if (err.message === 'Client not found') {
+      return res.status(404).json({ success: false, error: 'Client not found', code: 'NOT_FOUND' });
+    }
+    console.error('CRM client profile error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load client profile', code: 'CRM_PROFILE_ERROR' });
   }
 });
 
@@ -107,7 +131,7 @@ const appointmentValidators = (requireFields) => [
 
 // ── APPOINTMENTS ─────────────────────────────────────────────────────────────
 
-router.get('/appointments', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/appointments', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const { startDate, endDate, status } = req.query;
     const appts = await crm.getAppointments(req.user.uid, { startDate, endDate, status });
@@ -117,7 +141,7 @@ router.get('/appointments', authenticateToken, agencyPlus, async (req, res) => {
   }
 });
 
-router.post('/appointments', authenticateToken, agencyPlus, appointmentValidators(true), async (req, res) => {
+router.post('/appointments', authenticateAny, crmWrite, agencyPlus, appointmentValidators(true), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -128,7 +152,7 @@ router.post('/appointments', authenticateToken, agencyPlus, appointmentValidator
   }
 });
 
-router.put('/appointments/:id', authenticateToken, agencyPlus, appointmentValidators(false), async (req, res) => {
+router.put('/appointments/:id', authenticateAny, crmWrite, agencyPlus, appointmentValidators(false), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -139,7 +163,7 @@ router.put('/appointments/:id', authenticateToken, agencyPlus, appointmentValida
   }
 });
 
-router.delete('/appointments/:id', authenticateToken, agencyPlus, async (req, res) => {
+router.delete('/appointments/:id', authenticateAny, crmWrite, agencyPlus, async (req, res) => {
   try {
     await crm.deleteAppointment(req.user.uid, req.params.id);
     recordAuditLog({
@@ -171,7 +195,7 @@ const claimValidators = (requireFields) => [
 
 // ── CLAIMS ────────────────────────────────────────────────────────────────────
 
-router.get('/claims', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/claims', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, search = '' } = req.query;
     const result = await crm.getClaims(req.user.uid, { page: parseInt(page), limit: parseInt(limit), status, search });
@@ -181,7 +205,7 @@ router.get('/claims', authenticateToken, agencyPlus, async (req, res) => {
   }
 });
 
-router.post('/claims', authenticateToken, agencyPlus, claimValidators(true), async (req, res) => {
+router.post('/claims', authenticateAny, crmWrite, agencyPlus, claimValidators(true), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -195,7 +219,7 @@ router.post('/claims', authenticateToken, agencyPlus, claimValidators(true), asy
   }
 });
 
-router.get('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/claims/:id', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const claim = await crm.getClaim(req.user.uid, req.params.id);
     return res.json({ success: true, claim });
@@ -204,7 +228,7 @@ router.get('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
   }
 });
 
-router.get('/claims/:id/reports', authenticateToken, agencyPlus, async (req, res) => {
+router.get('/claims/:id/reports', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
     const reports = await crm.getClaimReports(req.user.uid, req.params.id);
     return res.json({ success: true, reports });
@@ -213,7 +237,20 @@ router.get('/claims/:id/reports', authenticateToken, agencyPlus, async (req, res
   }
 });
 
-router.put('/claims/:id', authenticateToken, agencyPlus, claimValidators(false), async (req, res) => {
+router.get('/claims/:id/profile', authenticateAny, crmRead, agencyPlus, async (req, res) => {
+  try {
+    const profile = await crm.getClaimProfile(req.user.uid, req.params.id);
+    return res.json({ success: true, profile });
+  } catch (err) {
+    if (err.message === 'Claim not found') {
+      return res.status(404).json({ success: false, error: 'Claim not found', code: 'NOT_FOUND' });
+    }
+    console.error('CRM claim profile error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load claim details', code: 'CRM_CLAIM_PROFILE_ERROR' });
+  }
+});
+
+router.put('/claims/:id', authenticateAny, crmWrite, agencyPlus, claimValidators(false), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
@@ -227,7 +264,7 @@ router.put('/claims/:id', authenticateToken, agencyPlus, claimValidators(false),
   }
 });
 
-router.delete('/claims/:id', authenticateToken, agencyPlus, async (req, res) => {
+router.delete('/claims/:id', authenticateAny, crmWrite, agencyPlus, async (req, res) => {
   try {
     await crm.deleteClaim(req.user.uid, req.params.id);
     recordAuditLog({

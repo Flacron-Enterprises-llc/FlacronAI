@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Zap, ChevronDown, LogOut, User, Settings } from 'lucide-react';
+import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import TierBadge from './TierBadge.jsx';
 
@@ -52,6 +52,9 @@ const Navbar = ({
     { label: 'Pricing', href: '/pricing' },
     { label: 'Docs', href: '/docs/api' },
     ...(isAuthenticated ? [{ label: 'Dashboard', href: '/dashboard' }] : []),
+    ...(isAuthenticated && (tier === 'agency' || tier === 'enterprise')
+      ? [{ label: 'CRM', href: '/crm' }]
+      : []),
   ];
 
   const bgClass = scrolled || !transparent
@@ -85,7 +88,7 @@ const Navbar = ({
                   key={link.label}
                   to={link.href}
                   className={`text-sm transition-colors font-medium ${
-                    location.pathname === link.href
+                    (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
                       ? 'text-orange-500 font-semibold'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
@@ -128,6 +131,12 @@ const Navbar = ({
                           <Zap className="w-4 h-4 text-orange-500" />
                           Dashboard
                         </Link>
+                        {(tier === 'agency' || tier === 'enterprise') && (
+                          <Link to="/crm" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                            <Users className="w-4 h-4 text-orange-500" />
+                            CRM
+                          </Link>
+                        )}
                         <Link to="/settings" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                           <Settings className="w-4 h-4 text-gray-400" />
                           Settings
@@ -192,7 +201,7 @@ const Navbar = ({
                     key={link.label}
                     to={link.href}
                     className={`block px-3 py-2.5 rounded-lg transition-colors ${
-                      location.pathname === link.href
+                      (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
                         ? 'text-orange-500 font-semibold bg-orange-50'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }`}

@@ -4,8 +4,12 @@ const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getFirestore } = require('../config/firebase');
-const { authenticateAny, authenticateToken } = require('../middleware/auth');
-const { generateReport, analyzeImages, checkQuality, checkAIHealth } = require('../services/aiService');
+const { authenticateAny, requireApiScope } = require('../middleware/auth');
+const reportsRead = requireApiScope('reports:read');
+const reportsWrite = requireApiScope('reports:write');
+const reportsGenerate = requireApiScope('reports:generate');
+const reportsExport = requireApiScope('reports:export');
+const { generateReport, analyzeImages, checkQuality, checkAIHealth, suggestReportSection } = require('../services/aiService');
 const { generatePDF } = require('../utils/properPdfGenerator');
 const { generateDOCX } = require('../utils/documentGenerator');
 const { addWatermarkToPDF } = require('../services/watermarkService');
@@ -96,7 +100,7 @@ router.get('/ai-status', async (req, res) => {
 const TEMPLATE_FIELDS = ['lossType', 'reportType', 'propertyDetails', 'lossDescription', 'damagesObserved', 'recommendations', 'additionalNotes'];
 
 // GET /api/reports/templates — list the user's templates
-router.get('/templates', authenticateAny, async (req, res) => {
+router.get('/templates', authenticateAny, reportsRead, async (req, res) => {
   try {
     const db = getFirestore();
     const snap = await db.collection('reportTemplates').where('userId', '==', req.user.uid).get();
@@ -110,7 +114,7 @@ router.get('/templates', authenticateAny, async (req, res) => {
 });
 
 // POST /api/reports/templates — save a template
-router.post('/templates', authenticateAny, async (req, res) => {
+router.post('/templates', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ success: false, error: 'Template name is required', code: 'VALIDATION_ERROR' });
@@ -129,7 +133,7 @@ router.post('/templates', authenticateAny, async (req, res) => {
 });
 
 // DELETE /api/reports/templates/:tid — delete a template
-router.delete('/templates/:tid', authenticateAny, async (req, res) => {
+router.delete('/templates/:tid', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reportTemplates').doc(req.params.tid);
@@ -145,7 +149,7 @@ router.delete('/templates/:tid', authenticateAny, async (req, res) => {
 });
 
 // POST /api/reports/generate
-router.post('/generate', authenticateAny, (req, res, next) => {
+router.post('/generate', authenticateAny, reportsGenerate, (req, res, next) => {
   req.reportId = uuidv4();
   next();
 }, imageUpload.array('images', 100), async (req, res) => {
@@ -304,7 +308,7 @@ router.post('/generate', authenticateAny, (req, res, next) => {
 });
 
 // GET /api/reports
-router.get('/', authenticateAny, async (req, res) => {
+router.get('/', authenticateAny, reportsRead, async (req, res) => {
   try {
     const db = getFirestore();
     const { limit = 20, page = 1, lossType, status, startDate, endDate, search } = req.query;
@@ -352,7 +356,7 @@ router.get('/', authenticateAny, async (req, res) => {
 });
 
 // GET /api/reports/:id
-router.get('/:id', authenticateAny, async (req, res) => {
+router.get('/:id', authenticateAny, reportsRead, async (req, res) => {
   try {
     const db = getFirestore();
     const doc = await db.collection('reports').doc(req.params.id).get();
@@ -365,8 +369,38 @@ router.get('/:id', authenticateAny, async (req, res) => {
   }
 });
 
+// POST /api/reports/:id/sections/suggest
+// Generates a detached proposal only. It never writes report content or changes status;
+// the reviewer must explicitly accept it in the editor and then save (Golden Rule #3).
+router.post('/:id/sections/suggest', authenticateAny, reportsGenerate, async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim();
+    const body = String(req.body?.body || '').trim();
+    if (!title || title.length > 200 || body.length > 12000) {
+      return res.status(400).json({ success: false, error: 'A valid section title and body of at most 12,000 characters are required.', code: 'INVALID_SECTION' });
+    }
+    const db = getFirestore();
+    const doc = await db.collection('reports').doc(req.params.id).get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const report = doc.data();
+    const reportContext = [
+      `Claim number: ${report.claimNumber || 'not provided'}`,
+      `Loss type: ${report.lossType || 'not provided'}`,
+      `Loss date: ${report.lossDate || 'not provided'}`,
+      `Property address: ${report.propertyAddress || 'not provided'}`,
+    ].join('\n');
+    const result = await suggestReportSection({ title, body, reportContext });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Section suggestion error:', err);
+    return res.status(503).json({ success: false, error: 'Section suggestion is temporarily unavailable.', code: 'SECTION_SUGGESTION_UNAVAILABLE' });
+  }
+});
+
 // PUT /api/reports/:id
-router.put('/:id', authenticateAny, async (req, res) => {
+router.put('/:id', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -424,7 +458,7 @@ router.put('/:id', authenticateAny, async (req, res) => {
 
 // POST /api/reports/:id/approve — human review gate (Golden Rule #3).
 // Marks a reviewed draft as finalized; only a finalized report exports clean.
-router.post('/:id/approve', authenticateAny, async (req, res) => {
+router.post('/:id/approve', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -497,7 +531,7 @@ router.post('/:id/approve', authenticateAny, async (req, res) => {
 });
 
 // GET /api/reports/:id/versions — version history + audit trail (T-2.13)
-router.get('/:id/versions', authenticateAny, async (req, res) => {
+router.get('/:id/versions', authenticateAny, reportsRead, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -518,7 +552,7 @@ router.get('/:id/versions', authenticateAny, async (req, res) => {
 // ── SHARE LINKS (T-2.9) ──────────────────────────────────────────────────────
 // POST /api/reports/:id/share — create/return a public read-only link.
 // Only finalized reports can be shared (never expose an un-reviewed draft).
-router.post('/:id/share', authenticateAny, async (req, res) => {
+router.post('/:id/share', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -546,7 +580,7 @@ router.post('/:id/share', authenticateAny, async (req, res) => {
 });
 
 // DELETE /api/reports/:id/share — revoke the public link.
-router.delete('/:id/share', authenticateAny, async (req, res) => {
+router.delete('/:id/share', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -592,7 +626,7 @@ router.get('/shared/:token', async (req, res) => {
 const isReviewed = (status) => status === 'finalized' || status === 'approved' || status === 'completed';
 
 // DELETE /api/reports/:id
-router.delete('/:id', authenticateAny, async (req, res) => {
+router.delete('/:id', authenticateAny, reportsWrite, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('reports').doc(req.params.id);
@@ -630,7 +664,7 @@ router.delete('/:id', authenticateAny, async (req, res) => {
 });
 
 // POST /api/reports/:id/export
-router.post('/:id/export', authenticateAny, async (req, res) => {
+router.post('/:id/export', authenticateAny, reportsExport, async (req, res) => {
   try {
     const db = getFirestore();
     const doc = await db.collection('reports').doc(req.params.id).get();
@@ -692,14 +726,14 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
     if (format === 'pdf') {
       ext = 'pdf';
       contentType = 'application/pdf';
-      buffer = await generatePDF(report, pdfOptions);
+      // The final overlay below is the single authoritative PDF watermark.
+      // Disable PDFKit's built-in layer here to avoid doubled/illegible marks.
+      buffer = await generatePDF(report, { ...pdfOptions, watermark: false });
       // Apply watermark overlay for starter tier and/or un-reviewed drafts
       if (tier.watermark || draftWatermark) {
-        try {
-          buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
-        } catch (wmErr) {
-          console.warn('Watermark failed, returning unwatermarked PDF:', wmErr.message);
-        }
+        // Fail closed: a draft must never be returned as a clean-looking final
+        // document just because watermark post-processing failed.
+        buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
       }
     } else if (format === 'docx') {
       ext = 'docx';
@@ -707,6 +741,8 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
       buffer = await generateDOCX(report, {
         companyName: pdfOptions.companyName,
         hideFlacronBranding: pdfOptions.hideFlacronBranding,
+        watermark: pdfOptions.watermark,
+        watermarkText: pdfOptions.watermarkText,
       });
     } else if (format === 'html') {
       ext = 'html';
@@ -740,7 +776,7 @@ router.post('/:id/export', authenticateAny, async (req, res) => {
 });
 
 // GET /api/reports/:id/download
-router.get('/:id/download', authenticateAny, async (req, res) => {
+router.get('/:id/download', authenticateAny, reportsExport, async (req, res) => {
   try {
     const db = getFirestore();
     const doc = await db.collection('reports').doc(req.params.id).get();
@@ -766,6 +802,10 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
 
     const inline = req.query.inline === 'true';
     res.setHeader('Content-Type', mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (ext === '.html') {
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+    }
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`);
     return res.send(buffer);
   } catch (err) {
@@ -774,7 +814,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
 });
 
 // POST /api/reports/:id/images — add images to existing report
-router.post('/:id/images', authenticateAny, (req, res, next) => {
+router.post('/:id/images', authenticateAny, reportsWrite, (req, res, next) => {
   req.reportId = req.params.id;
   next();
 }, imageUpload.array('images', 100), async (req, res) => {
@@ -814,7 +854,7 @@ router.post('/:id/images', authenticateAny, (req, res, next) => {
 });
 
 // POST /api/reports/analyze-images — analyze without creating report
-router.post('/analyze-images', authenticateAny, imageUpload.array('images', 20), async (req, res) => {
+router.post('/analyze-images', authenticateAny, reportsGenerate, imageUpload.array('images', 20), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, error: 'No images provided', code: 'NO_IMAGES' });
 
@@ -842,7 +882,7 @@ const generateHTML = (report, options) => {
   const [r, g, b] = primaryColor;
   const accentHex = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
 
-  const contentHtml = (report.content || '')
+  const contentHtml = escapeHtml(report.content || '')
     .replace(/^# (.*$)/gm, `<h1 style="color:${accentHex}">$1</h1>`)
     .replace(/^## (.*$)/gm, `<h2 style="background:${accentHex};color:white;padding:10px 15px;border-radius:4px;">$1</h2>`)
     .replace(/^### (.*$)/gm, '<h3 style="color:#1e293b">$1</h3>')
@@ -850,13 +890,22 @@ const generateHTML = (report, options) => {
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/^- (.*$)/gm, '<li>$1</li>')
     .replace(/\n/g, '<br>');
+  const sig = report.signature;
+  const signatureHtml = sig?.name ? `<section class="signoff">
+    <h2>Reviewing Adjuster Sign-Off</h2>
+    <p><strong>Electronically signed by:</strong> ${escapeHtml(sig.name)}${sig.title ? `, ${escapeHtml(sig.title)}` : ''}</p>
+    <p><strong>License:</strong> ${escapeHtml(sig.licenseState)} ${escapeHtml(sig.licenseNumber)}</p>
+    <p><strong>Company / Firm:</strong> ${escapeHtml(sig.company)}</p>
+    <p><strong>Approved:</strong> ${escapeHtml(sig.confirmedAt ? new Date(sig.confirmedAt).toLocaleString() : '')}</p>
+    <p><strong>Report version:</strong> ${escapeHtml(report.versionApproved || '')}</p>
+  </section>` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Insurance Report — ${report.claimNumber}</title>
+<title>Insurance Report - ${escapeHtml(report.claimNumber)}</title>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #374151; line-height: 1.6; }
   .header { background: ${accentHex}; color: white; padding: 30px; border-radius: 8px; margin-bottom: 30px; }
@@ -868,29 +917,40 @@ const generateHTML = (report, options) => {
   h2 { background: ${accentHex}; color: white; padding: 10px 15px; border-radius: 4px; }
   li { margin: 5px 0; }
   .footer { margin-top: 60px; border-top: 2px solid #e2e8f0; padding-top: 20px; color: #94a3b8; font-size: 12px; text-align: center; }
+  .watermark { border: 4px solid #b91c1c; color: #991b1b; font-size: 28px; font-weight: 800; letter-spacing: 2px; margin: 0 0 24px; padding: 12px; text-align: center; }
   @media print { body { padding: 0; } }
 </style>
 </head>
 <body>
+${options.watermark ? `<div class="watermark">${escapeHtml(options.watermarkText)}</div>` : ''}
 <div class="header">
-  <p style="margin:0 0 5px 0;font-size:12px;opacity:0.8;letter-spacing:2px;">${hideFlacronBranding ? companyName.toUpperCase() : 'FLACRONAI'}</p>
+  <p style="margin:0 0 5px 0;font-size:12px;opacity:0.8;letter-spacing:2px;">${hideFlacronBranding ? escapeHtml(companyName).toUpperCase() : 'FLACRONAI'}</p>
   <h1>INSURANCE INSPECTION REPORT</h1>
   <div class="meta-grid">
-    <div class="meta-item"><div class="meta-label">Claim Number</div><div class="meta-value">${report.claimNumber}</div></div>
-    <div class="meta-item"><div class="meta-label">Report Type</div><div class="meta-value">${report.reportType || 'Initial'}</div></div>
-    <div class="meta-item"><div class="meta-label">Insured Name</div><div class="meta-value">${report.insuredName}</div></div>
-    <div class="meta-item"><div class="meta-label">Date of Loss</div><div class="meta-value">${report.lossDate}</div></div>
-    <div class="meta-item"><div class="meta-label">Loss Type</div><div class="meta-value">${report.lossType}</div></div>
+    <div class="meta-item"><div class="meta-label">Claim Number</div><div class="meta-value">${escapeHtml(report.claimNumber)}</div></div>
+    <div class="meta-item"><div class="meta-label">Report Type</div><div class="meta-value">${escapeHtml(report.reportType || 'Initial')}</div></div>
+    <div class="meta-item"><div class="meta-label">Insured Name</div><div class="meta-value">${escapeHtml(report.insuredName)}</div></div>
+    <div class="meta-item"><div class="meta-label">Date of Loss</div><div class="meta-value">${escapeHtml(report.lossDate)}</div></div>
+    <div class="meta-item"><div class="meta-label">Loss Type</div><div class="meta-value">${escapeHtml(report.lossType)}</div></div>
     <div class="meta-item"><div class="meta-label">Report Date</div><div class="meta-value">${new Date().toLocaleDateString()}</div></div>
   </div>
 </div>
 ${contentHtml}
+${signatureHtml}
 <div class="footer">
-  <p>Generated by ${hideFlacronBranding ? companyName : 'FlacronAI'} | ${new Date().toISOString()}</p>
-  <p>Property Address: ${report.propertyAddress}</p>
+  <p>Generated by ${hideFlacronBranding ? escapeHtml(companyName) : 'FlacronAI'} | ${new Date().toISOString()}</p>
+  <p>Property Address: ${escapeHtml(report.propertyAddress)}</p>
 </div>
 </body>
 </html>`;
 };
 
+const escapeHtml = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+router._test = { generateHTML, escapeHtml };
 module.exports = router;

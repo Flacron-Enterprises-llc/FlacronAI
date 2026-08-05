@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const axios = require('axios');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -10,6 +12,46 @@ const qrcode = require('qrcode');
 const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
 const { sendNewDeviceLoginAlert } = require('../services/emailService');
+
+const RECOVERY_CODE_COUNT = 8;
+const normalizeRecoveryCode = code => String(code || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+const hashRecoveryCode = code => crypto.createHash('sha256').update(normalizeRecoveryCode(code)).digest('hex');
+const generateRecoveryCodes = () => Array.from({ length: RECOVERY_CODE_COUNT }, () => {
+  const raw = crypto.randomBytes(8).toString('hex').toUpperCase();
+  return `${raw.slice(0, 8)}-${raw.slice(8)}`;
+});
+
+const verifyPassword = async (email, password) => {
+  const firebaseApiKey = process.env.FIREBASE_API_KEY;
+  if (!firebaseApiKey) {
+    const err = new Error('Firebase API key not configured');
+    err.code = 'CONFIG_ERROR';
+    throw err;
+  }
+  await axios.post(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
+    { email, password, returnSecureToken: true }
+  );
+};
+
+const verifySecondFactor = async ({ db, userRef, userData, code }) => {
+  const normalized = normalizeRecoveryCode(code);
+  if (/^\d{6}$/.test(normalized) && speakeasy.totp.verify({
+    secret: userData.mfaSecret, encoding: 'base32', token: normalized, window: 1,
+  })) return { verified: true, method: 'totp' };
+
+  if (!/^[A-Z0-9]{16}$/.test(normalized)) return { verified: false };
+  const wantedHash = hashRecoveryCode(normalized);
+  let consumed = false;
+  await db.runTransaction(async transaction => {
+    const freshDoc = await transaction.get(userRef);
+    const hashes = freshDoc.data()?.mfaRecoveryCodeHashes || [];
+    if (!hashes.includes(wantedHash)) return;
+    transaction.update(userRef, { mfaRecoveryCodeHashes: hashes.filter(hash => hash !== wantedHash) });
+    consumed = true;
+  });
+  return consumed ? { verified: true, method: 'recovery_code' } : { verified: false };
+};
 
 // A short-lived MFA challenge token is signed with a DIFFERENT secret than
 // real session JWTs, so it can never be mistaken for (or replayed as) a full
@@ -133,7 +175,6 @@ router.post('/login', authLimiter, [
 
   try {
     // Firebase Admin doesn't support password verification directly — use REST API
-    const axios = require('axios');
     const firebaseApiKey = process.env.FIREBASE_API_KEY;
 
     if (!firebaseApiKey) {
@@ -183,7 +224,7 @@ router.post('/login', authLimiter, [
 // signed mfaToken is what proves the password step already succeeded.
 router.post('/mfa/login-verify', mfaLimiter, [
   body('mfaToken').notEmpty(),
-  body('code').isLength({ min: 6, max: 8 }),
+  body('code').isLength({ min: 6, max: 17 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
@@ -206,8 +247,8 @@ router.post('/mfa/login-verify', mfaLimiter, [
       return res.status(400).json({ success: false, error: 'MFA is not enabled for this account', code: 'MFA_NOT_ENABLED' });
     }
 
-    const verified = speakeasy.totp.verify({ secret: userProfile.mfaSecret, encoding: 'base32', token: req.body.code, window: 1 });
-    if (!verified) {
+    const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: userProfile, code: req.body.code });
+    if (!verification.verified) {
       recordAuditLog({ actorUid: decoded.uid, actorEmail: userProfile.email, action: 'mfa_verify_failed', req });
       return res.status(401).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
     }
@@ -217,7 +258,7 @@ router.post('/mfa/login-verify', mfaLimiter, [
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    recordAuditLog({ actorUid: decoded.uid, actorEmail: userProfile.email, action: 'login_success', meta: { mfa: true }, req });
+    recordAuditLog({ actorUid: decoded.uid, actorEmail: userProfile.email, action: 'login_success', meta: { mfa: true, method: verification.method }, req });
     notifyIfNewDevice(decoded.uid, userProfile, req).catch((err) => console.error('New-device login alert error:', err));
 
     return res.json({ success: true, token, user: userProfile });
@@ -255,14 +296,16 @@ router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
     const verified = speakeasy.totp.verify({ secret: pending, encoding: 'base32', token: req.body.code, window: 1 });
     if (!verified) return res.status(400).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
 
+    const recoveryCodes = generateRecoveryCodes();
     await db.collection('users').doc(req.user.uid).update({
       mfaEnabled: true,
       mfaSecret: pending,
+      mfaRecoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
       mfaPendingSecret: null,
       mfaEnabledAt: new Date().toISOString(),
     });
     recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_enabled', req });
-    return res.json({ success: true, message: 'Two-factor authentication enabled' });
+    return res.json({ success: true, message: 'Two-factor authentication enabled', recoveryCodes });
   } catch (err) {
     console.error('MFA verify-setup error:', err);
     return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
@@ -271,7 +314,12 @@ router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
 
 // POST /api/auth/mfa/disable
 router.post('/mfa/disable', authenticateToken, mfaLimiter, [
-  body('code').isLength({ min: 6, max: 8 }),
+  body('password').optional().isString().notEmpty(),
+  body('code').optional().isLength({ min: 6, max: 17 }),
+  body().custom(value => {
+    if (!value.password && !value.code) throw new Error('Password or authentication code is required');
+    return true;
+  }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
@@ -283,13 +331,28 @@ router.post('/mfa/disable', authenticateToken, mfaLimiter, [
       return res.status(400).json({ success: false, error: 'MFA is not enabled', code: 'MFA_NOT_ENABLED' });
     }
 
-    const verified = speakeasy.totp.verify({ secret: data.mfaSecret, encoding: 'base32', token: req.body.code, window: 1 });
-    if (!verified) return res.status(400).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+    if (req.body.password) {
+      await verifyPassword(data.email || req.user.email, req.body.password);
+    } else {
+      const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: data, code: req.body.code });
+      if (!verification.verified) return res.status(400).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
+    }
 
-    await db.collection('users').doc(req.user.uid).update({ mfaEnabled: false, mfaSecret: null });
+    await db.collection('users').doc(req.user.uid).update({
+      mfaEnabled: false,
+      mfaSecret: null,
+      mfaRecoveryCodeHashes: [],
+    });
     recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_disabled', req });
     return res.json({ success: true, message: 'Two-factor authentication disabled' });
   } catch (err) {
+    const firebaseError = err.response?.data?.error?.message;
+    if (firebaseError === 'INVALID_PASSWORD' || firebaseError === 'INVALID_LOGIN_CREDENTIALS') {
+      return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+    }
+    if (err.code === 'CONFIG_ERROR') {
+      return res.status(500).json({ success: false, error: err.message, code: err.code });
+    }
     console.error('MFA disable error:', err);
     return res.status(500).json({ success: false, error: 'Failed to disable MFA', code: 'MFA_DISABLE_ERROR' });
   }
@@ -311,21 +374,22 @@ router.get('/mfa/status', authenticateToken, async (req, res) => {
 // already holds a valid Firebase idToken at this point; this only confirms
 // possession of the second factor before unlocking the app UI.
 router.post('/mfa/verify', authenticateToken, mfaLimiter, [
-  body('code').isLength({ min: 6, max: 8 }),
+  body('code').isLength({ min: 6, max: 17 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
-    const userDoc = await getFirestore().collection('users').doc(req.user.uid).get();
+    const db = getFirestore();
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
     const data = userDoc.data() || {};
     if (!data.mfaEnabled || !data.mfaSecret) return res.json({ success: true, mfaEnabled: false });
 
-    const verified = speakeasy.totp.verify({ secret: data.mfaSecret, encoding: 'base32', token: req.body.code, window: 1 });
-    if (!verified) {
+    const verification = await verifySecondFactor({ db, userRef: userDoc.ref, userData: data, code: req.body.code });
+    if (!verification.verified) {
       recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_verify_failed', req });
       return res.status(401).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
     }
-    return res.json({ success: true });
+    return res.json({ success: true, method: verification.method });
   } catch (err) {
     console.error('MFA verify error:', err);
     return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
@@ -464,4 +528,5 @@ router.post('/change-password', authenticateToken, [
   }
 });
 
+router._mfaRecovery = { generateRecoveryCodes, hashRecoveryCode, normalizeRecoveryCode, verifySecondFactor };
 module.exports = router;

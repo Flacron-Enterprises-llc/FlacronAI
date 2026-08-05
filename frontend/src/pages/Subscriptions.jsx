@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { CreditCard, Check, X, AlertTriangle, ExternalLink, Zap, Star, Users, Crown } from 'lucide-react';
+import { Check, X, AlertTriangle, ExternalLink, Zap, Star, Users, Crown } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import ProtectedRoute from '../components/ProtectedRoute';
 import TierBadge from '../components/TierBadge';
@@ -18,7 +18,7 @@ const TIER_INFO = {
   },
   professional: {
     name: 'Professional', price: PLAN_PRICING.professional.monthly, icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10',
-    features: ['50 reports/month', 'No watermarks', 'PDF, DOCX, HTML export', 'API access', 'Priority email support'],
+    features: ['50 reports/month', 'No watermarks', 'PDF, DOCX, HTML export', 'Report history & search', 'Priority email support'],
   },
   agency: {
     name: 'Agency', price: PLAN_PRICING.agency.monthly, icon: Users, color: 'text-amber-400', bg: 'bg-amber-500/10',
@@ -31,7 +31,7 @@ const TIER_INFO = {
 };
 
 function CancelModal({ onConfirm, onClose, loading }) {
-  useEscapeToClose(onClose, !loading);
+  useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  LayoutDashboard, Users, Calendar, FileText, Plus, Search, X, Edit,
+  LayoutDashboard, Users, Calendar, FileText, Plus, Search, X,
   Trash2, ChevronLeft, ChevronRight, Upload, Eye, CheckCircle,
-  Clock, XCircle, AlertCircle, TrendingUp, Activity, RefreshCw
+  AlertCircle, TrendingUp, Activity
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import PageLoader from '../components/PageLoader';
@@ -190,6 +190,8 @@ function NewClaimModal({ clients, onClose, onSaved }) {
   );
 }
 
+// Retained temporarily while claim details still use the matching slide-over pattern.
+// eslint-disable-next-line no-unused-vars
 function ClientSlideOver({ client, onClose }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -411,6 +413,7 @@ export default function CRM() {
   const [clientSearch, setClientSearch] = useState('');
   const [appointments, setAppointments] = useState([]); const [apptsLoading, setApptsLoading] = useState(false);
   const [claims, setClaims] = useState([]); const [claimsLoading, setClaimsLoading] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
   const [claimStatusFilter, setClaimStatusFilter] = useState('all');
   const [crmReady, setCrmReady] = useState(false);
   const [crmError, setCrmError] = useState(null);
@@ -418,7 +421,6 @@ export default function CRM() {
   const [showNewClient, setShowNewClient] = useState(false);
   const [showNewAppt, setShowNewAppt] = useState(false);
   const [showNewClaim, setShowNewClaim] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
 
   const [calView, setCalView] = useState('month');
@@ -430,32 +432,18 @@ export default function CRM() {
   const [deleteClientLoading, setDeleteClientLoading] = useState(false);
   const csvRef = useRef();
 
-  const stats = {
-    totalClients: clients.length,
-    apptsThisWeek: appointments.filter(a => {
-      const d = parseLocalDate(a.date);
-      if (!d) return false;
-      const now = new Date();
-      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-      const weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
-      return d >= weekStart && d <= weekEnd;
-    }).length,
-    openClaims: claims.filter(c => c.status === 'open' || c.status === 'in-progress').length,
-    reportsThisMonth: claims.filter(c => {
-      const d = new Date(c.createdAt); const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length,
-  };
-
   const fetchAll = useCallback(async () => {
     setCrmError(null);
     setClientsLoading(true); setApptsLoading(true); setClaimsLoading(true);
     try {
-      const [cl, ap, cr] = await Promise.all([crmAPI.getClients(), crmAPI.getAppointments(), crmAPI.getClaims()]);
+      const [cl, ap, cr, an] = await Promise.all([
+        crmAPI.getClients(), crmAPI.getAppointments(), crmAPI.getClaims(), crmAPI.getDashboardAnalytics(),
+      ]);
       const toArr = v => Array.isArray(v) ? v : [];
       setClients(toArr(cl.data?.clients ?? cl.data?.data));
       setAppointments(toArr(ap.data?.appointments ?? ap.data?.data));
       setClaims(toArr(cr.data?.claims ?? cr.data?.data));
+      setAnalytics(an.data?.analytics || null);
     } catch {
       setCrmError('We could not load your CRM data. Please try again.');
       toast.error('Failed to load CRM data');
@@ -582,12 +570,14 @@ export default function CRM() {
             {activeTab === 'dashboard' && (
               <motion.div key="dash" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <h1 className="text-2xl font-bold text-gray-900 mb-6">CRM Dashboard</h1>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
                   {[
-                    { label: 'Total Clients', value: stats.totalClients, icon: Users, color: 'text-orange-400 bg-orange-500/10' },
-                    { label: 'Appts This Week', value: stats.apptsThisWeek, icon: Calendar, color: 'text-amber-400 bg-amber-500/10' },
-                    { label: 'Open Claims', value: stats.openClaims, icon: AlertCircle, color: 'text-red-400 bg-red-500/10' },
-                    { label: 'Claims This Month', value: stats.reportsThisMonth, icon: TrendingUp, color: 'text-green-400 bg-green-500/10' },
+                    { label: 'Total Clients', value: analytics?.totalClients ?? 0, icon: Users, color: 'text-orange-400 bg-orange-500/10' },
+                    { label: 'Open Claims', value: analytics?.openClaims ?? 0, icon: AlertCircle, color: 'text-red-400 bg-red-500/10' },
+                    { label: 'Awaiting Review', value: analytics?.reportsAwaitingReview ?? 0, icon: FileText, color: 'text-amber-500 bg-amber-500/10' },
+                    { label: 'Overdue Appointments', value: analytics?.overdueAppointments ?? 0, icon: Calendar, color: 'text-red-500 bg-red-500/10' },
+                    { label: 'Reports This Month', value: analytics?.reportsThisMonth ?? 0, icon: TrendingUp, color: 'text-green-500 bg-green-500/10' },
+                    { label: 'Finalization Rate', value: `${analytics?.finalizationRate ?? 0}%`, icon: CheckCircle, color: 'text-green-600 bg-green-500/10' },
                   ].map(s => (
                     <div key={s.label} className="card p-5">
                       <div className={`w-10 h-10 rounded-xl ${s.color.split(' ')[1]} flex items-center justify-center mb-3`}>
@@ -600,16 +590,15 @@ export default function CRM() {
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="card p-5">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><Activity className="w-4 h-4" /> Recent Activity</h3>
-                    {clientsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
-                      : clients.slice(0, 5).map(c => (
-                        <div key={getRecordId(c)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
-                          <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-sm font-bold text-orange-400">
-                            {(c.name || 'C')[0].toUpperCase()}
-                          </div>
-                          <div><p className="text-gray-900 text-sm">{c.name}</p><p className="text-gray-500 text-xs">{c.email}</p></div>
-                          <span className="ml-auto text-xs text-gray-500">{new Date(c.createdAt).toLocaleDateString()}</span>
-                        </div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2"><Activity className="w-4 h-4" /> Recent Claims</h3>
+                    {claimsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
+                      : !analytics?.recentClaims?.length ? <p className="text-sm text-gray-500">No claims yet.</p>
+                      : analytics.recentClaims.map(claim => (
+                        <button type="button" key={claim.id} onClick={() => navigate(`/crm/claims/${claim.id}`)} className="flex w-full items-center gap-3 border-b border-[#e5e7eb] py-2 text-left last:border-0 hover:bg-gray-50">
+                          <FileText className="w-4 h-4 text-orange-500" />
+                          <div><p className="font-mono text-gray-900 text-sm">{claim.claimNumber}</p><p className="text-gray-500 text-xs">{claim.lossType}</p></div>
+                          <span className="ml-auto text-xs text-gray-500">{formatStatus(claim.status)}</span>
+                        </button>
                       ))}
                   </div>
                   <div className="card p-5">
@@ -626,6 +615,35 @@ export default function CRM() {
                           <StatusPill status={a.status} />
                         </div>
                       ))}
+                  </div>
+                  <div className="card p-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4">Claims by Status</h3>
+                    <div className="space-y-3">
+                      {Object.entries(analytics?.claimsByStatus || {}).length === 0
+                        ? <p className="text-sm text-gray-500">No claim status data yet.</p>
+                        : Object.entries(analytics.claimsByStatus).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+                          <div key={status}>
+                            <div className="mb-1 flex justify-between text-xs"><span className="text-gray-600">{formatStatus(status)}</span><span className="font-semibold text-gray-900">{count}</span></div>
+                            <div className="h-2 rounded-full bg-gray-100"><div className="h-2 rounded-full bg-orange-500" style={{ width: `${Math.round((count / Math.max(analytics.totalClaims, 1)) * 100)}%` }} /></div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="card p-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4">Six-Month Report Activity</h3>
+                    <div className="flex h-36 items-end gap-3">
+                      {(analytics?.usageTrend || []).map(month => {
+                        const max = Math.max(...analytics.usageTrend.map(item => item.reports), 1);
+                        return <div key={month.key} className="flex flex-1 flex-col items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-700">{month.reports}</span>
+                          <div className="w-full rounded-t bg-orange-500" style={{ height: `${Math.max((month.reports / max) * 88, month.reports ? 8 : 2)}px` }} />
+                          <span className="text-[11px] text-gray-500">{month.label}</span>
+                        </div>;
+                      })}
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                      Average finalized-report turnaround: {analytics?.averageTurnaroundHours == null ? 'Not enough data' : `${analytics.averageTurnaroundHours} hours`}
+                    </p>
                   </div>
                 </div>
               </motion.div>
@@ -667,7 +685,7 @@ export default function CRM() {
                           <p className="text-gray-600">No clients found. Add your first client.</p>
                         </td></tr>
                       ) : filteredClients.map(c => (
-                        <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setSelectedClient(c)}>
+                        <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => navigate(`/crm/clients/${getRecordId(c)}`)}>
                           <td className="px-4 py-3"><div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-orange-500/20 flex items-center justify-center text-xs font-bold text-orange-400">{(c.name || 'C')[0].toUpperCase()}</div>
                             <span className="text-gray-900 text-sm font-medium">{c.name}</span>
@@ -678,7 +696,7 @@ export default function CRM() {
                           <td className="px-4 py-3 text-sm text-gray-500">{new Date(c.createdAt).toLocaleDateString()}</td>
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1">
-                              <button onClick={() => setSelectedClient(c)} aria-label={`View client ${c.name}`} title="View client" className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
+                              <button onClick={() => navigate(`/crm/clients/${getRecordId(c)}`)} aria-label={`View client ${c.name}`} title="View client" className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-600" /></button>
                               <button onClick={() => handleDeleteClient(getRecordId(c))} aria-label={`Delete client ${c.name}`} title="Delete client" className="p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 className="w-4 h-4 text-red-400" /></button>
                             </div>
                           </td>
@@ -792,7 +810,7 @@ export default function CRM() {
                       ) : filteredClaims.map(c => {
                         const client = clients.find(cl => getRecordId(cl) === c.clientId);
                         return (
-                          <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100">
+                          <tr key={getRecordId(c)} className="cursor-pointer border-b border-[#e5e7eb] hover:bg-gray-100" onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}>
                             <td className="px-4 py-3 text-sm font-mono text-orange-700">{c.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{client?.name || c.clientId}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{c.lossType}</td>
@@ -804,7 +822,7 @@ export default function CRM() {
                             <td className="px-4 py-3">
                               <button
                                 type="button"
-                                onClick={() => setSelectedClaim(c)}
+                                onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}
                                 className="rounded-lg p-1.5 hover:bg-gray-100"
                                 aria-label={`View claim ${c.claimNumber}`}
                                 title="View claim"
@@ -829,7 +847,6 @@ export default function CRM() {
         {showNewClient && <NewClientModal onClose={() => setShowNewClient(false)} onSaved={() => { setShowNewClient(false); fetchAll(); }} />}
         {showNewAppt && <NewAppointmentModal clients={clients} onClose={() => setShowNewAppt(false)} onSaved={() => { setShowNewAppt(false); fetchAll(); }} />}
         {showNewClaim && <NewClaimModal clients={clients} onClose={() => setShowNewClaim(false)} onSaved={() => { setShowNewClaim(false); fetchAll(); }} />}
-        {selectedClient && <ClientSlideOver client={selectedClient} onClose={() => setSelectedClient(null)} />}
         {selectedClaim && (
           <ClaimSlideOver
             claim={selectedClaim}

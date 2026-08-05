@@ -120,22 +120,25 @@ function UserSlideOver({ user, onClose, onDeleted }) {
   const [reports, setReports] = useState([]);
   const [billing, setBilling] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   useEscapeToClose(onClose, !!user);
 
-  useEffect(() => {
+  const fetchDetails = useCallback(() => {
     if (!user) return;
     setLoading(true);
+    setLoadError(false);
     Promise.all([
       salesAPI.getUserReports(user.uid),
       salesAPI.getUserBilling(user.uid),
     ]).then(([r, b]) => {
       setReports(r.data.reports || []);
       setBilling(b.data.billing || null);
-    }).catch(() => toast.error('Failed to load user details'))
+    }).catch(() => { setLoadError(true); toast.error('Failed to load user details'); })
       .finally(() => setLoading(false));
   }, [user]);
+  useEffect(() => { fetchDetails(); }, [fetchDetails]);
 
   const handleDelete = async () => {
     if (!window.confirm(`Permanently delete ${user.email} and all their reports? This cannot be undone.`)) return;
@@ -213,6 +216,8 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           <div className="flex-1 overflow-y-auto p-4">
             {loading ? (
               <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />)}</div>
+            ) : loadError ? (
+              <div className="py-12 text-center"><AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" /><p className="text-sm text-gray-600">User details could not be loaded.</p><button onClick={fetchDetails} className="mt-3 text-sm font-semibold text-orange-600">Retry</button></div>
             ) : tab === 'reports' ? (
               reports.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
@@ -296,7 +301,7 @@ function EmailModal({ to, onClose }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  useEscapeToClose(onClose, !sending);
+  useEscapeToClose(onClose, !sending, true);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -373,11 +378,12 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
-  const [allUsers, setAllUsers] = useState([]); // full list for CSV export
   const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState(false);
   const [userSearchInput, setUserSearchInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [userTierFilter, setUserTierFilter] = useState('');
@@ -388,6 +394,7 @@ export default function AdminDashboard() {
   // Leads
   const [leads, setLeads] = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState(false);
   const [leadsStatus, setLeadsStatus] = useState('');
   const [editingLead, setEditingLead] = useState(null);
 
@@ -407,18 +414,20 @@ export default function AdminDashboard() {
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
+    setStatsError(false);
     try { const res = await salesAPI.getAdminStats(); setStats(res.data.stats); }
-    catch { toast.error('Failed to load stats'); }
+    catch { setStatsError(true); toast.error('Failed to load stats'); }
     finally { setStatsLoading(false); }
   }, []);
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
+    setUsersError(false);
     try {
       const res = await salesAPI.getAdminUsers({ search: userSearch, tier: userTierFilter, page: userPage, limit: 50 });
       setUsers(res.data.data);
       setUserTotal(res.data.total);
-    } catch { toast.error('Failed to load users'); }
+    } catch { setUsersError(true); toast.error('Failed to load users'); }
     finally { setUsersLoading(false); }
   }, [userSearch, userTierFilter, userPage]);
 
@@ -431,8 +440,9 @@ export default function AdminDashboard() {
 
   const fetchLeads = useCallback(async () => {
     setLeadsLoading(true);
+    setLeadsError(false);
     try { const res = await salesAPI.getLeads({ status: leadsStatus, limit: 100 }); setLeads(res.data.data || []); }
-    catch { toast.error('Failed to load leads'); }
+    catch { setLeadsError(true); toast.error('Failed to load leads'); }
     finally { setLeadsLoading(false); }
   }, [leadsStatus]);
 
@@ -465,7 +475,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-[#f8f8f8]">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 pt-24 pb-8">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -503,6 +513,8 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 animate-pulse" />)}
               </div>
+            ) : statsError ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-orange-600 shadow-sm">Retry</button></div>
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -582,6 +594,8 @@ export default function AdminDashboard() {
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
+                    ) : usersError ? (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Customers could not be loaded.</p><button onClick={fetchUsers} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
                     ) : users.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No users found</td></tr>
                     ) : users.map(u => (
@@ -604,8 +618,7 @@ export default function AdminDashboard() {
                             <button onClick={() => setSelectedUser(u)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="View details">
                               <Eye className="w-4 h-4 text-gray-500" />
                             </button>
-                            <button onClick={() => { setSelectedUser(u); setTimeout(() => {}, 50); }}
-                              className="p-1.5 hover:bg-blue-50 rounded-lg" title="Email user"
+                            <button className="p-1.5 hover:bg-blue-50 rounded-lg" title="Email user"
                               onClick={(e) => { e.stopPropagation(); setSelectedUser(u); }}>
                               <Mail className="w-4 h-4 text-blue-400" />
                             </button>
@@ -665,6 +678,8 @@ export default function AdminDashboard() {
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
+                    ) : leadsError ? (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Sales leads could not be loaded.</p><button onClick={fetchLeads} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
                     ) : leads.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No leads yet</td></tr>
                     ) : leads.map(l => (

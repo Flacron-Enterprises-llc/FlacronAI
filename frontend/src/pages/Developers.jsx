@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Code, Key, Zap, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield, BarChart2 } from 'lucide-react';
+import { Code, Key, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield, BarChart2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
@@ -169,7 +169,7 @@ export default function Developers() {
           <motion.div className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">Quick Start Guide</h2>
-            <p className="text-gray-600">From zero to your first AI-generated report in minutes.</p>
+            <p className="text-gray-600">Follow the authenticated workflow to create and retrieve an AI-assisted draft report.</p>
           </motion.div>
 
           <div className="space-y-8">
@@ -230,7 +230,7 @@ export default function Developers() {
         <motion.div className="max-w-2xl mx-auto text-center"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Build?</h2>
-          <p className="text-gray-600 mb-8">API access is available on Professional ($39.99/mo), Agency ($99.99/mo), and Enterprise ($499/mo) plans. Start with the docs, upgrade when ready.</p>
+          <p className="text-gray-600 mb-8">API-key access is available on Agency and Enterprise plans. Start with the docs, then choose the plan that matches your integration needs.</p>
           <div className="flex flex-wrap gap-4 justify-center">
             <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
               <BookOpen className="w-4 h-4" /> Read the Docs
