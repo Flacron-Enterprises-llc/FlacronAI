@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   build-and-push:
-    name: Build and push backend image
+    name: Build, push, and deploy backend
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -58,3 +58,22 @@ jobs:
 
           echo "Pushed image:"
           echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Deploy new image to ECS
+        run: |
+          aws ecs update-service \
+            --cluster flacronai-production-cluster \
+            --service flacronai-backend-service \
+            --force-new-deployment
+
+          aws ecs wait services-stable \
+            --cluster flacronai-production-cluster \
+            --services flacronai-backend-service
+
+      - name: Verify ECS service
+        run: |
+          aws ecs describe-services \
+            --cluster flacronai-production-cluster \
+            --services flacronai-backend-service \
+            --query "services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}" \
+            --output table
