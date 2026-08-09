@@ -4,11 +4,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import toast from 'react-hot-toast';
+import { getAdditionalUserInfo } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext.jsx';
-import { authAPI, paymentAPI } from '../services/api.js';
+import { authAPI, paymentAPI, usersAPI } from '../services/api.js';
 import { auth } from '../config/firebase.js';
 import Seo from '../components/Seo.jsx';
 import useEscapeToClose from '../hooks/useEscapeToClose';
+
+// Version of the Terms + Privacy Policy a user agrees to at sign-up. Matches the
+// "Last updated" date shown on both /terms-of-service and /privacy-policy. Bump
+// this when either document materially changes so consent stays auditable.
+const REGISTRATION_POLICY_VERSION = '2026-03-01';
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -25,6 +31,8 @@ const Auth = () => {
   useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading, forgotOpen);
 
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
+  // Required Terms + Privacy acknowledgement for sign-up. Never pre-checked.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { login, register, loginWithGoogle, emailVerified, reloadUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -86,6 +94,7 @@ const Auth = () => {
     if (mode === 'signup') {
       if (!form.displayName) errs.displayName = 'Full name is required';
       if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
+      if (!agreedToTerms) errs.agreedToTerms = 'You must agree to the Terms of Service and Privacy Policy to create an account';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -132,6 +141,12 @@ const Auth = () => {
       } else {
         await register(form.email, form.password, form.displayName);
         toast.success('Account created! Please verify your email.');
+        // Record the Terms + Privacy acceptance server-side (auditable). The auth
+        // user now exists, so the request carries a valid token. Non-blocking —
+        // a failure here must not strand a user who already has an account.
+        usersAPI.recordRegistrationConsent(REGISTRATION_POLICY_VERSION).catch((err) => {
+          console.error('Failed to record registration consent:', err?.response?.data || err.message);
+        });
         // Fire verification email
         authAPI.sendVerification(pendingPlan || sessionStorage.getItem('flac_pending_plan')).catch((err) => {
           console.error('Failed to send verification email:', err?.response?.data || err.message);
@@ -163,10 +178,24 @@ const Auth = () => {
   };
 
   const handleGoogle = async () => {
+    // In signup mode the Terms + Privacy acknowledgement is required before the
+    // one-click account is created.
+    if (mode === 'signup' && !agreedToTerms) {
+      setErrors(prev => ({ ...prev, agreedToTerms: 'You must agree to the Terms of Service and Privacy Policy to create an account' }));
+      return;
+    }
     setLoading(true);
     try {
       const result = await loginWithGoogle();
       toast.success('Signed in with Google!');
+      // A Google sign-in can also create a brand-new account. Record the Terms +
+      // Privacy acceptance for first-time users (auditable), regardless of which
+      // tab they used. Non-blocking.
+      if (getAdditionalUserInfo(result)?.isNewUser) {
+        usersAPI.recordRegistrationConsent(REGISTRATION_POLICY_VERSION).catch((err) => {
+          console.error('Failed to record registration consent:', err?.response?.data || err.message);
+        });
+      }
       // Google users are already verified — go straight to post-auth
       await handlePostAuth(result.user);
     } catch (err) {
@@ -312,7 +341,7 @@ const Auth = () => {
             {['login', 'signup'].map(m => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setErrors({}); }}
+                onClick={() => { setMode(m); setErrors({}); setAgreedToTerms(false); }}
                 className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all capitalize ${mode === m ? 'bg-orange-500 text-gray-900 shadow-lg' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 {m === 'login' ? 'Sign In' : 'Sign Up'}
@@ -409,6 +438,35 @@ const Auth = () => {
                   </div>
                 )}
 
+                {mode === 'signup' && (
+                  <div>
+                    <label htmlFor="agree-terms" className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        id="agree-terms"
+                        name="agreedToTerms"
+                        type="checkbox"
+                        checked={agreedToTerms}
+                        onChange={(e) => {
+                          setAgreedToTerms(e.target.checked);
+                          setErrors(prev => ({ ...prev, agreedToTerms: '' }));
+                        }}
+                        aria-invalid={!!errors.agreedToTerms}
+                        aria-describedby={errors.agreedToTerms ? 'agree-terms-error' : undefined}
+                        className={`mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-[#FD4403] focus:ring-2 focus:ring-brand-500 ${errors.agreedToTerms ? 'ring-2 ring-red-500' : ''}`}
+                      />
+                      <span className="text-xs text-gray-600 leading-relaxed">
+                        I have read and agree to the{' '}
+                        <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-medium">Terms of Service</Link>
+                        {' '}and{' '}
+                        <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-medium">Privacy Policy</Link>.
+                      </span>
+                    </label>
+                    {errors.agreedToTerms && (
+                      <p id="agree-terms-error" className="text-red-400 text-xs mt-1.5">{errors.agreedToTerms}</p>
+                    )}
+                  </div>
+                )}
+
                 {errors.general && (
                   <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                     <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -445,21 +503,13 @@ const Auth = () => {
                 Continue with Google
               </button>
 
-              {mode === 'signup' && (
-                <p className="text-center text-xs text-gray-600 mt-4">
-                  By signing up, you agree to our{' '}
-                  <Link to="/terms-of-service" className="text-orange-400 hover:underline">Terms</Link>
-                  {' '}and{' '}
-                  <Link to="/privacy-policy" className="text-orange-400 hover:underline">Privacy Policy</Link>
-                </p>
-              )}
             </motion.div>
           </AnimatePresence>
         </div>
 
         <p className="text-center text-gray-500 text-sm mt-4">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErrors({}); }} className="text-orange-400 hover:text-orange-300 font-medium">
+          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErrors({}); setAgreedToTerms(false); }} className="text-orange-400 hover:text-orange-300 font-medium">
             {mode === 'login' ? 'Sign up free' : 'Sign in'}
           </button>
         </p>

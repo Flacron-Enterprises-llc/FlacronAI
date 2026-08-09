@@ -105,10 +105,10 @@ function CodeBlock({ code }) {
   };
   return (
     <div className="relative">
-      <pre className="bg-gray-300 border border-gray-200 rounded-xl p-4 overflow-x-auto text-xs font-mono leading-relaxed text-green-300">
+      <pre tabIndex={0} role="region" aria-label="Code example" className="bg-gray-300 border border-gray-200 rounded-xl p-4 overflow-x-auto text-xs font-mono leading-relaxed text-green-300">
         <code>{code}</code>
       </pre>
-      <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors">
+      <button onClick={handleCopy} aria-label={copied ? 'Copied' : 'Copy code'} title="Copy code" className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors">
         {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
       </button>
     </div>

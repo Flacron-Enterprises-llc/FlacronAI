@@ -1,8 +1,18 @@
 import axios from 'axios';
 import { auth } from '../config/firebase.js';
 
+// Prefer the versioned API. The backend serves every route under BOTH /api
+// (legacy) and /api/v1 (versioned) from the same handlers, so upgrading the
+// base to /api/v1 is fully backward-compatible. If VITE_API_URL is already
+// versioned (…/api/v1) we leave it as-is; a plain …/api is upgraded to …/api/v1.
+// Anything not ending in /api is left untouched (safe default).
+const RAW_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = /\/api\/v\d+\/?$/.test(RAW_API_BASE)
+  ? RAW_API_BASE
+  : RAW_API_BASE.replace(/\/api\/?$/, '/api/v1');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+  baseURL: API_BASE,
   timeout: 120000, // 2 minutes for AI generation
   headers: { 'Content-Type': 'application/json' },
 });
@@ -89,7 +99,6 @@ export const authAPI = {
 export const reportsAPI = {
   generate: (formData) => api.post('/reports/generate', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    onUploadProgress: (p) => console.log(`Upload: ${Math.round((p.loaded / p.total) * 100)}%`),
   }),
   getAll: (params) => api.get('/reports', { params }),
   getOne: (id) => api.get(`/reports/${id}`),
@@ -126,6 +135,7 @@ export const usersAPI = {
   getKeyUsage: (keyId) => api.get(`/users/api-keys/${keyId}/usage`),
   getApiUsage: () => api.get('/users/api-usage'),
   deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
+  recordRegistrationConsent: (policyVersion) => api.post('/users/consent/registration', { policyVersion }),
 };
 
 export const paymentAPI = {

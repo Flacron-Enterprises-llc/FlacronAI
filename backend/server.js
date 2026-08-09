@@ -45,24 +45,44 @@ const globalLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many requests, please try again later', code: 'RATE_LIMITED' },
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests, please try again later',
+      code: 'RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
   skip: (req) => req.path === '/health',
 });
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: { success: false, error: 'AI endpoint rate limit exceeded', code: 'AI_RATE_LIMITED' },
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'AI endpoint rate limit exceeded',
+      code: 'AI_RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
   keyGenerator: (req) => req.user?.uid || req.ip,
 });
 
 app.use(globalLimiter);
 
 // ── BODY PARSING ──────────────────────────────────────────────────────────────
-// Stripe webhook needs raw body — mount before JSON parser
+// Stripe webhook needs raw body — mount before JSON parser (both prefixes).
 app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/v1/payment/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ── REQUEST ID ────────────────────────────────────────────────────────────────
+// Tag every request with a unique ID (X-Request-Id header) for end-to-end tracing.
+const { requestIdMiddleware } = require('./middleware/requestId');
+app.use(requestIdMiddleware);
 
 // ── LOGGING ───────────────────────────────────────────────────────────────────
 app.use(morgan(':method :url :status :response-time ms - :res[content-length]'));
@@ -73,7 +93,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = Date.now() - start;
     if (duration > 1000 || res.statusCode >= 400) {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+      console.log(`[${new Date().toISOString()}] [${req.requestId}] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
     }
   });
   next();
@@ -90,6 +110,10 @@ app.get('/', (req, res) => {
   res.json({
     name: 'FlacronAI API',
     version: '1.0.0',
+    apiVersion: 'v1',
+    basePath: '/api/v1',
+    // The unversioned /api base is a backward-compatible alias for /api/v1 and may be deprecated later.
+    legacyBasePath: '/api',
     status: 'operational',
     timestamp: new Date().toISOString(),
   });
@@ -107,16 +131,31 @@ app.get('/health', (req, res) => {
 // ── ROUTES ────────────────────────────────────────────────────────────────────
 // Record API-key usage (no-op for token/browser requests) so usage analytics work.
 const { trackApiUsage } = require('./middleware/auth');
-app.use('/api', trackApiUsage);
 
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/reports', aiLimiter, require('./routes/reports'));
-app.use('/api/payment', require('./routes/payment'));
-app.use('/api/crm', require('./routes/crm'));
-app.use('/api/white-label', require('./routes/whitelabel'));
-app.use('/api/teams', require('./routes/teams'));
-app.use('/api/sales', require('./routes/sales'));
+// Every route is mounted under BOTH the legacy unversioned prefix (/api/*) and
+// the versioned prefix (/api/v1/*). Both share the exact same router instances,
+// so behavior is identical — this adds /api/v1 without breaking any existing
+// caller (frontend or external) still using /api. See docs/api-changelog.
+const API_PREFIXES = ['/api', '/api/v1'];
+
+const routeTable = [
+  { path: '/auth', router: require('./routes/auth') },
+  { path: '/users', router: require('./routes/users') },
+  { path: '/reports', router: require('./routes/reports'), pre: [aiLimiter] },
+  { path: '/payment', router: require('./routes/payment') },
+  { path: '/crm', router: require('./routes/crm') },
+  { path: '/white-label', router: require('./routes/whitelabel') },
+  { path: '/teams', router: require('./routes/teams') },
+  { path: '/sales', router: require('./routes/sales') },
+  { path: '/webhooks', router: require('./routes/webhooks') },
+];
+
+for (const prefix of API_PREFIXES) {
+  app.use(prefix, trackApiUsage);
+  for (const { path, router, pre = [] } of routeTable) {
+    app.use(`${prefix}${path}`, ...pre, router);
+  }
+}
 
 // ── 404 HANDLER ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -124,22 +163,23 @@ app.use((req, res) => {
     success: false,
     error: `Route ${req.method} ${req.path} not found`,
     code: 'NOT_FOUND',
+    request_id: req.requestId,
   });
 });
 
 // ── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error(`[Error] ${req.method} ${req.path}:`, err.message, err.stack);
+  console.error(`[Error] [${req.requestId}] ${req.method} ${req.path}:`, err.message, err.stack);
 
   // Multer errors
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ success: false, error: 'File too large (max 10MB)', code: 'FILE_TOO_LARGE' });
+    return res.status(413).json({ success: false, error: 'File too large (max 10MB)', code: 'FILE_TOO_LARGE', request_id: req.requestId });
   }
   if (err.code === 'LIMIT_FILE_COUNT') {
-    return res.status(400).json({ success: false, error: 'Too many files (max 100)', code: 'TOO_MANY_FILES' });
+    return res.status(400).json({ success: false, error: 'Too many files (max 100)', code: 'TOO_MANY_FILES', request_id: req.requestId });
   }
   if (err.message?.includes('CORS')) {
-    return res.status(403).json({ success: false, error: 'CORS error', code: 'CORS_ERROR' });
+    return res.status(403).json({ success: false, error: 'CORS error', code: 'CORS_ERROR', request_id: req.requestId });
   }
 
   const status = err.status || err.statusCode || 500;
@@ -147,6 +187,7 @@ app.use((err, req, res, next) => {
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
     code: err.code || 'INTERNAL_ERROR',
+    request_id: req.requestId,
   });
 });
 

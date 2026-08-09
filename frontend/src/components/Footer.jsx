@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { openCookiePreferences } from '../utils/cookieConsent.js';
 
 const TikTokIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -66,6 +67,12 @@ const Footer = () => {
       { label: 'Privacy Policy', href: '/privacy-policy' },
       { label: 'Cookies Policy', href: '/cookies-policy' },
       { label: 'Terms of Service', href: '/terms-of-service' },
+      { label: 'Acceptable Use Policy', href: '/acceptable-use-policy' },
+      { label: 'Refund & Cancellation Policy', href: '/refund-policy' },
+      { label: 'Data Processing Agreement', href: '/data-processing-agreement' },
+      { label: 'Subprocessors', href: '/subprocessors' },
+      { label: 'Security', href: '/security' },
+      { label: 'Manage Cookie Preferences', action: 'cookie-prefs' },
     ],
   };
 
@@ -93,7 +100,7 @@ const Footer = () => {
             </p>
             {/* Powered by badges */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 font-medium">Powered by</span>
+              <span className="text-xs text-gray-500 font-medium">Powered by</span>
               <span className="text-xs bg-orange-500/10 text-orange-700 border border-orange-200 px-2 py-0.5 rounded font-semibold">FlacronAI Engine</span>
             </div>
           </div>
@@ -105,7 +112,15 @@ const Footer = () => {
               <ul className="space-y-2.5">
                 {items.map(item => (
                   <li key={item.label}>
-                    {item.external ? (
+                    {item.action === 'cookie-prefs' ? (
+                      <button
+                        type="button"
+                        onClick={openCookiePreferences}
+                        className="text-gray-500 hover:text-orange-500 text-sm transition-colors text-left"
+                      >
+                        {item.label}
+                      </button>
+                    ) : item.external ? (
                       <a href={item.href} target="_blank" rel="noopener noreferrer"
                         className="text-gray-500 hover:text-orange-500 text-sm transition-colors">
                         {item.label}

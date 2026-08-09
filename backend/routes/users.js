@@ -143,6 +143,63 @@ router.delete('/profile/logo', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/users/consent/registration
+// Records the user's acceptance of the Terms of Service + Privacy Policy at
+// sign-up. The consent record is stored server-side (auditable): the category,
+// the policy version the user agreed to, a server-authoritative timestamp, and
+// the user id. This is a REQUIRED contractual acknowledgement — separate from
+// the optional marketing consent captured elsewhere (Golden Rule #5).
+router.post('/consent/registration', authenticateToken, [
+  body('policyVersion').trim().notEmpty().isLength({ max: 40 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+
+  try {
+    const db = getFirestore();
+    const docRef = db.collection('users').doc(req.user.uid);
+
+    const consent = {
+      // What was agreed to. Kept explicit so an audit doesn't depend on
+      // interpreting a bare boolean.
+      documents: ['terms-of-service', 'privacy-policy'],
+      policyVersion: req.body.policyVersion,
+      // Server-authoritative — never trust a client-supplied timestamp.
+      acceptedAt: new Date().toISOString(),
+      userId: req.user.uid,
+    };
+
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      await docRef.set({ registrationConsent: consent, updatedAt: new Date().toISOString() }, { merge: true });
+    } else {
+      // First-time email/password sign-up: the client SDK created the auth user
+      // but the Firestore profile isn't created until the first profile fetch.
+      // Create the full profile now so a partial doc can't shadow that step.
+      const displayName = req.user.name || req.user.email?.split('@')[0] || 'User';
+      await docRef.set({
+        uid: req.user.uid,
+        email: req.user.email || '',
+        displayName,
+        tier: 'starter',
+        reportsGenerated: 0,
+        reportsThisMonth: 0,
+        monthResetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        phone: '', company: '', address: '', logoUrl: null, notificationsEnabled: true,
+        registrationConsent: consent,
+      });
+    }
+
+    recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'registration_consent', meta: { policyVersion: consent.policyVersion }, req });
+    return res.json({ success: true, consent });
+  } catch (err) {
+    console.error('[Consent] Registration consent error for uid', req.user?.uid, ':', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to record consent', code: 'CONSENT_ERROR' });
+  }
+});
+
 // GET /api/users/usage
 router.get('/usage', authenticateToken, async (req, res) => {
   try {

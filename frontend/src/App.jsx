@@ -30,6 +30,10 @@ const FAQs = lazy(() => import('./pages/FAQs.jsx'));
 const About = lazy(() => import('./pages/About.jsx'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
+const AcceptableUsePolicy = lazy(() => import('./pages/AcceptableUsePolicy.jsx'));
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy.jsx'));
+const DataProcessingAgreement = lazy(() => import('./pages/DataProcessingAgreement.jsx'));
+const Subprocessors = lazy(() => import('./pages/Subprocessors.jsx'));
 const WhiteLabelPortal = lazy(() => import('./pages/WhiteLabelPortal.jsx'));
 const EnterpriseOnboarding = lazy(() => import('./pages/EnterpriseOnboarding.jsx'));
 const AdminTierUpdate = lazy(() => import('./pages/AdminTierUpdate.jsx'));
@@ -38,6 +42,7 @@ const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx')
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite.jsx'));
 const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
 const SharedReport = lazy(() => import('./pages/SharedReport.jsx'));
+const Security = lazy(() => import('./pages/Security.jsx'));
 
 const AuthRedirect = ({ children }) => {
   const { isAuthenticated, loading, emailVerified, user } = useAuth();
@@ -80,10 +85,15 @@ const App = () => {
         <Route path="/about" element={<About />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/acceptable-use-policy" element={<AcceptableUsePolicy />} />
+        <Route path="/refund-policy" element={<RefundPolicy />} />
+        <Route path="/data-processing-agreement" element={<DataProcessingAgreement />} />
+        <Route path="/subprocessors" element={<Subprocessors />} />
         <Route path="/enterprise/:subdomain" element={<EnterpriseOnboarding />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />
         <Route path="/shared/:token" element={<SharedReport />} />
         <Route path="/cookies-policy" element={<CookiesPolicy />} />
+        <Route path="/security" element={<Security />} />
 
         {/* Protected routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

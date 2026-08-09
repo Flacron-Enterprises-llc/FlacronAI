@@ -176,12 +176,23 @@ const renderContent = (text) => {
     if (para.startsWith('**') && para.endsWith('**') && !para.slice(2).includes('**')) {
       return <p key={i} className="font-semibold text-gray-900 mt-4 mb-1">{para.slice(2, -2)}</p>;
     }
-    const parts = para.split(/\*\*(.*?)\*\*/g);
+    const parts = para.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).filter((p) => p);
     return (
-      <p key={i} className="text-gray-600 text-sm leading-relaxed mb-3">
-        {parts.map((p, j) =>
-          j % 2 === 1 ? <strong key={j} className="text-gray-900 font-semibold">{p}</strong> : p
-        )}
+      <p key={i} className="text-gray-600 text-sm leading-relaxed mb-3 break-words">
+        {parts.map((p, j) => {
+          if (p.startsWith('**') && p.endsWith('**')) {
+            return <strong key={j} className="text-gray-900 font-semibold">{p.slice(2, -2)}</strong>;
+          }
+          const linkMatch = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+          if (linkMatch) {
+            return (
+              <a key={j} href={linkMatch[2]} className="text-brand-600 hover:underline font-medium">
+                {linkMatch[1]}
+              </a>
+            );
+          }
+          return p;
+        })}
       </p>
     );
   });
@@ -231,7 +242,7 @@ const AccordionSection = ({ section }) => {
                     </span>
                   </div>
                   <p className="text-gray-500 text-xs mb-3">{sub.description}</p>
-                  <div className="overflow-x-auto rounded-lg border border-[#e5e7eb]">
+                  <div className="overflow-x-auto rounded-lg border border-[#e5e7eb]" tabIndex={0} role="region" aria-label={`${sub.label} cookies table`}>
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50">
                         <tr>

@@ -244,7 +244,7 @@ export default function WhiteLabelPortal() {
                       <p className="text-xs text-orange-400 mt-1">Preview URL: <span className="font-mono">{config.subdomain}.flacronai.com</span></p>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="label">Primary Color</label>
                       <div className="flex gap-2">
@@ -282,7 +282,7 @@ export default function WhiteLabelPortal() {
                     <label className="label">Custom Report Footer</label>
                     <textarea className="input min-h-[70px]" placeholder="Additional footer text for reports..." value={config.reportFooter} onChange={e => setConfig(p => ({ ...p, reportFooter: e.target.value }))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="label">Email From Name</label>
                       <input className="input" placeholder="Your Company Reports" value={config.emailFromName} onChange={e => setConfig(p => ({ ...p, emailFromName: e.target.value }))} />
