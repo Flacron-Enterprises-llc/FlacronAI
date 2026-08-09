@@ -23,9 +23,14 @@ router.post('/contact', [
     return res.status(400).json({ success: false, errors: errors.mapped() });
   }
 
-  // Consent is required before we may store or act on a lead (Golden Rule #5).
+  // Consent handling: marketing consent is OPTIONAL for document downloads but
+  // REQUIRED for contact-form submissions (Golden Rule #5). A document download
+  // with no marketing checkbox checked sends `consent: null`.
   const consentIn = req.body.consent;
-  if (!consentIn || consentIn.agreed !== true) {
+  const isDocumentDownload = req.body.source && req.body.source.includes('download');
+
+  // Contact forms (non-download sources) require explicit marketing consent.
+  if (!isDocumentDownload && (!consentIn || consentIn.agreed !== true)) {
     return res.status(400).json({
       success: false,
       error: 'Consent to be contacted is required before submitting.',
@@ -37,36 +42,73 @@ router.post('/contact', [
     const db = getFirestore();
     const { name, email, subject, message, company, phone, companyType, monthlyVolume } = req.body;
 
-    // Compliance record: what was agreed, which version, when, and from where.
-    const consent = {
-      agreed: true,
-      version: typeof consentIn.version === 'string' ? consentIn.version : 'unknown',
-      channels: Array.isArray(consentIn.channels) && consentIn.channels.length ? consentIn.channels : ['email'],
-      consentedAt: new Date().toISOString(),
-      ip: req.ip,
-      userAgent: req.headers['user-agent'] || '',
-    };
+    // Compliance record: only present if the user granted marketing consent.
+    const consent = consentIn && consentIn.agreed
+      ? {
+          agreed: true,
+          version: typeof consentIn.version === 'string' ? consentIn.version : 'unknown',
+          channels: Array.isArray(consentIn.channels) && consentIn.channels.length ? consentIn.channels : ['email'],
+          consentedAt: new Date().toISOString(),
+          ip: req.ip,
+          userAgent: req.headers['user-agent'] || '',
+        }
+      : null;
 
-    const lead = {
-      id: uuidv4(),
-      name,
-      email,
-      subject: subject || 'General Inquiry',
-      message,
-      company: company || '',
-      phone: phone || '',
-      companyType: companyType || '',
-      monthlyVolume: monthlyVolume || '',
-      consent,
-      status: 'new',
-      notes: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: req.body.source || 'contact-form',
-      ip: req.ip,
-    };
+    const now = new Date().toISOString();
+    const source = req.body.source || 'contact-form';
 
-    await db.collection('salesLeads').doc(lead.id).set(lead);
+    // Dedup by email: one lead record per address. A repeat submission (e.g. a
+    // second document download) updates the existing record instead of creating
+    // a duplicate. Email is already normalized by express-validator above.
+    const existingSnap = await db.collection('salesLeads')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    let lead;
+    if (!existingSnap.empty) {
+      const doc = existingSnap.docs[0];
+      const prev = doc.data();
+      lead = {
+        ...prev,
+        name: name || prev.name,
+        subject: subject || prev.subject || 'General Inquiry',
+        message,
+        company: company || prev.company || '',
+        phone: phone || prev.phone || '',
+        companyType: companyType || prev.companyType || '',
+        monthlyVolume: monthlyVolume || prev.monthlyVolume || '',
+        // Only overwrite consent when a new grant is present — never clear an
+        // existing marketing consent because this particular submission omitted it.
+        consent: consent || prev.consent || null,
+        updatedAt: now,
+        source,
+        ip: req.ip,
+        submissionCount: (prev.submissionCount || 1) + 1,
+      };
+      await doc.ref.set(lead);
+    } else {
+      lead = {
+        id: uuidv4(),
+        name,
+        email,
+        subject: subject || 'General Inquiry',
+        message,
+        company: company || '',
+        phone: phone || '',
+        companyType: companyType || '',
+        monthlyVolume: monthlyVolume || '',
+        consent,
+        status: 'new',
+        notes: '',
+        createdAt: now,
+        updatedAt: now,
+        source,
+        ip: req.ip,
+        submissionCount: 1,
+      };
+      await db.collection('salesLeads').doc(lead.id).set(lead);
+    }
 
     // Send notification email to admin (non-blocking)
     sendSalesNotificationEmail(lead).catch(err => console.warn('Sales notification email failed:', err.message));

@@ -84,24 +84,24 @@ export default function Contact() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="label">Your Name *</label>
-                      <input className="input" required placeholder="John Smith" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+                      <label className="label" htmlFor="contact-name">Your Name *</label>
+                      <input id="contact-name" className="input" required placeholder="John Smith" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Email Address *</label>
-                      <input type="email" className="input" required placeholder="john@example.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+                      <label className="label" htmlFor="contact-email">Email Address *</label>
+                      <input id="contact-email" type="email" className="input" required placeholder="john@example.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
                     </div>
                   </div>
                   <div>
-                    <label className="label">Subject *</label>
-                    <select className="input" required value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))}>
+                    <label className="label" htmlFor="contact-subject">Subject *</label>
+                    <select id="contact-subject" className="input" required value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))}>
                       <option value="">Select a subject...</option>
                       {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="label">Message *</label>
-                    <textarea className="input min-h-[180px] resize-y" required placeholder="Tell us how we can help you. The more detail you provide, the faster we can assist."
+                    <label className="label" htmlFor="contact-message">Message *</label>
+                    <textarea id="contact-message" className="input min-h-[180px] resize-y" required placeholder="Tell us how we can help you. The more detail you provide, the faster we can assist."
                       value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
                   </div>
                   <ConsentCheckbox checked={consent} onChange={setConsent} />

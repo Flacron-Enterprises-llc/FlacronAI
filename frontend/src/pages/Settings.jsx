@@ -438,10 +438,10 @@ export default function Settings() {
         <div className="flex flex-col md:flex-row gap-6">
           {/* Sidebar Tabs */}
           <aside className="md:w-48 shrink-0">
-            <nav className="flex md:flex-col gap-1">
+            <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0">
               {filteredTabs.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all shrink-0 whitespace-nowrap md:w-full ${
                     activeTab === tab.id
                       ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'

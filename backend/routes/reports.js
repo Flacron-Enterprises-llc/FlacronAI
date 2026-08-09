@@ -19,6 +19,7 @@ const {
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { getTier, canGenerate } = require('../config/tiers');
 const { recordAuditLog } = require('../services/auditLogService');
+const { emitEvent } = require('../services/webhookService');
 const { getClaim, getClient } = require('../services/crmService');
 
 // Reject any uploaded file whose actual bytes aren't a real image (defeats a
@@ -300,6 +301,14 @@ router.post('/generate', authenticateAny, reportsGenerate, (req, res, next) => {
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
+    // Fire-and-forget outbound webhook (never blocks/breaks the response).
+    emitEvent(req.user.uid, 'report.generated', {
+      reportId,
+      status: 'draft',
+      claimNumber: reportDoc.claimNumber || null,
+      createdAt: reportDoc.createdAt,
+    }).catch(() => {});
+
     return res.status(201).json({ success: true, report: reportDoc });
   } catch (err) {
     console.error('Report generation error:', err);
@@ -524,6 +533,14 @@ router.post('/:id/approve', authenticateAny, reportsWrite, async (req, res) => {
       targetType: 'report', targetId: req.params.id,
       meta: { claimNumber: doc.data().claimNumber, reviewerName: name, licenseState, licenseNumber, company }, req,
     });
+    // Fire-and-forget outbound webhook (never blocks/breaks the response).
+    emitEvent(req.user.uid, 'report.finalized', {
+      reportId: req.params.id,
+      status: 'finalized',
+      claimNumber: doc.data().claimNumber || null,
+      reviewedBy: updates.reviewedBy,
+      reviewedAt: updates.reviewedAt,
+    }).catch(() => {});
     return res.json({ success: true, message: 'Report approved and finalized', report: { id: doc.id, ...doc.data(), ...updates } });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to approve report', code: 'APPROVE_ERROR' });

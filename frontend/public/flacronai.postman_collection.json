@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "FlacronAI API",
-    "description": "Set apiBaseUrl to your deployment's /api URL and apiKey to an Agency or Enterprise API key. Requests affect real data in the selected deployment; no public sandbox is provided.",
+    "description": "Set apiBaseUrl to your deployment's /api/v1 URL and apiKey to an Agency or Enterprise API key. The current API version is v1; the unversioned /api base is a backward-compatible alias that may be deprecated later. Requests affect real data in the selected deployment; no public sandbox is provided.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "apiBaseUrl", "value": "https://YOUR_API_BASE_URL/api" },
+    { "key": "apiBaseUrl", "value": "https://YOUR_API_BASE_URL/api/v1" },
     { "key": "apiKey", "value": "" },
     { "key": "reportId", "value": "" }
   ],

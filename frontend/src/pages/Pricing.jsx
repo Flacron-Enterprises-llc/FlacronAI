@@ -281,6 +281,7 @@ export default function Pricing() {
             <div className="flex items-center justify-center gap-4 mt-8">
               <span className={`text-sm font-medium ${!annual ? 'text-gray-900' : 'text-gray-500'}`}>Monthly</span>
               <button onClick={() => setAnnual(p => !p)}
+                role="switch" aria-checked={annual} aria-label="Toggle annual billing"
                 className={`relative w-12 h-6 rounded-full transition-colors ${annual ? 'bg-orange-500' : 'bg-gray-200'}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${annual ? 'translate-x-7' : 'translate-x-1'}`} />
               </button>
@@ -350,7 +351,7 @@ export default function Pricing() {
           <motion.div className="mb-20" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Full Feature Comparison</h2>
             <p className="text-center text-sm text-gray-500 mb-3 sm:hidden">Swipe to compare plans →</p>
-            <div className="card overflow-hidden overflow-x-auto">
+            <div className="card overflow-hidden overflow-x-auto" tabIndex={0} role="region" aria-label="Full feature comparison table">
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-[#e5e7eb]">

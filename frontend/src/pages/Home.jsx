@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import Footer from '../components/Footer.jsx';
+import LeadCaptureModal from '../components/LeadCaptureModal.jsx';
 import TESTIMONIALS from '../data/testimonials.js';
 import { PLAN_PRICING } from '../data/plans.js';
 import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
@@ -384,6 +385,7 @@ const steps = [
 const Home = () => {
   const location = useLocation();
   const scrollTo = location.state?.scrollTo;
+  const [showLeadModal, setShowLeadModal] = useState(false);
 
   useEffect(() => {
     if (scrollTo) {
@@ -428,10 +430,10 @@ const Home = () => {
                   Generate My First Report Free
                   <ArrowRight className="w-4 h-4" />
                 </Link>
-                <a href="/sample-report.pdf" target="_blank" rel="noopener" className="btn-secondary flex items-center gap-2">
+                <button type="button" onClick={() => setShowLeadModal(true)} className="btn-secondary flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   View Sample Report
-                </a>
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500">
                 {['No credit card required', '5 reports free/month', 'You approve every report', 'PDF & DOCX export', 'Cancel anytime'].map(item => (
@@ -519,9 +521,9 @@ const Home = () => {
           </motion.div>
           <p className="text-center text-sm text-gray-500 mt-6">
             Want to see the output?{' '}
-            <a href="/sample-report.pdf" download className="text-brand-600 font-medium hover:underline">
+            <button type="button" onClick={() => setShowLeadModal(true)} className="text-brand-700 font-medium hover:underline">
               Download the sample report (PDF)
-            </a>{' '}
+            </button>{' '}
             — fictional data, real structure and language.
           </p>
         </div>
@@ -666,7 +668,7 @@ const Home = () => {
         </div>
 
         <div className="text-center">
-          <Link to="/pricing" className="text-orange-400 hover:text-orange-300 text-sm font-medium flex items-center gap-1 justify-center">
+          <Link to="/pricing" className="text-brand-700 hover:text-brand-800 text-sm font-medium flex items-center gap-1 justify-center">
             View full pricing & feature comparison
             <ArrowRight className="w-4 h-4" />
           </Link>
@@ -801,6 +803,15 @@ const Home = () => {
       </section>
 
       <Footer />
+
+      {/* Lead Capture Modal */}
+      <LeadCaptureModal
+        isOpen={showLeadModal}
+        onClose={() => setShowLeadModal(false)}
+        documentName="Sample Report"
+        documentUrl="/sample-report.pdf"
+        source="sample-report-download"
+      />
     </div>
   );
 };
