@@ -1013,7 +1013,13 @@ export default function Dashboard() {
                     <div className="flex items-center gap-1 flex-wrap">
                       {[1, 2, 3, 4, 5].map(s => (
                         <div key={s} className="flex items-center gap-1">
-                          <button onClick={() => setStep(s)}
+                          <button onClick={() => {
+                              if (s === 5 && photos.length === 0) {
+                                toast.error('Upload at least one photo before continuing.');
+                                return;
+                              }
+                              setStep(s);
+                            }}
                             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                               step >= s ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}>{s}</button>
@@ -1187,7 +1193,7 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between mb-4">
                               <div>
                                 <h2 className="text-lg font-semibold text-gray-900">Upload Photos</h2>
-                                <p className="text-xs text-gray-500 mt-0.5">Optional — AI will analyze damage photos</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Required — upload at least one damage photo for AI analysis</p>
                               </div>
                               <span className="text-sm text-gray-500">{photos.length} / 100</span>
                             </div>
@@ -1217,6 +1223,9 @@ export default function Dashboard() {
                                   </div>
                                 ))}
                               </div>
+                            )}
+                            {photos.length === 0 && (
+                              <p className="text-xs text-red-400 mt-2">At least one photo is required to continue</p>
                             )}
                           </motion.div>
                         )}
@@ -1281,7 +1290,8 @@ export default function Dashboard() {
                         </button>
                         {step < 5 && (
                           <button onClick={() => setStep(s => Math.min(5, s + 1))}
-                            className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
+                            disabled={step === 4 && photos.length === 0}
+                            className="btn-primary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed">
                             Next <ChevronRight className="w-4 h-4" />
                           </button>
                         )}

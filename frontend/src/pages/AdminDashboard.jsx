@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { salesAPI } from '../services/api';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
+import { getAdminEmail } from '../utils/adminEmail.js';
 
 const TIERS = ['starter', 'professional', 'agency', 'enterprise'];
 const TIER_COLORS = {
@@ -398,12 +399,12 @@ export default function AdminDashboard() {
   const [leadsStatus, setLeadsStatus] = useState('');
   const [editingLead, setEditingLead] = useState(null);
 
-  const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || '';
+  const ADMIN_EMAIL = getAdminEmail();
 
   // Guard
   useEffect(() => {
     if (authLoading) return;
-    if (!user || user.email !== ADMIN_EMAIL) navigate('/dashboard', { replace: true });
+    if (!user || user.email?.trim().toLowerCase() !== ADMIN_EMAIL) navigate('/dashboard', { replace: true });
   }, [user, authLoading, navigate, ADMIN_EMAIL]);
 
   // Debounce search
@@ -470,7 +471,7 @@ export default function AdminDashboard() {
     } catch { toast.error('Failed to update lead'); }
   };
 
-  if (authLoading || !user || user.email !== ADMIN_EMAIL) return null;
+  if (authLoading || !user || user.email?.trim().toLowerCase() !== ADMIN_EMAIL) return null;
 
   return (
     <div className="min-h-screen bg-[#f8f8f8]">
