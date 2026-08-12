@@ -100,6 +100,53 @@ export const AuthProvider = ({ children }) => {
     return () => { clearTimeout(timeout); unsubscribe(); };
   }, [fetchUserProfile]);
 
+  // A profile-fetch failure is almost always a transient hiccup (cold Firestore
+  // connection, a brief network drop, a token-refresh race right after login) —
+  // not a real auth problem. Auto-recover in the background with backoff instead
+  // of leaving the user stuck on the "Account data unavailable" screen until they
+  // notice it and click Retry themselves.
+  useEffect(() => {
+    if (!user || !profileError) return undefined;
+
+    let cancelled = false;
+    let attempt = 0;
+    let timer = null;
+    const maxAutoRetries = 4;
+
+    const attemptRetry = async () => {
+      if (cancelled) return;
+      attempt += 1;
+      const result = await fetchUserProfile({ retries: 1 });
+      if (cancelled || result) return;
+      if (attempt < maxAutoRetries) {
+        const delay = Math.min(3000 * 2 ** (attempt - 1), 20000);
+        timer = setTimeout(attemptRetry, delay);
+      } else {
+        console.warn(`fetchUserProfile: giving up after ${attempt} automatic retries`);
+      }
+    };
+
+    timer = setTimeout(attemptRetry, 3000);
+
+    // Retry immediately on reconnect or when the tab regains focus — the two
+    // most common moments a suspended/backgrounded session comes back to life.
+    const handleRecover = () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      clearTimeout(timer);
+      attempt = 0;
+      attemptRetry();
+    };
+    window.addEventListener('online', handleRecover);
+    document.addEventListener('visibilitychange', handleRecover);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      window.removeEventListener('online', handleRecover);
+      document.removeEventListener('visibilitychange', handleRecover);
+    };
+  }, [user, profileError, fetchUserProfile]);
+
   const login = async (email, password) => {
     setMfaVerified(false);
     return signInWithEmailAndPassword(auth, email, password);
