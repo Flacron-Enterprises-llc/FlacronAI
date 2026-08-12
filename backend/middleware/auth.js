@@ -15,20 +15,9 @@ const authenticateToken = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
 
     // Try Firebase ID token first
+    let decoded;
     try {
-      const decoded = await getAuth().verifyIdToken(token);
-      const db = getFirestore();
-      const userDoc = await db.collection('users').doc(decoded.uid).get();
-      const userData = userDoc.exists ? userDoc.data() : {};
-
-      req.user = {
-        uid: decoded.uid,
-        email: decoded.email,
-        tier: userData.tier || 'starter',
-        displayName: userData.displayName || decoded.name || '',
-        ...userData,
-      };
-      return next();
+      decoded = await getAuth().verifyIdToken(token);
     } catch (firebaseErr) {
       // Try custom JWT fallback
       try {
@@ -54,6 +43,27 @@ const authenticateToken = async (req, res, next) => {
       } catch (jwtErr) {
         return res.status(401).json({ success: false, error: 'Invalid or expired token', code: 'INVALID_TOKEN' });
       }
+    }
+
+    // Token itself is verified and valid — a failure past this point is an
+    // infrastructure/transient issue, not an auth problem, so it must not be
+    // reported as an invalid token (that sent clients into a dead-end retry).
+    try {
+      const db = getFirestore();
+      const userDoc = await db.collection('users').doc(decoded.uid).get();
+      const userData = userDoc.exists ? userDoc.data() : {};
+
+      req.user = {
+        uid: decoded.uid,
+        email: decoded.email,
+        tier: userData.tier || 'starter',
+        displayName: userData.displayName || decoded.name || '',
+        ...userData,
+      };
+      return next();
+    } catch (lookupErr) {
+      console.error('Auth middleware profile lookup error:', lookupErr);
+      return res.status(503).json({ success: false, error: 'Temporarily unable to load account data, please retry', code: 'PROFILE_LOOKUP_FAILED' });
     }
   } catch (err) {
     console.error('Auth middleware error:', err);

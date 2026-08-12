@@ -76,6 +76,17 @@ api.interceptors.response.use(
       return api(config);
     }
 
+    // 503 (e.g. a transient Firestore lookup failure server-side) or a plain
+    // network error (dropped connection, DNS blip, request never reached the
+    // server) — retry once after a short delay before surfacing failure.
+    const isTransientServerError = response?.status === 503;
+    const isNetworkError = !response && error.code !== 'ECONNABORTED';
+    if ((isTransientServerError || isNetworkError) && !config._transientRetry) {
+      config._transientRetry = true;
+      await new Promise(r => setTimeout(r, 1000));
+      return api(config);
+    }
+
     return Promise.reject(error);
   }
 );
