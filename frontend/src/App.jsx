@@ -5,12 +5,25 @@ import { useAuth } from './context/AuthContext.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import PageLoader from './components/PageLoader.jsx';
 import Seo from './components/Seo.jsx';
+import { getAdminEmail } from './utils/adminEmail.js';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   return null;
 };
+
+// Lightweight fallback for lazy-chunk loading only — deliberately not the
+// branded video PageLoader. That video restarts from frame 0 on every fresh
+// mount, so stacking it here *and* in AuthRedirect/ProtectedRoute right after
+// made the loading sequence visibly replay 2-3 times per page load. This
+// chunk-load gap is normally sub-100ms, so a plain spinner is all it needs —
+// the video is reserved for the one meaningful auth/profile loading phase.
+const SuspenseFallback = () => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white" role="status" aria-live="polite" aria-label="Loading">
+    <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 // Lazy load all pages
 const Home = lazy(() => import('./pages/Home.jsx'));
@@ -60,8 +73,7 @@ const AuthRedirect = ({ children }) => {
   // Don't redirect if there's a pending paid plan — Auth.jsx handles checkout
   if (pendingPlan && pendingPlan !== 'starter') return children;
 
-  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
-  const destination = adminEmail && user?.email?.trim().toLowerCase() === adminEmail
+  const destination = user?.email?.trim().toLowerCase() === getAdminEmail()
     ? '/admin'
     : '/dashboard';
 
@@ -72,7 +84,7 @@ const App = () => {
   return (
     <ErrorBoundary>
     <ScrollToTop />
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<SuspenseFallback />}>
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<Home />} />

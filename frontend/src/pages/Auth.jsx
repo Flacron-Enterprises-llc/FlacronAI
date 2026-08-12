@@ -10,6 +10,7 @@ import { authAPI, paymentAPI, usersAPI } from '../services/api.js';
 import { auth } from '../config/firebase.js';
 import Seo from '../components/Seo.jsx';
 import useEscapeToClose from '../hooks/useEscapeToClose';
+import { getAdminEmail } from '../utils/adminEmail.js';
 
 // Version of the Terms + Privacy Policy a user agrees to at sign-up. Matches the
 // "Last updated" date shown on both /terms-of-service and /privacy-policy. Bump
@@ -47,10 +48,10 @@ const Auth = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePostAuth = useCallback(async (authenticatedUser = auth.currentUser) => {
-    const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+    const adminEmail = getAdminEmail();
     const signedInEmail = authenticatedUser?.email?.trim().toLowerCase();
 
-    if (adminEmail && signedInEmail === adminEmail) {
+    if (signedInEmail === adminEmail) {
       navigate('/admin', { replace: true });
       return;
     }
