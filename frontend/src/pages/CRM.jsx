@@ -57,6 +57,38 @@ function StatusPill({ status }) {
   return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>{formatStatus(status)}</span>;
 }
 
+function OverdueBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-600">
+      <AlertCircle className="h-3 w-3" /> Overdue
+    </span>
+  );
+}
+
+function ApptActions({ appt, onStatus, onDelete, updating }) {
+  const id = getRecordId(appt);
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {appt.status === 'scheduled' && (
+        <>
+          <button onClick={() => onStatus(id, 'completed')} disabled={updating} aria-label="Mark appointment completed" title="Mark completed"
+            className="p-1.5 rounded-lg hover:bg-green-500/10 disabled:opacity-40">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          </button>
+          <button onClick={() => onStatus(id, 'cancelled')} disabled={updating} aria-label="Cancel appointment" title="Cancel appointment"
+            className="p-1.5 rounded-lg hover:bg-amber-500/10 disabled:opacity-40">
+            <X className="w-4 h-4 text-amber-600" />
+          </button>
+        </>
+      )}
+      <button onClick={() => onDelete(id)} aria-label="Delete appointment" title="Delete appointment"
+        className="p-1.5 rounded-lg hover:bg-red-500/10">
+        <Trash2 className="w-4 h-4 text-red-400" />
+      </button>
+    </div>
+  );
+}
+
 function Modal({ title, onClose, children }) {
   useEscapeToClose(onClose);
   return (
@@ -430,6 +462,9 @@ export default function CRM() {
   const [csvImporting, setCsvImporting] = useState(false);
   const [deleteClientId, setDeleteClientId] = useState(null);
   const [deleteClientLoading, setDeleteClientLoading] = useState(false);
+  const [deleteApptId, setDeleteApptId] = useState(null);
+  const [deleteApptLoading, setDeleteApptLoading] = useState(false);
+  const [apptStatusUpdatingId, setApptStatusUpdatingId] = useState(null);
   const csvRef = useRef();
 
   const fetchAll = useCallback(async () => {
@@ -469,6 +504,37 @@ export default function CRM() {
       setDeleteClientId(null);
     } catch { toast.error('Delete failed'); }
     finally { setDeleteClientLoading(false); }
+  };
+
+  const handleDeleteAppointment = (id) => setDeleteApptId(id);
+
+  const confirmDeleteAppointment = async () => {
+    setDeleteApptLoading(true);
+    try {
+      await crmAPI.deleteAppointment(deleteApptId);
+      toast.success('Appointment deleted');
+      fetchAll();
+      setDeleteApptId(null);
+    } catch { toast.error('Delete failed'); }
+    finally { setDeleteApptLoading(false); }
+  };
+
+  const handleUpdateAppointmentStatus = async (id, status) => {
+    setApptStatusUpdatingId(id);
+    try {
+      await crmAPI.updateAppointment(id, { status });
+      toast.success(status === 'completed' ? 'Marked as completed' : 'Appointment cancelled');
+      fetchAll();
+    } catch (err) { toast.error(apiErrorMessage(err, 'Update failed')); }
+    finally { setApptStatusUpdatingId(null); }
+  };
+
+  const isOverdueAppt = (a) => {
+    if (a.status !== 'scheduled') return false;
+    const d = parseLocalDate(a.date);
+    if (!d) return false;
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    return d < startOfToday;
   };
 
   const handleCSVImport = (e) => {
@@ -747,10 +813,12 @@ export default function CRM() {
                           const weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
                           return d >= weekStart && d <= weekEnd;
                         }).map(a => (
-                          <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
+                          <div key={getRecordId(a)} className={`flex flex-col items-start gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-4 ${isOverdueAppt(a) ? 'border-red-500/30 bg-red-500/5' : 'border-gray-200 bg-gray-100'}`}>
                             <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-24">{a.date}{a.time ? ` ${a.time}` : ''}</div>
                             <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
+                            {isOverdueAppt(a) && <OverdueBadge />}
                             <StatusPill status={a.status} />
+                            <ApptActions appt={a} onStatus={handleUpdateAppointmentStatus} onDelete={handleDeleteAppointment} updating={apptStatusUpdatingId === getRecordId(a)} />
                           </div>
                         ))}
                       </div>
@@ -762,10 +830,12 @@ export default function CRM() {
                         appointments.length === 0 ? (
                           <div className="text-center py-8"><Calendar className="w-8 h-8 text-gray-600 mx-auto mb-2" /><p className="text-gray-600">No appointments yet.</p></div>
                         ) : appointments.map(a => (
-                          <div key={getRecordId(a)} className="flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-100 p-3 sm:flex-row sm:items-center sm:gap-4">
+                          <div key={getRecordId(a)} className={`flex flex-col items-start gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-4 ${isOverdueAppt(a) ? 'border-red-500/30 bg-red-500/5' : 'border-gray-200 bg-gray-100'}`}>
                             <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-32">{a.date} {a.time}</div>
                             <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm font-medium text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
+                            {isOverdueAppt(a) && <OverdueBadge />}
                             <StatusPill status={a.status} />
+                            <ApptActions appt={a} onStatus={handleUpdateAppointmentStatus} onDelete={handleDeleteAppointment} updating={apptStatusUpdatingId === getRecordId(a)} />
                           </div>
                         ))}
                     </div>
@@ -852,6 +922,16 @@ export default function CRM() {
             claim={selectedClaim}
             client={clients.find(client => getRecordId(client) === selectedClaim.clientId)}
             onClose={() => setSelectedClaim(null)}
+          />
+        )}
+        {deleteApptId && (
+          <ConfirmDialog
+            title="Delete appointment?"
+            message="This permanently deletes the appointment. This cannot be undone."
+            confirmLabel="Delete"
+            loading={deleteApptLoading}
+            onConfirm={confirmDeleteAppointment}
+            onClose={() => setDeleteApptId(null)}
           />
         )}
         {deleteClientId && (
