@@ -2,14 +2,16 @@ import axios from 'axios';
 import { auth } from '../config/firebase.js';
 
 // Prefer the versioned API. The backend serves every route under BOTH /api
-// (legacy) and /api/v1 (versioned) from the same handlers, so upgrading the
-// base to /api/v1 is fully backward-compatible. If VITE_API_URL is already
-// versioned (…/api/v1) we leave it as-is; a plain …/api is upgraded to …/api/v1.
-// Anything not ending in /api is left untouched (safe default).
-const RAW_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-const API_BASE = /\/api\/v\d+\/?$/.test(RAW_API_BASE)
+// (legacy) and /api/v1 (versioned) from the same handlers. VITE_API_URL may be
+// configured as a bare origin (https://api.example.com), an /api base, or an
+// already-versioned /api/vN base — normalize all three to end in /api/vN so a
+// bare-origin config can never silently drop the /api prefix and 404 every call.
+const RAW_API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/+$/, '');
+const API_BASE = /\/api\/v\d+$/.test(RAW_API_BASE)
   ? RAW_API_BASE
-  : RAW_API_BASE.replace(/\/api\/?$/, '/api/v1');
+  : /\/api$/.test(RAW_API_BASE)
+    ? `${RAW_API_BASE}/v1`
+    : `${RAW_API_BASE}/api/v1`;
 
 const api = axios.create({
   baseURL: API_BASE,
