@@ -22,7 +22,7 @@ const SUBJECTS = [
 
 const FAQ_LINKS = [
   { label: 'How do I upgrade my plan?', href: '/faqs#billing' },
-  { label: 'What AI models does FlacronAI use?', href: '/faqs#technical' },
+  { label: 'What technology powers FlacronAI\'s report drafting?', href: '/faqs#technical' },
   { label: 'Can I white-label the reports?', href: '/faqs#general' },
   { label: 'How is my data protected?', href: '/faqs#technical' },
 ];

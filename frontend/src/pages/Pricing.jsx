@@ -21,7 +21,7 @@ const PLANS = [
     color: 'gray',
     features: [
       { label: '5 reports/month', included: true },
-      { label: 'AI report generation', included: true },
+      { label: 'Automated report generation', included: true },
       { label: 'PDF export', included: true },
       { label: 'Email support', included: true },
       { label: 'Watermark-free reports', included: false },
@@ -39,7 +39,7 @@ const PLANS = [
     color: 'blue', popular: true,
     features: [
       { label: '50 reports/month', included: true },
-      { label: 'AI report generation', included: true },
+      { label: 'Automated report generation', included: true },
       { label: 'PDF, DOCX, HTML export', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Priority email support', included: true },
@@ -57,7 +57,7 @@ const PLANS = [
     color: 'purple',
     features: [
       { label: '200 reports/month', included: true },
-      { label: 'AI report generation', included: true },
+      { label: 'Automated report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },
@@ -75,7 +75,7 @@ const PLANS = [
     color: 'amber',
     features: [
       { label: 'Unlimited reports', included: true },
-      { label: 'AI report generation', included: true },
+      { label: 'Automated report generation', included: true },
       { label: 'All export formats', included: true },
       { label: 'No watermarks', included: true },
       { label: 'Full CRM suite', included: true },

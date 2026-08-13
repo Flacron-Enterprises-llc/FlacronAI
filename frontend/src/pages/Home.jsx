@@ -35,7 +35,7 @@ const REPORT_LINES = [
 
 const STEPS_ANIM = [
   { label: 'Uploading photos', icon: <Image className="w-3.5 h-3.5" />, done: true },
-  { label: 'Analyzing damage with AI Vision', icon: <Eye className="w-3.5 h-3.5" />, done: true },
+  { label: 'Analyzing damage photos', icon: <Eye className="w-3.5 h-3.5" />, done: true },
   { label: 'Generating report with FlacronAI', icon: <Cpu className="w-3.5 h-3.5" />, active: true },
   { label: 'Finalizing & scoring', icon: <CheckCircle className="w-3.5 h-3.5" />, done: false },
 ];
@@ -101,7 +101,7 @@ const DashboardMock = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-gray-500">AI Online</span>
+            <span className="text-xs text-gray-500">Engine Online</span>
           </div>
         </div>
 
@@ -200,7 +200,7 @@ const DashboardMock = () => {
                   <motion.button
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.8 }}
                     className="w-full bg-orange-500 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" fill="white" /> Generate Report with AI
+                    <Zap className="w-3.5 h-3.5" fill="white" /> Generate Report
                   </motion.button>
                 </motion.div>
               )}
@@ -251,7 +251,7 @@ const DashboardMock = () => {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100"
-                        title="Documentation completeness — not the accuracy of the AI's findings.">
+                        title="Documentation completeness — not the accuracy of the Flacron Engine's findings.">
                         Completeness 94/100
                       </span>
                       <div className="flex gap-1">
@@ -368,9 +368,9 @@ const Counter = ({ end, suffix = '' }) => {
 };
 
 const features = [
-  { icon: Zap, title: 'AI-Assisted Drafting', desc: 'FlacronAI organizes submitted claim details and supported photos into a structured draft ready for professional review.' },
+  { icon: Zap, title: 'Automated Drafting', desc: 'FlacronAI organizes submitted claim details and supported photos into a structured draft ready for professional review.' },
   { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.' },
-  { icon: Image, title: 'AI Image Analysis', desc: 'Upload up to 100 damage photos. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
+  { icon: Image, title: 'Image Analysis', desc: 'Upload up to 100 damage photos. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
   { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.' },
   { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with a custom subdomain, logo, colors, and report footer.' },
   { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.' },
@@ -396,7 +396,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="FlacronAI — AI-Assisted Insurance Report Drafting" description="Turn claim details and inspection documentation into structured draft reports for professional review, approval, and export. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
+      <Seo title="FlacronAI — Automated Insurance Report Drafting" description="Turn claim details and inspection documentation into structured draft reports for professional review, approval, and export. Start free." path="/" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar transparent />
 
       {/* Hero */}
@@ -416,7 +416,7 @@ const Home = () => {
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-600 text-sm font-medium mb-6">
                 <Zap className="w-3.5 h-3.5" />
-                AI-assisted reporting for insurance professionals
+                Automated reporting for insurance professionals
               </div>
               <h1 className="text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 leading-tight tracking-tight mb-6">
                 Turn Inspection Documentation Into{' '}
@@ -610,7 +610,7 @@ const Home = () => {
             </Link>
           </div>
           <div className="mt-8 rounded-card border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-            <strong>AI limitations:</strong> FlacronAI drafts documentation; it does not perform an inspection or make final decisions about coverage, liability, cause of loss, safety, code compliance, or repair cost. A qualified professional must independently verify and approve every report.
+            <strong>Drafting limitations:</strong> FlacronAI drafts documentation; it does not perform an inspection or make final decisions about coverage, liability, cause of loss, safety, code compliance, or repair cost. A qualified professional must independently verify and approve every report.
           </div>
         </div>
       </section>
@@ -784,7 +784,7 @@ const Home = () => {
                   Ready to Transform Your Workflow?
                 </h2>
                 <p className="text-gray-600 text-lg mb-8">
-                  Draft professional inspection reports with AI — you review and approve every finding before it ships.
+                  Draft professional inspection reports automatically — you review and approve every finding before it ships.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link to="/auth?mode=signup" className="btn-primary flex items-center justify-center gap-2">

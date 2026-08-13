@@ -10,7 +10,7 @@ export const ORGANIZATION_JSONLD = {
   url: SITE_URL,
   logo: `${SITE_URL}/logo-mark.png`,
   description:
-    'FlacronAI is an AI-assisted platform that drafts professional insurance inspection reports for adjusters to review and approve.',
+    'FlacronAI is an automated platform that drafts professional insurance inspection reports for adjusters to review and approve.',
   parentOrganization: { '@type': 'Organization', name: 'Flacron Enterprises LLC' },
   sameAs: [
     'https://www.instagram.com/flacronenterprisesllc/',
@@ -35,7 +35,7 @@ export const PRODUCT_JSONLD = {
   operatingSystem: 'Web',
   url: `${SITE_URL}/pricing`,
   description:
-    'AI-assisted insurance inspection report drafting with PDF, DOCX and HTML export, photo analysis, CRM, API access, and white-label options.',
+    'Automated insurance inspection report drafting with PDF, DOCX and HTML export, photo analysis, CRM, API access, and white-label options.',
   offers: {
     '@type': 'AggregateOffer',
     priceCurrency: 'USD',

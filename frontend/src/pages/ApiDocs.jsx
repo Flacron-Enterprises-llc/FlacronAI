@@ -64,7 +64,7 @@ token = response.json()['token']`,
   ],
   Reports: [
     {
-      method: 'POST', url: '/api/v1/reports/generate', description: 'Generate an AI-powered insurance claim report. Accepts multipart/form-data with photos.',
+      method: 'POST', url: '/api/v1/reports/generate', description: 'Generate an automated insurance claim report. Accepts multipart/form-data with photos.',
       params: [
         { name: 'claimNumber', type: 'string', required: true, desc: 'Unique claim identifier' },
         { name: 'insuredName', type: 'string', required: true, desc: 'Name of the insured party' },
@@ -364,7 +364,7 @@ const ERROR_CODES = [
 ];
 
 const WEBHOOK_EVENTS_DOC = [
-  { name: 'report.generated', desc: 'A new AI draft report was created. Fired after POST /api/v1/reports/generate succeeds. The report is in "draft" status and still requires human review.' },
+  { name: 'report.generated', desc: 'A new draft report was created. Fired after POST /api/v1/reports/generate succeeds. The report is in "draft" status and still requires human review.' },
   { name: 'report.finalized', desc: 'A report was reviewed and approved by a licensed adjuster. Fired after POST /api/v1/reports/:id/approve succeeds.' },
 ];
 
@@ -491,7 +491,7 @@ print(f"Report ID: {report['id']}")`,
   {
     step: '4',
     title: 'Handle the Response',
-    description: 'The API returns a structured report object with AI-generated content, metadata, and status.',
+    description: 'The API returns a structured report object with generated content, metadata, and status.',
     details: [
       'Successful responses return HTTP 200-201 with a JSON body',
       'The report includes _id, claimNumber, content, status, qualityScore, and timestamps',
@@ -700,7 +700,7 @@ export default function ApiDocs() {
       <div className="pt-24 pb-20 px-4 max-w-7xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-4xl font-bold text-gray-900 mb-3">API Reference</h1>
-          <p className="text-gray-600 max-w-xl mx-auto">Complete documentation for the FlacronAI REST API. Integrate AI-powered claim reports into your applications.</p>
+          <p className="text-gray-600 max-w-xl mx-auto">Complete documentation for the FlacronAI REST API. Integrate automated claim reports into your applications.</p>
         </motion.div>
 
         <div className="flex gap-6">
@@ -764,7 +764,7 @@ export default function ApiDocs() {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Quick Start Guide</h2>
                 <p className="text-gray-600 text-sm mb-6">
-                  Get from zero to your first AI-generated report in six steps. This guide uses the API-key authentication recommended for all server-to-server integrations.
+                  Get from zero to your first generated report in six steps. This guide uses the API-key authentication recommended for all server-to-server integrations.
                 </p>
                 <div className="space-y-6">
                   {QUICK_START_STEPS.map((s) => (
@@ -1082,7 +1082,7 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                   <div className="card border-amber-200 bg-amber-50/50 p-5">
                     <h3 className="font-semibold text-gray-900">No public sandbox is available</h3>
                     <p className="mt-2 text-sm leading-6 text-gray-700">
-                      FlacronAI does not currently host a shared sandbox, and there is no separate test-key type — every API key (<code className="font-mono text-xs">flac_live_…</code>) is a live credential. Requests are sent to the backend host in your base URL and can change real tenant data, consume your monthly report entitlement, and create real provider-side activity such as AI generation, storage writes, and webhook deliveries.
+                      FlacronAI does not currently host a shared sandbox, and there is no separate test-key type — every API key (<code className="font-mono text-xs">flac_live_…</code>) is a live credential. Requests are sent to the backend host in your base URL and can change real tenant data, consume your monthly report entitlement, and create real provider-side activity such as report generation, storage writes, and webhook deliveries.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-gray-700">
                       To test an integration safely, run your own non-production deployment of the backend with its own isolated credentials:
@@ -1090,7 +1090,7 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                     <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-gray-700">
                       <li>A separate Firebase project (Auth + Firestore) so test records never mix with production data.</li>
                       <li>A separate storage bucket for uploaded photos and exports.</li>
-                      <li>Separate AI-provider credentials (or a lower-cost model) so test generations don't affect production spend.</li>
+                      <li>Separate report-generation provider credentials (or a lower-cost tier) so test generations don't affect production spend.</li>
                       <li>Stripe <strong>test-mode</strong> keys and price IDs for any billing or checkout calls.</li>
                       <li>A dedicated test account whose tier and monthly entitlement you can reset freely.</li>
                     </ul>

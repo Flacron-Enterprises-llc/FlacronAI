@@ -52,14 +52,14 @@ Generate a thorough, professional DRAFT report following this EXACT structure wi
 
 # INSURANCE INSPECTION REPORT
 
-> Prepared with AI assistance for review and approval by a licensed insurance adjuster. Observations are preliminary; this report does not constitute a final determination of cause, coverage, liability, or loss value.
+> Prepared with the Flacron Engine for review and approval by a licensed insurance adjuster. Observations are preliminary; this report does not constitute a final determination of cause, coverage, liability, or loss value.
 
 ## SECTION 1: REPORT HEADER
 - Report Type: ${reportType} Inspection Report
 - Claim Number: ${claimNumber}
 - Date of Inspection: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 - Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Prepared By: FlacronAI (AI-assisted — for licensed adjuster review)
+- Prepared By: FlacronAI (Flacron Engine — for licensed adjuster review)
 
 ## SECTION 2: INSURED INFORMATION
 - Insured Name: ${insuredName}
@@ -132,7 +132,7 @@ ${recommendations
 - A note that this draft must be reviewed, corrected, and approved by a licensed adjuster before use. Do NOT write a certification or attestation on behalf of the adjuster; leave a blank line for the reviewing adjuster's own sign-off.
 
 ---
-*AI-generated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*
 
 Write the complete DRAFT report now with all sections fully populated, using professional but cautious, non-conclusive language appropriate for a ${lossType} loss. Be specific and detailed where the inputs support it, and flag anything requiring professional confirmation.`;
 };
@@ -202,7 +202,8 @@ const generateReport = async (reportData, imageAnalysis, photoCount = 0) => {
   try {
     ({ text: content, modelUsed } = await generateWithFallback(prompt, { maxTokens: 4096, temperature: 0.5 }));
   } catch (err) {
-    throw new Error(`No AI provider available (Claude + watsonx both failed): ${err.message}. Configure ANTHROPIC_API_KEY or WATSONX_API_KEY.`);
+    console.error('Report generation providers unavailable (Claude + watsonx both failed):', err.message);
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', { cause: err });
   }
   console.log(`✅ Report generated via ${modelUsed}`);
 

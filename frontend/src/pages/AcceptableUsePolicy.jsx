@@ -48,11 +48,11 @@ Platform abuse:
 - Create multiple accounts to evade limits, bans, or billing.
 - Share API keys or account credentials with unauthorized third parties.
 
-Misuse of AI-generated content:
-- Submit AI-generated reports as final professional work without human review, verification, and sign-off by a licensed insurance adjuster.
+Misuse of generated content:
+- Submit generated reports as final professional work without human review, verification, and sign-off by a licensed insurance adjuster.
 - Use the Service to generate reports for claims in which you have no legitimate professional role or authorization.
-- Alter AI-generated findings to misrepresent observed damage for fraudulent purposes.
-- Remove or obscure disclosures that a report is AI-assisted.`,
+- Alter generated findings to misrepresent observed damage for fraudulent purposes.
+- Remove or obscure disclosures that a report is automatically generated.`,
   },
   {
     id: 'professional-use',
@@ -61,7 +61,7 @@ Misuse of AI-generated content:
 You represent that you hold all required professional licenses to perform insurance claim inspections and issue reports in the jurisdictions where you operate. You are responsible for ensuring your use of the Service complies with all applicable professional standards and regulations.
 
 Human review requirement:
-AI-generated content is a draft. You must review, verify, and approve all findings before submitting a report to an insurance carrier, court, or client. The Service does not replace professional judgment.
+Generated content is a draft. You must review, verify, and approve all findings before submitting a report to an insurance carrier, court, or client. The Service does not replace professional judgment.
 
 Accuracy and honesty:
 You must provide accurate claim information and upload genuine photographs. Fabricating damage, submitting staged photographs, or knowingly generating false reports violates this AUP and may constitute insurance fraud under applicable law.

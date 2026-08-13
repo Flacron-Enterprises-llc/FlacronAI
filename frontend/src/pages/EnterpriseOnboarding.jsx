@@ -12,7 +12,7 @@ const DEFAULT_BRAND = {
   primaryColor: '#f97316',
   secondaryColor: '#8b5cf6',
   logoUrl: null,
-  headerText: 'AI-Powered Insurance Claim Reports',
+  headerText: 'Automated Insurance Claim Reports',
   footerText: '© 2026 FlacronAI, Inc. All rights reserved.',
   hideFlacronBranding: false,
 };

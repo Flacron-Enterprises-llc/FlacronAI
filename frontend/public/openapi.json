@@ -3,7 +3,7 @@
   "info": {
     "title": "FlacronAI API",
     "version": "1.0.0",
-    "description": "REST API for draft insurance inspection reports. The current API version is v1; prefix every path with /api/v1. The older unversioned /api base is a backward-compatible alias for /api/v1 and may be deprecated later. Replace the server host with the backend host for your deployment. AI output requires human review before finalization."
+    "description": "REST API for draft insurance inspection reports. The current API version is v1; prefix every path with /api/v1. The older unversioned /api base is a backward-compatible alias for /api/v1 and may be deprecated later. Replace the server host with the backend host for your deployment. Generated output requires human review before finalization."
   },
   "servers": [
     { "url": "https://YOUR_API_BASE_URL/api/v1", "description": "Deployment-specific backend (versioned)" },

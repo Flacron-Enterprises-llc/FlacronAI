@@ -12,7 +12,7 @@ const VALUES = [
   },
   {
     icon: Target, title: 'Accuracy',
-    desc: 'AI drafts are structured and consistent, and built for human review. We measure and improve output quality constantly, because a wrong report doesn\'t just waste time — it damages trust.',
+    desc: 'Drafts are structured and consistent, and built for human review. We measure and improve output quality constantly, because a wrong report doesn\'t just waste time — it damages trust.',
   },
   {
     icon: Shield, title: 'Security',
@@ -35,7 +35,7 @@ const VALUES = [
 export default function About() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="About FlacronAI — Give Adjusters Their Time Back" description="FlacronAI, a Flacron Enterprises LLC product, removes the documentation bottleneck in insurance claims: AI drafts the report, a licensed adjuster reviews and approves." path="/about" />
+      <Seo title="About FlacronAI — Give Adjusters Their Time Back" description="FlacronAI, a Flacron Enterprises LLC product, removes the documentation bottleneck in insurance claims: the Flacron Engine drafts the report, a licensed adjuster reviews and approves." path="/about" />
       <Navbar />
 
       {/* Hero */}
@@ -48,7 +48,7 @@ export default function About() {
             Give Adjusters Their <span className="gradient-text">Time Back</span>
           </h1>
           <p className="text-gray-600 text-lg leading-relaxed">
-            FlacronAI exists to eliminate the documentation bottleneck in insurance claims. We combine the latest AI technology with deep industry knowledge to give adjusters their time back.
+            FlacronAI exists to eliminate the documentation bottleneck in insurance claims. We combine the Flacron Engine with deep industry knowledge to give adjusters their time back.
           </p>
         </motion.div>
       </section>
@@ -66,7 +66,7 @@ export default function About() {
                 FlacronAI, a product of Flacron Enterprises LLC, addresses that bottleneck directly. Upload your inspection photos and claim details, and the platform assembles an editable draft report with documented observations, photo references, and structured report sections.
               </p>
               <p>
-                The AI does the assembling; you stay the professional. Every draft is meant to be reviewed, edited, and approved by a qualified adjuster before it goes anywhere. We build tooling that makes your judgment faster to document — not a replacement for it.
+                The Flacron Engine does the assembling; you stay the professional. Every draft is meant to be reviewed, edited, and approved by a qualified adjuster before it goes anywhere. We build tooling that makes your judgment faster to document — not a replacement for it.
               </p>
             </div>
           </motion.div>
@@ -103,7 +103,7 @@ export default function About() {
         <motion.div className="text-center max-w-xl mx-auto"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Ready to Try FlacronAI?</h2>
-          <p className="text-gray-600 mb-6">Start free — no credit card required. Create your first AI-assisted draft and review it before export.</p>
+          <p className="text-gray-600 mb-6">Start free — no credit card required. Create your first automated draft and review it before export.</p>
           <Link to="/auth?mode=signup" className="btn-primary inline-flex items-center gap-2">Get Started Free</Link>
         </motion.div>
       </section>

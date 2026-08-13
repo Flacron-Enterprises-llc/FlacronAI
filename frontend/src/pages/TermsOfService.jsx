@@ -16,17 +16,17 @@ We reserve the right to modify these Terms at any time. We will notify users of 
   {
     id: 'service',
     title: '2. Service Description',
-    content: `FlacronAI provides an AI-powered insurance claim report generation platform. The Service enables users to submit claim data and damage photographs for analysis by artificial intelligence systems, resulting in professionally formatted insurance claim reports.
+    content: `FlacronAI provides an automated insurance claim report generation platform, powered by the Flacron Engine. The Service enables users to submit claim data and damage photographs for automated analysis, resulting in professionally formatted insurance claim reports.
 
 **Core service capabilities include:**
-- AI-powered damage photo analysis using computer vision
-- Structured report generation using FlacronAI language models
+- Automated damage photo analysis using computer vision
+- Structured report generation using the Flacron Engine
 - Report export in PDF, DOCX, and HTML formats (plan-dependent)
 - A customer relationship management (CRM) module for client and claim tracking
 - White-label portal configuration for enterprise users
 - A REST API for programmatic integration (Agency and Enterprise plans)
 
-The Service is provided on an "as-is" and "as-available" basis. FlacronAI does not guarantee that the Service will be uninterrupted, error-free, or that AI-generated content will be free of inaccuracies. Generated reports are AI-assisted drafts and require review and verification by qualified human professionals before submission to insurance carriers or courts.`,
+The Service is provided on an "as-is" and "as-available" basis. FlacronAI does not guarantee that the Service will be uninterrupted, error-free, or that generated content will be free of inaccuracies. Generated reports are automated drafts and require review and verification by qualified human professionals before submission to insurance carriers or courts.`,
   },
   {
     id: 'account',
@@ -68,7 +68,7 @@ The Service is provided on an "as-is" and "as-available" basis. FlacronAI does n
 **Prohibited activities:**
 - Use the Service to generate fraudulent, misleading, or intentionally inaccurate insurance claim reports.
 - Submit photos or claim data that you do not own or do not have the right to use.
-- Attempt to reverse-engineer, decompile, or extract the underlying AI models.
+- Attempt to reverse-engineer, decompile, or extract the underlying drafting engine or models.
 - Use automated scraping, crawling, or data extraction tools on the platform.
 - Attempt to access other users' accounts, data, or systems without authorization.
 - Upload content containing malware, viruses, or malicious code.
@@ -82,11 +82,11 @@ The Service is provided on an "as-is" and "as-available" basis. FlacronAI does n
   {
     id: 'intellectual-property',
     title: '6. Intellectual Property',
-    content: `**FlacronAI's intellectual property:** The Service, including its software, AI models, user interface, design, documentation, and trademarks, is owned by FlacronAI, Inc. and protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use FlacronAI's trademarks, logos, or brand elements.
+    content: `**FlacronAI's intellectual property:** The Service, including its software, the Flacron Engine, user interface, design, documentation, and trademarks, is owned by FlacronAI, Inc. and protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use FlacronAI's trademarks, logos, or brand elements.
 
 **Your content:** You retain all ownership rights to claim data, photos, and other content you submit to the Service ("Your Content"). By submitting content, you grant FlacronAI a limited, non-exclusive, worldwide, royalty-free license to process, store, and use Your Content solely to provide the Service to you.
 
-**Generated reports:** You own the AI-generated reports created from your claim data. FlacronAI does not claim ownership of the output of report generation using your content.
+**Generated reports:** You own the generated reports created from your claim data. FlacronAI does not claim ownership of the output of report generation using your content.
 
 **Restrictions:** The limited license you receive to use the Service does not include the right to sublicense, sell, resell, transfer, assign, or otherwise commercialize the Service or any portion of it, except as explicitly permitted under API terms for Agency and Enterprise plan holders.
 
@@ -101,14 +101,14 @@ The Service is provided on an "as-is" and "as-available" basis. FlacronAI does n
 
 **Insurance data sensitivity:** We recognize that claim data may contain sensitive personal information about insured parties. You are responsible for ensuring that your collection, submission, and use of third-party personal data complies with applicable privacy laws, including GDPR and CCPA, and with the privacy policies disclosed to insured parties.
 
-**AI model training:** We do not use your submitted claim data, photos, or report content to train, fine-tune, or evaluate AI models, except with your explicit written consent.`,
+**Model training:** We do not use your submitted claim data, photos, or report content to train, fine-tune, or evaluate any models, except with your explicit written consent.`,
   },
   {
     id: 'liability',
     title: '8. Limitation of Liability',
-    content: `**Disclaimer of warranties:** THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. FLACRONAI DOES NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR THAT AI-GENERATED REPORTS WILL BE ACCURATE OR SUITABLE FOR ANY PURPOSE.
+    content: `**Disclaimer of warranties:** THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. FLACRONAI DOES NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR THAT GENERATED REPORTS WILL BE ACCURATE OR SUITABLE FOR ANY PURPOSE.
 
-**AI-generated content disclaimer:** AI-generated reports are provided as drafts to assist qualified professionals. FlacronAI makes no representation that generated reports comply with all applicable legal, regulatory, or professional standards. Users are solely responsible for reviewing, verifying, and taking professional responsibility for reports before submission.
+**Generated content disclaimer:** Generated reports are provided as drafts to assist qualified professionals. FlacronAI makes no representation that generated reports comply with all applicable legal, regulatory, or professional standards. Users are solely responsible for reviewing, verifying, and taking professional responsibility for reports before submission.
 
 **Limitation of damages:** TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, FLACRONAI SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, LOSS OF DATA, OR LOSS OF GOODWILL, ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
@@ -123,7 +123,7 @@ The Service is provided on an "as-is" and "as-available" basis. FlacronAI does n
 - Your use or misuse of the Service.
 - Your submission of content that infringes third-party intellectual property rights.
 - Your violation of any applicable law or regulation.
-- Your use of AI-generated reports in professional contexts, including claims submissions, litigation support, or client representations.
+- Your use of generated reports in professional contexts, including claims submissions, litigation support, or client representations.
 - Any false, misleading, or fraudulent claim data or photographs you submit.
 
 FlacronAI reserves the right to assume exclusive defense and control of any matter subject to indemnification by you, in which case you agree to cooperate fully with FlacronAI in asserting available defenses.`,
@@ -152,7 +152,7 @@ FlacronAI reserves the right to assume exclusive defense and control of any matt
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="Terms of Service — FlacronAI" description="The terms that govern your use of FlacronAI, including AI-assisted drafting, human review requirements, and subscriptions." path="/terms-of-service" />
+      <Seo title="Terms of Service — FlacronAI" description="The terms that govern your use of FlacronAI, including automated drafting, human review requirements, and subscriptions." path="/terms-of-service" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

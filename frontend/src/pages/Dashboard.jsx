@@ -30,7 +30,7 @@ const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived
 // showing that stage regardless would misrepresent what's actually happening.
 const GENERATION_STEPS_WITH_PHOTOS = [
   'Uploading photos...',
-  'Analyzing damage photos with AI...',
+  'Analyzing damage photos...',
   'Generating report with FlacronAI...',
   'Finalizing...',
 ];
@@ -193,7 +193,7 @@ function ReportDetailModal({ report, onClose }) {
             </div>
             {report.qualityScore && (
               <div className="flex gap-3">
-                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">Documentation Completeness:</span>
+                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">Documentation Completeness:</span>
                 <span className="text-orange-700 font-semibold">{report.qualityScore}/100</span>
               </div>
             )}
@@ -998,7 +998,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900">Generate Report</h1>
-                    <p className="text-gray-600 text-sm mt-1">AI-powered insurance claim report generation</p>
+                    <p className="text-gray-600 text-sm mt-1">Automated insurance claim report generation</p>
                   </div>
                   {generatedReport && (
                     <button onClick={() => setGeneratedReport(null)} className="btn-secondary text-sm py-2 flex items-center gap-2">
@@ -1193,7 +1193,7 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between mb-4">
                               <div>
                                 <h2 className="text-lg font-semibold text-gray-900">Upload Photos</h2>
-                                <p className="text-xs text-gray-500 mt-0.5">Required — upload at least one damage photo for AI analysis</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Required — upload at least one damage photo for analysis</p>
                               </div>
                               <span className="text-sm text-gray-500">{photos.length} / 100</span>
                             </div>
@@ -1274,7 +1274,7 @@ export default function Dashboard() {
                             )}
                             <button onClick={handleGenerate} disabled={!canGenerate || generating || !form.claimNumber || !form.insuredName}
                               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed py-3 text-base">
-                              <Zap className="w-5 h-5" /> Generate Report with AI
+                              <Zap className="w-5 h-5" /> Generate Report
                             </button>
                             {(!form.claimNumber || !form.insuredName) && (
                               <p className="text-xs text-red-400 mt-2 text-center">Claim Number and Insured Name are required</p>
@@ -1310,7 +1310,7 @@ export default function Dashboard() {
                           <Zap className="w-8 h-8 text-orange-400 animate-pulse" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 mb-2">Generating Your Report</h2>
-                        <p className="text-gray-600 text-sm mb-6">Please wait while our AI processes your claim...</p>
+                        <p className="text-gray-600 text-sm mb-6">Please wait while the Flacron Engine processes your claim...</p>
                         <div className="space-y-3">
                           {genSteps.map((s, i) => (
                             <div key={i} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
@@ -1346,7 +1346,7 @@ export default function Dashboard() {
                           <div className="flex items-center gap-2 flex-wrap">
                             {generatedReport.qualityScore && (
                               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30"
-                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">
                                 Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
@@ -1398,7 +1398,7 @@ export default function Dashboard() {
                         <div className="flex items-center justify-between mb-3 gap-3">
                           <div>
                             <h2 className="text-sm font-semibold text-gray-900">Review &amp; Edit Report</h2>
-                            <p className="text-xs text-gray-500 mt-0.5">AI-generated draft — review and edit any section, then approve to finalize.</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Automatically generated draft — review and edit any section, then approve to finalize.</p>
                           </div>
                           <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
                             className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50 shrink-0">
@@ -1437,7 +1437,7 @@ export default function Dashboard() {
                           </>
                         ) : (
                           <>
-                            <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <p className="text-xs text-amber-800 mb-3">Unreviewed draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
@@ -1466,7 +1466,7 @@ export default function Dashboard() {
                             <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
                               <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
                                 className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
-                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that AI-generated content must be independently verified.</span>
+                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that automatically generated content must be independently verified.</span>
                             </label>
                             <button onClick={handleApprove} disabled={approving}
                               className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
@@ -1522,14 +1522,6 @@ export default function Dashboard() {
                           <p className="text-[10px] text-gray-400 mt-2 text-center">DOCX & HTML require Professional+</p>
                         )}
                       </div>
-                      {generatedReport.aiModel && (
-                        <div className="card p-4">
-                          <h3 className="text-sm font-semibold text-gray-700 mb-2">AI Model Used</h3>
-                          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-600 border border-amber-500/30">
-                            {generatedReport.aiModel}
-                          </span>
-                        </div>
-                      )}
                       <div className="card p-4">
                         <h3 className="text-sm font-semibold text-gray-700 mb-3">Actions</h3>
                         <button onClick={() => { setGeneratedReport(null); setPdfPreviewUrl(null); setStep(1); }}
