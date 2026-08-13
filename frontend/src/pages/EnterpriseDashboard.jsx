@@ -30,7 +30,7 @@ const LOSS_TYPES = ['Water Damage','Fire Damage','Wind/Hail Damage','Vandalism',
 const REPORT_TYPES = ['Initial','Supplemental','Final','Re-inspection','Catastrophe'];
 // Only shows "Running AI vision on photos" when photos were actually uploaded --
 // the backend skips AI image analysis entirely at 0 photos (see T-6.14).
-const GEN_STEPS_WITH_PHOTOS = ['Analyzing claim data…','Running AI vision on photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
+const GEN_STEPS_WITH_PHOTOS = ['Analyzing claim data…','Analyzing photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
 const GEN_STEPS_NO_PHOTOS = ['Analyzing claim data…','Generating report with FlacronAI…','Scoring & finalizing…'];
 
 const ROLE_COLORS = {
@@ -561,7 +561,7 @@ export default function EnterpriseDashboard() {
           <div className="flex items-center gap-3 shrink-0">
             <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs text-green-700 font-medium">AI Online</span>
+              <span className="text-xs text-green-700 font-medium">Engine Online</span>
             </div>
             <button onClick={() => setActiveView('generate')}
               className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
@@ -581,13 +581,13 @@ export default function EnterpriseDashboard() {
                   <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} trend={8} />
                   <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} />
                   <StatCard label="Avg Completeness" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="Documentation completeness" icon={Shield} trend={3}
-                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the AI's findings." />
+                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings." />
                 </div>
 
                 {/* Quick-action cards */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
                   {[
-                    { icon: Zap, title: 'Generate Report', desc: 'AI-powered unlimited report generation', action: () => setActiveView('generate'), accent: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-500', chip: 'text-orange-600 bg-orange-100' },
+                    { icon: Zap, title: 'Generate Report', desc: 'Automated unlimited report generation', action: () => setActiveView('generate'), accent: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-500', chip: 'text-orange-600 bg-orange-100' },
                     { icon: Globe, title: 'White-Label Active', desc: 'Your brand on all reports, exports & portal', action: () => setActiveView('whitelabel'), accent: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-500', chip: 'text-blue-600 bg-blue-100' },
                     { icon: Users, title: 'Manage Team', desc: 'Invite members, set roles, control access', action: () => setActiveView('team'), accent: 'bg-violet-50 border-violet-200', iconBg: 'bg-violet-500', chip: 'text-violet-600 bg-violet-100' },
                   ].map(f => (
@@ -631,7 +631,7 @@ export default function EnterpriseDashboard() {
                         <tr className="border-b border-[#e5e7eb] bg-gray-50">
                           {['Claim #','Insured','Loss Type','Date','Completeness','Export'].map(h => (
                             <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
-                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
+                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the Flacron Engine's findings." : undefined}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -802,7 +802,7 @@ export default function EnterpriseDashboard() {
                       ) : (
                         <button onClick={handleGenerate} disabled={!form.claimNumber || !form.insuredName}
                           className="w-full py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-                          <Zap className="w-5 h-5" /> Generate Report with AI — No Watermark
+                          <Zap className="w-5 h-5" /> Generate Report — No Watermark
                         </button>
                       )}
                     </div>
@@ -819,7 +819,7 @@ export default function EnterpriseDashboard() {
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
                               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700"
-                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the AI's findings.">
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">
                                 Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
@@ -847,7 +847,7 @@ export default function EnterpriseDashboard() {
                         <div className="flex items-center justify-between mb-3 gap-3">
                           <div>
                             <p className="text-sm font-bold text-gray-900">Review &amp; Edit Report</p>
-                            <p className="text-xs text-gray-500 mt-0.5">AI-generated draft — review and edit, then approve to finalize.</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Automatically generated draft — review and edit, then approve to finalize.</p>
                           </div>
                           <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
                             className="text-xs px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
@@ -881,7 +881,7 @@ export default function EnterpriseDashboard() {
                           </>
                         ) : (
                           <>
-                            <p className="text-xs text-amber-800 mb-3">Unreviewed AI draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
+                            <p className="text-xs text-amber-800 mb-3">Unreviewed draft. Exports are watermarked <strong>DRAFT</strong> until a licensed adjuster reviews and approves it.</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
@@ -910,7 +910,7 @@ export default function EnterpriseDashboard() {
                             <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
                               <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
                                 className="mt-0.5 rounded border-gray-300 text-orange-600 focus:ring-orange-400" />
-                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that AI-generated content must be independently verified.</span>
+                              <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that automatically generated content must be independently verified.</span>
                             </label>
                             <button onClick={handleApprove} disabled={approving}
                               className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
@@ -965,7 +965,7 @@ export default function EnterpriseDashboard() {
                       <tr className="border-b border-[#e5e7eb] bg-gray-50">
                         {['Claim #','Insured','Loss Type','Report Type','Date','Completeness','Export'].map(h => (
                           <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
-                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the AI's findings." : undefined}>{h}</th>
+                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the Flacron Engine's findings." : undefined}>{h}</th>
                         ))}
                       </tr>
                     </thead>

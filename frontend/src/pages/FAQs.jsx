@@ -12,7 +12,7 @@ const FAQS = [
   {
     category: 'General',
     q: 'What is FlacronAI?',
-    a: 'FlacronAI is an AI-assisted insurance documentation platform. It organizes submitted claim details, notes, and supported damage photos into a structured draft that must be reviewed, edited, and approved by a qualified professional.',
+    a: 'FlacronAI is an automated insurance documentation platform. It organizes submitted claim details, notes, and supported damage photos into a structured draft that must be reviewed, edited, and approved by a qualified professional.',
   },
   {
     category: 'General',
@@ -65,13 +65,13 @@ const FAQS = [
   // Technical
   {
     category: 'Technical',
-    q: 'What AI models does FlacronAI use?',
-    a: 'FlacronAI uses Anthropic models for report drafting and supported-image analysis, with IBM watsonx available as a text-only fallback. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
+    q: 'What technology powers FlacronAI\'s report drafting?',
+    a: 'FlacronAI\'s Flacron Engine drafts report text and analyzes supported images, with an automatic backup engine that takes over for text drafting if the primary is unavailable. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
   },
   {
     category: 'Technical',
     q: 'How many photos can I upload per report?',
-    a: 'You can upload up to 100 photos per report. Supported formats are JPEG and PNG. Individual files must be under 10MB. We recommend using a mixture of overview shots and detailed damage photos for best AI analysis results.',
+    a: 'You can upload up to 100 photos per report. Supported formats are JPEG and PNG. Individual files must be under 10MB. We recommend using a mixture of overview shots and detailed damage photos for best analysis results.',
   },
   {
     category: 'Technical',
@@ -86,7 +86,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'Is my data stored securely?',
-    a: 'Your account data and reports are stored in Google Cloud Firestore (via Firebase), which encrypts stored data at rest, and all traffic to the platform is encrypted in transit over HTTPS. Authentication is handled by Firebase Authentication. We do not use your report content or photos to train AI models.',
+    a: 'Your account data and reports are stored in Google Cloud Firestore (via Firebase), which encrypts stored data at rest, and all traffic to the platform is encrypted in transit over HTTPS. Authentication is handled by Firebase Authentication. We do not use your report content or photos to train any models.',
   },
 
   // API
@@ -103,7 +103,7 @@ const FAQS = [
   {
     category: 'API',
     q: 'Are there rate limits on the API?',
-    a: 'Yes. All API traffic shares a fair-use limit of 100 requests per 15 minutes, and AI generation endpoints are limited to 10 requests per minute. Responses include standard rate-limit headers so your integration can back off gracefully.',
+    a: 'Yes. All API traffic shares a fair-use limit of 100 requests per 15 minutes, and report generation endpoints are limited to 10 requests per minute. Responses include standard rate-limit headers so your integration can back off gracefully.',
   },
   {
     category: 'API',
@@ -155,7 +155,7 @@ export default function FAQs() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how AI-assisted insurance report drafting works." path="/faqs" jsonLd={FAQ_JSONLD} />
+      <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how automated insurance report drafting works." path="/faqs" jsonLd={FAQ_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-3xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

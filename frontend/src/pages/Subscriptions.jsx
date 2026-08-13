@@ -14,7 +14,7 @@ import useEscapeToClose from '../hooks/useEscapeToClose';
 const TIER_INFO = {
   starter: {
     name: 'Starter', price: PLAN_PRICING.starter.monthly, icon: Zap, color: 'text-gray-600', bg: 'bg-gray-500/10',
-    features: ['5 reports/month', 'PDF export', 'AI report generation', 'Email support', 'FlacronAI watermark on reports'],
+    features: ['5 reports/month', 'PDF export', 'Automated report generation', 'Email support', 'FlacronAI watermark on reports'],
   },
   professional: {
     name: 'Professional', price: PLAN_PRICING.professional.monthly, icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10',

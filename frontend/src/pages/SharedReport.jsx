@@ -62,7 +62,7 @@ export default function SharedReport() {
               <span>Electronically signed by <span className="font-semibold text-gray-800">{report.signature.name}</span>{report.signature.title ? `, ${report.signature.title}` : ''}{report.signature.signedAt ? ` on ${new Date(report.signature.signedAt).toLocaleString()}` : ''}.</span>
             </div>
           )}
-          <p className="mt-6 text-[11px] text-gray-400">Prepared with AI assistance and reviewed by a licensed adjuster. This document does not constitute a final determination of cause, coverage, liability, or loss value.</p>
+          <p className="mt-6 text-[11px] text-gray-400">Prepared with the Flacron Engine and reviewed by a licensed adjuster. This document does not constitute a final determination of cause, coverage, liability, or loss value.</p>
         </div>
       </div>
     </div>

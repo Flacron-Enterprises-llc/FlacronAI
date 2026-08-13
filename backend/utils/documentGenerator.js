@@ -51,7 +51,7 @@ const generateDOCX = async (report, options = {}) => {
       tableRows.forEach((row, ri) => {
         const isHeader = ri === 0;
         const isTotal = row[0] && row[0].replace(/\*/g, '').trim().toUpperCase().startsWith('TOTAL');
-        const fillColor = isHeader ? 'F97316' : isTotal ? 'FFF7ED' : (ri % 2 === 0 ? 'F8FAFC' : 'FFFFFF');
+        const fillColor = isHeader ? '002A64' : isTotal ? 'FFF7ED' : (ri % 2 === 0 ? 'F8FAFC' : 'FFFFFF');
         tblXml += `<w:tr>
           <w:trPr>
             <w:cantSplit/>
@@ -96,7 +96,17 @@ const generateDOCX = async (report, options = {}) => {
       } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
         flushDocxTable();
         const text = line.trim().slice(2).replace(/\*\*(.*?)\*\*/g, '$1');
-        xmlParts.push(`<w:p><w:pPr><w:ind w:left="360"/></w:pPr><w:r><w:t xml:space="preserve">• ${escapeXml(text)}</w:t></w:r></w:p>`);
+        // Report Header / Insured Information: bold label + plain value, no
+        // bullet dot — matches the PDF's field-list treatment for these two
+        // sections specifically (client's reference sample style).
+        const isFieldListSection = /report header|insured information/i.test(sec.title || '');
+        const kv = isFieldListSection ? text.match(/^([^:]{2,60}):\s*(.*)$/) : null;
+        if (kv) {
+          const [, label, value] = kv;
+          xmlParts.push(`<w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(label)}: </w:t></w:r><w:r><w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r></w:p>`);
+        } else {
+          xmlParts.push(`<w:p><w:pPr><w:ind w:left="360"/></w:pPr><w:r><w:t xml:space="preserve">• ${escapeXml(text)}</w:t></w:r></w:p>`);
+        }
       } else if (line.trim() === '') {
         flushDocxTable();
         xmlParts.push('<w:p><w:r><w:t></w:t></w:r></w:p>');
@@ -162,6 +172,7 @@ const generateDOCX = async (report, options = {}) => {
       <w:tblPr>
         <w:tblStyle w:val="TableGrid"/>
         <w:tblW w:w="9000" w:type="dxa"/>
+        <w:jc w:val="center"/>
         <w:tblBorders>
           <w:top w:val="single" w:sz="4" w:color="E2E8F0"/>
           <w:left w:val="single" w:sz="4" w:color="E2E8F0"/>
@@ -179,6 +190,8 @@ const generateDOCX = async (report, options = {}) => {
         ['Date of Loss', report.lossDate || ''],
         ['Loss Type', report.lossType || ''],
         ['Report Date', reportDate],
+        ['Prepared With', hideFlacronBranding ? companyName : 'FlacronAI (Flacron Engine)'],
+        ['Status', { draft: 'Draft — pending adjuster review', finalized: 'Finalized — approved by licensed adjuster' }[report.status] || 'Draft — pending adjuster review'],
       ].map(([k, v]) => `
       <w:tr>
         <w:tc>
@@ -204,7 +217,7 @@ const generateDOCX = async (report, options = {}) => {
       <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
       <w:r><w:t>Reviewing Adjuster Sign-Off</w:t></w:r>
     </w:p>
-    <w:p><w:r><w:t xml:space="preserve">This report was prepared with AI assistance and is provided as a draft for professional review. It does not constitute a final determination of cause, coverage, liability, or loss value. The reviewing adjuster's signature below indicates that they have reviewed, corrected as needed, and approved its contents.</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">This report was prepared with the Flacron Engine and is provided as a draft for professional review. It does not constitute a final determination of cause, coverage, liability, or loss value. The reviewing adjuster's signature below indicates that they have reviewed, corrected as needed, and approved its contents.</w:t></w:r></w:p>
     ${signedByLine}
     <w:p><w:r><w:t></w:t></w:r></w:p>
     <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">                                                    </w:t></w:r><w:r><w:t xml:space="preserve">  Signature</w:t></w:r></w:p>
@@ -314,17 +327,20 @@ const getDefaultStyles = () => `<?xml version="1.0" encoding="UTF-8" standalone=
     <w:name w:val="Title"/>
     <w:rPr>
       <w:b/>
-      <w:sz w:val="52"/>
-      <w:color w:val="0A0A0F"/>
+      <w:sz w:val="44"/>
+      <w:color w:val="002A64"/>
     </w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading1">
     <w:name w:val="heading 1"/>
-    <w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr>
+    <w:pPr>
+      <w:spacing w:before="240" w:after="120"/>
+      <w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="FD4403"/></w:pBdr>
+    </w:pPr>
     <w:rPr>
       <w:b/>
-      <w:sz w:val="32"/>
-      <w:color w:val="F97316"/>
+      <w:sz w:val="26"/>
+      <w:color w:val="002A64"/>
     </w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading2">

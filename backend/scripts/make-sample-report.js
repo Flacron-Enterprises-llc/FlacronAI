@@ -63,13 +63,13 @@ kv([
   ['Property Address', '4127 Meadowbrook Lane, Austin, TX 78745 (fictional)'],
   ['Date of Loss', 'March 22, 2024'],
   ['Loss Type', 'Wind / Hail'],
-  ['Report Type', 'Initial Inspection — AI-assisted draft'],
+  ['Report Type', 'Initial Inspection — automated draft'],
   ['Prepared With', 'FlacronAI drafting assistant'],
   ['Status', 'Draft for review — not final until approved by a licensed adjuster'],
 ]);
 doc.y += 16;
 doc.fontSize(8.5).fillColor(MUTED).font('Helvetica-Oblique')
-  .text('This sample document demonstrates the structure and language of a FlacronAI draft report. All names, addresses, observations, and figures are fictional. AI-drafted observations describe visible conditions only; they are not professional determinations of cause, coverage, or cost.', M, doc.y, { width: CW, lineGap: 2 });
+  .text('This sample document demonstrates the structure and language of a FlacronAI draft report. All names, addresses, observations, and figures are fictional. Drafted observations describe visible conditions only; they are not professional determinations of cause, coverage, or cost.', M, doc.y, { width: CW, lineGap: 2 });
 
 // ── Sections ──────────────────────────────────────────────────────────────
 newPage();
@@ -125,7 +125,7 @@ doc.y = ty + 12; doc.x = M;
 p('Coverage analysis is intentionally not included: whether this loss is covered is a determination made by the carrier under the policy, not by this report or by FlacronAI.');
 
 h1('Section 8: Supporting Documentation');
-p('In a live report this section lists the uploaded damage photos (up to 100 per report) with AI-generated captions describing visible conditions, plus any attached weather reports or invoices. Each photo caption is editable by the reviewing adjuster before the report is finalized.');
+p('In a live report this section lists the uploaded damage photos (up to 100 per report) with automatically generated captions describing visible conditions, plus any attached weather reports or invoices. Each photo caption is editable by the reviewing adjuster before the report is finalized.');
 
 newPage();
 h1('Section 9: Conclusion & Adjuster Notes');
@@ -133,7 +133,7 @@ p('This draft organizes the documented visible conditions, a proposed scope of w
 doc.y += 10;
 
 h1('Review & Approval');
-p('FlacronAI drafts are not final reports. Every AI-drafted observation in this document is subject to review, editing, and approval by a licensed adjuster before the report is issued.');
+p('FlacronAI drafts are not final reports. Every drafted observation in this document is subject to review, editing, and approval by a licensed adjuster before the report is issued.');
 doc.y += 24;
 [['Reviewed & approved by (licensed adjuster)', M], ['Date', M + 320]].forEach(([label, x]) => {
   doc.rect(x, doc.y, x === M ? 280 : 140, 1).fill('#9ca3af');

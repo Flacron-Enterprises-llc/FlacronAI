@@ -96,12 +96,12 @@ const Footer = () => {
               <span className="font-bold text-lg text-gray-900">FlacronAI</span>
             </Link>
             <p className="text-gray-500 text-sm leading-relaxed mb-5 max-w-xs">
-              AI-assisted insurance documentation. Build structured drafts from submitted claim information, then review and approve them before final use.
+              Automated insurance documentation. Build structured drafts from submitted claim information, then review and approve them before final use.
             </p>
             {/* Powered by badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-gray-500 font-medium">Powered by</span>
-              <span className="text-xs bg-orange-500/10 text-orange-700 border border-orange-200 px-2 py-0.5 rounded font-semibold">FlacronAI Engine</span>
+              <span className="text-xs bg-orange-500/10 text-orange-700 border border-orange-200 px-2 py-0.5 rounded font-semibold">Flacron Engine</span>
             </div>
           </div>
 

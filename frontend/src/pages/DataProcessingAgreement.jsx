@@ -48,7 +48,7 @@ We will not process Personal Data for any other purpose, sell it, or use it to b
     title: '3. Processing Instructions',
     content: `Your instructions:
 By using the Service, you instruct FlacronAI to process Personal Data to:
-- Generate AI-assisted insurance claim reports based on the data and photographs you submit.
+- Generate automated insurance claim reports based on the data and photographs you submit.
 - Store reports, claim data, and photographs for the duration necessary to provide the Service and as required by applicable retention obligations.
 - Enable export, sharing, and retrieval of reports as directed by you through the Service interface or API.
 - Provide customer support and resolve technical issues.

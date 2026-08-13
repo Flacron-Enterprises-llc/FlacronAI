@@ -103,7 +103,7 @@ export default function SectionedReportEditor({ reportId, value, onChange, disab
                 {suggestions[section.id] !== undefined && (
                   <div className="border-t border-blue-200 bg-blue-50 p-4">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div><p className="text-xs font-bold uppercase tracking-wider text-blue-800">AI suggestion — not applied</p><p className="text-xs text-blue-700">Review or edit this proposal before accepting it.</p></div>
+                      <div><p className="text-xs font-bold uppercase tracking-wider text-blue-800">Suggested edit — not applied</p><p className="text-xs text-blue-700">Review or edit this proposal before accepting it.</p></div>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => rejectSuggestion(section.id)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"><X className="h-3.5 w-3.5" /> Reject</button>
                         <button type="button" onClick={() => acceptSuggestion(section, index)} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-800"><Check className="h-3.5 w-3.5" /> Accept</button>

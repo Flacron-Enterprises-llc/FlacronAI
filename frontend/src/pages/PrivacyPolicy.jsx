@@ -13,7 +13,7 @@ const SECTIONS = [
 - Account registration data: name, email address, and password (stored as a salted hash).
 - Profile information: display name, phone number, company name, business address, and optional company logo.
 - Claim data: claim numbers, insured names, property addresses, loss dates, loss types, and report types entered during report generation.
-- Photos and files: damage photographs uploaded for AI analysis.
+- Photos and files: damage photographs uploaded for analysis.
 - Payment information: collected and processed exclusively by Stripe. We do not store credit card numbers.
 - Communications: messages sent via our contact form, support tickets, or email.
 
@@ -27,7 +27,7 @@ const SECTIONS = [
     title: '2. How We Use Your Data',
     content: `We use collected data for the following purposes:
 
-- **Service delivery:** Generating AI-powered reports, processing exports, and maintaining your account.
+- **Service delivery:** Generating automated reports, processing exports, and maintaining your account.
 - **Authentication and security:** Verifying your identity, detecting fraudulent activity, and protecting account security.
 - **Payment processing:** Managing subscriptions, processing payments, and generating invoices through Stripe.
 - **Customer support:** Responding to inquiries, resolving technical issues, and improving support quality.
@@ -35,15 +35,15 @@ const SECTIONS = [
 - **Communications:** Sending transactional emails (report ready notifications, subscription updates) and, with consent, product announcements.
 - **Legal compliance:** Meeting obligations under applicable law, including tax reporting and law enforcement requests with proper legal process.
 
-We do not use your claim data, photos, or report content to train or improve AI models. Your insurance data remains your data.`,
+We do not use your claim data, photos, or report content to train or improve any models. Your insurance data remains your data.`,
   },
   {
     id: 'data-sharing',
     title: '3. Data Sharing',
     content: `We do not sell your personal data. We share data only as follows:
 
-- **Service providers:** Third-party vendors who assist in delivering the service. This includes Google Firebase (authentication, database), Stripe (payments), and AI processing partners. All vendors are bound by data processing agreements and may not use your data for independent purposes.
-- **AI data handling:** Photos and claim text submitted for AI generation are transmitted to our AI processing partners. All partners process this data under strict confidentiality agreements and do not use submitted data for model training.
+- **Service providers:** Third-party vendors who assist in delivering the service. This includes Google Firebase (authentication, database), Stripe (payments), and the processing partners behind the Flacron Engine. All vendors are bound by data processing agreements and may not use your data for independent purposes.
+- **Automated processing data handling:** Photos and claim text submitted for report generation are transmitted to our processing partners. All partners process this data under strict confidentiality agreements and do not use submitted data for model training.
 - **Legal requirements:** We may disclose data when required by law, court order, or governmental authority, provided we have received proper legal process.
 - **Business transfers:** In the event of a merger, acquisition, or sale of assets, customer data may be transferred as part of that transaction. We will provide notice before data is subject to a different privacy policy.
 - **With your consent:** For any other purpose, only with your explicit consent.`,

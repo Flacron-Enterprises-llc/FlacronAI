@@ -51,7 +51,7 @@ export FLACRON_API_KEY="flac_live_xxxxxxxxxxxx"`,
   {
     step: '03',
     title: 'Handle the Response',
-    desc: 'The API returns a structured report object with the AI-generated content, quality score, and metadata. Generation time depends on the number of photos submitted.',
+    desc: 'The API returns a structured report object with the generated content, quality score, and metadata. Generation time depends on the number of photos submitted.',
     code: RESPONSE_EXAMPLE,
     icon: Code,
   },
@@ -73,7 +73,7 @@ const FEATURES = [
   {
     icon: BarChart2,
     title: 'Rate Limiting',
-    desc: 'Fair-use limits keep the platform responsive: 100 requests per 15 minutes API-wide and 10 per minute on AI generation endpoints, with standard rate-limit headers on every response.',
+    desc: 'Fair-use limits keep the platform responsive: 100 requests per 15 minutes API-wide and 10 per minute on report generation endpoints, with standard rate-limit headers on every response.',
     color: 'text-orange-400 bg-orange-500/10',
   },
   {
@@ -120,7 +120,7 @@ export default function Developers() {
 
   return (
     <div className="min-h-screen bg-[#ffffff]">
-      <Seo title="Developer API — FlacronAI" description="Integrate AI-assisted insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
+      <Seo title="Developer API — FlacronAI" description="Integrate automated insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
       <Navbar />
 
       {/* Hero */}
@@ -133,7 +133,7 @@ export default function Developers() {
             Build with the <span className="gradient-text">FlacronAI API</span>
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-10">
-            Integrate AI-powered insurance claim report generation directly into your applications. REST API, API keys, multi-format export, and full documentation.
+            Integrate automated insurance claim report generation directly into your applications. REST API, API keys, multi-format export, and full documentation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
@@ -169,7 +169,7 @@ export default function Developers() {
           <motion.div className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">Quick Start Guide</h2>
-            <p className="text-gray-600">Follow the authenticated workflow to create and retrieve an AI-assisted draft report.</p>
+            <p className="text-gray-600">Follow the authenticated workflow to create and retrieve an automated draft report.</p>
           </motion.div>
 
           <div className="space-y-8">

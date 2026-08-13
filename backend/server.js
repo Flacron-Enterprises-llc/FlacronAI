@@ -62,8 +62,8 @@ const aiLimiter = rateLimit({
   handler: (req, res) => {
     res.status(429).json({
       success: false,
-      error: 'AI endpoint rate limit exceeded',
-      code: 'AI_RATE_LIMITED',
+      error: 'Report generation rate limit exceeded',
+      code: 'GENERATION_RATE_LIMITED',
       request_id: req.requestId,
     });
   },
