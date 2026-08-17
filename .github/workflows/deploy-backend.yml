@@ -26,24 +26,18 @@ jobs:
 
     steps:
       # --- SLACK NOTIFICATION: DEPLOYMENT STARTED ---
+      # for a mid-run "started" ping. A plain webhook POST does the job.
       - name: Send Slack Notification - Deployment Started
-        uses: ravsamhq/notify-slack-action@v2
-        with:
-          status: "IN_PROGRESS"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          notification_title: "🚀 FlacronAI Backend Deploy — STARTED"
-          message_format: |
-            *App / Repo:* <{repo_url}|{repo}>
-            *Status:* 🟡 *Deployment In Progress...*
-            *Branch:* `${{ github.ref_name }}`
-            *Triggered by:* @${{ github.actor }}
-            *Commit:* <{commit_url}|${{ github.sha }}>
-            *Live Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>
-          footer: "Flacron Multi-App Deployment System | #app-deployment-notifications"
-          notify_when: "always" # Forces Slack to send even when job state is IN_PROGRESS
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "$(cat <<EOF
+          {
+            "text": "🚀 *FlacronAI Backend Deploy — STARTED*\n*App / Repo:* <https://github.com/${{ github.repository }}|${{ github.repository }}>\n*Status:* 🟡 Deployment In Progress...\n*Branch:* \`${{ github.ref_name }}\`\n*Triggered by:* @${{ github.actor }}\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Live Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>"
+          }
+          EOF
+          )" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"
+            
       # --- BUILD & DEPLOYMENT STEPS ---
       - name: Checkout repository
         uses: actions/checkout@v4
