@@ -211,7 +211,7 @@ export default function TeamMemberProfile() {
                 <div className="flex items-center gap-2">
                   <select defaultValue={member.role} disabled={busy}
                     onChange={(e) => handleRoleChange(e.target.value)}
-                    className="px-3 py-2 rounded-lg border border-[#e5e7eb] bg-white text-sm text-gray-700 focus:outline-none">
+                    className="px-3 py-2 rounded-lg border border-gray-200 bg-bg text-sm text-gray-700 focus:outline-none">
                     {!assignableRoles.includes(member.role) && (
                       <option value={member.role} disabled>{roleLabel(member.role)} (current)</option>
                     )}

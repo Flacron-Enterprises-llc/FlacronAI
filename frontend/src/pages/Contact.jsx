@@ -51,7 +51,7 @@ export default function Contact() {
   };
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="Contact FlacronAI — Sales and Support" description="Contact FlacronAI about product support, billing, plans, or Enterprise white-label options." path="/contact" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-6xl mx-auto">

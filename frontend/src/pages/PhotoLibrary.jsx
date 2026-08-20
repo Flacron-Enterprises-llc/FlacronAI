@@ -358,7 +358,7 @@ export default function PhotoLibrary() {
               aria-pressed={groupByArea}
               title="Group the currently loaded photos by area"
               className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${
-                groupByArea ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                groupByArea ? 'bg-brand-500 text-white border-brand-500' : 'bg-bg text-gray-600 border-gray-200 hover:bg-gray-50'
               }`}
             >
               <Layers className="w-3.5 h-3.5" /> Group by Area
@@ -448,7 +448,7 @@ export default function PhotoLibrary() {
                 ) : previewLoading || !previewUrl ? (
                   <div className="w-full h-64 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-white animate-spin" /></div>
                 ) : annotatorOpen && previewNaturalSize ? (
-                  <div className="bg-white rounded-xl p-3">
+                  <div className="bg-bg rounded-xl p-3">
                     <PhotoAnnotator
                       imageUrl={previewUrl}
                       imageWidth={previewNaturalSize.width}
@@ -471,7 +471,7 @@ export default function PhotoLibrary() {
                   />
                 )}
               </div>
-              <div className="bg-white rounded-xl p-4 space-y-3 text-left max-h-[75vh] overflow-y-auto">
+              <div className="bg-bg rounded-xl p-4 space-y-3 text-left max-h-[75vh] overflow-y-auto">
                 <div className="pb-2 border-b border-gray-100">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-gray-900 truncate">{activePhoto.claimNumber || 'No claim number'}</p>

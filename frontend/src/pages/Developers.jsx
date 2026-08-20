@@ -119,7 +119,7 @@ export default function Developers() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="Developer API — FlacronAI" description="Integrate automated insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
       <Navbar />
 
@@ -161,7 +161,7 @@ export default function Developers() {
       </section>
 
       {/* Quick Start */}
-      <section className="py-20 px-4 bg-[#f8f8f8] border-y border-[#e5e7eb] overflow-x-hidden">
+      <section className="py-20 px-4 bg-surface border-y border-gray-200 overflow-x-hidden">
         <div className="max-w-5xl mx-auto">
           <motion.div className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
@@ -223,7 +223,7 @@ export default function Developers() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 px-4 bg-[#f8f8f8] border-t border-[#e5e7eb]">
+      <section className="py-20 px-4 bg-surface border-t border-gray-200">
         <motion.div className="max-w-2xl mx-auto text-center"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Build?</h2>

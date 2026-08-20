@@ -19,7 +19,7 @@ export const SkeletonTable = ({ rows = 5, cols = 4 }) => (
       {[...Array(cols)].map((_, i) => <SkeletonLine key={i} height="h-3" width="w-3/4" />)}
     </div>
     {[...Array(rows)].map((_, r) => (
-      <div key={r} className="grid gap-4 border-b border-[#e5e7eb] pb-2" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+      <div key={r} className="grid gap-4 border-b border-gray-200 pb-2" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {[...Array(cols)].map((_, c) => <SkeletonLine key={c} height="h-4" width={c === 0 ? 'w-2/3' : 'w-full'} />)}
       </div>
     ))}

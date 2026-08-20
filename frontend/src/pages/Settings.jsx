@@ -536,7 +536,7 @@ export default function Settings() {
   const filteredTabs = TABS;
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-5xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
@@ -981,7 +981,7 @@ export default function Settings() {
                           </div>
                           <button onClick={() => setNotifications(p => ({ ...p, [n.key]: !p[n.key] }))}
                             className={`relative w-10 h-5 rounded-full transition-colors ${notifications[n.key] ? 'bg-brand-500' : 'bg-gray-200'}`}>
-                            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${notifications[n.key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                            <div className={`absolute top-0.5 w-4 h-4 bg-bg rounded-full transition-transform ${notifications[n.key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
                           </button>
                         </div>
                       ))}
@@ -1113,7 +1113,7 @@ export default function Settings() {
                         <div className="overflow-x-auto">
                           <table className="w-full">
                             <thead>
-                              <tr className="border-b border-[#e5e7eb]">
+                              <tr className="border-b border-gray-200">
                                 {['Date', 'Plan', 'Amount', 'Status', 'Download'].map(h => (
                                   <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                                 ))}
@@ -1121,7 +1121,7 @@ export default function Settings() {
                             </thead>
                             <tbody>
                               {invoices.map(inv => (
-                                <tr key={inv.id} className="border-b border-[#e5e7eb]">
+                                <tr key={inv.id} className="border-b border-gray-200">
                                   <td className="px-3 py-3 text-sm text-gray-700">{new Date(inv.date).toLocaleDateString()}</td>
                                   <td className="px-3 py-3 text-sm text-gray-600 max-w-[180px] truncate" title={inv.description}>{inv.description || 'Subscription'}</td>
                                   <td className="px-3 py-3 text-sm text-gray-900 font-medium">${inv.amount.toFixed(2)}</td>

@@ -36,7 +36,7 @@ const CategoryToggle = ({ category, checked, onChange }) => {
         } ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span
-          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-bg shadow transition-transform ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
@@ -182,7 +182,7 @@ const CookieConsent = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
             onClick={() => setShowPrefs(false)}
           >
             <motion.div

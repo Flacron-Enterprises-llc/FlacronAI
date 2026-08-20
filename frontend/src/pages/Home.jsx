@@ -89,13 +89,13 @@ const DashboardMock = () => {
             <div className="w-3 h-3 rounded-full bg-amber-400" />
             <div className="w-3 h-3 rounded-full bg-green-400" />
           </div>
-          <div className="flex-1 bg-white rounded-md px-3 py-1 text-xs text-gray-400 border border-gray-200 max-w-xs mx-auto text-center">
+          <div className="flex-1 bg-bg rounded-md px-3 py-1 text-xs text-gray-400 border border-gray-200 max-w-xs mx-auto text-center">
             app.flacronai.com/dashboard
           </div>
         </div>
 
         {/* App header */}
-        <div className="bg-white border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
+        <div className="bg-bg border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="/logo-mark.svg" alt="" className="w-6 h-6 object-contain" />
             <span className="font-bold text-sm text-gray-900">FlacronAI</span>
@@ -107,9 +107,9 @@ const DashboardMock = () => {
         </div>
 
         {/* Dashboard body */}
-        <div className="bg-[#f8f8f8] flex" style={{ minHeight: 340 }}>
+        <div className="bg-surface flex" style={{ minHeight: 340 }}>
           {/* Sidebar */}
-          <div className="w-36 bg-white border-r border-gray-100 px-2 py-3 flex flex-col gap-0.5 shrink-0">
+          <div className="w-36 bg-bg border-r border-gray-100 px-2 py-3 flex flex-col gap-0.5 shrink-0">
             {[
               { label: 'Generate', icon: Zap, active: true },
               { label: 'My Reports', icon: FileText },
@@ -159,7 +159,7 @@ const DashboardMock = () => {
                           title={label}
                           aria-label={label}
                           className={`flex h-6 w-7 items-center justify-center rounded-md border transition-colors ${
-                          i === 0 ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-white border-gray-200 text-gray-400'
+                          i === 0 ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-bg border-gray-200 text-gray-400'
                         }`}
                         >
                           <LossIcon className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -177,7 +177,7 @@ const DashboardMock = () => {
                     ].map(f => (
                       <div key={f.l} className={f.full ? 'col-span-2' : ''}>
                         <div className="text-[9px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">{f.l}</div>
-                        <div className={`text-xs px-2 py-1.5 rounded-lg border text-gray-700 bg-white ${
+                        <div className={`text-xs px-2 py-1.5 rounded-lg border text-gray-700 bg-bg ${
                           f.select ? 'border-brand-300 text-brand-600 font-medium' : 'border-gray-200'
                         }`}>{f.v}</div>
                       </div>
@@ -186,7 +186,7 @@ const DashboardMock = () => {
                   {/* Animate "typing" into description */}
                   <div>
                     <div className="text-[9px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">Loss Description</div>
-                    <div className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 min-h-[30px] relative">
+                    <div className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-bg text-gray-600 min-h-[30px] relative">
                       <motion.span
                         initial={{ width: 0 }}
                         animate={{ width: '100%' }}
@@ -266,7 +266,7 @@ const DashboardMock = () => {
                   </div>
 
                   {/* Report content */}
-                  <div className="flex-1 bg-white rounded-xl border border-gray-200 p-3 overflow-hidden">
+                  <div className="flex-1 bg-bg rounded-xl border border-gray-200 p-3 overflow-hidden">
                     <div className="space-y-1.5">
                       {REPORT_LINES.slice(0, visibleLines).map((line, i) => (
                         <motion.div key={i}
@@ -289,7 +289,7 @@ const DashboardMock = () => {
                                 <div key={ri} className={`flex text-[9px] ${
                                   ri === 0 ? 'font-bold text-white' :
                                   ri === line.rows.length - 1 ? 'font-bold text-gray-800 bg-brand-50' :
-                                  ri % 2 === 0 ? 'text-gray-600 bg-gray-50' : 'text-gray-600 bg-white'
+                                  ri % 2 === 0 ? 'text-gray-600 bg-bg' : 'text-gray-600 bg-gray-50'
                                 }`}
                                   style={ri === 0 ? { background: '#FD4403' } : {}}>
                                   {row.map((cell, ci) => (
@@ -321,7 +321,7 @@ const DashboardMock = () => {
       <motion.div
         animate={{ y: [0, -6, 0] }}
         transition={{ repeat: Infinity, duration: 3.5, ease: 'easeInOut' }}
-        className="absolute -top-4 -right-4 bg-white rounded-xl px-3 py-2 shadow-lg border border-gray-200 flex items-center gap-2"
+        className="absolute -top-4 -right-4 bg-bg rounded-xl px-3 py-2 shadow-lg border border-gray-200 flex items-center gap-2"
       >
         <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
           <Cpu className="w-4 h-4 text-blue-500" />
@@ -335,7 +335,7 @@ const DashboardMock = () => {
       <motion.div
         animate={{ y: [0, 7, 0] }}
         transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut', delay: 1.5 }}
-        className="absolute -bottom-4 -left-4 bg-white rounded-xl px-3 py-2 shadow-lg border border-gray-200 flex items-center gap-2"
+        className="absolute -bottom-4 -left-4 bg-bg rounded-xl px-3 py-2 shadow-lg border border-gray-200 flex items-center gap-2"
       >
         <div className="w-7 h-7 rounded-lg bg-green-50 border border-green-100 flex items-center justify-center shrink-0">
           <CheckCircle className="w-4 h-4 text-green-500" />
@@ -467,7 +467,7 @@ const Home = () => {
       </section>
 
       {/* Stats Bar */}
-      <section className="border-y border-[#e5e7eb] bg-[#f8f8f8]/50">
+      <section className="border-y border-gray-200 bg-surface/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {/* Product facts only — verifiable from the codebase (Golden Rule #1) */}
@@ -509,7 +509,7 @@ const Home = () => {
             className="relative"
           >
             <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-transparent to-navy-500/10 rounded-3xl blur-xl pointer-events-none" />
-            <div className="relative rounded-card overflow-hidden border border-border shadow-card bg-white">
+            <div className="relative rounded-card overflow-hidden border border-border shadow-card bg-bg">
               <div className="flex items-center gap-1.5 px-4 py-2.5 bg-surface border-b border-border">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
@@ -543,7 +543,7 @@ const Home = () => {
       </section>
 
       {/* Analyze the Entire Inspection — honest, full-photo-set batching + per-photo review */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-[#f8f8f8]/30">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-surface/30">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -675,7 +675,7 @@ const Home = () => {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-24 bg-[#f8f8f8]/30">
+      <section id="how-it-works" className="py-24 bg-surface/30">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -782,7 +782,7 @@ const Home = () => {
 
       {/* Testimonials — renders ONLY when real, approved feedback exists (Golden Rule #1) */}
       {TESTIMONIALS.length > 0 && (
-        <section className="py-24 bg-[#f8f8f8]/30">
+        <section className="py-24 bg-surface/30">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -861,7 +861,7 @@ const Home = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07 }}
-                className="bg-white border border-border rounded-card p-5"
+                className="bg-bg border border-border rounded-card p-5"
               >
                 <div className="w-10 h-10 rounded-xl bg-navy-800/5 border border-navy-800/10 flex items-center justify-center mb-4">
                   <Icon className="w-5 h-5 text-navy-700" />

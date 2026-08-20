@@ -39,7 +39,7 @@ export default function AcceptInvite() {
   }, [authLoading, isAuthenticated, token, status]);
 
   return (
-    <div className="min-h-screen bg-[#ffffff] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <Seo title="Team Invitation — FlacronAI" description="Accept your FlacronAI team invitation." path="/invite" noindex />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}

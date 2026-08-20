@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users, Search, Image as ImageIcon } from 'lucide-react';
+import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users, Search, Image as ImageIcon, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTheme } from '../context/ThemeContext.jsx';
 import TierBadge from './TierBadge.jsx';
 import NotificationBell from './NotificationBell.jsx';
 
@@ -11,6 +12,17 @@ import NotificationBell from './NotificationBell.jsx';
 // alone. Dispatches a DOM event rather than needing GlobalSearch's state
 // lifted up through this unrelated layout component.
 const openGlobalSearch = () => window.dispatchEvent(new CustomEvent('flacron:open-search'));
+
+const ThemeToggle = ({ theme, toggleTheme, className = '' }) => (
+  <button
+    onClick={toggleTheme}
+    className={`p-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${className}`}
+    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+  >
+    {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+  </button>
+);
 
 const Navbar = ({
   transparent = false,
@@ -22,6 +34,7 @@ const Navbar = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const { isAuthenticated, user, userProfile, logout, tier } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -73,7 +86,7 @@ const Navbar = ({
   ];
 
   const bgClass = scrolled || !transparent
-    ? 'bg-[#ffffff]/95 backdrop-blur-md border-b border-[#e5e7eb] shadow-lg shadow-black/20'
+    ? 'bg-bg/95 backdrop-blur-md border-b border-gray-200 shadow-lg shadow-black/20'
     : 'bg-transparent';
 
   return (
@@ -102,12 +115,12 @@ const Navbar = ({
                 <Link
                   key={link.label}
                   to={link.href}
-                  className={`text-sm transition-colors font-medium ${
+                  className={`text-sm text-brand-500 hover:text-brand-600 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
                     (link.href === '/crm' || link.href === '/solutions'
                       ? location.pathname.startsWith(link.href)
                       : location.pathname === link.href)
-                      ? 'text-brand-500 font-semibold'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'font-semibold text-brand-600'
+                      : 'font-medium'
                   }`}
                 >
                   {link.label}
@@ -118,6 +131,7 @@ const Navbar = ({
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
+            <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
             {isAuthenticated ? (
               <>
                 <button
@@ -153,9 +167,9 @@ const Navbar = ({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-full mt-2 w-52 bg-white border border-[#e5e7eb] rounded-xl shadow-xl shadow-black/10 overflow-hidden z-50"
+                      className="absolute right-0 top-full mt-2 w-52 bg-bg border border-gray-200 rounded-xl shadow-xl shadow-black/10 overflow-hidden z-50"
                     >
-                      <div className="px-4 py-3 border-b border-[#e5e7eb]">
+                      <div className="px-4 py-3 border-b border-gray-200">
                         <p className="text-xs font-semibold text-gray-900 truncate">{userProfile?.displayName || 'My Account'}</p>
                         <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                       </div>
@@ -179,7 +193,7 @@ const Navbar = ({
                           Settings
                         </Link>
                       </div>
-                      <div className="border-t border-[#e5e7eb] py-1">
+                      <div className="border-t border-gray-200 py-1">
                         <button
                           onClick={() => { setUserMenuOpen(false); logout(); }}
                           className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -202,6 +216,7 @@ const Navbar = ({
 
           {/* Mobile: search + notifications stay reachable without opening the menu */}
           <div className="flex md:hidden items-center gap-1">
+            <ThemeToggle theme={theme} toggleTheme={toggleTheme} className="p-2" />
             {isAuthenticated && (
               <>
                 <button
@@ -235,7 +250,7 @@ const Navbar = ({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-[#f8f8f8] border-t border-[#e5e7eb]"
+            className="md:hidden bg-surface border-t border-gray-200"
           >
             <div className="px-4 py-4 space-y-1">
               {navLinks.map(link =>
@@ -252,12 +267,12 @@ const Navbar = ({
                   <Link
                     key={link.label}
                     to={link.href}
-                    className={`block px-3 py-2.5 rounded-lg transition-colors ${
+                    className={`block px-3 py-2.5 rounded-lg text-brand-500 hover:text-brand-600 hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
                       (link.href === '/crm' || link.href === '/solutions'
                       ? location.pathname.startsWith(link.href)
                       : location.pathname === link.href)
-                        ? 'text-brand-500 font-semibold bg-brand-50'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        ? 'font-semibold bg-brand-50'
+                        : 'font-medium'
                     }`}
                   >
                     {link.label}
@@ -265,7 +280,7 @@ const Navbar = ({
                 )
               )}
               {mobileMenuItems.length > 0 && (
-                <div className="mt-3 border-t border-[#e5e7eb] pt-3">
+                <div className="mt-3 border-t border-gray-200 pt-3">
                   {mobileMenuLabel && (
                     <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                       {mobileMenuLabel}
@@ -293,7 +308,7 @@ const Navbar = ({
                   </div>
                 </div>
               )}
-              <div className="pt-3 border-t border-[#e5e7eb] space-y-1">
+              <div className="pt-3 border-t border-gray-200 space-y-1">
                 {isAuthenticated ? (
                   <>
                     <div className="px-3 py-2 mb-1">

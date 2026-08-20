@@ -231,6 +231,9 @@ const QUICK_DEMOS = [
 ];
 
 const LS_KEY = 'flacron_dashboard_form';
+// Phase 25 (mobile immediate-upload): the current wizard session's photo
+// staging draft id, so a refresh mid-wizard can resume already-uploaded photos.
+const PHOTO_DRAFT_LS_KEY = 'flacron_photo_draft_id';
 
 function SkeletonRow() {
   return (
@@ -584,7 +587,7 @@ function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPh
                 {previewLoading || !previewUrl ? (
                   <div className="w-full h-64 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-white animate-spin" /></div>
                 ) : annotatorOpen && previewNaturalSize ? (
-                  <div className="bg-white rounded-xl p-3">
+                  <div className="bg-bg rounded-xl p-3">
                     <PhotoAnnotator
                       imageUrl={previewUrl}
                       imageWidth={previewNaturalSize.width}
@@ -609,7 +612,7 @@ function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPh
               </div>
 
               {interactive && previewPhoto && !annotatorOpen && (
-                <div className="bg-white rounded-xl p-4 space-y-3 text-left max-h-[75vh] overflow-y-auto">
+                <div className="bg-bg rounded-xl p-4 space-y-3 text-left max-h-[75vh] overflow-y-auto">
                   <PhotoAnalysisPanel
                     photo={previewPhoto}
                     canReview
@@ -886,7 +889,7 @@ function RowActionsMenu({
         <MoreVertical className="w-4 h-4 text-gray-600" />
       </button>
       {isOpen && (
-        <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg py-1" role="menu">
+        <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-bg shadow-lg py-1" role="menu">
           <button type="button" role="menuitem" onClick={onDuplicate} disabled={duplicating}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             <Copy className="w-4 h-4" /> {duplicating ? 'Duplicating…' : 'Duplicate'}
@@ -1068,6 +1071,9 @@ export default function Dashboard() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
   const [previewPhotoId, setPreviewPhotoId] = useState(null);
   const photoHashesRef = useRef(new Map()); // id -> content hash, for duplicate detection
+  // Phase 25 (mobile immediate-upload): the staging draft this wizard session
+  // uploads photos against, created lazily on the first capture/selection.
+  const photoDraftIdRef = useRef(null);
   // Phase 24: purely client-side reordering of the staged (not-yet-uploaded)
   // photo list -- there's no report/photoId to persist against yet, so the
   // chosen order here simply becomes each photo's submission order, which
@@ -1160,6 +1166,29 @@ export default function Dashboard() {
   useEffect(() => {
     const saved = localStorage.getItem(LS_KEY);
     if (saved) { try { setForm(JSON.parse(saved)); } catch {} }
+
+    // Phase 25 (mobile immediate-upload): resume any photos already uploaded
+    // to Storage before a refresh/navigation-away interrupted the wizard.
+    const savedDraftId = localStorage.getItem(PHOTO_DRAFT_LS_KEY);
+    if (!savedDraftId) return;
+    photoDraftIdRef.current = savedDraftId;
+    reportsAPI.getStagedPhotos(savedDraftId).then(async (res) => {
+      const uploadedRecords = (res.data?.photos || []).filter((r) => r.status === 'uploaded');
+      if (uploadedRecords.length === 0) return;
+      const restored = await Promise.all(uploadedRecords.map(async (r) => {
+        let url = '';
+        try {
+          const imgRes = await reportsAPI.getStagedPhotoImageBlob(savedDraftId, r.id, 'thumbnail');
+          url = URL.createObjectURL(imgRes.data);
+        } catch { /* thumbnail unavailable -- photo still counts toward the upload total */ }
+        return {
+          id: r.id, file: null, url, name: r.fileName, size: r.size, status: 'ready', error: null,
+          uploaded: true, uploading: false, uploadError: null, serverPhotoId: r.id,
+          qualityWarning: r.qualityWarning, qualityReasons: r.qualityReasons || [],
+        };
+      }));
+      setPhotos((prev) => (prev.length === 0 ? restored : prev));
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1366,6 +1395,58 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, analysisReportId]);
 
+  const ensurePhotoDraftId = () => {
+    if (!photoDraftIdRef.current) {
+      const id = crypto.randomUUID();
+      photoDraftIdRef.current = id;
+      localStorage.setItem(PHOTO_DRAFT_LS_KEY, id);
+    }
+    return photoDraftIdRef.current;
+  };
+
+  // Phase 25 (mobile immediate-upload): uploads one staged photo to the
+  // server as soon as it passes client-side validation, instead of waiting
+  // for the final Generate submit. Triggered by the effect below, not called
+  // directly, so every path that makes a photo eligible (add, retry, rotate)
+  // only has to reset its upload flags rather than each re-implementing this.
+  const uploadStagedPhoto = useCallback(async (id, file) => {
+    const draftId = ensurePhotoDraftId();
+    setPhotos(prev => prev.map(p => (p.id === id ? { ...p, uploading: true, uploadError: null } : p)));
+    try {
+      const res = await reportsAPI.stagePhoto(draftId, file);
+      const record = res.data.photo;
+      setPhotos(prev => prev.map(p => {
+        if (p.id !== id) return p;
+        if (record.status === 'uploaded') {
+          return { ...p, uploading: false, uploaded: true, serverPhotoId: record.id };
+        }
+        // Server-side duplicate/corrupt check caught something client-side
+        // validation missed (e.g. a resumed draft's hashes aren't in this
+        // tab's in-memory cache).
+        return {
+          ...p, uploading: false, uploaded: false,
+          status: record.status === 'duplicate' ? 'duplicate' : 'corrupt',
+          error: record.error || p.error,
+        };
+      }));
+    } catch (err) {
+      setPhotos(prev => prev.map(p => (p.id === id
+        ? { ...p, uploading: false, uploaded: false, uploadError: err.response?.data?.error || 'Upload failed' }
+        : p)));
+    }
+  }, []);
+
+  // Fires uploads for any staged photo that's client-validated ('ready') but
+  // hasn't been sent to the server yet -- covers a fresh capture, a rotated
+  // photo (re-staged with its new bytes), and a retried upload failure alike.
+  useEffect(() => {
+    photos.forEach(p => {
+      if (p.status === 'ready' && p.file && !p.uploaded && !p.uploading && !p.uploadError) {
+        uploadStagedPhoto(p.id, p.file);
+      }
+    });
+  }, [photos, uploadStagedPhoto]);
+
   // Runs the async duplicate/corrupt checks for one staged photo and updates
   // its status in place once they resolve. Kept separate from handlePhotoAdd
   // so "Retry Failed Uploads" can re-run it for an already-staged photo.
@@ -1427,10 +1508,19 @@ export default function Dashboard() {
     handlePhotoAdd(e.dataTransfer.files);
   };
 
+  // Best-effort: drop an already-staged photo's server copy. Never blocks the
+  // client-side removal on network failure -- an orphaned staged photo just
+  // never gets folded into the report at Generate.
+  const deleteStagedPhotoIfAny = (target) => {
+    if (target?.serverPhotoId && photoDraftIdRef.current) {
+      reportsAPI.deleteStagedPhoto(photoDraftIdRef.current, target.serverPhotoId).catch(() => {});
+    }
+  };
+
   const removePhoto = (id) => {
     setPhotos(prev => {
       const target = prev.find(p => p.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target) { URL.revokeObjectURL(target.url); deleteStagedPhotoIfAny(target); }
       return prev.filter(p => p.id !== id);
     });
     photoHashesRef.current.delete(id);
@@ -1444,7 +1534,12 @@ export default function Dashboard() {
       const rotated = await rotateImageFile(target.file);
       URL.revokeObjectURL(target.url);
       const newUrl = URL.createObjectURL(rotated);
-      setPhotos(prev => prev.map(p => (p.id === id ? { ...p, file: rotated, url: newUrl, size: rotated.size } : p)));
+      // The already-staged copy (if any) now holds stale, un-rotated bytes --
+      // drop it server-side and let the upload effect re-stage the rotated file.
+      deleteStagedPhotoIfAny(target);
+      setPhotos(prev => prev.map(p => (p.id === id
+        ? { ...p, file: rotated, url: newUrl, size: rotated.size, uploaded: false, uploading: false, uploadError: null, serverPhotoId: null }
+        : p)));
       // The hash changes after rotation -- refresh it so later duplicate
       // checks (e.g. a new file added afterward) compare against the rotated bytes.
       try { photoHashesRef.current.set(id, await hashFile(rotated)); } catch { /* non-fatal */ }
@@ -1461,17 +1556,22 @@ export default function Dashboard() {
   const removeSelectedPhotos = () => {
     selectedPhotoIds.forEach(id => {
       const target = photos.find(p => p.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target) { URL.revokeObjectURL(target.url); deleteStagedPhotoIfAny(target); }
       photoHashesRef.current.delete(id);
     });
     setPhotos(prev => prev.filter(p => !selectedPhotoIds.includes(p.id)));
     setSelectedPhotoIds([]);
   };
   const retryFailedPhotos = () => {
-    const failed = photos.filter(p => p.status === 'corrupt');
-    if (failed.length === 0) return;
-    setPhotos(prev => prev.map(p => (p.status === 'corrupt' ? { ...p, status: 'checking', error: null } : p)));
-    failed.forEach(p => validateStagedPhoto(p.id, p.file));
+    const failedDecode = photos.filter(p => p.status === 'corrupt');
+    const failedUpload = photos.filter(p => p.uploadError);
+    if (failedDecode.length === 0 && failedUpload.length === 0) return;
+    setPhotos(prev => prev.map(p => {
+      if (p.status === 'corrupt') return { ...p, status: 'checking', error: null };
+      if (p.uploadError) return { ...p, uploadError: null }; // picked up by the upload effect
+      return p;
+    }));
+    failedDecode.forEach(p => validateStagedPhoto(p.id, p.file));
   };
 
   const previewPhoto = photos.find(p => p.id === previewPhotoId) || null;
@@ -1483,6 +1583,11 @@ export default function Dashboard() {
   // conflates ready/failed/duplicate photos into one ambiguous number.
   const photoFailedCount = photos.filter(p => p.status === 'corrupt').length;
   const photoDuplicateCount = photos.filter(p => p.status === 'duplicate').length;
+  // Phase 25 (mobile immediate-upload): the live "X / 100" counter is driven
+  // by actual server-confirmed uploads, not just client-side validation.
+  const uploadedPhotoCount = photos.filter(p => p.uploaded).length;
+  const uploadingPhotoCount = photos.filter(p => p.uploading).length;
+  const uploadFailedCount = photos.filter(p => p.uploadError).length;
 
   // Selecting/creating a CRM claim fills the display fields from it; the backend
   // re-derives the same fields from the claim record at generate-time regardless,
@@ -1509,6 +1614,7 @@ export default function Dashboard() {
 
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
+    if (photos.some(p => p.uploading)) { toast.error('Please wait for photo uploads to finish'); return; }
     // Only successfully-validated photos are submitted -- corrupt/duplicate
     // ones stay visible in the wizard for the user to remove or retry, but
     // are never sent (Phase 6).
@@ -1523,7 +1629,13 @@ export default function Dashboard() {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       if (linkedClaim) fd.append('claimId', linkedClaim.id || linkedClaim._id);
-      readyPhotos.forEach(p => fd.append('images', p.file));
+      // Phase 25 (mobile immediate-upload): photos already staged server-side
+      // are folded in by draftId -- only ones that never made it to the
+      // server (e.g. a persistent upload failure the user proceeded past
+      // anyway) are sent here as a fallback, same as the old all-at-once path.
+      if (photoDraftIdRef.current) fd.append('draftId', photoDraftIdRef.current);
+      const notYetUploaded = readyPhotos.filter(p => !p.uploaded);
+      notYetUploaded.forEach(p => fd.append('images', p.file));
       documents.forEach(d => fd.append('documents', d.file));
 
       // Phase 6 addendum: real per-photo upload progress, driven by the
@@ -1561,6 +1673,8 @@ export default function Dashboard() {
       setLinkedClientName('');
       setClaimMode('linked');
       setStep(1);
+      photoDraftIdRef.current = null;
+      localStorage.removeItem(PHOTO_DRAFT_LS_KEY);
       localStorage.removeItem(LS_KEY);
       setLastSavedAt(null);
       // Prepend to reports list so My Reports shows it right away (as "processing")
@@ -2012,21 +2126,21 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#ffffff] flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
       <div className="flex flex-1 pt-16">
         {sidebarOpen && (
           <button
             type="button"
             aria-label="Close dashboard navigation"
-            className="fixed inset-0 top-16 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+            className="fixed inset-0 top-16 z-40 bg-black/35 backdrop-blur-[1px] md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
         {/* Sidebar */}
         <aside
-          className={`fixed bottom-0 left-0 top-16 z-50 flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r border-[#e5e7eb] bg-[#f8f8f8] px-3 py-4 shadow-xl transition-transform duration-300 scrollbar-hide md:sticky md:top-16 md:z-20 md:h-[calc(100vh-4rem)] md:w-64 md:translate-x-0 md:rounded-r-3xl md:shadow-sm ${
+          className={`fixed bottom-0 left-0 top-16 z-50 flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-surface px-3 py-4 shadow-xl transition-transform duration-300 scrollbar-hide md:sticky md:top-16 md:z-20 md:h-[calc(100vh-4rem)] md:w-64 md:translate-x-0 md:rounded-r-3xl md:shadow-sm ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -2037,7 +2151,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm"
+              className="rounded-xl border border-gray-200 bg-bg p-2 text-gray-600 shadow-sm"
               aria-label="Close dashboard navigation"
             >
               <PanelLeftClose className="h-4 w-4" />
@@ -2045,7 +2159,7 @@ export default function Dashboard() {
           </div>
 
           {/* Profile Card */}
-          <div className="rounded-2xl overflow-hidden border border-[#e5e7eb] bg-white">
+          <div className="rounded-2xl overflow-hidden border border-gray-200 bg-bg">
             {/* Banner */}
             <div className="h-16 relative bg-gradient-to-br from-brand-500 via-brand-400 to-amber-400">
               <div className="absolute inset-0 opacity-20"
@@ -2121,7 +2235,7 @@ export default function Dashboard() {
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeView === link.id
                     ? 'bg-brand-500 text-white shadow-sm shadow-brand-200'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-white hover:shadow-sm hover:border hover:border-gray-100'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-bg hover:shadow-sm hover:border hover:border-gray-100'
                 }`}>
                 <link.icon className="w-4 h-4 shrink-0" />
                 {link.label}
@@ -2166,7 +2280,7 @@ export default function Dashboard() {
           </button>
 
           {/* Mobile/tablet usage panel — visible only below md breakpoint */}
-          <div className="mx-3 mt-4 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] shadow-sm md:hidden">
+          <div className="mx-3 mt-4 rounded-2xl border border-gray-200 bg-surface shadow-sm md:hidden">
             {/* User row */}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -2183,17 +2297,17 @@ export default function Dashboard() {
 
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-2 px-4 pb-3">
-              <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
+              <div className="rounded-xl bg-bg border border-gray-200 px-3 py-2 text-center shadow-sm">
                 <p className="text-lg font-bold text-brand-500 leading-none">{usedThisMonth}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Used</p>
               </div>
-              <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
+              <div className="rounded-xl bg-bg border border-gray-200 px-3 py-2 text-center shadow-sm">
                 <p className="text-lg font-bold text-gray-800 leading-none">
                   {tierLimit === -1 ? '∞' : tierLimit}
                 </p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Limit</p>
               </div>
-              <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
+              <div className="rounded-xl bg-bg border border-gray-200 px-3 py-2 text-center shadow-sm">
                 <p className={`text-lg font-bold leading-none ${
                   reportsRemaining === -1 ? 'text-green-500' :
                   reportsRemaining === 0 ? 'text-red-500' :
@@ -2280,7 +2394,7 @@ export default function Dashboard() {
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead>
-                            <tr className="border-b border-[#e5e7eb]">
+                            <tr className="border-b border-gray-200">
                               {['Claim #', 'Insured', 'Report Type', 'Photos', 'Status', 'Updated', 'Created By', 'Actions'].map(h => (
                                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">{h}</th>
                               ))}
@@ -2317,7 +2431,7 @@ export default function Dashboard() {
                                 </td>
                               </tr>
                             ) : recentReports.map(r => (
-                              <tr key={r.id} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer"
+                              <tr key={r.id} className="border-b border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
                                 onClick={() => openReport(r)}>
                                 <td className="px-4 py-3 text-sm font-mono text-brand-700 whitespace-nowrap">{r.claimNumber}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{r.insuredName}</td>
@@ -2822,10 +2936,12 @@ export default function Dashboard() {
                                 <p className="text-xs text-gray-500 mt-0.5">Photos required — upload at least one damage photo for analysis</p>
                               </div>
                               <div className="text-right">
-                                <span className="text-sm text-gray-500">{photos.length} / {MAX_PHOTOS}</span>
-                                {(photoFailedCount > 0 || photoDuplicateCount > 0) && (
+                                <span className="text-sm text-gray-500">{uploadedPhotoCount} / {MAX_PHOTOS}</span>
+                                {(uploadingPhotoCount > 0 || uploadFailedCount > 0 || photoFailedCount > 0 || photoDuplicateCount > 0) && (
                                   <p className="text-[11px] text-gray-400 mt-0.5">
-                                    {readyPhotoCount} ready
+                                    {uploadingPhotoCount > 0 && `${uploadingPhotoCount} uploading · `}
+                                    {uploadedPhotoCount} uploaded
+                                    {uploadFailedCount > 0 && ` · ${uploadFailedCount} upload failed`}
                                     {photoFailedCount > 0 && ` · ${photoFailedCount} failed`}
                                     {photoDuplicateCount > 0 && ` · ${photoDuplicateCount} duplicate`}
                                   </p>
@@ -2891,7 +3007,7 @@ export default function Dashboard() {
                                       <Trash2 className="w-3.5 h-3.5" /> Remove Selected ({selectedPhotoIds.length})
                                     </button>
                                   )}
-                                  {photos.some(p => p.status === 'corrupt') && (
+                                  {(photos.some(p => p.status === 'corrupt') || uploadFailedCount > 0) && (
                                     <button type="button" onClick={retryFailedPhotos}
                                       className="text-xs font-medium text-gray-600 hover:text-brand-600 flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
                                       <RefreshCw className="w-3.5 h-3.5" /> Retry Failed Uploads
@@ -2900,11 +3016,11 @@ export default function Dashboard() {
                                 </div>
                                 <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                                   <button type="button" onClick={() => setPhotoView('grid')} aria-label="Grid view" title="Grid view"
-                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'grid' ? 'bg-white shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'grid' ? 'bg-bg shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
                                     <LayoutGrid className="w-3.5 h-3.5" />
                                   </button>
                                   <button type="button" onClick={() => setPhotoView('list')} aria-label="List view" title="List view"
-                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'list' ? 'bg-bg shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
                                     <List className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
@@ -2947,6 +3063,8 @@ export default function Dashboard() {
                                       </button>
                                     )}
                                     <div className="absolute bottom-1 right-1 flex items-center gap-1">
+                                      {p.uploading && <RefreshCw className="w-3 h-3 text-white animate-spin" title="Uploading…" />}
+                                      {p.uploadError && <AlertTriangle className="w-3 h-3 text-red-400" title={p.uploadError} />}
                                       <QualityWarningBadge qualityWarning={p.qualityWarning} qualityReasons={p.qualityReasons} compact />
                                       <PhotoStatusBadge status={p.status} compact />
                                     </div>
@@ -2977,8 +3095,14 @@ export default function Dashboard() {
                                     </button>
                                     <div className="min-w-0 flex-1">
                                       <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                                      <p className="text-xs text-gray-500">{formatFileSize(p.size)}{p.error ? ` — ${p.error}` : ''}</p>
+                                      <p className="text-xs text-gray-500">
+                                        {formatFileSize(p.size)}
+                                        {p.uploading && ' — uploading…'}
+                                        {p.uploadError && ` — ${p.uploadError}`}
+                                        {p.error ? ` — ${p.error}` : ''}
+                                      </p>
                                     </div>
+                                    {p.uploading && <RefreshCw className="w-3.5 h-3.5 text-gray-400 animate-spin shrink-0" title="Uploading…" />}
                                     <QualityWarningBadge qualityWarning={p.qualityWarning} qualityReasons={p.qualityReasons} />
                                     <PhotoStatusBadge status={p.status} />
                                     {p.status === 'ready' && (
@@ -3525,7 +3649,7 @@ export default function Dashboard() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-[#e5e7eb]">
+                        <tr className="border-b border-gray-200">
                           <th className="px-4 py-3 text-left w-10">
                             <button
                               onClick={() => setSelectedIds(selectedIds.length === reports.length && reports.length > 0 ? [] : reports.map(r => r.id))}
@@ -3534,7 +3658,7 @@ export default function Dashboard() {
                                   ? 'bg-brand-500 border-brand-500'
                                   : selectedIds.length > 0
                                     ? 'bg-brand-200 border-brand-400'
-                                    : 'border-gray-300 hover:border-brand-400 bg-white'
+                                    : 'border-gray-300 hover:border-brand-400 bg-bg'
                               }`}
                             >
                               {selectedIds.length === reports.length && reports.length > 0 && <Check className="w-3 h-3 text-white" />}
@@ -3575,7 +3699,7 @@ export default function Dashboard() {
                           </tr>
                         ) : reports.map(r => (
                           <motion.tr key={r.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                            className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer"
+                            className="border-b border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
                             onClick={() => openReport(r)}>
                             <td className="px-4 py-3 w-10" onClick={e => e.stopPropagation()}>
                               <button
@@ -3583,7 +3707,7 @@ export default function Dashboard() {
                                 className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-colors cursor-pointer ${
                                   selectedIds.includes(r.id)
                                     ? 'bg-brand-500 border-brand-500'
-                                    : 'border-gray-300 hover:border-brand-400 bg-white'
+                                    : 'border-gray-300 hover:border-brand-400 bg-bg'
                                 }`}
                               >
                                 {selectedIds.includes(r.id) && <Check className="w-3 h-3 text-white" />}
@@ -3639,7 +3763,7 @@ export default function Dashboard() {
                   </div>
 
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-4 py-3 border-t border-[#e5e7eb]">
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
                       <p className="text-sm text-gray-600">Page {page} of {totalPages}</p>
                       <div className="flex gap-2">
                         <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}

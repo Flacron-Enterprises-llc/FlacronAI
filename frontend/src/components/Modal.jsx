@@ -29,7 +29,7 @@ const Modal = ({ open, onClose, title, children, size = 'md' }) => {
             onClick={e => e.stopPropagation()}
           >
             {title && (
-              <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb]">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h3 className="text-lg font-bold text-gray-900">{title}</h3>
                 <button onClick={onClose} className="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">
                   <X className="w-4 h-4" />

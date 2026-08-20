@@ -262,7 +262,7 @@ function ClientSlideOver({ client, onClose }) {
   return (
     <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="w-full max-w-md bg-[#f8f8f8] border-l border-[#e5e7eb] h-full overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="client-slideover-title"
+      <motion.div className="w-full max-w-md bg-surface border-l border-gray-200 h-full overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="client-slideover-title"
         initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
@@ -321,14 +321,14 @@ function ClaimSlideOver({ claim, client, onClose }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex justify-end bg-gray-950/40"
+      className="fixed inset-0 z-50 flex justify-end bg-black/40"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
     >
       <motion.aside
-        className="h-full w-full max-w-md overflow-y-auto border-l border-gray-200 bg-white p-5 shadow-2xl sm:p-6"
+        className="h-full w-full max-w-md overflow-y-auto border-l border-gray-200 bg-bg p-5 shadow-2xl sm:p-6"
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
@@ -659,7 +659,7 @@ export default function CRM() {
 
   if (!['agency', 'enterprise'].includes(tier)) {
     return (
-      <div className="min-h-screen bg-[#ffffff]">
+      <div className="min-h-screen bg-bg">
         <Navbar />
         <div className="pt-24 flex items-center justify-center">
           <div className="text-center card p-10 max-w-md">
@@ -677,7 +677,7 @@ export default function CRM() {
 
   if (crmError) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-bg">
         <Navbar />
         <div className="flex min-h-screen items-center justify-center px-4 pt-16">
           <div className="card w-full max-w-md p-8 text-center">
@@ -703,7 +703,7 @@ export default function CRM() {
   }
 
   return (
-    <div className="min-h-screen bg-[#ffffff] flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col">
       <Navbar
         mobileMenuLabel="CRM Menu"
         mobileMenuItems={SIDEBAR_TABS.map(tab => ({
@@ -714,7 +714,7 @@ export default function CRM() {
       />
       <div className="flex flex-1 pt-16">
         {/* Sidebar */}
-        <aside className="w-56 shrink-0 hidden md:flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] px-4 py-6 gap-1">
+        <aside className="w-56 shrink-0 hidden md:flex flex-col border-r border-gray-200 bg-surface px-4 py-6 gap-1">
           {SIDEBAR_TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -755,7 +755,7 @@ export default function CRM() {
                     {claimsLoading ? <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
                       : !analytics?.recentClaims?.length ? <p className="text-sm text-gray-500">No claims yet.</p>
                       : analytics.recentClaims.map(claim => (
-                        <button type="button" key={claim.id} onClick={() => navigate(`/crm/claims/${claim.id}`)} className="flex w-full items-center gap-3 border-b border-[#e5e7eb] py-2 text-left last:border-0 hover:bg-gray-50">
+                        <button type="button" key={claim.id} onClick={() => navigate(`/crm/claims/${claim.id}`)} className="flex w-full items-center gap-3 border-b border-gray-200 py-2 text-left last:border-0 hover:bg-gray-50">
                           <FileText className="w-4 h-4 text-brand-500" />
                           <div><p className="font-mono text-gray-900 text-sm">{claim.claimNumber}</p><p className="text-gray-500 text-xs">{claim.lossType}</p></div>
                           <span className="ml-auto text-xs text-gray-500">{formatStatus(claim.status)}</span>
@@ -770,7 +770,7 @@ export default function CRM() {
                         const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
                         return d && d >= startOfToday;
                       }).slice(0, 5).map(a => (
-                        <div key={getRecordId(a)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
+                        <div key={getRecordId(a)} className="flex items-center gap-3 py-2 border-b border-gray-200 last:border-0">
                           <Calendar className="w-4 h-4 text-brand-400 shrink-0" />
                           <div><p className="text-gray-900 text-sm">{a.title}</p><p className="text-gray-500 text-xs">{a.date} {a.time}</p></div>
                           <StatusPill status={a.status} />
@@ -832,7 +832,7 @@ export default function CRM() {
                 <div className="card overflow-hidden">
                   <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead><tr className="border-b border-[#e5e7eb]">
+                    <thead><tr className="border-b border-gray-200">
                       {['Name', 'Email', 'Phone', 'Company', 'Created', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                       ))}
@@ -846,7 +846,7 @@ export default function CRM() {
                           <p className="text-gray-600">No clients found. Add your first client.</p>
                         </td></tr>
                       ) : filteredClients.map(c => (
-                        <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => navigate(`/crm/clients/${getRecordId(c)}`)}>
+                        <tr key={getRecordId(c)} className="border-b border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => navigate(`/crm/clients/${getRecordId(c)}`)}>
                           <td className="px-4 py-3"><div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-brand-500/20 flex items-center justify-center text-xs font-bold text-brand-400">{(c.name || 'C')[0].toUpperCase()}</div>
                             <span className="text-gray-900 text-sm font-medium">{c.name}</span>
@@ -876,7 +876,7 @@ export default function CRM() {
                 <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
                   <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
                   <div className="flex w-full gap-2 sm:w-auto">
-                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-[#e5e7eb] sm:flex-none">
+                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-gray-200 sm:flex-none">
                       {['month', 'week', 'list'].map(v => (
                         <button key={v} onClick={() => setCalView(v)}
                           className={`min-w-0 flex-1 px-2 py-2 text-xs font-medium transition-colors sm:flex-none sm:px-3 sm:text-sm ${calView === v ? 'bg-brand-500 text-white' : 'text-gray-600 hover:text-gray-900'}`}>
@@ -974,7 +974,7 @@ export default function CRM() {
                 <div className="card overflow-hidden">
                   <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead><tr className="border-b border-[#e5e7eb]">
+                    <thead><tr className="border-b border-gray-200">
                       {['Claim #', 'Client', 'Loss Type', 'Date', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                       ))}
@@ -990,7 +990,7 @@ export default function CRM() {
                       ) : claims.map(c => {
                         const client = clients.find(cl => getRecordId(cl) === c.clientId);
                         return (
-                          <tr key={getRecordId(c)} className="cursor-pointer border-b border-[#e5e7eb] hover:bg-gray-100" onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}>
+                          <tr key={getRecordId(c)} className="cursor-pointer border-b border-gray-200 hover:bg-gray-100" onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}>
                             <td className="px-4 py-3 text-sm font-mono text-brand-700">{c.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{client?.name || c.clientId}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{c.lossType}</td>

@@ -66,7 +66,7 @@ export default function AdminTierUpdate() {
   };
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -107,7 +107,7 @@ export default function AdminTierUpdate() {
           {/* User Info */}
           {foundUser && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card p-6 space-y-5">
-              <div className="flex items-center gap-4 pb-4 border-b border-[#e5e7eb]">
+              <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
                 <div className="w-12 h-12 rounded-full bg-brand-500/20 flex items-center justify-center text-xl font-bold text-brand-400">
                   {(foundUser.displayName || foundUser.email || 'U')[0].toUpperCase()}
                 </div>

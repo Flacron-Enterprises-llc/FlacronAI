@@ -40,7 +40,7 @@ const DEFAULT_CONFIG = {
 function LivePreview({ config, mode }) {
   const style = { '--primary': config.primaryColor, '--secondary': config.secondaryColor };
   if (mode === 'report-header') return (
-    <div className="bg-white rounded-xl p-6 text-gray-900 min-h-[300px]" style={style}>
+    <div className="bg-bg rounded-xl p-6 text-gray-900 min-h-[300px]" style={style}>
       <div className="flex items-center justify-between border-b-2 pb-4 mb-4" style={{ borderColor: config.primaryColor }}>
         <div className="flex items-center gap-3">
           {config.logoUrl
@@ -78,7 +78,7 @@ function LivePreview({ config, mode }) {
   );
 
   if (mode === 'report-footer') return (
-    <div className="bg-white rounded-xl p-6 text-gray-900 min-h-[300px]" style={style}>
+    <div className="bg-bg rounded-xl p-6 text-gray-900 min-h-[300px]" style={style}>
       <div className="mt-auto border-t pt-4" style={{ borderColor: config.primaryColor }}>
         <div className="flex justify-between items-end">
           <div>
@@ -96,7 +96,7 @@ function LivePreview({ config, mode }) {
 
   if (mode === 'email') return (
     <div className="bg-gray-100 rounded-xl p-4 min-h-[300px]">
-      <div className="bg-white rounded-lg overflow-hidden shadow">
+      <div className="bg-bg rounded-lg overflow-hidden shadow">
         <div className="p-4 text-gray-900" style={{ background: config.primaryColor }}>
           <p className="font-bold">{config.emailFromName || config.companyName || 'Your Company'}</p>
           <p className="text-xs opacity-80">no-reply@{config.subdomain || 'yourdomain'}.flacronai.com</p>
@@ -114,7 +114,7 @@ function LivePreview({ config, mode }) {
   );
 
   if (mode === 'portal') return (
-    <div className="bg-[#ffffff] rounded-xl overflow-hidden min-h-[300px]">
+    <div className="bg-bg rounded-xl overflow-hidden min-h-[300px]">
       <nav className="flex items-center justify-between px-6 py-4 border-b border-gray-200" style={{ background: config.primaryColor + '20' }}>
         <div className="flex items-center gap-3">
           {config.logoUrl
@@ -196,7 +196,7 @@ export default function WhiteLabelPortal() {
 
   if (tier !== 'enterprise') {
     return (
-      <div className="min-h-screen bg-[#ffffff]">
+      <div className="min-h-screen bg-bg">
         <Navbar />
         <div className="pt-24 flex items-center justify-center">
           <div className="card p-10 max-w-md text-center">
@@ -211,7 +211,7 @@ export default function WhiteLabelPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-7xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">

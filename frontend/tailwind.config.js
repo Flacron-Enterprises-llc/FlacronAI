@@ -20,8 +20,12 @@ import colors from 'tailwindcss/colors';
 // for new code and centralized reference, not to force a mass rename.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Wraps a "R G B" CSS variable so Tailwind's opacity modifiers (bg-x/20) work —
+// see the comment above the vars themselves in src/index.css.
+const withOpacity = (varName) => `rgb(var(${varName}) / <alpha-value>)`;
+
 const brandOrange = {
-  50: '#FFF3EE',
+  50: withOpacity('--brand-50'),
   100: '#FFE5DA',
   200: '#FFC9B0',
   300: '#FEA57F',
@@ -33,6 +37,33 @@ const brandOrange = {
   900: '#7A2102',
   950: '#421101',
 };
+
+// Dark-mode-aware gray scale (T-dark-mode) — every shade resolves through a CSS
+// variable that flips in `.dark` (see src/index.css). Role is preserved across
+// themes (e.g. gray-50 is always "page surface", gray-900 always "primary text"),
+// not the literal light-mode hex — this is what lets the hundreds of existing
+// bg-gray-*/text-gray-*/border-gray-* usages site-wide go dark for free.
+const themedGray = {
+  50: withOpacity('--gray-50'),
+  100: withOpacity('--gray-100'),
+  200: withOpacity('--gray-200'),
+  300: withOpacity('--gray-300'),
+  400: withOpacity('--gray-400'),
+  500: withOpacity('--gray-500'),
+  600: withOpacity('--gray-600'),
+  700: withOpacity('--gray-700'),
+  800: withOpacity('--gray-800'),
+  900: withOpacity('--gray-900'),
+  950: withOpacity('--gray-950'),
+};
+
+// Only the light tint shades (50/100) of status colors need to go dark — the
+// 500-700 shades already used for text/icons/borders stay vivid on dark surfaces.
+const themedTint = (base, name) => ({
+  ...base,
+  50: withOpacity(`--${name}-50`),
+  100: withOpacity(`--${name}-100`),
+});
 
 const brandNavy = {
   50: '#EEF3FA',
@@ -49,27 +80,40 @@ const brandNavy = {
 };
 
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
         brand: brandOrange,
         navy: brandNavy,
+        gray: themedGray,
+        red: themedTint(colors.red, 'red'),
+        amber: themedTint(colors.amber, 'amber'),
+        orange: themedTint(colors.orange, 'orange'),
+        yellow: themedTint(colors.yellow, 'yellow'),
+        green: themedTint(colors.green, 'green'),
+        emerald: themedTint(colors.emerald, 'emerald'),
+        teal: themedTint(colors.teal, 'teal'),
+        blue: themedTint(colors.blue, 'blue'),
+        indigo: themedTint(colors.indigo, 'indigo'),
+        purple: themedTint(colors.purple, 'purple'),
+        pink: themedTint(colors.pink, 'pink'),
         // Semantic aliases — components should consume these, not raw hex
         primary: {
           DEFAULT: brandOrange[500],
           hover: brandOrange[600],
           soft: brandOrange[50],
         },
-        ink: brandNavy[900], // headings / high-emphasis text
-        bg: '#ffffff',
-        surface: '#f8f8f8',
-        border: '#e5e7eb',
-        muted: colors.gray[600], // secondary/supporting text — formalizes the already-dominant text-gray-600 convention
-        success: { DEFAULT: colors.green[600], soft: colors.green[50] },
-        warning: { DEFAULT: colors.amber[600], soft: colors.amber[50] },
-        error: { DEFAULT: colors.red[600], soft: colors.red[50] },
-        info: { DEFAULT: colors.blue[600], soft: colors.blue[50] },
+        ink: withOpacity('--color-ink'), // headings / high-emphasis text
+        bg: withOpacity('--color-bg'),
+        surface: withOpacity('--color-surface'),
+        border: withOpacity('--color-border'),
+        muted: themedGray[600], // secondary/supporting text — formalizes the already-dominant text-gray-600 convention
+        success: { DEFAULT: colors.green[600], soft: withOpacity('--green-50') },
+        warning: { DEFAULT: colors.amber[600], soft: withOpacity('--amber-50') },
+        error: { DEFAULT: colors.red[600], soft: withOpacity('--red-50') },
+        info: { DEFAULT: colors.blue[600], soft: withOpacity('--blue-50') },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'], // body

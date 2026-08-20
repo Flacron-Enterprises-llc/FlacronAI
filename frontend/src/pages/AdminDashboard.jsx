@@ -51,7 +51,7 @@ function exportCSV(users) {
 // ── sub-components ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, icon: Icon, color }) {
   return (
-    <div className="bg-white border border-[#e5e7eb] rounded-2xl p-5 flex items-start gap-4">
+    <div className="bg-bg border border-gray-200 rounded-2xl p-5 flex items-start gap-4">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
         <Icon className="w-5 h-5" />
       </div>
@@ -102,7 +102,7 @@ function TierEditor({ uid, email, currentTier, onUpdated }) {
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
       {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-30 top-full left-0 mt-1 w-36 bg-bg border border-gray-200 rounded-xl shadow-lg overflow-hidden">
           {TIERS.map(t => (
             <button key={t} onClick={() => handleSelect(t)}
               className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 capitalize ${t === currentTier ? 'text-brand-500 bg-brand-50/50' : 'text-gray-700'}`}>
@@ -159,12 +159,12 @@ function UserSlideOver({ user, onClose, onDeleted }) {
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}>
-        <motion.div className="w-full max-w-lg bg-white border-l border-[#e5e7eb] h-full overflow-y-auto flex flex-col" role="dialog" aria-modal="true" aria-labelledby="user-slideover-title"
+        <motion.div className="w-full max-w-lg bg-bg border-l border-gray-200 h-full overflow-y-auto flex flex-col" role="dialog" aria-modal="true" aria-labelledby="user-slideover-title"
           initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 280 }}
           onClick={e => e.stopPropagation()}>
 
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb] shrink-0">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-lg font-bold text-brand-500">
                 {(user.displayName || user.email || 'U')[0].toUpperCase()}
@@ -178,7 +178,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 divide-x divide-[#e5e7eb] border-b border-[#e5e7eb] shrink-0">
+          <div className="grid grid-cols-3 divide-x divide-gray-200 border-b border-gray-200 shrink-0">
             {[
               { label: 'Plan', value: <TierBadge tier={user.tier} /> },
               { label: 'Reports Total', value: user.reportsGenerated },
@@ -192,9 +192,9 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 p-4 border-b border-[#e5e7eb] shrink-0">
+          <div className="flex gap-2 p-4 border-b border-gray-200 shrink-0">
             <button onClick={() => setShowEmailModal(true)}
-              className="flex-1 flex items-center justify-center gap-2 text-sm font-medium py-2 rounded-xl border border-[#e5e7eb] hover:bg-gray-50 transition-colors text-gray-700">
+              className="flex-1 flex items-center justify-center gap-2 text-sm font-medium py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-gray-700">
               <Mail className="w-4 h-4" /> Email User
             </button>
             <button onClick={handleDelete} disabled={deleting}
@@ -204,7 +204,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-[#e5e7eb] shrink-0">
+          <div className="flex border-b border-gray-200 shrink-0">
             {[{ id: 'reports', label: 'Reports', icon: FileText }, { id: 'billing', label: 'Billing', icon: CreditCard }].map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setTab(id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${tab === id ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -228,7 +228,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
               ) : (
                 <div className="space-y-2">
                   {reports.map(r => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-[#e5e7eb] hover:bg-gray-50">
+                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50">
                       <FileText className="w-4 h-4 text-brand-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-mono text-brand-500 truncate">{r.claimNumber}</p>
@@ -246,7 +246,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
               billing ? (
                 <div className="space-y-4">
                   {billing.subscription ? (
-                    <div className="rounded-xl border border-[#e5e7eb] p-4">
+                    <div className="rounded-xl border border-gray-200 p-4">
                       <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Active Subscription</p>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between"><span className="text-gray-500">Status</span>
@@ -257,14 +257,14 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-[#e5e7eb] p-4 text-sm text-gray-500">No active subscription</div>
+                    <div className="rounded-xl border border-gray-200 p-4 text-sm text-gray-500">No active subscription</div>
                   )}
                   {billing.invoices?.length > 0 && (
                     <div>
                       <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Invoices</p>
                       <div className="space-y-2">
                         {billing.invoices.map(inv => (
-                          <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border border-[#e5e7eb] text-sm">
+                          <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-200 text-sm">
                             <div>
                               <p className="text-gray-900 font-medium">{fmtMoney(inv.amount)}</p>
                               <p className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString()}{inv.description ? ` · ${inv.description}` : ''}</p>
@@ -319,7 +319,7 @@ function EmailModal({ to, onClose }) {
     <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <motion.div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="email-modal-title"
+      <motion.div className="bg-bg rounded-2xl w-full max-w-md p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="email-modal-title"
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
@@ -333,12 +333,12 @@ function EmailModal({ to, onClose }) {
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</label>
-            <input className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400"
+            <input className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400"
               placeholder="Subject line…" value={subject} onChange={e => setSubject(e.target.value)} required />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Message</label>
-            <textarea className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400 min-h-[140px] resize-none"
+            <textarea className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400 min-h-[140px] resize-none"
               placeholder="Write your message…" value={message} onChange={e => setMessage(e.target.value)} required />
           </div>
           <div className="flex gap-3">
@@ -346,7 +346,7 @@ function EmailModal({ to, onClose }) {
               className="flex-1 bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
               <Mail className="w-4 h-4" /> {sending ? 'Sending…' : 'Send Email'}
             </button>
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-medium border border-[#e5e7eb] rounded-xl hover:bg-gray-50 transition-colors text-gray-700">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-gray-700">
               Cancel
             </button>
           </div>
@@ -474,7 +474,7 @@ export default function AdminDashboard() {
   if (authLoading || !user || user.email?.trim().toLowerCase() !== ADMIN_EMAIL) return null;
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8]">
+    <div className="min-h-screen bg-surface">
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 pt-24 pb-8">
 
@@ -488,13 +488,13 @@ export default function AdminDashboard() {
             <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
             <p className="text-gray-500 text-sm mt-0.5">Platform-wide overview — FlacronAI</p>
           </div>
-          <button onClick={fetchStats} className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
+          <button onClick={fetchStats} className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-gray-200 rounded-xl bg-bg hover:bg-gray-50 transition-colors text-gray-700">
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-white border border-[#e5e7eb] rounded-xl p-1 mb-6 w-fit">
+        <div className="flex gap-1 bg-bg border border-gray-200 rounded-xl p-1 mb-6 w-fit">
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'users',    label: 'Customers', icon: Users },
@@ -515,7 +515,7 @@ export default function AdminDashboard() {
                 {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 animate-pulse" />)}
               </div>
             ) : statsError ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-600 shadow-sm">Retry</button></div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-bg px-4 py-2 text-sm font-semibold text-brand-600 shadow-sm">Retry</button></div>
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -528,11 +528,11 @@ export default function AdminDashboard() {
                   <StatCard label="Total Leads" value={fmt(stats.totalLeads)} icon={MessageSquare} color="bg-pink-50 text-pink-500" />
                   <StatCard label="New Leads (MTD)" value={fmt(stats.newLeadsThisMonth)} icon={TrendingUp} color="bg-indigo-50 text-indigo-500" />
                 </div>
-                <div className="bg-white border border-[#e5e7eb] rounded-2xl p-6">
+                <div className="bg-bg border border-gray-200 rounded-2xl p-6">
                   <h2 className="text-base font-semibold text-gray-900 mb-4">Users by Plan</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {TIERS.map(t => (
-                      <div key={t} className="rounded-xl border border-[#e5e7eb] p-4 text-center">
+                      <div key={t} className="rounded-xl border border-gray-200 p-4 text-center">
                         <p className="text-2xl font-bold text-gray-900">{stats.tierCounts[t] || 0}</p>
                         <TierBadge tier={t} />
                         {t !== 'starter' && (
@@ -557,32 +557,32 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input className="w-full pl-10 pr-4 py-2 text-sm border border-[#e5e7eb] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+                <input className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-xl bg-bg focus:outline-none focus:ring-2 focus:ring-brand-400"
                   placeholder="Search by email or name…" value={userSearchInput} onChange={e => setUserSearchInput(e.target.value)} />
               </div>
-              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+              <select className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-bg focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={userTierFilter} onChange={e => { setUserTierFilter(e.target.value); setUserPage(1); }}>
                 <option value="">All Plans</option>
                 {TIERS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
               <button onClick={fetchAllUsersForExport}
-                className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
+                className="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-gray-200 rounded-xl bg-bg hover:bg-gray-50 transition-colors text-gray-700">
                 <Download className="w-4 h-4" /> Export CSV
               </button>
               <button onClick={fetchUsers} aria-label="Refresh users" title="Refresh users"
-                className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
+                className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-gray-200 rounded-xl bg-bg hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#e5e7eb]">
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-200">
                 <p className="text-sm font-medium text-gray-700">{userTotal} customers</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#e5e7eb] bg-gray-50">
+                    <tr className="border-b border-gray-200 bg-gray-50">
                       {['User', 'Plan', 'Reports Total', 'Reports MTD', 'Joined', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                       ))}
@@ -591,7 +591,7 @@ export default function AdminDashboard() {
                   <tbody>
                     {usersLoading ? (
                       [...Array(8)].map((_, i) => (
-                        <tr key={i} className="border-b border-[#e5e7eb]">
+                        <tr key={i} className="border-b border-gray-200">
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
@@ -600,7 +600,7 @@ export default function AdminDashboard() {
                     ) : users.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No users found</td></tr>
                     ) : users.map(u => (
-                      <tr key={u.uid} className="border-b border-[#e5e7eb] hover:bg-gray-50 transition-colors cursor-pointer"
+                      <tr key={u.uid} className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
                         onClick={() => setSelectedUser(u)}>
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-gray-900">{u.displayName || '—'}</p>
@@ -631,13 +631,13 @@ export default function AdminDashboard() {
                 </table>
               </div>
               {userTotal > 50 && (
-                <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e7eb]">
+                <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200">
                   <p className="text-sm text-gray-500">Page {userPage} · {userTotal} total</p>
                   <div className="flex gap-2">
                     <button onClick={() => setUserPage(p => Math.max(1, p - 1))} disabled={userPage === 1}
-                      className="text-sm font-medium px-3 py-1.5 border border-[#e5e7eb] rounded-lg disabled:opacity-30 hover:bg-gray-50">Previous</button>
+                      className="text-sm font-medium px-3 py-1.5 border border-gray-200 rounded-lg disabled:opacity-30 hover:bg-gray-50">Previous</button>
                     <button onClick={() => setUserPage(p => p + 1)} disabled={users.length < 50}
-                      className="text-sm font-medium px-3 py-1.5 border border-[#e5e7eb] rounded-lg disabled:opacity-30 hover:bg-gray-50">Next</button>
+                      className="text-sm font-medium px-3 py-1.5 border border-gray-200 rounded-lg disabled:opacity-30 hover:bg-gray-50">Next</button>
                   </div>
                 </div>
               )}
@@ -649,7 +649,7 @@ export default function AdminDashboard() {
         {tab === 'leads' && (
           <motion.div key="leads" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex gap-3 mb-4">
-              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+              <select className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-bg focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={leadsStatus} onChange={e => setLeadsStatus(e.target.value)}>
                 <option value="">All Statuses</option>
                 {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => (
@@ -657,16 +657,16 @@ export default function AdminDashboard() {
                 ))}
               </select>
               <button onClick={fetchLeads} aria-label="Refresh leads" title="Refresh leads"
-                className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-[#e5e7eb] rounded-xl bg-white hover:bg-gray-50 transition-colors text-gray-700">
+                className="flex items-center gap-2 text-sm font-medium px-3 py-2 border border-gray-200 rounded-xl bg-bg hover:bg-gray-50 transition-colors text-gray-700">
                 <RefreshCw className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden">
+            <div className="bg-bg border border-gray-200 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#e5e7eb] bg-gray-50">
+                    <tr className="border-b border-gray-200 bg-gray-50">
                       {['Name', 'Email', 'Company', 'Status', 'Received', 'Notes / Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                       ))}
@@ -675,7 +675,7 @@ export default function AdminDashboard() {
                   <tbody>
                     {leadsLoading ? (
                       [...Array(6)].map((_, i) => (
-                        <tr key={i} className="border-b border-[#e5e7eb]">
+                        <tr key={i} className="border-b border-gray-200">
                           {[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-gray-200 animate-pulse w-24" /></td>)}
                         </tr>
                       ))
@@ -684,7 +684,7 @@ export default function AdminDashboard() {
                     ) : leads.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No leads yet</td></tr>
                     ) : leads.map(l => (
-                      <tr key={l.id} className="border-b border-[#e5e7eb] hover:bg-gray-50 transition-colors">
+                      <tr key={l.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-gray-900">{l.name}</p>
                           {l.phone && <p className="text-xs text-gray-400">{l.phone}</p>}
