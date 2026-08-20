@@ -147,7 +147,7 @@ export default function CommentsPanel({
 
   const CommentRow = ({ comment, isReply = false }) => (
     <div className={isReply ? 'ml-8 mt-2' : 'mt-3'}>
-      <div className={`rounded-lg border p-3 text-sm ${comment.resolved ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'}`}>
+      <div className={`rounded-lg border p-3 text-sm ${comment.resolved ? 'border-gray-100 bg-bg' : 'border-gray-200 bg-gray-50'}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <span className="font-semibold text-gray-800">{comment.authorName}</span>

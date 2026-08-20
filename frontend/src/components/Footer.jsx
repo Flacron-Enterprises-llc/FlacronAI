@@ -38,6 +38,18 @@ const YouTubeIcon = () => (
   </svg>
 );
 
+const PinterestIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12.017 0C5.396 0 0 5.396 0 12.017c0 5.086 3.163 9.417 7.62 11.174-.105-.949-.2-2.406.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.03-.656 2.567-.994 3.99-.283 1.192.597 2.164 1.771 2.164 2.126 0 3.756-2.24 3.756-5.471 0-2.861-2.056-4.86-4.994-4.86-3.4 0-5.396 2.548-5.396 5.184 0 1.027.395 2.129.888 2.727a.36.36 0 01.083.343c-.09.375-.293 1.192-.332 1.357-.052.218-.173.264-.4.159-1.492-.694-2.424-2.874-2.424-4.625 0-3.767 2.738-7.225 7.892-7.225 4.144 0 7.365 2.953 7.365 6.897 0 4.116-2.596 7.428-6.199 7.428-1.211 0-2.348-.629-2.738-1.373 0 0-.599 2.281-.744 2.84-.269 1.033-.996 2.329-1.482 3.119C9.53 23.812 10.75 24 12.017 24c6.62 0 12.017-5.396 12.017-12.017C24.034 5.396 18.637 0 12.017 0z"/>
+  </svg>
+);
+
+const BlueskyIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.912 0 3.083 0 3.812c0 .729.396 5.97.652 6.848.855 2.951 3.899 3.951 6.7 3.629-3.895.575-7.36 1.987-2.818 7.019 5.113 5.256 7.005-1.129 7.966-4.418.961 3.289 2.108 9.442 7.844 4.418 4.253-4.418 1.156-6.444-2.739-7.019 2.801.322 5.845-.678 6.7-3.63.256-.877.652-6.118.652-6.847 0-.729-.139-1.9-.902-2.247-.659-.299-1.664-.62-4.3 1.24C16.046 4.747 13.087 8.686 12 10.8z"/>
+  </svg>
+);
+
 const Footer = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -77,15 +89,17 @@ const Footer = () => {
 
   const socials = [
     { label: 'Instagram', icon: InstagramIcon, href: 'https://www.instagram.com/flacronenterprisesllc/' },
-    { label: 'LinkedIn',  icon: LinkedInIcon,  href: 'https://www.linkedin.com/company/flacronenterprisesllc/' },
+    { label: 'LinkedIn',  icon: LinkedInIcon,  href: 'https://www.linkedin.com/company/109062090/' },
     { label: 'Facebook',  icon: FacebookIcon,  href: 'https://www.facebook.com/people/Flacron-Enterprises/61579538447653/' },
     { label: 'TikTok',    icon: TikTokIcon,    href: 'https://www.tiktok.com/@flacronenterprises' },
     { label: 'X',         icon: XIcon,         href: 'https://x.com/flacron14958' },
-    { label: 'YouTube',   icon: YouTubeIcon,   href: 'https://www.youtube.com/channel/UC09l7Vh-7D-7xQcNT002YGw' },
+    { label: 'YouTube',   icon: YouTubeIcon,   href: 'https://www.youtube.com/@FlacronEnterprises' },
+    { label: 'Pinterest', icon: PinterestIcon, href: 'https://www.pinterest.com/rodrigue0435' },
+    { label: 'Bluesky',   icon: BlueskyIcon,   href: 'https://bsky.app/profile/flacronenterprises.bsky.social' },
   ];
 
   return (
-    <footer className="bg-[#ffffff] border-t border-[#e5e7eb] pt-14 pb-8">
+    <footer className="bg-bg border-t border-gray-200 pt-14 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
@@ -158,7 +172,7 @@ const Footer = () => {
         </div>
 
         {/* Bottom bar */}
-        <div className="border-t border-[#e5e7eb] pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="border-t border-gray-200 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-brand-500 text-sm">© 2026 Flacron Enterprises. All rights reserved.</p>
         </div>
       </div>

@@ -19,7 +19,7 @@ const DEFAULT_BRAND = {
 
 function SkeletonPortal() {
   return (
-    <div className="min-h-screen bg-[#ffffff] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <Seo title="Enterprise Portal — FlacronAI" description="FlacronAI enterprise client portal." path="/enterprise" noindex />
       <div className="w-full max-w-md space-y-4">
         <div className="skeleton h-14 w-40 mx-auto rounded-xl" />
@@ -114,7 +114,7 @@ export default function EnterpriseOnboarding() {
   const secondary = brand.secondaryColor || '#002A64';
 
   return (
-    <div className="min-h-screen bg-[#ffffff] flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col">
       {/* Branded Header */}
       <header className="py-4 px-6 border-b border-gray-200" style={{ background: `${primary}18` }}>
         <div className="max-w-6xl mx-auto flex items-center gap-3">

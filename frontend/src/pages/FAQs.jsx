@@ -132,7 +132,7 @@ function FAQItem({ q, a }) {
       <AnimatePresence>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-[#e5e7eb]">
+            className="overflow-hidden border-t border-gray-200">
             <p className="px-5 py-4 text-gray-600 text-sm leading-relaxed">{a}</p>
           </motion.div>
         )}
@@ -154,7 +154,7 @@ export default function FAQs() {
   }, [search, category]);
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="FAQs — FlacronAI" description="Answers about plans and report limits, export formats, API access, data security, and how automated insurance report drafting works." path="/faqs" jsonLd={FAQ_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-3xl mx-auto">

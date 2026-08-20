@@ -128,9 +128,9 @@ const NotificationBell = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-80 max-w-[92vw] bg-white border border-[#e5e7eb] rounded-xl shadow-xl shadow-black/10 overflow-hidden z-50"
+            className="absolute right-0 top-full mt-2 w-80 max-w-[92vw] bg-bg border border-gray-200 rounded-xl shadow-xl shadow-black/10 overflow-hidden z-50"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e7eb]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
               <p className="text-sm font-semibold text-gray-900">Notifications</p>
               {unreadCount > 0 && (
                 <button
@@ -159,7 +159,7 @@ const NotificationBell = () => {
                 <button
                   key={item.id}
                   onClick={() => handleItemClick(item)}
-                  className={`w-full text-left px-4 py-3 border-b border-[#f3f4f6] last:border-b-0 hover:bg-gray-50 transition-colors ${
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors ${
                     item.read ? '' : 'bg-brand-50/40'
                   }`}
                 >

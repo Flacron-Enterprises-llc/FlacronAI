@@ -62,7 +62,7 @@ const ProtectedRoute = ({ children, requiredTier, skipOnboardingGate }) => {
   const isGoogleUser = user?.providerData?.some(p => p.providerId === 'google.com');
   if (!emailVerified && !isGoogleUser) {
     return (
-      <div className="min-h-screen bg-[#ffffff] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-bg flex items-center justify-center p-4">
         <div className="card p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Mail className="w-8 h-8 text-brand-500" />

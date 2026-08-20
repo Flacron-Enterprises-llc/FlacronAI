@@ -72,7 +72,7 @@ const describeCapabilities = (caps) =>
 function StatCard({ label, value, sub, icon: Icon, trend, tooltip }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white border border-[#e5e7eb] rounded-2xl p-6 relative overflow-hidden">
+      className="bg-bg border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
       <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-brand-50" />
       <div className="flex items-start justify-between mb-4 relative">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-brand-50 border border-brand-100">
@@ -102,7 +102,7 @@ function NavItem({ item, active, onClick }) {
       <item.icon className="w-4 h-4 shrink-0" />
       {item.label}
       {item.badge && (
-        <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25 text-white' : 'bg-brand-100 text-brand-600'}`}>
+        <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-bg/25 text-white' : 'bg-brand-100 text-brand-600'}`}>
           {item.badge}
         </span>
       )}
@@ -584,28 +584,28 @@ export default function EnterpriseDashboard() {
   );
 
   // Shared input classes
-  const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all';
-  const selectCls = 'px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 focus:outline-none focus:border-brand-500 transition-all';
-  const cardCls = 'bg-white border border-[#e5e7eb] rounded-2xl';
+  const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-bg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all';
+  const selectCls = 'px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 focus:outline-none focus:border-brand-500 transition-all';
+  const cardCls = 'bg-gray-50 border border-gray-200 rounded-2xl';
 
   return (
-    <div className="min-h-screen flex bg-[#ffffff]">
+    <div className="min-h-screen flex bg-bg">
 
       {sidebarOpen && (
         <button
           type="button"
           aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-gray-950/35 backdrop-blur-[1px] md:hidden"
+          className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1px] md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 flex flex-col border-r border-[#e5e7eb] bg-[#f8f8f8] h-screen shadow-xl transition-transform duration-300 md:sticky md:top-0 md:z-20 md:translate-x-0 md:shadow-none ${
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 flex flex-col border-r border-gray-200 bg-surface h-screen shadow-xl transition-transform duration-300 md:sticky md:top-0 md:z-20 md:translate-x-0 md:shadow-none ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Logo */}
-        <div className="p-5 border-b border-[#e5e7eb] flex items-center justify-between">
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
@@ -616,7 +616,7 @@ export default function EnterpriseDashboard() {
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close navigation"
-            className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm md:hidden">
+            className="rounded-xl border border-gray-200 bg-bg p-2 text-gray-600 shadow-sm md:hidden">
             <PanelLeftClose className="h-4 w-4" />
           </button>
         </div>
@@ -637,12 +637,12 @@ export default function EnterpriseDashboard() {
         </nav>
 
         {/* Footer */}
-        <div className="p-3 border-t border-[#e5e7eb] space-y-2">
+        <div className="p-3 border-t border-gray-200 space-y-2">
           <button onClick={() => navigate('/dashboard')}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
             <ChevronRight className="w-3.5 h-3.5 rotate-180" /> Standard Dashboard
           </button>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-[#e5e7eb]">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-bg border border-gray-200">
             <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-xs font-black text-white shrink-0">
               {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
             </div>
@@ -658,10 +658,10 @@ export default function EnterpriseDashboard() {
       {/* ── Main ── */}
       <main className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 border-b border-[#e5e7eb] bg-white/95 backdrop-blur-sm gap-3">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 border-b border-gray-200 bg-bg/95 backdrop-blur-sm gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation"
-              className="md:hidden shrink-0 rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm">
+              className="md:hidden shrink-0 rounded-xl border border-gray-200 bg-bg p-2 text-gray-600 shadow-sm">
               <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0">
@@ -724,7 +724,7 @@ export default function EnterpriseDashboard() {
 
                 {/* Recent reports table */}
                 <div className={`${cardCls} overflow-hidden`}>
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-[#e5e7eb]">
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <p className="text-sm font-bold text-gray-900">Recent Reports</p>
                     <button onClick={() => setActiveView('reports')}
                       className="text-xs text-brand-500 hover:text-brand-600 flex items-center gap-1 font-medium">
@@ -748,7 +748,7 @@ export default function EnterpriseDashboard() {
                     <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-[#e5e7eb] bg-gray-50">
+                        <tr className="border-b border-gray-200 bg-gray-50">
                           {['Claim #','Insured','Loss Type','Date','Completeness','Export'].map(h => (
                             <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
                               title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the FLACRON ENGINE's findings." : undefined}>{h}</th>
@@ -757,7 +757,7 @@ export default function EnterpriseDashboard() {
                       </thead>
                       <tbody>
                         {reports.slice(0, 8).map((r, i) => (
-                          <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-brand-50/30 transition-colors">
+                          <tr key={r.id || i} className="border-b border-gray-200 hover:bg-brand-50/30 transition-colors">
                             <td className="px-6 py-3 text-sm font-mono font-semibold text-brand-500">{r.claimNumber || '—'}</td>
                             <td className="px-6 py-3 text-sm text-gray-900">{r.insuredName || '—'}</td>
                             <td className="px-6 py-3 text-xs text-gray-500">{r.lossType || '—'}</td>
@@ -798,7 +798,7 @@ export default function EnterpriseDashboard() {
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Quick Demo:</p>
                         {QUICK_DEMOS.map(d => (
                           <button key={d.emoji} onClick={() => applyDemo(d)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e5e7eb] bg-white hover:bg-brand-50 hover:border-brand-300 text-xs text-gray-600 hover:text-brand-600 transition-all">
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-bg hover:bg-brand-50 hover:border-brand-300 text-xs text-gray-600 hover:text-brand-600 transition-all">
                             {d.emoji} {d.label}
                           </button>
                         ))}
@@ -882,7 +882,7 @@ export default function EnterpriseDashboard() {
                             }
                             fileInputRef.current?.click();
                           }}
-                          className="flex items-center justify-center gap-3 border-2 border-dashed border-[#e5e7eb] rounded-xl py-4 cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-all">
+                          className="flex items-center justify-center gap-3 border-2 border-dashed border-gray-200 rounded-xl py-4 cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-all">
                           <Upload className="w-5 h-5 text-gray-400" />
                           <span className="text-sm text-gray-400">Click to add photos {photos.length > 0 && `(${photos.length} added)`}</span>
                         </div>
@@ -891,7 +891,7 @@ export default function EnterpriseDashboard() {
                         {photos.length > 0 && (
                           <div className="flex gap-2 flex-wrap mt-2">
                             {photos.slice(0, 8).map((p, i) => (
-                              <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border border-[#e5e7eb]">
+                              <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border border-gray-200">
                                 <img src={p.url} alt="" className="w-full h-full object-cover" />
                                 <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
                                   aria-label={`Remove photo ${i + 1}`} title="Remove photo"
@@ -901,7 +901,7 @@ export default function EnterpriseDashboard() {
                               </div>
                             ))}
                             {photos.length > 8 && (
-                              <div className="w-12 h-12 rounded-lg border border-[#e5e7eb] bg-gray-50 flex items-center justify-center text-xs text-gray-500">+{photos.length - 8}</div>
+                              <div className="w-12 h-12 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-xs text-gray-500">+{photos.length - 8}</div>
                             )}
                           </div>
                         )}
@@ -955,19 +955,19 @@ export default function EnterpriseDashboard() {
                               </span>
                             )}
                             <button onClick={() => autoPreviewPdf(generatedReport)} disabled={pdfLoading}
-                              className="text-xs px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-gray-500 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors">
+                              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors">
                               <RefreshCw className={`w-3 h-3 ${pdfLoading ? 'animate-spin' : ''}`} /> Refresh
                             </button>
                           </div>
                         </div>
                         {pdfLoading && !pdfUrl ? (
-                          <div className="flex items-center justify-center py-16 bg-gray-50 rounded-xl border border-[#e5e7eb]">
+                          <div className="flex items-center justify-center py-16 bg-gray-50 rounded-xl border border-gray-200">
                             <RefreshCw className="w-7 h-7 text-brand-500 animate-spin" />
                           </div>
                         ) : pdfUrl ? (
-                          <iframe src={pdfUrl} className="w-full rounded-xl border border-[#e5e7eb]" style={{ height: 780 }} title="PDF Preview" />
+                          <iframe src={pdfUrl} className="w-full rounded-xl border border-gray-200" style={{ height: 780 }} title="PDF Preview" />
                         ) : (
-                          <div className="flex flex-col items-center py-16 gap-3 rounded-xl border-2 border-dashed border-[#e5e7eb]">
+                          <div className="flex flex-col items-center py-16 gap-3 rounded-xl border-2 border-dashed border-gray-200">
                             <FileText className="w-10 h-10 text-gray-300" />
                             <button onClick={() => autoPreviewPdf(generatedReport)} className="text-sm text-brand-500 hover:text-brand-600 font-medium">Load PDF Preview</button>
                           </div>
@@ -981,7 +981,7 @@ export default function EnterpriseDashboard() {
                             <p className="text-xs text-gray-500 mt-0.5">Automatically generated draft — review and edit, then approve to finalize.</p>
                           </div>
                           <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
-                            className="text-xs px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
+                            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
                             {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
                           </button>
                         </div>
@@ -1021,27 +1021,27 @@ export default function EnterpriseDashboard() {
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
                                 <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
+                                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
                                 <input value={signatureTitle} onChange={e => setSignatureTitle(e.target.value)} placeholder="Senior Adjuster"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
+                                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">License number *</label>
                                 <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="TX-ADJ-583920"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
+                                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">License state *</label>
                                 <input value={licenseState} onChange={e => setLicenseState(e.target.value)} placeholder="TX"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
+                                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                             </div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Company / adjusting firm *</label>
                             <input value={company} onChange={e => setCompany(e.target.value)} placeholder="ABC Claims Services"
-                              className="w-full mb-3 text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
+                              className="w-full mb-3 text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                             <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
                               <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
                                 className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
@@ -1058,7 +1058,7 @@ export default function EnterpriseDashboard() {
                         <p className="text-sm font-bold text-gray-900 mb-3">Export</p>
                         {['pdf', 'docx', 'html'].map(f => (
                           <button key={f} onClick={() => handleExport(generatedReport.id, f)}
-                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-brand-50 hover:border-brand-300 text-sm text-gray-700 hover:text-brand-600 transition-all">
+                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-gray-200 bg-bg hover:bg-brand-50 hover:border-brand-300 text-sm text-gray-700 hover:text-brand-600 transition-all">
                             <Download className="w-4 h-4" /> Download {f.toUpperCase()}
                           </button>
                         ))}
@@ -1080,11 +1080,11 @@ export default function EnterpriseDashboard() {
                   <div className="relative flex-1 sm:max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search reports…"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 transition-all" />
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 transition-all" />
                   </div>
                   <div className="flex items-center gap-3">
                     <button onClick={fetchReports}
-                      className="p-2.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-gray-50 transition-colors">
+                      className="p-2.5 rounded-xl border border-gray-200 bg-bg hover:bg-gray-50 transition-colors">
                       <RefreshCw className={`w-4 h-4 text-gray-400 ${reportsLoading ? 'animate-spin' : ''}`} />
                     </button>
                     <button onClick={() => setActiveView('generate')}
@@ -1097,7 +1097,7 @@ export default function EnterpriseDashboard() {
                   <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-[#e5e7eb] bg-gray-50">
+                      <tr className="border-b border-gray-200 bg-gray-50">
                         {['Claim #','Insured','Loss Type','Report Type','Date','Completeness','Export'].map(h => (
                           <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
                             title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the FLACRON ENGINE's findings." : undefined}>{h}</th>
@@ -1107,7 +1107,7 @@ export default function EnterpriseDashboard() {
                     <tbody>
                       {reportsLoading
                         ? [...Array(5)].map((_, i) => (
-                            <tr key={i} className="border-b border-[#e5e7eb]">
+                            <tr key={i} className="border-b border-gray-200">
                               {[...Array(7)].map((_, j) => (
                                 <td key={j} className="px-5 py-3.5">
                                   <div className="h-4 rounded bg-gray-100 animate-pulse" style={{ width: `${40 + Math.random() * 40}%` }} />
@@ -1126,7 +1126,7 @@ export default function EnterpriseDashboard() {
                           : filteredReports.length === 0
                             ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
                             : filteredReports.map((r, i) => (
-                              <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-brand-50/30 transition-colors">
+                              <tr key={r.id || i} className="border-b border-gray-200 hover:bg-brand-50/30 transition-colors">
                                 <td className="px-5 py-3.5 text-sm font-mono font-semibold text-brand-500">{r.claimNumber || '—'}</td>
                                 <td className="px-5 py-3.5 text-sm text-gray-900">{r.insuredName || '—'}</td>
                                 <td className="px-5 py-3.5 text-xs text-gray-500">{r.lossType || '—'}</td>
@@ -1178,7 +1178,7 @@ export default function EnterpriseDashboard() {
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Company Logo</label>
                       <div className="flex items-center gap-4">
                         <div onClick={() => logoInputRef.current?.click()}
-                          className="w-24 h-14 rounded-xl border-2 border-dashed border-[#e5e7eb] hover:border-brand-400 hover:bg-brand-50 flex items-center justify-center cursor-pointer transition-colors">
+                          className="w-24 h-14 rounded-xl border-2 border-dashed border-gray-200 hover:border-brand-400 hover:bg-brand-50 flex items-center justify-center cursor-pointer transition-colors">
                           {logoFile
                             ? <img src={URL.createObjectURL(logoFile)} alt="logo" className="w-full h-full object-contain rounded-xl p-1" />
                             : <Upload className="w-5 h-5 text-gray-400" />}
@@ -1215,7 +1215,7 @@ export default function EnterpriseDashboard() {
                       <div className="flex items-center gap-4">
                         <input type="color" value={wlConfig.primaryColor}
                           onChange={e => setWlConfig(p => ({ ...p, primaryColor: e.target.value }))}
-                          className="w-12 h-12 rounded-xl border border-[#e5e7eb] cursor-pointer" />
+                          className="w-12 h-12 rounded-xl border border-gray-200 cursor-pointer" />
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Primary Accent Color</p>
                           <p className="text-xs text-gray-400">{wlConfig.primaryColor} — used in PDF headers, covers & portal</p>
@@ -1230,7 +1230,7 @@ export default function EnterpriseDashboard() {
                       </div>
                       <button onClick={() => setWlConfig(p => ({ ...p, hideFlacronBranding: !p.hideFlacronBranding }))}
                         className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${wlConfig.hideFlacronBranding ? 'bg-brand-500' : 'bg-gray-200'}`}>
-                        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${wlConfig.hideFlacronBranding ? 'left-6' : 'left-0.5'}`} />
+                        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-bg shadow transition-transform ${wlConfig.hideFlacronBranding ? 'left-6' : 'left-0.5'}`} />
                       </button>
                     </div>
 
@@ -1241,7 +1241,7 @@ export default function EnterpriseDashboard() {
                         {wlSaving ? 'Saving…' : 'Save White-Label Settings'}
                       </button>
                       <button onClick={handlePreviewPdf} disabled={pdfLoading}
-                        className="px-5 py-3 rounded-xl border border-[#e5e7eb] bg-white hover:bg-gray-50 text-sm text-gray-700 font-semibold transition-colors flex items-center gap-2">
+                        className="px-5 py-3 rounded-xl border border-gray-200 bg-bg hover:bg-gray-50 text-sm text-gray-700 font-semibold transition-colors flex items-center gap-2">
                         <Eye className="w-4 h-4" /> Preview PDF
                       </button>
                     </div>
@@ -1332,7 +1332,7 @@ export default function EnterpriseDashboard() {
 
                     {/* Members list */}
                     <div className={`${cardCls} overflow-hidden`}>
-                      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                         <p className="text-sm font-bold text-gray-900">Team Members ({members.length + 1})</p>
                         <button onClick={fetchMembers} aria-label="Refresh team members" title="Refresh team members" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
                           <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${membersLoading ? 'animate-spin' : ''}`} />
@@ -1342,7 +1342,7 @@ export default function EnterpriseDashboard() {
                       {/* Owner row -- shows the real org owner (teamOwnerInfo),
                           not necessarily the viewer themself, since an
                           Admin/Manager viewing this roster is not the owner. */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] bg-brand-50/30">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-gray-200 bg-brand-50/30">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-sm font-black text-white shrink-0">
                             {((teamOwnerInfo?.displayName || teamOwnerInfo?.email || user?.displayName || user?.email || 'E'))[0].toUpperCase()}
@@ -1368,9 +1368,9 @@ export default function EnterpriseDashboard() {
                         const manageable = canActOnMember(m);
                         const busy = memberActionBusyId === m.id;
                         return (
-                          <div key={m.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] hover:bg-gray-50 transition-colors">
+                          <div key={m.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-gray-200 hover:bg-gray-50 transition-colors">
                             <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <div className="w-9 h-9 rounded-xl bg-gray-100 border border-[#e5e7eb] flex items-center justify-center text-sm font-black text-gray-600 shrink-0">
+                              <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-sm font-black text-gray-600 shrink-0">
                                 {m.email[0].toUpperCase()}
                               </div>
                               <div className="min-w-0">
@@ -1385,7 +1385,7 @@ export default function EnterpriseDashboard() {
                               {editingRole === m.id ? (
                                 <div className="flex items-center gap-2">
                                   <select defaultValue={m.role} onChange={e => handleUpdateRole(m.id, e.target.value)}
-                                    className="px-2 py-1 rounded-lg border border-[#e5e7eb] bg-white text-xs text-gray-700 focus:outline-none">
+                                    className="px-2 py-1 rounded-lg border border-gray-200 bg-bg text-xs text-gray-700 focus:outline-none">
                                     {!assignableRoles.includes(m.role) && (
                                       <option value={m.role} disabled>{roleLabel(m.role)} (current)</option>
                                     )}
@@ -1457,7 +1457,7 @@ export default function EnterpriseDashboard() {
                   <fieldset className="grid gap-2 sm:grid-cols-2 mb-4">
                     <legend className="sr-only">API key permissions</legend>
                     {API_KEY_SCOPES.map(scope => (
-                      <label key={scope.id} className="flex gap-2 rounded-xl border border-[#e5e7eb] bg-gray-50 p-3 cursor-pointer hover:border-brand-300">
+                      <label key={scope.id} className="flex gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 cursor-pointer hover:border-brand-300">
                         <input type="checkbox" className="mt-0.5 accent-brand-500" checked={newKeyScopes.includes(scope.id)}
                           onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
                         <span><span className="block text-xs font-semibold text-gray-900">{scope.label}</span><span className="block text-[11px] text-gray-400 mt-0.5">{scope.description}</span></span>
@@ -1477,7 +1477,7 @@ export default function EnterpriseDashboard() {
                 </div>
 
                 <div className={`${cardCls} overflow-hidden`}>
-                  <div className="px-5 py-4 border-b border-[#e5e7eb] bg-gray-50">
+                  <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
                     <p className="text-sm font-bold text-gray-900">Your API Keys ({apiKeys.length})</p>
                   </div>
                   <div className="p-4 space-y-2">
@@ -1488,7 +1488,7 @@ export default function EnterpriseDashboard() {
                     ) : apiKeys.length === 0 ? (
                       <p className="text-center text-gray-400 text-sm py-8">No API keys yet.</p>
                     ) : apiKeys.map(k => (
-                      <div key={k.id} className="flex items-center gap-3 p-4 rounded-xl border border-[#e5e7eb] bg-gray-50">
+                      <div key={k.id} className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
                         <Key className="w-4 h-4 text-brand-500 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{k.name || 'API Key'}</p>
@@ -1511,7 +1511,7 @@ export default function EnterpriseDashboard() {
 
                 <div className={`${cardCls} p-5`}>
                   <h3 className="text-sm font-bold text-gray-900 mb-3">Quick Start</h3>
-                  <pre className="text-xs text-gray-600 bg-gray-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
+                  <pre className="text-xs bg-neutral-900 text-green-400 rounded-xl p-4 overflow-x-auto leading-relaxed font-mono">{`curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{ "claimNumber": "CLM-001", "insuredName": "John Smith",

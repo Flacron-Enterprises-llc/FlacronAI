@@ -151,7 +151,7 @@ FlacronAI reserves the right to assume exclusive defense and control of any matt
 
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="Terms of Service — FlacronAI" description="The terms that govern your use of FlacronAI, including automated drafting, human review requirements, and subscriptions." path="/terms-of-service" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-4xl mx-auto">

@@ -210,7 +210,7 @@ const AccordionSection = ({ section }) => {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
-      className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden"
+      className="bg-bg border border-gray-200 rounded-2xl overflow-hidden"
     >
       <button
         onClick={() => setOpen(o => !o)}
@@ -226,7 +226,7 @@ const AccordionSection = ({ section }) => {
       </button>
 
       {open && (
-        <div className="px-6 pb-6 border-t border-[#e5e7eb]">
+        <div className="px-6 pb-6 border-t border-gray-200">
           {section.content && (
             <div className="pt-5">{renderContent(section.content)}</div>
           )}
@@ -242,18 +242,18 @@ const AccordionSection = ({ section }) => {
                     </span>
                   </div>
                   <p className="text-gray-500 text-xs mb-3">{sub.description}</p>
-                  <div className="overflow-x-auto rounded-lg border border-[#e5e7eb]" tabIndex={0} role="region" aria-label={`${sub.label} cookies table`}>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200" tabIndex={0} role="region" aria-label={`${sub.label} cookies table`}>
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50">
                         <tr>
                           {['Cookie Name', 'Purpose', 'Duration', 'Provider'].map(h => (
-                            <th key={h} className="text-left px-4 py-2.5 text-gray-600 font-semibold border-b border-[#e5e7eb]">{h}</th>
+                            <th key={h} className="text-left px-4 py-2.5 text-gray-600 font-semibold border-b border-gray-200">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {sub.items.map((item, i) => (
-                          <tr key={i} className="border-b border-[#e5e7eb] last:border-0 hover:bg-brand-50/30 transition-colors">
+                          <tr key={i} className="border-b border-gray-200 last:border-0 hover:bg-brand-50/30 transition-colors">
                             <td className="px-4 py-3 font-mono text-gray-800">{item.name}</td>
                             <td className="px-4 py-3 text-gray-600">{item.purpose}</td>
                             <td className="px-4 py-3 text-gray-500">{item.duration}</td>
@@ -271,7 +271,7 @@ const AccordionSection = ({ section }) => {
           {section.browsers && (
             <div className="pt-5 space-y-3">
               {section.browsers.map(b => (
-                <div key={b.name} className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-xl border border-[#e5e7eb]">
+                <div key={b.name} className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div>
                     <p className="text-sm font-semibold text-gray-900 mb-0.5">{b.name}</p>
                     <p className="text-xs text-gray-500">{b.steps}</p>
@@ -296,12 +296,12 @@ const AccordionSection = ({ section }) => {
 
 export default function CookiesPolicy() {
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="Cookies Policy — FlacronAI" description="Which cookies FlacronAI uses, why, and how to control them in your browser." path="/cookies-policy" />
       <Navbar />
 
       {/* Header */}
-      <div className="pt-24 pb-12 bg-[#f8f8f8] border-b border-[#e5e7eb]">
+      <div className="pt-24 pb-12 bg-surface border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
             <div className="flex items-center gap-3 mb-4">
@@ -326,7 +326,7 @@ export default function CookiesPolicy() {
       </div>
 
       {/* Quick nav */}
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-sm border-b border-[#e5e7eb]">
+      <div className="sticky top-16 z-30 bg-bg/95 backdrop-blur-sm border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-1 overflow-x-auto py-3 scrollbar-none">
             {SECTIONS.map(s => (
@@ -366,7 +366,7 @@ export default function CookiesPolicy() {
         ))}
 
         {/* Related links */}
-        <div className="border-t border-[#e5e7eb] pt-8 mt-8">
+        <div className="border-t border-gray-200 pt-8 mt-8">
           <p className="text-sm text-gray-500 mb-4">Related policies:</p>
           <div className="flex flex-wrap gap-3">
             {[

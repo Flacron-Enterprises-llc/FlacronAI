@@ -641,7 +641,7 @@ function EndpointCard({ endpoint }) {
         {open ? <ChevronUp className="w-4 h-4 text-gray-600 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-600 shrink-0" />}
       </button>
       {open && (
-        <div className="border-t border-[#e5e7eb] p-4 space-y-4">
+        <div className="border-t border-gray-200 p-4 space-y-4">
           <p className="text-gray-700 text-sm">{endpoint.description}</p>
           {endpoint.params.length > 0 && (
             <div>
@@ -694,7 +694,7 @@ export default function ApiDocs() {
   const categories = Object.keys(ENDPOINTS);
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="API Documentation — FlacronAI" description="Full FlacronAI REST API reference: authentication, report generation, exports, rate limits, and code examples in cURL, JavaScript, and Python." path="/docs/api" />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-7xl mx-auto">
@@ -712,7 +712,7 @@ export default function ApiDocs() {
                   activeSection === 'Quick Start' ? 'bg-brand-500/20 text-brand-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
                 Quick Start Guide
               </button>
-              <div className="border-t border-[#e5e7eb] my-3" />
+              <div className="border-t border-gray-200 my-3" />
               <p className="text-xs font-semibold text-gray-500 uppercase px-3 mb-3">Endpoints</p>
               {categories.map(cat => (
                 <button key={cat} onClick={() => setActiveSection(cat)}
@@ -721,7 +721,7 @@ export default function ApiDocs() {
                   {cat}
                 </button>
               ))}
-              <div className="border-t border-[#e5e7eb] my-3" />
+              <div className="border-t border-gray-200 my-3" />
               {['Base URL', 'Auth Guide', 'Webhooks', 'Downloads', 'Reliability', 'Rate Limits', 'Errors'].map(s => (
                 <button key={s} onClick={() => setActiveSection(s)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -743,7 +743,7 @@ export default function ApiDocs() {
                 id="api-docs-section"
                 value={activeSection}
                 onChange={(e) => setActiveSection(e.target.value)}
-                className="w-full rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 text-sm font-medium text-gray-900"
+                className="w-full rounded-lg border border-gray-200 bg-bg px-3 py-2.5 text-sm font-medium text-gray-900"
               >
                 <option value="Quick Start">Quick Start Guide</option>
                 <optgroup label="Endpoints">
@@ -784,7 +784,7 @@ export default function ApiDocs() {
                           {s.workflows && (
                             <div className="space-y-4">
                               {s.workflows.map((w, i) => (
-                                <div key={i} className="rounded-lg border border-[#e5e7eb] p-4">
+                                <div key={i} className="rounded-lg border border-gray-200 p-4">
                                   <h4 className="font-semibold text-gray-900 text-sm mb-2">{w.name}</h4>
                                   <ul className="space-y-1 text-sm text-gray-600">
                                     {w.steps.map((step, j) => <li key={j}>{step}</li>)}
@@ -910,7 +910,7 @@ export default function ApiDocs() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Supported Events</h3>
                     <div className="space-y-2">
                       {WEBHOOK_EVENTS_DOC.map((e) => (
-                        <div key={e.name} className="border-b border-[#e5e7eb] last:border-0 pb-2 last:pb-0">
+                        <div key={e.name} className="border-b border-gray-200 last:border-0 pb-2 last:pb-0">
                           <code className="font-mono text-sm text-brand-600 font-semibold">{e.name}</code>
                           <p className="text-sm text-gray-600 mt-1">{e.desc}</p>
                         </div>
@@ -1110,13 +1110,13 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                 <p className="text-gray-600 text-sm mb-6">Rate limits are enforced per API key or per user token. When exceeded, a 429 status is returned.</p>
                 <div className="card overflow-hidden">
                   <table className="w-full">
-                    <thead><tr className="border-b border-[#e5e7eb]">
+                    <thead><tr className="border-b border-gray-200">
                       {['Scope', 'Request window', 'Daily limit', 'Notes'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>{RATE_LIMITS.map((r, i) => (
-                      <tr key={i} className="border-b border-[#e5e7eb]">
+                      <tr key={i} className="border-b border-gray-200">
                         <td className="px-4 py-3 text-gray-900 text-sm font-medium">{r.tier}</td>
                         <td className="px-4 py-3 text-brand-400 text-sm font-mono">{r.rpm}</td>
                         <td className="px-4 py-3 text-brand-400 text-sm font-mono">{r.daily}</td>

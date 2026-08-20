@@ -477,7 +477,7 @@ export default function ReportPreviewPage() {
 
         {/* Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="inline-flex rounded-xl border border-gray-200 p-1 bg-white">
+          <div className="inline-flex rounded-xl border border-gray-200 p-1 bg-bg">
             <button onClick={() => switchMode('desktop')}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${mode === 'desktop' ? 'bg-brand-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               <Monitor className="w-4 h-4" /> Desktop

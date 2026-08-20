@@ -170,7 +170,7 @@ function SubscriptionContent() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-3 pt-4 border-t border-[#e5e7eb]">
+          <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
             {tier !== 'enterprise' && (
               <button onClick={() => navigate('/pricing')} className="btn-primary text-sm py-2 flex items-center gap-2">
                 <ExternalLink className="w-4 h-4" /> Upgrade Plan
@@ -229,7 +229,7 @@ function SubscriptionContent() {
 export default function Subscriptions() {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[#ffffff]">
+      <div className="min-h-screen bg-bg">
         <Navbar />
         <SubscriptionContent />
       </div>

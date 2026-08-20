@@ -249,7 +249,7 @@ export default function PhotoAnnotator({
               aria-pressed={tool === t.id}
               onClick={() => { setTool(t.id); setSelectedId(null); }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                tool === t.id ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                tool === t.id ? 'bg-brand-500 text-white border-brand-500' : 'bg-bg text-gray-600 border-gray-200 hover:bg-gray-50'
               }`}
             >
               <t.icon className="w-3.5 h-3.5" />

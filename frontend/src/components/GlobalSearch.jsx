@@ -193,9 +193,9 @@ const GlobalSearch = () => {
             role="dialog"
             aria-modal="true"
             aria-label="Global search"
-            className="w-full max-w-xl bg-white rounded-2xl shadow-2xl shadow-black/30 border border-[#e5e7eb] overflow-hidden"
+            className="w-full max-w-xl bg-bg rounded-2xl shadow-2xl shadow-black/30 border border-gray-200 overflow-hidden"
           >
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e5e7eb]">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
               <Search className="w-4.5 h-4.5 text-gray-400 shrink-0" />
               <input
                 ref={inputRef}
@@ -289,7 +289,7 @@ const GlobalSearch = () => {
                 })}
             </div>
 
-            <div className="px-4 py-2 border-t border-[#e5e7eb] flex items-center gap-3 text-[11px] text-gray-400">
+            <div className="px-4 py-2 border-t border-gray-200 flex items-center gap-3 text-[11px] text-gray-400">
               <span><kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200">↑↓</kbd> navigate</span>
               <span><kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200">Enter</kbd> open</span>
               <span><kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200">Esc</kbd> close</span>

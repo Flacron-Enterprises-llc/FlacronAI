@@ -447,7 +447,7 @@ export default function TemplateBuilder() {
         </fieldset>
 
         {!readOnly && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex justify-end gap-3 z-10">
+          <div className="fixed bottom-0 left-0 right-0 bg-bg border-t border-gray-200 px-4 py-3 flex justify-end gap-3 z-10">
             <div className="max-w-3xl mx-auto w-full flex justify-end gap-3">
               <Link to="/templates" className="btn-secondary text-sm py-2 px-4">Cancel</Link>
               <button onClick={handleSave} disabled={saving} className="btn-primary text-sm py-2 px-5 flex items-center gap-2 disabled:opacity-50">

@@ -96,7 +96,7 @@ function PhotoPickerModal({ reportId, max, min = 1, onCancel, onConfirm }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Select photos">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-bg shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <h3 className="text-sm font-semibold text-gray-900">{max === 1 ? 'Insert Photo' : `Select ${min}-${max} Photos for Grid`}</h3>
           <button type="button" onClick={onCancel} aria-label="Close" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><X className="h-4 w-4" /></button>
@@ -152,7 +152,7 @@ function CaptionEditModal({ initialValue, onCancel, onSave }) {
   const [value, setValue] = useState(initialValue || '');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Edit photo caption">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl bg-bg p-5 shadow-xl">
         <h3 className="mb-3 text-sm font-semibold text-gray-900">Photo Caption</h3>
         <input
           autoFocus
@@ -195,7 +195,7 @@ function RegenerateSectionModal({ sectionTitle, currentBody, reportId, sectionFo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Regenerate section">
-      <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-xl">
+      <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-bg shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Regenerate Section — {sectionTitle}</h3>
@@ -341,7 +341,7 @@ function SectionEditor(
   if (!editor) return null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-bg">
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-3">
         <FileText className="h-4 w-4 shrink-0 text-brand-500" />
         <input
@@ -368,7 +368,7 @@ function SectionEditor(
           type="button"
           onClick={() => setAiOpen((v) => !v)}
           disabled={disabled || !reportId}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ${aiOpen ? 'border-navy-300 bg-navy-50 text-navy-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'}`}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ${aiOpen ? 'border-navy-300 bg-navy-50 text-navy-700' : 'border-gray-300 bg-bg text-gray-700 hover:bg-gray-100'}`}
           aria-expanded={aiOpen}
         >
           <Sparkles className="h-3.5 w-3.5" /> FLACRON Tools
@@ -386,7 +386,7 @@ function SectionEditor(
 
       {!isCollapsed && (
         <div>
-          <div className="flex flex-wrap items-center gap-1 border-b border-gray-100 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1 border-b border-gray-100 bg-bg px-3 py-2">
             <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} disabled={disabled} title="Bold"><BoldIcon className="h-3.5 w-3.5" /></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} disabled={disabled} title="Italic"><ItalicIcon className="h-3.5 w-3.5" /></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} disabled={disabled} title="Underline"><UnderlineIcon className="h-3.5 w-3.5" /></ToolbarButton>
@@ -418,7 +418,7 @@ function SectionEditor(
                     type="button"
                     onClick={() => runAssist(a)}
                     disabled={disabled || aiRunning !== null}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-bg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                   >
                     {aiRunning === a.action ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
                     {a.label}
@@ -437,7 +437,7 @@ function SectionEditor(
                   <p className="text-xs text-blue-700">Review this proposal before applying it.</p>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setAiResult(null)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"><X className="h-3.5 w-3.5" /> Discard</button>
+                  <button type="button" onClick={() => setAiResult(null)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-bg px-2.5 py-1.5 text-xs font-semibold text-gray-700"><X className="h-3.5 w-3.5" /> Discard</button>
                   <button type="button" onClick={() => applySuggestion(aiResult.suggestion)} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-800"><Check className="h-3.5 w-3.5" /> Apply</button>
                 </div>
               </div>
@@ -446,7 +446,7 @@ function SectionEditor(
                 onChange={(e) => setAiResult((r) => ({ ...r, suggestion: e.target.value }))}
                 rows={Math.max(4, Math.min(12, aiResult.suggestion.split('\n').length + 2))}
                 aria-label={`${aiResult.label} suggestion`}
-                className="block w-full resize-y rounded-lg border border-blue-200 bg-white p-3 text-sm leading-6 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                className="block w-full resize-y rounded-lg border border-blue-200 bg-bg p-3 text-sm leading-6 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           )}

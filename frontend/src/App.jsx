@@ -21,7 +21,7 @@ const ScrollToTop = () => {
 // chunk-load gap is normally sub-100ms, so a plain spinner is all it needs —
 // the video is reserved for the one meaningful auth/profile loading phase.
 const SuspenseFallback = () => (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white" role="status" aria-live="polite" aria-label="Loading">
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-bg" role="status" aria-live="polite" aria-label="Loading">
     <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
   </div>
 );

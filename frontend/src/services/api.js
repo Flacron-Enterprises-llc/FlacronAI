@@ -166,6 +166,19 @@ export const reportsAPI = {
   downloadDocument: (id, fileName) => api.get(`/reports/${id}/documents/download?file=${encodeURIComponent(fileName)}`, { responseType: 'blob' }),
   analyzeImages: (formData) => api.post('/reports/analyze-images', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   aiStatus: () => api.get('/reports/ai-status'),
+  // Phase 25 (mobile immediate-upload): stages one wizard photo to Storage as
+  // soon as it's captured/selected, ahead of the report even existing yet.
+  // `draftId` is client-generated once per wizard session.
+  stagePhoto: (draftId, file) => {
+    const fd = new FormData();
+    fd.append('draftId', draftId);
+    fd.append('image', file);
+    return api.post('/reports/photos/stage', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  getStagedPhotos: (draftId) => api.get(`/reports/photos/stage/${draftId}`),
+  deleteStagedPhoto: (draftId, photoId) => api.delete(`/reports/photos/stage/${draftId}/${photoId}`),
+  getStagedPhotoImageBlob: (draftId, photoId, variant = 'thumbnail') =>
+    api.get(`/reports/photos/stage/${draftId}/${photoId}/image`, { params: { variant }, responseType: 'blob' }),
   addImages: (id, formData) => api.post(`/reports/${id}/images`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   // Phase 6 (Photo Upload & Per-Photo UX Hardening) -- per-photo gallery for a
   // generated report. Photos are private objects (same as documents/exports

@@ -264,7 +264,7 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-[#ffffff]">
+    <div className="min-h-screen bg-bg">
       <Seo title="Pricing — FlacronAI" description="Start free with 5 reports a month. Professional, Agency, and Enterprise plans with PDF, DOCX and HTML export, CRM, API access, and white-label options." path="/pricing" jsonLd={PRODUCT_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4">
@@ -282,7 +282,7 @@ export default function Pricing() {
               <button onClick={() => setAnnual(p => !p)}
                 role="switch" aria-checked={annual} aria-label="Toggle annual billing"
                 className={`relative w-12 h-6 rounded-full transition-colors ${annual ? 'bg-brand-500' : 'bg-gray-200'}`}>
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${annual ? 'translate-x-7' : 'translate-x-1'}`} />
+                <div className={`absolute top-1 w-4 h-4 bg-bg rounded-full transition-transform ${annual ? 'translate-x-7' : 'translate-x-1'}`} />
               </button>
               <span className={`text-sm font-medium ${annual ? 'text-gray-900' : 'text-gray-500'}`}>
                 Annual <span className="text-green-400 font-semibold">(save 20%)</span>
@@ -353,7 +353,7 @@ export default function Pricing() {
             <div className="card overflow-hidden overflow-x-auto" tabIndex={0} role="region" aria-label="Full feature comparison table">
               <table className="w-full min-w-[640px]">
                 <thead>
-                  <tr className="border-b border-[#e5e7eb]">
+                  <tr className="border-b border-gray-200">
                     <th className="px-6 py-4 text-left text-gray-600 text-sm font-medium">Feature</th>
                     {PLANS.map(p => (
                       <th key={p.id} className="px-4 py-4 text-center text-gray-900 text-sm font-semibold">{p.name}</th>
@@ -362,7 +362,7 @@ export default function Pricing() {
                 </thead>
                 <tbody>
                   {COMPARISON_FEATURES.map((row, i) => (
-                    <tr key={i} className="border-b border-[#e5e7eb] hover:bg-gray-100">
+                    <tr key={i} className="border-b border-gray-200 hover:bg-gray-100">
                       <td className="px-6 py-3 text-gray-700 text-sm">{row.label}</td>
                       {(['starter', 'professional', 'agency', 'enterprise']).map(tier => (
                         <td key={tier} className="px-4 py-3 text-center text-sm">

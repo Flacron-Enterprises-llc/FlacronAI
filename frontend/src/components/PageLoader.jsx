@@ -1,6 +1,6 @@
 const PageLoader = () => (
   <div
-    className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-white"
+    className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-bg"
     role="status"
     aria-live="polite"
     aria-label="Loading FlacronAI"

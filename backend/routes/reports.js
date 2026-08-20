@@ -92,6 +92,11 @@ const WEATHER_CONDITIONS = [
   'Other',
 ];
 const OCCUPANCY_STATUSES = ['Occupied', 'Vacant', 'Under Renovation', 'Unknown'];
+// Mirrors the frontend's MAX_PHOTOS (Dashboard.jsx) -- enforced here too since
+// photo staging (POST /photos/stage) writes directly to Storage/Firestore
+// outside the /generate request that used to be the only server-side check.
+const MAX_PHOTOS = 100;
+const MAX_PHOTOS_MESSAGE = 'Maximum of 100 photos reached. Remove a photo to upload another.';
 
 // Reject any uploaded file whose actual bytes aren't a real image (defeats a
 // spoofed mimetype). Returns the offending filename, or null if all are valid.
@@ -122,6 +127,13 @@ const firstInvalidDocument = (files = []) => {
 const imageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { files: 100, fileSize: 10 * 1024 * 1024 },
+});
+
+// Single-file upload for the photo-staging endpoint below (one HTTP request
+// per captured/selected photo, not a batch).
+const singleImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 // POST /generate accepts both photos and supporting documents in one multipart
@@ -413,6 +425,141 @@ router.delete('/templates/:tid', authenticateAny, reportsWrite, async (req, res)
     return res
       .status(500)
       .json({ success: false, error: 'Failed to delete template', code: 'TEMPLATE_DELETE_ERROR' });
+  }
+});
+
+// ── PHOTO STAGING (mobile-capture immediate upload) ─────────────────────
+// The wizard collects all required claim fields (steps 1-3) before the
+// Photos step, but the report doc itself (and its once-per-report quota
+// charge) is only ever created at Generate. Staging lets each captured/
+// selected photo upload to Storage the moment it's ready instead of
+// batching every photo into the final POST /generate request. `draftId` is
+// client-generated once per wizard session; POST /generate below folds a
+// draft's already-uploaded photos into the new report by downloading their
+// stored bytes for analysis (same pattern as retryFailedAnalysis), so
+// nothing the client already uploaded is ever re-sent.
+router.post(
+  '/photos/stage',
+  authenticateAny,
+  reportsGenerate,
+  requireCanGenerate,
+  singleImageUpload.single('image'),
+  async (req, res) => {
+    try {
+      const draftId = (req.body.draftId || '').trim();
+      if (!draftId) {
+        return res
+          .status(400)
+          .json({ success: false, error: 'draftId is required', code: 'VALIDATION_ERROR' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No image provided', code: 'NO_IMAGE' });
+      }
+
+      const db = getFirestore();
+      const ref = db.collection('reportDrafts').doc(draftId);
+      const doc = await ref.get();
+      if (doc.exists && doc.data().userId !== req.user.uid) {
+        return res.status(403).json({ success: false, error: 'Not your draft', code: 'FORBIDDEN' });
+      }
+      const existingPhotos = doc.exists ? doc.data().photos || [] : [];
+      if (existingPhotos.length >= MAX_PHOTOS) {
+        return res.status(400).json({ success: false, error: MAX_PHOTOS_MESSAGE, code: 'MAX_PHOTOS' });
+      }
+
+      const existingHashes = existingPhotos
+        .filter((p) => p.contentHash)
+        .map((p) => ({ hash: p.contentHash, fileName: p.fileName }));
+      const { records } = await processPhotoBatch(
+        req.user.uid,
+        draftId,
+        [req.file],
+        existingHashes,
+        existingPhotos.length
+      );
+      const record = records[0];
+      const photos = [...existingPhotos, record];
+
+      await ref.set({
+        userId: req.user.uid,
+        photos,
+        createdAt: doc.exists ? doc.data().createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      return res.status(201).json({
+        success: true,
+        photo: record,
+        uploadedCount: photos.filter((p) => p.status === 'uploaded').length,
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Photo upload failed', code: 'STAGE_ERROR' });
+    }
+  }
+);
+
+// GET /api/reports/photos/stage/:draftId — resume after a page refresh.
+router.get('/photos/stage/:draftId', authenticateAny, reportsGenerate, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reportDrafts').doc(req.params.draftId).get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.json({ success: true, photos: [] });
+    }
+    return res.json({ success: true, photos: doc.data().photos || [] });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to load draft', code: 'STAGE_GET_ERROR' });
+  }
+});
+
+// GET /api/reports/photos/stage/:draftId/:photoId/image — serves a staged
+// photo's bytes (thumbnail or display) so the wizard can re-render it after
+// a resume, mirroring GET /:id/photos/:photoId/image for real reports.
+router.get('/photos/stage/:draftId/:photoId/image', authenticateAny, reportsGenerate, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reportDrafts').doc(req.params.draftId).get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Photo not found', code: 'PHOTO_NOT_FOUND' });
+    }
+    const record = (doc.data().photos || []).find((p) => p.id === req.params.photoId);
+    const objectPath =
+      req.query.variant === 'thumbnail' && record?.thumbnailPath ? record.thumbnailPath : record?.objectPath;
+    if (!objectPath) {
+      return res.status(404).json({ success: false, error: 'Photo not found', code: 'PHOTO_NOT_FOUND' });
+    }
+    const buffer = await downloadBuffer(objectPath);
+    res.setHeader('Content-Type', record.mimeType || 'image/jpeg');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return res.send(buffer);
+  } catch {
+    return res.status(404).json({ success: false, error: 'Photo not found or expired', code: 'PHOTO_NOT_FOUND' });
+  }
+});
+
+// DELETE /api/reports/photos/stage/:draftId/:photoId — remove one staged photo.
+router.delete('/photos/stage/:draftId/:photoId', authenticateAny, reportsGenerate, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reportDrafts').doc(req.params.draftId);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Draft not found', code: 'NOT_FOUND' });
+    }
+    const photos = doc.data().photos || [];
+    const target = photos.find((p) => p.id === req.params.photoId);
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Photo not found', code: 'PHOTO_NOT_FOUND' });
+    }
+    await ref.update({
+      photos: photos.filter((p) => p.id !== req.params.photoId),
+      updatedAt: new Date().toISOString(),
+    });
+    deleteObjects([target.originalPath, target.objectPath, target.thumbnailPath].filter(Boolean)).catch(() => {});
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to remove photo', code: 'STAGE_DELETE_ERROR' });
   }
 });
 
@@ -739,17 +886,47 @@ router.post(
       // report generation), run by photoJobService AFTER this handler responds.
       let photoRecords = [];
       let analyzableImages = [];
+
+      // Phase 25 (mobile immediate-upload): a draftId means some or all
+      // photos were already uploaded to Storage during the wizard's Photos
+      // step (POST /photos/stage), not attached to this multipart request.
+      // Fold them in by re-downloading each one's already-stored bytes for
+      // vision analysis -- same pattern as retryFailedAnalysis's "already-
+      // uploaded, nothing re-sent" retry.
+      const draftId = (req.body.draftId || '').trim() || null;
+      if (draftId) {
+        const draftDoc = await db.collection('reportDrafts').doc(draftId).get();
+        if (draftDoc.exists && draftDoc.data().userId === req.user.uid) {
+          photoRecords = draftDoc.data().photos || [];
+          for (const p of photoRecords) {
+            if (p.status !== 'uploaded' || !p.objectPath) continue;
+            try {
+              const buffer = await downloadBuffer(p.objectPath);
+              analyzableImages.push({ buffer, mimetype: p.mimeType, photoId: p.id });
+            } catch {
+              // Object genuinely missing -- that one photo just has no analysis.
+            }
+          }
+        }
+        db.collection('reportDrafts').doc(draftId).delete().catch(() => {});
+      }
+
       if (req.files?.images?.length > 0) {
-        // A brand-new report has no pre-existing photos to check against.
+        // Any photo that never made it into the staged draft (e.g. offline at
+        // capture time) is still accepted here as a fallback, exactly like
+        // the pre-staging all-in-one-request flow.
+        const existingHashes = photoRecords
+          .filter((p) => p.contentHash)
+          .map((p) => ({ hash: p.contentHash, fileName: p.fileName }));
         const { records, analyzable } = await processPhotoBatch(
           req.user.uid,
           reportId,
           req.files.images,
-          [],
-          0
+          existingHashes,
+          photoRecords.length
         );
-        photoRecords = records;
-        analyzableImages = analyzable;
+        photoRecords = [...photoRecords, ...records];
+        analyzableImages = [...analyzableImages, ...analyzable];
       }
       const imagePaths = photoRecords
         .filter((r) => r.status === 'uploaded')

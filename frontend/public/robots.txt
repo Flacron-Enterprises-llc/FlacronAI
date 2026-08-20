@@ -3,6 +3,10 @@ Allow: /
 
 # Application & account pages (gated, no SEO value)
 Disallow: /dashboard
+Disallow: /onboarding
+Disallow: /photos
+Disallow: /reports/
+Disallow: /templates
 Disallow: /subscriptions
 Disallow: /settings
 Disallow: /crm
@@ -11,7 +15,18 @@ Disallow: /admin
 Disallow: /admin-tier-update
 Disallow: /enterprise-dashboard
 Disallow: /enterprise/
+Disallow: /team/
+Disallow: /analytics
+Disallow: /integrations
+Disallow: /organization
+Disallow: /audit-logs
 Disallow: /invite/
+Disallow: /shared/
 Disallow: /auth
+Disallow: /login
+Disallow: /signup
+
+# Docs/API route is disabled (redirects home) — excluded defensively
+Disallow: /docs/api
 
 Sitemap: https://flacronai.com/sitemap.xml

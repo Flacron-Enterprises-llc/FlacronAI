@@ -67,7 +67,7 @@ export default function SharedReport() {
   const showComments = permission === 'comment' || permission === 'review';
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 print:bg-white print:py-0">
+    <div className="min-h-screen bg-bg py-8 px-4 print:bg-gray-50 print:py-0">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6 print:hidden">
           <div className="flex items-center gap-2">
@@ -93,7 +93,7 @@ export default function SharedReport() {
           </div>
         )}
 
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-10 shadow-sm">
+        <div className="bg-bg border border-gray-200 rounded-2xl p-6 sm:p-10 shadow-sm">
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
             <FileText className="w-4 h-4" /> Inspection Report · Claim {report.claimNumber || '—'}
           </div>
