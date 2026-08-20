@@ -48,14 +48,19 @@ const generateText = async (prompt, { maxTokens = 4096, system } = {}) => {
 
 // Vision. `imageBlocks` are prebuilt Anthropic image content blocks
 // ({ type: 'image', source: { type: 'base64', media_type, data } }).
-const analyzeImages = async (promptText, imageBlocks, { maxTokens = 2000 } = {}) => {
+// `timeout` (ms) is per-request so one slow/hung batch can't hang indefinitely
+// (SDK aborts and rejects once exceeded) -- used by aiService's batched photo analysis.
+const analyzeImages = async (promptText, imageBlocks, { maxTokens = 2000, timeout } = {}) => {
   const c = getClient();
   if (!c) throw new Error('Anthropic not configured (ANTHROPIC_API_KEY missing)');
-  const resp = await c.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, ...imageBlocks] }],
-  });
+  const resp = await c.messages.create(
+    {
+      model: MODEL,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, ...imageBlocks] }],
+    },
+    timeout ? { timeout } : undefined
+  );
   return textOf(resp);
 };
 

@@ -242,7 +242,7 @@ const deleteAppointment = async (userId, apptId) => {
 
 // ── CLAIMS ────────────────────────────────────────────────────────────────
 
-const getClaims = async (userId, { page = 1, limit = 20, status, search = '' } = {}) => {
+const getClaims = async (userId, { page = 1, limit = 20, status, search = '', startDate, endDate, archived } = {}) => {
   const db = getFirestore();
   let query = db.collection('crmClaims').where('userId', '==', userId);
   if (status) query = query.where('status', '==', status);
@@ -250,6 +250,12 @@ const getClaims = async (userId, { page = 1, limit = 20, status, search = '' } =
 
   let claims = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   claims.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Phase 12 (My Reports & Claims Management Completion): archived claims are
+  // hidden by default (mirroring reports' own default-hide-archived behavior)
+  // unless the caller explicitly asks to see them.
+  const wantArchived = archived === true || archived === 'true';
+  claims = claims.filter(c => Boolean(c.archived) === wantArchived);
 
   if (search) {
     const s = search.toLowerCase();
@@ -259,6 +265,8 @@ const getClaims = async (userId, { page = 1, limit = 20, status, search = '' } =
       (c.propertyAddress || '').toLowerCase().includes(s)
     );
   }
+  if (startDate) claims = claims.filter(c => (c.lossDate || '') >= startDate);
+  if (endDate) claims = claims.filter(c => (c.lossDate || '') <= endDate);
 
   const total = claims.length;
   const offset = (page - 1) * limit;

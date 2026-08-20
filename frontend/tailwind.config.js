@@ -1,11 +1,23 @@
 /** @type {import('tailwindcss').Config} */
+import colors from 'tailwindcss/colors';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FlacronAI brand design tokens — SINGLE SOURCE OF TRUTH (T-1.2)
+// FlacronAI brand design tokens — SINGLE SOURCE OF TRUTH (T-1.2, reconciled T-7.P2)
 // Colors are sampled from the official logo files (frontend/public/logo-*.png):
 //   brand orange #FD4403 · brand navy #002A64
+// Reconfirmed 2026-08-13 when the client compared a generated report against
+// their own reference sample.pdf and asked to pixel-match these exact colors
+// (see properPdfGenerator.js) — this is the authoritative palette, not the
+// external product-spec document's #FF5A1F/#171C2B (no client approval found
+// for that palette; PHASES.md Phase 2).
 // Raw-CSS consumers (scrollbar, checkbox accent) mirror these via CSS variables
 // in src/index.css :root — keep both in sync if a brand color ever changes.
+//
+// Semantic status tokens (success/warning/error/info/muted) formalize the
+// colors already used consistently across the app (Tailwind's own green/amber/
+// red/blue/gray families) as named references — existing per-component shade
+// choices (e.g. bg-green-500, text-red-400) are left as-is; these tokens exist
+// for new code and centralized reference, not to force a mass rename.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const brandOrange = {
@@ -53,6 +65,11 @@ export default {
         bg: '#ffffff',
         surface: '#f8f8f8',
         border: '#e5e7eb',
+        muted: colors.gray[600], // secondary/supporting text — formalizes the already-dominant text-gray-600 convention
+        success: { DEFAULT: colors.green[600], soft: colors.green[50] },
+        warning: { DEFAULT: colors.amber[600], soft: colors.amber[50] },
+        error: { DEFAULT: colors.red[600], soft: colors.red[50] },
+        info: { DEFAULT: colors.blue[600], soft: colors.blue[50] },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'], // body

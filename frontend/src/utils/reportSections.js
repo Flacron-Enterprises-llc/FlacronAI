@@ -32,6 +32,23 @@ export const parseReportSections = (content = '') => {
   return sections;
 };
 
+// Phase 19 (Sharing, Comments & Review Requests): a content-based section
+// anchor for comments, mirroring backend/utils/reportAccess.js's
+// slugifySectionTitle exactly -- a comment anchored to a title survives
+// reordering (its slug is unaffected by position) and only breaks if the
+// section is literally renamed or removed, at which point the UI falls back
+// to showing the comment under "General" with the original title kept for
+// context.
+export const slugifySectionTitle = (title) => {
+  const slug = String(title || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 80);
+  return slug || 'general';
+};
+
 export const serializeReportSections = sections => sections
   .map(section => {
     const body = String(section.body || '').trim();

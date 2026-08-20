@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users } from 'lucide-react';
+import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users, Search, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import TierBadge from './TierBadge.jsx';
+import NotificationBell from './NotificationBell.jsx';
+
+// Phase 20: a visible trigger for GlobalSearch (mounted once near the app
+// root -- see App.jsx) since it can't be opened by CMD/CTRL+K discovery
+// alone. Dispatches a DOM event rather than needing GlobalSearch's state
+// lifted up through this unrelated layout component.
+const openGlobalSearch = () => window.dispatchEvent(new CustomEvent('flacron:open-search'));
 
 const Navbar = ({
   transparent = false,
@@ -28,6 +35,14 @@ const Navbar = ({
     }
   };
 
+  const handleLogoClick = (e) => {
+    if (location.pathname === '/') {
+      e.preventDefault();
+      setMobileOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
@@ -48,9 +63,9 @@ const Navbar = ({
   }, []);
 
   const navLinks = [
-    { label: 'Features', href: '/#features' },
+    { label: 'Features', href: '/features' },
+    { label: 'Solutions', href: '/solutions' },
     { label: 'Pricing', href: '/pricing' },
-    { label: 'Docs', href: '/docs/api' },
     ...(isAuthenticated ? [{ label: 'Dashboard', href: '/dashboard' }] : []),
     ...(isAuthenticated && (tier === 'agency' || tier === 'enterprise')
       ? [{ label: 'CRM', href: '/crm' }]
@@ -66,7 +81,7 @@ const Navbar = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 group">
+          <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 group">
             <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg text-gray-900 tracking-tight">FlacronAI</span>
           </Link>
@@ -88,8 +103,10 @@ const Navbar = ({
                   key={link.label}
                   to={link.href}
                   className={`text-sm transition-colors font-medium ${
-                    (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
-                      ? 'text-orange-500 font-semibold'
+                    (link.href === '/crm' || link.href === '/solutions'
+                      ? location.pathname.startsWith(link.href)
+                      : location.pathname === link.href)
+                      ? 'text-brand-500 font-semibold'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -102,12 +119,28 @@ const Navbar = ({
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
             {isAuthenticated ? (
+              <>
+                <button
+                  onClick={openGlobalSearch}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors text-sm"
+                  aria-label="Search (Ctrl+K)"
+                  title="Search (Ctrl+K)"
+                >
+                  <Search className="w-4 h-4" />
+                  <kbd className="hidden lg:inline text-[10px] px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 text-gray-400">
+                    ⌘K
+                  </kbd>
+                </button>
+                <NotificationBell />
+              </>
+            ) : null}
+            {isAuthenticated ? (
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(p => !p)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors"
                 >
-                  <div className="w-7 h-7 rounded-full bg-orange-500/20 flex items-center justify-center text-sm font-bold text-orange-500">
+                  <div className="w-7 h-7 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-500">
                     {(userProfile?.displayName || user?.email || 'U')[0].toUpperCase()}
                   </div>
                   <TierBadge tier={tier} />
@@ -128,12 +161,16 @@ const Navbar = ({
                       </div>
                       <div className="py-1">
                         <Link to="/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                          <Zap className="w-4 h-4 text-orange-500" />
+                          <Zap className="w-4 h-4 text-brand-500" />
                           Dashboard
+                        </Link>
+                        <Link to="/photos" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                          <ImageIcon className="w-4 h-4 text-brand-500" />
+                          Photo Library
                         </Link>
                         {(tier === 'agency' || tier === 'enterprise') && (
                           <Link to="/crm" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                            <Users className="w-4 h-4 text-orange-500" />
+                            <Users className="w-4 h-4 text-brand-500" />
                             CRM
                           </Link>
                         )}
@@ -157,22 +194,37 @@ const Navbar = ({
               </div>
             ) : (
               <>
-                <Link to="/auth" className="text-sm text-gray-600 hover:text-gray-900 transition-colors font-medium">Sign in</Link>
-                <Link to="/auth?mode=signup" className="btn-primary text-sm py-2 px-5">Get Started Free</Link>
+                <Link to="/login" className="text-sm text-gray-600 hover:text-gray-900 transition-colors font-medium">Sign in</Link>
+                <Link to="/signup" className="btn-primary text-sm py-2 px-5">Get Started Free</Link>
               </>
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            className="md:hidden p-2 text-gray-600 hover:text-gray-900"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={mobileOpen}
-            title={mobileOpen ? 'Close menu' : 'Open menu'}
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {/* Mobile: search + notifications stay reachable without opening the menu */}
+          <div className="flex md:hidden items-center gap-1">
+            {isAuthenticated && (
+              <>
+                <button
+                  onClick={openGlobalSearch}
+                  className="p-2 text-gray-600 hover:text-gray-900"
+                  aria-label="Search"
+                  title="Search"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+                <NotificationBell />
+              </>
+            )}
+            <button
+              className="p-2 text-gray-600 hover:text-gray-900"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileOpen}
+              title={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -201,8 +253,10 @@ const Navbar = ({
                     key={link.label}
                     to={link.href}
                     className={`block px-3 py-2.5 rounded-lg transition-colors ${
-                      (link.href === '/crm' ? location.pathname.startsWith('/crm') : location.pathname === link.href)
-                        ? 'text-orange-500 font-semibold bg-orange-50'
+                      (link.href === '/crm' || link.href === '/solutions'
+                      ? location.pathname.startsWith(link.href)
+                      : location.pathname === link.href)
+                        ? 'text-brand-500 font-semibold bg-brand-50'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }`}
                   >
@@ -228,7 +282,7 @@ const Navbar = ({
                         }}
                         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                           item.active
-                            ? 'bg-orange-50 font-semibold text-orange-600'
+                            ? 'bg-brand-50 font-semibold text-brand-600'
                             : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
@@ -247,6 +301,7 @@ const Navbar = ({
                       <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                     </div>
                     <Link to="/dashboard" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Dashboard</Link>
+                    <Link to="/photos" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Photo Library</Link>
                     <Link to="/settings" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Settings</Link>
                     <button
                       onClick={logout}
@@ -258,8 +313,8 @@ const Navbar = ({
                   </>
                 ) : (
                   <>
-                    <Link to="/auth" className="block text-center py-2.5 text-gray-600 hover:text-gray-900">Sign in</Link>
-                    <Link to="/auth?mode=signup" className="block btn-primary text-center">Get Started Free</Link>
+                    <Link to="/login" className="block text-center py-2.5 text-gray-600 hover:text-gray-900">Sign in</Link>
+                    <Link to="/signup" className="block btn-primary text-center">Get Started Free</Link>
                   </>
                 )}
               </div>

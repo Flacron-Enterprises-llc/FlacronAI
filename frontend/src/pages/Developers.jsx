@@ -62,7 +62,7 @@ const FEATURES = [
     icon: Code,
     title: 'RESTful API',
     desc: 'Clean, predictable REST endpoints with JSON responses. Supports multipart/form-data for photo uploads. Comprehensive error messages with HTTP status codes.',
-    color: 'text-orange-400 bg-orange-500/10',
+    color: 'text-brand-400 bg-brand-500/10',
   },
   {
     icon: Key,
@@ -74,7 +74,7 @@ const FEATURES = [
     icon: BarChart2,
     title: 'Rate Limiting',
     desc: 'Fair-use limits keep the platform responsive: 100 requests per 15 minutes API-wide and 10 per minute on report generation endpoints, with standard rate-limit headers on every response.',
-    color: 'text-orange-400 bg-orange-500/10',
+    color: 'text-brand-400 bg-brand-500/10',
   },
   {
     icon: Webhook,
@@ -126,7 +126,7 @@ export default function Developers() {
       {/* Hero */}
       <section className="pt-28 pb-20 px-4 text-center">
         <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-sm font-medium mb-6">
             <Code className="w-4 h-4" /> Developer Platform
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
@@ -136,11 +136,8 @@ export default function Developers() {
             Integrate automated insurance claim report generation directly into your applications. REST API, API keys, multi-format export, and full documentation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
-              <BookOpen className="w-4 h-4" /> View API Docs <ArrowRight className="w-4 h-4" />
-            </button>
-            <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">
-              Get API Access
+            <button onClick={() => navigate('/pricing')} className="btn-primary flex items-center gap-2">
+              Get API Access <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </motion.div>
@@ -164,7 +161,7 @@ export default function Developers() {
       </section>
 
       {/* Quick Start */}
-      <section className="py-20 px-4 bg-[#f8f8f8] border-y border-[#e5e7eb]">
+      <section className="py-20 px-4 bg-[#f8f8f8] border-y border-[#e5e7eb] overflow-x-hidden">
         <div className="max-w-5xl mx-auto">
           <motion.div className="text-center mb-12"
             initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
@@ -182,8 +179,8 @@ export default function Developers() {
                   <div className={`${i % 2 === 1 ? 'lg:order-2' : ''}`}>
                     <div className="flex items-center gap-3 mb-3">
                       <span className="text-3xl font-black text-gray-900/10">{step.step}</span>
-                      <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
-                        <Icon className="w-4 h-4 text-orange-400" />
+                      <div className="w-8 h-8 rounded-lg bg-brand-500/20 flex items-center justify-center">
+                        <Icon className="w-4 h-4 text-brand-400" />
                       </div>
                       <h3 className="text-lg font-semibold text-gray-900">{step.title}</h3>
                     </div>
@@ -230,12 +227,9 @@ export default function Developers() {
         <motion.div className="max-w-2xl mx-auto text-center"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Build?</h2>
-          <p className="text-gray-600 mb-8">API-key access is available on Agency and Enterprise plans. Start with the docs, then choose the plan that matches your integration needs.</p>
+          <p className="text-gray-600 mb-8">API-key access is available on Agency and Enterprise plans. Choose the plan that matches your integration needs.</p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <button onClick={() => navigate('/docs/api')} className="btn-primary flex items-center gap-2">
-              <BookOpen className="w-4 h-4" /> Read the Docs
-            </button>
-            <button onClick={() => navigate('/pricing')} className="btn-secondary flex items-center gap-2">
+            <button onClick={() => navigate('/pricing')} className="btn-primary flex items-center gap-2">
               View API Plans <ArrowRight className="w-4 h-4" />
             </button>
           </div>

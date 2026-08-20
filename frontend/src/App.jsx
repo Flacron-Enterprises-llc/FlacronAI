@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import PageLoader from './components/PageLoader.jsx';
 import Seo from './components/Seo.jsx';
 import { getAdminEmail } from './utils/adminEmail.js';
+import GlobalSearch from './components/GlobalSearch.jsx';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -21,7 +22,7 @@ const ScrollToTop = () => {
 // the video is reserved for the one meaningful auth/profile loading phase.
 const SuspenseFallback = () => (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white" role="status" aria-live="polite" aria-label="Loading">
-    <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
@@ -29,14 +30,22 @@ const SuspenseFallback = () => (
 const Home = lazy(() => import('./pages/Home.jsx'));
 const Auth = lazy(() => import('./pages/Auth.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Onboarding = lazy(() => import('./pages/Onboarding.jsx'));
+const PhotoLibrary = lazy(() => import('./pages/PhotoLibrary.jsx'));
 const Pricing = lazy(() => import('./pages/Pricing.jsx'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const CRM = lazy(() => import('./pages/CRM.jsx'));
 const CRMClientProfile = lazy(() => import('./pages/CRMClientProfile.jsx'));
 const CRMClaimProfile = lazy(() => import('./pages/CRMClaimProfile.jsx'));
-const ApiDocs = lazy(() => import('./pages/ApiDocs.jsx'));
+const ReportPreviewPage = lazy(() => import('./pages/ReportPreviewPage.jsx'));
+const Templates = lazy(() => import('./pages/Templates.jsx'));
+const TemplateBuilder = lazy(() => import('./pages/TemplateBuilder.jsx'));
 const Developers = lazy(() => import('./pages/Developers.jsx'));
+const Features = lazy(() => import('./pages/Features.jsx'));
+const PhotoAnalysis = lazy(() => import('./pages/PhotoAnalysis.jsx'));
+const Solutions = lazy(() => import('./pages/Solutions.jsx'));
+const SolutionDetail = lazy(() => import('./pages/SolutionDetail.jsx'));
 
 const Contact = lazy(() => import('./pages/Contact.jsx'));
 const FAQs = lazy(() => import('./pages/FAQs.jsx'));
@@ -52,6 +61,11 @@ const EnterpriseOnboarding = lazy(() => import('./pages/EnterpriseOnboarding.jsx
 const AdminTierUpdate = lazy(() => import('./pages/AdminTierUpdate.jsx'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
+const TeamMemberProfile = lazy(() => import('./pages/TeamMemberProfile.jsx'));
+const Analytics = lazy(() => import('./pages/Analytics.jsx'));
+const Integrations = lazy(() => import('./pages/Integrations.jsx'));
+const OrganizationAdmin = lazy(() => import('./pages/OrganizationAdmin.jsx'));
+const AuditLogs = lazy(() => import('./pages/AuditLogs.jsx'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite.jsx'));
 const CookiesPolicy = lazy(() => import('./pages/CookiesPolicy.jsx'));
 const SharedReport = lazy(() => import('./pages/SharedReport.jsx'));
@@ -80,17 +94,43 @@ const AuthRedirect = ({ children }) => {
   return <Navigate to={destination} replace />;
 };
 
+// `/auth` is kept working permanently (bookmarks, emails, old links) but no
+// longer rendered directly — it now resolves to the dedicated /login or
+// /signup route, preserving every query param (?plan=, ?redirect=, etc.) and
+// router state (ProtectedRoute's `{ from: location }`) across the hop.
+const AuthLegacyRedirect = () => {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const mode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
+  const rest = new URLSearchParams(searchParams);
+  rest.delete('mode');
+  const qs = rest.toString();
+  return <Navigate to={`/${mode}${qs ? `?${qs}` : ''}`} replace state={location.state} />;
+};
+
 const App = () => {
+  const { isAuthenticated } = useAuth();
   return (
     <ErrorBoundary>
     <ScrollToTop />
+    {/* Mounted once at the app root (not per-page) so CMD/CTRL+K and the
+        Navbar's search trigger work from anywhere in the authenticated app;
+        gated on auth since search/notifications require a signed-in user. */}
+    {isAuthenticated && <GlobalSearch />}
     <Suspense fallback={<SuspenseFallback />}>
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<Home />} />
-        <Route path="/auth" element={<AuthRedirect><Auth /></AuthRedirect>} />
+        <Route path="/login" element={<AuthRedirect><Auth /></AuthRedirect>} />
+        <Route path="/signup" element={<AuthRedirect><Auth /></AuthRedirect>} />
+        <Route path="/auth" element={<AuthLegacyRedirect />} />
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/docs/api" element={<ApiDocs />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/photo-analysis" element={<PhotoAnalysis />} />
+        <Route path="/solutions" element={<Solutions />} />
+        <Route path="/solutions/:slug" element={<SolutionDetail />} />
+        {/* ApiDocs.jsx kept intact for future use — route disabled, redirects home */}
+        <Route path="/docs/api" element={<Navigate to="/" replace />} />
         <Route path="/developers" element={<Developers />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/faqs" element={<FAQs />} />
@@ -109,6 +149,12 @@ const App = () => {
 
         {/* Protected routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/onboarding" element={<ProtectedRoute skipOnboardingGate><Onboarding /></ProtectedRoute>} />
+        <Route path="/photos" element={<ProtectedRoute><PhotoLibrary /></ProtectedRoute>} />
+        <Route path="/reports/:id/preview" element={<ProtectedRoute><ReportPreviewPage /></ProtectedRoute>} />
+        <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
+        <Route path="/templates/new" element={<ProtectedRoute><TemplateBuilder /></ProtectedRoute>} />
+        <Route path="/templates/:id/edit" element={<ProtectedRoute><TemplateBuilder /></ProtectedRoute>} />
         <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/crm" element={<ProtectedRoute requiredTier="agency"><CRM /></ProtectedRoute>} />
@@ -118,13 +164,18 @@ const App = () => {
         <Route path="/admin-tier-update" element={<ProtectedRoute><AdminTierUpdate /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
         <Route path="/enterprise-dashboard" element={<ProtectedRoute requiredTier="enterprise"><EnterpriseDashboard /></ProtectedRoute>} />
+        <Route path="/team/members/:memberId" element={<ProtectedRoute requiredTier="enterprise"><TeamMemberProfile /></ProtectedRoute>} />
+        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+        <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+        <Route path="/organization" element={<ProtectedRoute requiredTier="enterprise"><OrganizationAdmin /></ProtectedRoute>} />
+        <Route path="/audit-logs" element={<ProtectedRoute requiredTier="enterprise"><AuditLogs /></ProtectedRoute>} />
 
         {/* 404 */}
         <Route path="*" element={
           <div className="min-h-screen bg-bg flex items-center justify-center text-center p-4">
             <Seo title="Page Not Found — FlacronAI" description="The page you're looking for doesn't exist." path={null} noindex />
             <div>
-              <h1 className="text-8xl font-black text-orange-500/20 mb-4">404</h1>
+              <h1 className="text-8xl font-black text-brand-500/20 mb-4">404</h1>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h2>
               <p className="text-gray-600 mb-8">The page you're looking for doesn't exist.</p>
               <a href="/" className="btn-primary inline-block">Go Home</a>

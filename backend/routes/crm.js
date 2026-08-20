@@ -191,14 +191,25 @@ const claimValidators = (requireFields) => [
   body('notes').optional().trim().isLength({ max: 2000 }),
   body('status').optional({ checkFalsy: true }).customSanitizer(v => (v || '').toLowerCase())
     .isIn(CLAIM_STATUS_VALUES).withMessage(`Status must be one of: ${CLAIM_STATUS_VALUES.join(', ')}`),
+  // Phase 12: archive/restore is just PUT /claims/:id with { archived: true|false } --
+  // no dedicated endpoint needed, matching the existing update-in-place pattern.
+  body('archived').optional().isBoolean().withMessage('archived must be true or false').toBoolean(),
 ];
 
 // ── CLAIMS ────────────────────────────────────────────────────────────────────
 
 router.get('/claims', authenticateAny, crmRead, agencyPlus, async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, search = '' } = req.query;
-    const result = await crm.getClaims(req.user.uid, { page: parseInt(page), limit: parseInt(limit), status, search });
+    const { page = 1, limit = 20, status, search = '', startDate, endDate, archived } = req.query;
+    const result = await crm.getClaims(req.user.uid, {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+      search,
+      startDate,
+      endDate,
+      archived,
+    });
     return res.json({ success: true, ...result });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, code: 'CRM_ERROR' });

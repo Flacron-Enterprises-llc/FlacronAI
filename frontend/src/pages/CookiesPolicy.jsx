@@ -72,7 +72,7 @@ We also use similar technologies such as web beacons, pixels, and local storage 
 
 **Stripe** — Secure payment processing. Stripe sets cookies for fraud prevention and to ensure secure, seamless payment flows. No payment card data is ever stored on our servers. Learn more at stripe.com/privacy.
 
-**Flacron Engine** — Report generation infrastructure. The engine processes report generation requests server-side and does not set cookies in your browser directly.
+**FLACRON ENGINE** — Report generation infrastructure. The engine processes report generation requests server-side and does not set cookies in your browser directly.
 
 We do not use advertising cookies or tracking cookies for ad targeting purposes. We will never sell your data to third-party advertisers.`,
   },
@@ -154,7 +154,7 @@ For general privacy questions, please see our full [Privacy Policy](/privacy-pol
 ];
 
 const colorMap = {
-  orange: { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'text-orange-500', badge: 'bg-orange-100 text-orange-700' },
+  orange: { bg: 'bg-brand-50', border: 'border-brand-200', icon: 'text-brand-500', badge: 'bg-brand-100 text-brand-700' },
   blue: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-500', badge: 'bg-blue-100 text-blue-700' },
   amber: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-500', badge: 'bg-amber-100 text-amber-700' },
   green: { bg: 'bg-green-50', border: 'border-green-200', icon: 'text-green-600', badge: 'bg-green-100 text-green-700' },
@@ -253,7 +253,7 @@ const AccordionSection = ({ section }) => {
                       </thead>
                       <tbody>
                         {sub.items.map((item, i) => (
-                          <tr key={i} className="border-b border-[#e5e7eb] last:border-0 hover:bg-orange-50/30 transition-colors">
+                          <tr key={i} className="border-b border-[#e5e7eb] last:border-0 hover:bg-brand-50/30 transition-colors">
                             <td className="px-4 py-3 font-mono text-gray-800">{item.name}</td>
                             <td className="px-4 py-3 text-gray-600">{item.purpose}</td>
                             <td className="px-4 py-3 text-gray-500">{item.duration}</td>
@@ -280,7 +280,7 @@ const AccordionSection = ({ section }) => {
                     href={`https://${b.url}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-shrink-0 text-xs text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
+                    className="flex-shrink-0 text-xs text-brand-500 hover:text-brand-600 font-medium flex items-center gap-1"
                   >
                     Guide <ExternalLink className="w-3 h-3" />
                   </a>
@@ -305,10 +305,10 @@ export default function CookiesPolicy() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-orange-500/10 border border-orange-200 rounded-xl flex items-center justify-center">
-                <Cookie className="w-5 h-5 text-orange-500" />
+              <div className="w-10 h-10 bg-brand-500/10 border border-brand-200 rounded-xl flex items-center justify-center">
+                <Cookie className="w-5 h-5 text-brand-500" />
               </div>
-              <span className="text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 px-3 py-1 rounded-full">
+              <span className="text-sm font-medium text-brand-600 bg-brand-50 border border-brand-200 px-3 py-1 rounded-full">
                 Legal
               </span>
             </div>
@@ -334,7 +334,7 @@ export default function CookiesPolicy() {
                 key={s.id}
                 href={`#${s.id}`}
                 onClick={e => { e.preventDefault(); document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
-                className="flex-shrink-0 text-xs text-gray-500 hover:text-orange-500 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
+                className="flex-shrink-0 text-xs text-gray-500 hover:text-brand-500 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
               >
                 {s.title}
               </a>
@@ -350,14 +350,14 @@ export default function CookiesPolicy() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-orange-50 border border-orange-200 rounded-2xl p-6 mb-6"
+          className="bg-brand-50 border border-brand-200 rounded-2xl p-6 mb-6"
         >
-          <h2 className="text-orange-800 font-semibold mb-2 text-sm">Summary</h2>
-          <ul className="space-y-1.5 text-orange-700 text-sm">
-            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />We use essential cookies to keep you logged in and to process payments securely.</li>
-            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />We use optional analytics cookies (Google Firebase) to understand how our platform is used.</li>
-            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />We do <strong>not</strong> use advertising cookies or sell your data to advertisers.</li>
-            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />You can opt out of analytics cookies at any time without affecting core functionality.</li>
+          <h2 className="text-brand-800 font-semibold mb-2 text-sm">Summary</h2>
+          <ul className="space-y-1.5 text-brand-700 text-sm">
+            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />We use essential cookies to keep you logged in and to process payments securely.</li>
+            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />We use optional analytics cookies (Google Firebase) to understand how our platform is used.</li>
+            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />We do <strong>not</strong> use advertising cookies or sell your data to advertisers.</li>
+            <li className="flex items-start gap-2"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />You can opt out of analytics cookies at any time without affecting core functionality.</li>
           </ul>
         </motion.div>
 
@@ -375,7 +375,7 @@ export default function CookiesPolicy() {
               { label: 'Contact Us', href: '/contact' },
             ].map(l => (
               <Link key={l.label} to={l.href}
-                className="text-sm text-orange-500 hover:text-orange-600 font-medium border border-orange-200 hover:border-orange-300 px-4 py-2 rounded-lg transition-colors">
+                className="text-sm text-brand-500 hover:text-brand-600 font-medium border border-brand-200 hover:border-brand-300 px-4 py-2 rounded-lg transition-colors">
                 {l.label}
               </Link>
             ))}

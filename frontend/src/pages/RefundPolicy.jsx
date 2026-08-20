@@ -167,7 +167,7 @@ const RefundPolicy = () => {
             ))}
           </div>
 
-          <div className="mt-12 p-6 bg-orange-50 border border-orange-200 rounded-xl">
+          <div className="mt-12 p-6 bg-brand-50 border border-brand-200 rounded-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Important Notes</h3>
             <ul className="text-sm text-gray-600 space-y-2 list-disc list-inside">
               <li>Subscriptions renew automatically unless canceled.</li>

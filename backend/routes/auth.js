@@ -396,12 +396,31 @@ router.post('/mfa/verify', authenticateToken, mfaLimiter, [
   }
 });
 
-// POST /api/auth/verify
+// POST /api/auth/verify — called exactly once by AuthContext.jsx's login()/
+// loginWithGoogle(), immediately after a real Firebase sign-in succeeds (a
+// deliberate, explicit contract -- this is NOT a generic "am I still logged
+// in" polling endpoint; don't add other call sites without reconsidering the
+// audit-logging side effect below).
+//
+// Phase 17 finding: the real frontend login flow calls Firebase's client SDK
+// (`signInWithEmailAndPassword`) directly and never touched this backend at
+// all, so `login_success` was only ever actually recorded for MFA-enabled
+// accounts (via the /mfa/verify route below) -- for every other account
+// (the large majority), Settings -> Security's new "Login History" view
+// would have been permanently empty despite being built on genuinely real
+// data. This is what makes that claim true for everyone, not just MFA users.
+// Skipped when the account has MFA enabled: Firebase auth succeeding is NOT
+// a completed login for those accounts (ProtectedRoute/MfaGate correctly
+// still block them) -- their real `login_success` is recorded once they
+// actually pass the TOTP challenge, by the existing /mfa/verify route.
 router.post('/verify', authenticateToken, async (req, res) => {
   try {
     const db = getFirestore();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const userProfile = userDoc.exists ? userDoc.data() : req.user;
+    if (!userProfile.mfaEnabled) {
+      recordAuditLog({ actorUid: req.user.uid, actorEmail: userProfile.email || req.user.email, action: 'login_success', req });
+    }
     return res.json({ success: true, user: userProfile });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Verification failed', code: 'VERIFY_ERROR' });

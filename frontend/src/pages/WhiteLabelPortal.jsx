@@ -241,7 +241,7 @@ export default function WhiteLabelPortal() {
                       <input className="input flex-1" placeholder="yourcompany" value={config.subdomain} onChange={e => setConfig(p => ({ ...p, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))} />
                     </div>
                     {config.subdomain && (
-                      <p className="text-xs text-orange-400 mt-1">Preview URL: <span className="font-mono">{config.subdomain}.flacronai.com</span></p>
+                      <p className="text-xs text-brand-400 mt-1">Preview URL: <span className="font-mono">{config.subdomain}.flacronai.com</span></p>
                     )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -310,7 +310,7 @@ export default function WhiteLabelPortal() {
                   <div>
                     <label className="label">Opacity ({config.watermarkOpacity}%)</label>
                     <input type="range" min={5} max={60} value={config.watermarkOpacity} onChange={e => setConfig(p => ({ ...p, watermarkOpacity: Number(e.target.value) }))}
-                      className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                      className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-brand-500" />
                   </div>
                   <div>
                     <label className="label">Position</label>
@@ -355,7 +355,7 @@ export default function WhiteLabelPortal() {
                     {PREVIEW_MODES.map(m => (
                       <button key={m.id} onClick={() => setPreviewMode(m.id)}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                          previewMode === m.id ? 'bg-orange-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
+                          previewMode === m.id ? 'bg-brand-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
                         <m.icon className="w-3 h-3" /> {m.label}
                       </button>
                     ))}

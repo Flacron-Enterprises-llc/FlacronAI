@@ -17,8 +17,8 @@ export default function ConfirmDialog({
         initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
         onClick={e => e.stopPropagation()}>
         <div className="text-center mb-6">
-          <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${danger ? 'bg-red-500/20' : 'bg-orange-500/20'}`}>
-            <AlertTriangle className={`w-6 h-6 ${danger ? 'text-red-400' : 'text-orange-400'}`} />
+          <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${danger ? 'bg-red-500/20' : 'bg-brand-500/20'}`}>
+            <AlertTriangle className={`w-6 h-6 ${danger ? 'text-red-400' : 'text-brand-400'}`} />
           </div>
           <h2 id="confirm-dialog-title" className="text-lg font-bold text-gray-900 mb-2">{title}</h2>
           {message && <p className="text-gray-600 text-sm">{message}</p>}

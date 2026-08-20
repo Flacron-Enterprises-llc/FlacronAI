@@ -4,10 +4,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   FileText, Upload, ChevronRight, ChevronLeft, X, Download, RefreshCw,
-  Search, Trash2, Eye, Lock, ExternalLink, BarChart3, Users,
+  Search, Trash2, Eye, Lock, ExternalLink, LineChart, Users,
   Zap, Clock, AlertCircle, CheckCircle, Settings,
   Star, Image as ImageIcon, CreditCard, Check, Save, ShieldCheck,
-  Menu, PanelLeftClose, Droplets, Flame, Wind, Hammer
+  Menu, PanelLeftClose, Droplets, Flame, Wind, Hammer, LayoutDashboard,
+  LayoutGrid, List, RotateCw, CheckSquare, Square, AlertTriangle, Camera, FolderOpen,
+  MoreVertical, Copy, Archive, ArchiveRestore,
+  Share2, SlidersHorizontal, ChevronDown, Webhook, Building2, GripVertical
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import ReportMarkdown from '../components/ReportMarkdown';
@@ -15,35 +18,137 @@ import TierBadge from '../components/TierBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
 import SectionedReportEditor from '../components/SectionedReportEditor';
+import ReportReviewChecklist from '../components/ReportReviewChecklist';
+import ExportOptionsModal from '../components/ExportOptionsModal';
+import TemplatePickerModal from '../components/TemplatePickerModal';
+import { PhotoStatusBadge, ReviewStatusDot, effectiveObservation, PhotoAnalysisPanel, QualityWarningBadge } from '../components/PhotoReview.jsx';
+import PhotoAnnotator from '../components/PhotoAnnotator.jsx';
+import useDragReorder from '../hooks/useDragReorder.js';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { reportsAPI, paymentAPI } from '../services/api';
+import { reportsAPI, paymentAPI, crmAPI } from '../services/api';
 import api from '../services/api';
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
 const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Other'];
 const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'];
 const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived'];
 
-// Only shows "Analyzing damage photos" when photos were actually uploaded --
-// the backend skips AI image analysis entirely at 0 photos (see T-6.14), so
-// showing that stage regardless would misrepresent what's actually happening.
+// Phase 5 (Generate Report Wizard Completion) -- kept in sync with the matching
+// backend allowlists in backend/routes/reports.js.
+const CLAIM_TYPES = ['Property', 'Auto', 'Commercial', 'Liability', 'Other'];
+const PROPERTY_TYPES = ['Single-Family Home', 'Multi-Family', 'Condo/Townhouse', 'Commercial', 'Other'];
+const INSPECTION_TYPES = ['Interior', 'Exterior', 'Interior & Exterior', 'Virtual/Remote'];
+const WEATHER_CONDITIONS = ['Clear/Sunny', 'Partly Cloudy', 'Overcast', 'Rain', 'Snow', 'High Wind', 'Extreme Heat', 'Other'];
+const OCCUPANCY_STATUSES = ['Occupied', 'Vacant', 'Under Renovation', 'Unknown'];
+const ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt'];
+const MAX_DOCUMENTS = 10;
+const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10MB -- matches the existing per-photo limit
+
+// Phase 6 (Photo Upload & Per-Photo UX Hardening) -- exact spec'd copy for the
+// 100-photo cap, shown both as a toast on overflow and as a persistent notice
+// once the limit is reached.
+const MAX_PHOTOS = 100;
+const MAX_PHOTOS_MESSAGE = 'Maximum of 100 photos reached. Remove a photo to upload another.';
+
+const formatFileSize = (bytes) => {
+  if (bytes == null) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+// SHA-256 content hash for client-side duplicate detection within one staged
+// batch -- catches the common case (the same photo dragged in twice, or a
+// folder containing accidental copies) before it's ever sent to the server,
+// which re-checks the same way as an authoritative backstop (Phase 6).
+const hashFile = async (file) => {
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+// Attempts to decode the file as an image; a corrupt file or a non-image
+// disguised with an image extension/mimetype fails to decode (Phase 6's
+// "reject corrupt photos individually" requirement, applied client-side for
+// immediate feedback -- the backend re-validates by magic bytes regardless).
+// Phase 24: also returns the decoded pixel dimensions so the wizard can flag
+// a low-resolution photo immediately, without waiting for the upload/
+// analysis round-trip -- mirrors backend/utils/photoQuality.js's resolution
+// thresholds. Blur detection has no cheap client-side equivalent (it needs
+// the same Laplacian-variance pass the backend already does on upload), so
+// that half of the quality warning only appears after generation.
+const isDecodableImage = async (file) => {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const dims = { width: bitmap.width, height: bitmap.height };
+    bitmap.close?.();
+    return { decodable: true, ...dims };
+  } catch {
+    return { decodable: false, width: null, height: null };
+  }
+};
+
+const CLIENT_MIN_WIDTH = 800;
+const CLIENT_MIN_HEIGHT = 600;
+
+// Rotates a staged photo 90° clockwise by redrawing it onto a canvas and
+// re-encoding -- this bakes the rotation into the actual uploaded bytes
+// (not just a CSS preview transform), so the server and the exported report
+// see the photo the way the user oriented it.
+const rotateImageFile = async (file) => {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.height;
+  canvas.height = bitmap.width;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  bitmap.close?.();
+  const outType = file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg';
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, outType, 0.92));
+  return new File([blob], file.name, { type: outType, lastModified: Date.now() });
+};
+
+// "Street, City, State Zip" -- matches the format QUICK_DEMOS already uses for
+// propertyAddress, so a demo-filled address and a manually-composed one look
+// the same in the review step.
+const composeAddress = (street, city, state, zip) => {
+  const cityStateZip = [[city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
+  return [street, cityStateZip].filter(Boolean).join(', ');
+};
+
+// Phase 7: this overlay now only covers the brief, genuinely-synchronous
+// upload/report-creation request -- AI analysis and report generation happen
+// in the background afterward, shown on the dedicated analysis-progress view
+// (activeView === 'analysis') instead of as fake steps in this modal.
 const GENERATION_STEPS_WITH_PHOTOS = [
   'Uploading photos...',
-  'Analyzing damage photos...',
-  'Generating report with FlacronAI...',
-  'Finalizing...',
+  'Creating your report...',
 ];
 const GENERATION_STEPS_NO_PHOTOS = [
   'Validating claim details...',
-  'Generating report with FlacronAI...',
-  'Finalizing...',
+  'Creating your report...',
 ];
 
 const FORM_INITIAL = {
-  claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '',
+  claimNumber: '', insuredName: '', insuredEmail: '', propertyAddress: '', lossDate: '',
   lossType: 'Water Damage', reportType: 'Initial', additionalNotes: '',
   propertyDetails: '', lossDescription: '', damagesObserved: '', recommendations: '',
+  // Phase 5 additions -- all optional/additive, see ClaimIdentityFields and Step 2 below.
+  policyNumber: '', insuranceCompany: '', insuredFirstName: '', insuredLastName: '',
+  claimType: 'Property', propertyType: 'Single-Family Home',
+  propertyStreet: '', propertyCity: '', propertyState: '', propertyZip: '',
+  inspectionDate: '', inspectionTime: '', inspectorName: '', inspectorId: '',
+  inspectionType: 'Interior & Exterior', weatherConditions: '', occupancyStatus: 'Occupied',
+  contactPresent: '', contactName: '',
+  // Phase 13 (Real Template Builder) -- set when the wizard is started from a
+  // saved template; sent through as-is by the existing
+  // `Object.entries(form).forEach(...)` FormData submission in handleGenerate.
+  templateId: '',
 };
 
 const QUICK_DEMOS = [
@@ -54,6 +159,7 @@ const QUICK_DEMOS = [
     data: {
       claimNumber: 'CLM-2024-WD-001',
       insuredName: 'John & Mary Smith',
+      insuredEmail: 'john.smith@example.com',
       propertyAddress: '1425 Maple Street, Austin, TX 78701',
       lossDate: '2024-01-15',
       lossType: 'Water Damage',
@@ -72,6 +178,7 @@ const QUICK_DEMOS = [
     data: {
       claimNumber: 'CLM-2024-FD-042',
       insuredName: 'Robert & Lisa Chen',
+      insuredEmail: 'robert.chen@example.com',
       propertyAddress: '892 Oakwood Drive, Dallas, TX 75201',
       lossDate: '2024-02-03',
       lossType: 'Fire',
@@ -90,6 +197,7 @@ const QUICK_DEMOS = [
     data: {
       claimNumber: 'CLM-2024-WH-118',
       insuredName: 'Patricia Johnson',
+      insuredEmail: 'patricia.johnson@example.com',
       propertyAddress: '3301 Elm Creek Blvd, San Antonio, TX 78230',
       lossDate: '2024-03-22',
       lossType: 'Hail',
@@ -108,6 +216,7 @@ const QUICK_DEMOS = [
     data: {
       claimNumber: 'CLM-2024-VN-007',
       insuredName: 'Marcus & Elena Rodriguez',
+      insuredEmail: 'marcus.rodriguez@example.com',
       propertyAddress: '5520 Pine Ridge Lane, Houston, TX 77056',
       lossDate: '2024-04-10',
       lossType: 'Vandalism',
@@ -139,7 +248,7 @@ const STATUS_STYLES = {
   completed: 'bg-green-500/20 text-green-600 border-green-500/30',
   complete: 'bg-green-500/20 text-green-600 border-green-500/30',
   draft: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
-  processing: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30',
+  processing: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
   failed: 'bg-red-500/20 text-red-500 border-red-500/30',
   archived: 'bg-gray-400/20 text-gray-500 border-gray-400/30',
 };
@@ -154,8 +263,385 @@ function StatusBadge({ status }) {
   );
 }
 
-function ReportDetailModal({ report, onClose }) {
+function MetricCard({ icon: Icon, label, value, sub, loading, error }) {
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+        <Icon className="w-4 h-4 text-brand-500 shrink-0" />
+      </div>
+      {loading ? (
+        <div className="skeleton h-7 w-16" />
+      ) : error ? (
+        <span className="text-sm text-gray-400 italic">Unavailable</span>
+      ) : (
+        <p className="text-2xl font-bold text-gray-900">{value ?? 0}</p>
+      )}
+      {sub && !loading && !error && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+// Per-photo gallery for a generated report (Phase 6: Photo Upload & Per-Photo
+// UX Hardening; Phase 8: Per-Photo Analysis Review UI). Renders server-
+// generated thumbnails fetched via the authenticated photo-proxy endpoints --
+// not the wizard's pre-upload client-side blob URLs, which no longer exist
+// once a report has been generated. Works for both Phase-6+ reports
+// (per-photo `photos` records) and older reports that only have the flat
+// `imagePaths`/`imageCount` shape, since the backend's GET /:id/photos
+// synthesizes an equivalent (non-reviewable) list for those.
+//
+// `interactive` (Phase 8) turns on the Edit/Approve/Exclude/Add Note/Restore
+// controls and the "Regenerate Report" action; without it, this is the
+// original read-only gallery (used nowhere currently, kept for API
+// compatibility since every call site now passes `interactive`).
+function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPhotosChange }) {
+  const [photos, setPhotos] = useState(null); // null = still loading
+  const [loadError, setLoadError] = useState(false);
+  const [thumbUrls, setThumbUrls] = useState({});
+  const [previewId, setPreviewId] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewNaturalSize, setPreviewNaturalSize] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  // Phase 24: room/area tagging + annotation editor state, keyed the same
+  // way editText/noteText already are (reset whenever previewId changes).
+  const [areaText, setAreaText] = useState('');
+  const [areaSaving, setAreaSaving] = useState(false);
+  const [annotatorOpen, setAnnotatorOpen] = useState(false);
+  const [annotationsSaving, setAnnotationsSaving] = useState(false);
+  const [annotationsError, setAnnotationsError] = useState(null);
+  const [reordering, setReordering] = useState(false);
+
+  // Phase 24: persisted drag-to-reorder across the whole gallery. Optimistic
+  // (the grid re-sorts immediately); a failed save reverts to the prior
+  // order and surfaces a toast rather than leaving the UI silently wrong.
+  // Defined here (not further below with the other handlers) because the
+  // drag-reorder HOOK below needs a stable reference to it, and hooks can't
+  // be called conditionally/after an early return.
+  const handleReorder = useCallback(async (nextIds) => {
+    setPhotos((prevPhotos) => {
+      const byId = new Map((prevPhotos || []).map(p => [p.id, p]));
+      const next = nextIds.map((id, i) => ({ ...byId.get(id), position: i }));
+      onPhotosChange?.(next);
+      return next;
+    });
+    setReordering(true);
+    try {
+      await reportsAPI.reorderPhotos(reportId, nextIds);
+    } catch (err) {
+      // Refetch rather than trying to reconstruct the pre-reorder array from
+      // this closure (which may be stale after the optimistic update above).
+      try {
+        const res = await reportsAPI.getPhotos(reportId);
+        const list = res.data.photos || [];
+        setPhotos(list);
+        onPhotosChange?.(list);
+      } catch { /* best-effort revert; the optimistic order stays if this also fails */ }
+      toast.error(err.response?.data?.error || 'Could not save the new photo order');
+    } finally {
+      setReordering(false);
+    }
+  }, [reportId, onPhotosChange]);
+
+  // Declared before any early return below -- hooks can't be called
+  // conditionally, and `photos` may still be null while loading.
+  const dragReorder = useDragReorder({
+    ids: (photos || []).map(p => p.id),
+    onReorder: handleReorder,
+    disabled: !interactive,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const createdUrls = [];
+    (async () => {
+      try {
+        const res = await reportsAPI.getPhotos(reportId);
+        const list = res.data.photos || [];
+        if (cancelled) return;
+        setPhotos(list);
+        onPhotosChange?.(list);
+        await Promise.all(list.filter(p => p.status === 'uploaded').map(async (p) => {
+          try {
+            const imgRes = await reportsAPI.getPhotoImageBlob(reportId, p.id, 'thumbnail');
+            const url = URL.createObjectURL(imgRes.data);
+            createdUrls.push(url);
+            if (!cancelled) setThumbUrls(prev => ({ ...prev, [p.id]: url }));
+          } catch { /* this one photo's image failed to load -- leave a placeholder icon */ }
+        }));
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      createdUrls.forEach(u => URL.revokeObjectURL(u));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportId]);
+
+  useEffect(() => {
+    if (!previewId) { setPreviewUrl(null); setPreviewNaturalSize(null); return undefined; }
+    let cancelled = false;
+    let url;
+    setPreviewLoading(true);
+    setPreviewNaturalSize(null);
+    reportsAPI.getPhotoImageBlob(reportId, previewId, 'full')
+      .then(res => { if (!cancelled) { url = URL.createObjectURL(res.data); setPreviewUrl(url); } })
+      .catch(() => { if (!cancelled) toast.error('Could not load full-size photo'); })
+      .finally(() => { if (!cancelled) setPreviewLoading(false); });
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [previewId, reportId]);
+
+  // Seed the edit/note/area buffers from whichever photo was just opened --
+  // keyed only on previewId (not on `photos`) so an in-flight review save
+  // for THIS photo (which updates `photos`) doesn't clobber unsaved
+  // keystrokes; the save handlers below refresh these buffers themselves
+  // once a save lands.
+  useEffect(() => {
+    if (!previewId || !photos) return;
+    const p = photos.find(x => x.id === previewId);
+    if (p) {
+      setEditText(effectiveObservation(p));
+      setNoteText(p.review?.note || '');
+      setAreaText(p.roomOrArea || '');
+    }
+    setAnnotatorOpen(false);
+    setAnnotationsError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewId]);
+
+  const doReview = async (photoId, action, payload) => {
+    setReviewSaving(true);
+    try {
+      const res = await reportsAPI.updatePhotoReview(reportId, photoId, action, payload);
+      const updatedPhoto = res.data.photo;
+      // Compute from the closure directly (not the setPhotos updater form) --
+      // calling onPhotosChange (a parent setState) from inside an updater
+      // function fires during React's render phase and triggers a
+      // "Cannot update a component while rendering a different component" warning.
+      const next = photos.map(p => (p.id === photoId ? { ...p, ...updatedPhoto } : p));
+      setPhotos(next);
+      onPhotosChange?.(next);
+      if (previewId === photoId) {
+        setEditText(effectiveObservation(updatedPhoto));
+        setNoteText(updatedPhoto.review?.note || '');
+      }
+      const messages = { edit: 'Observation updated', approve: 'Photo approved', exclude: 'Photo excluded from report', include: 'Photo restored', note: 'Note saved' };
+      toast.success(messages[action] || 'Photo review updated');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not update photo review');
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const res = await reportsAPI.regeneratePhotoReview(reportId);
+      toast.success('Report regenerated using your photo review');
+      onRegenerated?.(res.data.report);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not regenerate report');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // Phase 24: room/area tagging reuses the same review-action route/pattern
+  // as approve/edit/exclude/note above (a new 'set_area' action), just with
+  // its own saving flag so typing an area doesn't disable the observation
+  // Save Edit button and vice versa.
+  const doSetArea = async (photoId, roomOrArea) => {
+    setAreaSaving(true);
+    try {
+      const res = await reportsAPI.updatePhotoReview(reportId, photoId, 'set_area', { roomOrArea });
+      const updatedPhoto = res.data.photo;
+      const next = photos.map(p => (p.id === photoId ? { ...p, ...updatedPhoto } : p));
+      setPhotos(next);
+      onPhotosChange?.(next);
+      toast.success('Area updated');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not update area');
+    } finally {
+      setAreaSaving(false);
+    }
+  };
+
+  // Phase 24: full-list-replace annotation save with optimistic-concurrency
+  // protection -- `expectedUpdatedAt` is whatever this photo's own
+  // annotations.updatedAt was the last time it was loaded (null if never
+  // annotated). A 409 STALE_UPDATE means someone else saved in the
+  // meantime; surfaced as an inline error rather than silently overwriting.
+  const doSaveAnnotations = async (photoId, shapes) => {
+    const current = photos.find(p => p.id === photoId);
+    setAnnotationsSaving(true);
+    setAnnotationsError(null);
+    try {
+      const res = await reportsAPI.updatePhotoAnnotations(reportId, photoId, shapes, current?.annotations?.updatedAt ?? null);
+      const updatedPhoto = res.data.photo;
+      const next = photos.map(p => (p.id === photoId ? { ...p, ...updatedPhoto } : p));
+      setPhotos(next);
+      onPhotosChange?.(next);
+      toast.success('Annotations saved');
+      setAnnotatorOpen(false);
+    } catch (err) {
+      const code = err.response?.data?.code;
+      setAnnotationsError(
+        code === 'STALE_UPDATE'
+          ? 'These annotations changed elsewhere. Close and reopen this photo to reload the latest version.'
+          : (err.response?.data?.error || 'Could not save annotations')
+      );
+    } finally {
+      setAnnotationsSaving(false);
+    }
+  };
+
+  if (loadError) return <p className="text-xs text-gray-400">Photos could not be loaded.</p>;
+  if (!photos) {
+    return (
+      <div className="grid grid-cols-5 sm:grid-cols-6 gap-2">
+        {[...Array(5)].map((_, i) => <div key={i} className="skeleton aspect-square rounded-lg" />)}
+      </div>
+    );
+  }
+  if (photos.length === 0) return <p className="text-xs text-gray-400">No photos on this report.</p>;
+
+  const previewPhoto = photos.find(p => p.id === previewId);
+  const reviewablePhotos = photos.filter(p => p.reviewable);
+  const reviewedCount = reviewablePhotos.filter(p => (p.review?.status || 'pending') !== 'pending').length;
+
+  return (
+    <>
+      {interactive && reviewablePhotos.length > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+          <p className="text-xs text-gray-500">
+            {reviewedCount} of {reviewablePhotos.length} photos reviewed
+            {reordering && <span className="ml-2 text-gray-400">· Saving order...</span>}
+          </p>
+          <button onClick={handleRegenerate} disabled={regenerating}
+            className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50">
+            <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} /> Regenerate Report
+          </button>
+        </div>
+      )}
+      <div className="grid grid-cols-5 sm:grid-cols-6 gap-2">
+        {photos.map(p => (
+          <div
+            key={p.id}
+            ref={(node) => dragReorder.registerNode(p.id, node)}
+            className={`relative aspect-square rounded-lg overflow-hidden bg-gray-100 transition-shadow ${
+              dragReorder.overId === p.id && dragReorder.draggingId && dragReorder.draggingId !== p.id ? 'ring-2 ring-brand-500' : ''
+            } ${dragReorder.draggingId === p.id ? 'opacity-50' : ''}`}
+          >
+            <button type="button" onClick={() => p.status === 'uploaded' && setPreviewId(p.id)}
+              className="absolute inset-0 w-full h-full" title={p.fileName}>
+              {thumbUrls[p.id] ? (
+                <img src={thumbUrls[p.id]} alt={p.fileName} className={`w-full h-full object-cover ${p.review?.status === 'excluded' ? 'opacity-40' : ''}`} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-gray-300" /></div>
+              )}
+            </button>
+            {interactive && photos.length > 1 && (
+              <span
+                {...dragReorder.getHandleProps(p.id)}
+                className="absolute top-1 left-1 p-0.5 rounded bg-black/40 text-white"
+                aria-label="Drag to reorder"
+                title="Drag to reorder"
+              >
+                <GripVertical className="w-3 h-3" />
+              </span>
+            )}
+            {p.qualityWarning && (
+              <span className="absolute top-1 right-1">
+                <QualityWarningBadge qualityWarning qualityReasons={p.qualityReasons} compact />
+              </span>
+            )}
+            {p.status && p.status !== 'uploaded' && (
+              <span className="absolute bottom-1 right-1">
+                <PhotoStatusBadge status={p.status === 'failed' ? 'corrupt' : p.status} compact />
+              </span>
+            )}
+            {interactive && p.reviewable && p.status === 'uploaded' && (
+              <span className="absolute bottom-1 left-1">
+                <ReviewStatusDot status={p.review?.status || 'pending'} />
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {previewId && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true"
+          onClick={() => setPreviewId(null)}>
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto ${interactive ? 'max-w-4xl' : 'max-w-3xl'}`} onClick={e => e.stopPropagation()}>
+            <div className={interactive ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : ''}>
+              <div>
+                {previewLoading || !previewUrl ? (
+                  <div className="w-full h-64 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-white animate-spin" /></div>
+                ) : annotatorOpen && previewNaturalSize ? (
+                  <div className="bg-white rounded-xl p-3">
+                    <PhotoAnnotator
+                      imageUrl={previewUrl}
+                      imageWidth={previewNaturalSize.width}
+                      imageHeight={previewNaturalSize.height}
+                      initialShapes={previewPhoto?.annotations?.shapes || []}
+                      capturedAt={previewPhoto?.capturedAt}
+                      readOnly={!interactive}
+                      saving={annotationsSaving}
+                      saveError={annotationsError}
+                      onSave={(shapes) => doSaveAnnotations(previewPhoto.id, shapes)}
+                      onClose={() => setAnnotatorOpen(false)}
+                    />
+                  </div>
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt={previewPhoto?.fileName}
+                    onLoad={(e) => setPreviewNaturalSize({ width: e.target.naturalWidth, height: e.target.naturalHeight })}
+                    className="w-full h-full max-h-[75vh] object-contain rounded-xl bg-black"
+                  />
+                )}
+              </div>
+
+              {interactive && previewPhoto && !annotatorOpen && (
+                <div className="bg-white rounded-xl p-4 space-y-3 text-left max-h-[75vh] overflow-y-auto">
+                  <PhotoAnalysisPanel
+                    photo={previewPhoto}
+                    canReview
+                    reviewSaving={reviewSaving}
+                    editText={editText}
+                    onEditTextChange={setEditText}
+                    noteText={noteText}
+                    onNoteTextChange={setNoteText}
+                    onReview={doReview}
+                    areaValue={areaText}
+                    onAreaValueChange={setAreaText}
+                    areaSaving={areaSaving}
+                    onSaveArea={doSetArea}
+                    onOpenAnnotator={() => setAnnotatorOpen(true)}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between mt-3 text-white">
+              <p className="text-sm font-medium truncate">{previewPhoto?.fileName}</p>
+              <button onClick={() => setPreviewId(null)} className="btn-secondary text-xs py-1.5 px-3">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ReportDetailModal({ report, onClose, onReportUpdated }) {
   useEscapeToClose(onClose, !!report);
+  const navigate = useNavigate();
   if (!report) return null;
   return (
     <AnimatePresence>
@@ -175,13 +661,24 @@ function ReportDetailModal({ report, onClose }) {
           <div className="space-y-3 text-sm">
             {[
               ['Claim Number', report.claimNumber],
+              report.policyNumber && ['Policy Number', report.policyNumber],
               ['Insured', report.insuredName],
+              report.insuredEmail && ['Insured Email', report.insuredEmail],
+              report.insuranceCompany && ['Insurance Company', report.insuranceCompany],
               ['Property', report.propertyAddress],
+              report.claimType && ['Claim Type', report.claimType],
               ['Loss Date', report.lossDate],
               ['Loss Type', report.lossType],
+              report.propertyType && ['Property Type', report.propertyType],
               ['Report Type', report.reportType],
+              report.inspectorName && ['Inspector', report.inspectorName],
+              report.inspectionDate && ['Inspection Date', report.inspectionDate],
               ['Created', new Date(report.createdAt).toLocaleString()],
-            ].map(([label, val]) => (
+              // Older reports (pre-Phase-5) simply lack these fields -- the
+              // `&&` guards above skip those rows entirely rather than
+              // showing a blank/undefined value, so old-shape reports still
+              // render cleanly with no crash and no empty-looking rows.
+            ].filter(Boolean).map(([label, val]) => (
               <div key={label} className="flex gap-3">
                 <span className="text-gray-600 w-32 shrink-0">{label}:</span>
                 <span className="text-gray-900">{val}</span>
@@ -193,11 +690,43 @@ function ReportDetailModal({ report, onClose }) {
             </div>
             {report.qualityScore && (
               <div className="flex gap-3">
-                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">Documentation Completeness:</span>
-                <span className="text-orange-700 font-semibold">{report.qualityScore}/100</span>
+                <span className="text-gray-600 w-32 shrink-0" title="Measures how many required fields and sections are filled in — not the accuracy of the FLACRON ENGINE's findings.">Documentation Completeness:</span>
+                <span className="text-brand-700 font-semibold">{report.qualityScore}/100</span>
               </div>
             )}
           </div>
+          {report.documents && report.documents.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Supporting Documents</h3>
+              <ul className="space-y-1.5">
+                {report.documents.map((d, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm">
+                    <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <button
+                      className="text-brand-600 hover:underline truncate text-left"
+                      onClick={async () => {
+                        try {
+                          const res = await reportsAPI.downloadDocument(report.id, d.fileName);
+                          const url = window.URL.createObjectURL(new Blob([res.data]));
+                          const a = document.createElement('a');
+                          a.href = url; a.download = d.fileName; a.click();
+                          window.URL.revokeObjectURL(url);
+                        } catch { toast.error('Document download failed'); }
+                      }}>
+                      {d.fileName}
+                    </button>
+                    <span className="text-xs text-gray-400 shrink-0">{formatFileSize(d.size)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(report.imageCount > 0) && (
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Photos ({report.imageCount})</h3>
+              <ReportPhotoGallery reportId={report.id} interactive onRegenerated={onReportUpdated} />
+            </div>
+          )}
           {report.content && (
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Report Content</h3>
@@ -225,6 +754,10 @@ function ReportDetailModal({ report, onClose }) {
               }}>
               <Download className="w-4 h-4" /> PDF
             </button>
+            <button className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
+              onClick={() => navigate(`/reports/${report.id}/preview`)}>
+              <ExternalLink className="w-4 h-4" /> Full Preview
+            </button>
             <button className="btn-secondary text-sm py-2 px-4" onClick={onClose}>Close</button>
           </div>
         </motion.div>
@@ -234,30 +767,157 @@ function ReportDetailModal({ report, onClose }) {
 }
 
 function ClaimIdentityFields({ form, setForm, disabled = false }) {
+  const setField = (key) => (e) => setForm(p => ({ ...p, [key]: e.target.value }));
+  // Insured First/Last Name are additive structured capture (Phase 5): typing
+  // into either keeps composing into Insured Name live, but only while
+  // Insured Name still exactly matches what First+Last would already produce
+  // (or is empty) -- the moment a user types something else directly into
+  // Insured Name (a business/trust name, a Quick Demo fill, a linked CRM
+  // claim), it has diverged and this stops touching it. Comparing against the
+  // *previous* composed value (not just checking "is it empty") is what lets
+  // typing First then Last both apply -- an empty-only check would freeze
+  // Insured Name at "Jane" the moment First Name alone made it non-empty.
+  const setNamePart = (key) => (e) => {
+    const value = e.target.value;
+    setForm(p => {
+      const next = { ...p, [key]: value };
+      const prevFirst = p.insuredFirstName || '';
+      const prevLast = p.insuredLastName || '';
+      const prevComposed = `${prevFirst} ${prevLast}`.trim();
+      if (!p.insuredName || p.insuredName === prevComposed) {
+        const first = key === 'insuredFirstName' ? value : prevFirst;
+        const last = key === 'insuredLastName' ? value : prevLast;
+        next.insuredName = `${first} ${last}`.trim();
+      }
+      return next;
+    });
+  };
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <label className="label">Claim Number *</label>
         <input className="input" placeholder="e.g. CLM-2024-001" disabled={disabled}
-          value={form.claimNumber} onChange={e => setForm(p => ({ ...p, claimNumber: e.target.value }))} />
+          value={form.claimNumber} onChange={setField('claimNumber')} />
+      </div>
+      <div>
+        <label className="label">Policy Number</label>
+        <input className="input" placeholder="e.g. POL-4821093" disabled={disabled}
+          value={form.policyNumber || ''} onChange={setField('policyNumber')} />
       </div>
       <div>
         <label className="label">Insured Name *</label>
         <input className="input" placeholder="Full name of insured" disabled={disabled}
-          value={form.insuredName} onChange={e => setForm(p => ({ ...p, insuredName: e.target.value }))} />
+          value={form.insuredName} onChange={setField('insuredName')} />
+      </div>
+      <div>
+        <label className="label">Insured Email *</label>
+        <input type="email" className={`input ${form.insuredEmail && !isValidEmail(form.insuredEmail) ? 'border-red-400' : ''}`}
+          placeholder="claimant@example.com" disabled={disabled}
+          value={form.insuredEmail || ''} onChange={setField('insuredEmail')} />
+        {form.insuredEmail && !isValidEmail(form.insuredEmail) && (
+          <p className="text-xs text-red-500 mt-1">Enter a valid email address</p>
+        )}
+      </div>
+      <div>
+        <label className="label">Insurance Company</label>
+        <input className="input" placeholder="e.g. State Farm" disabled={disabled}
+          value={form.insuranceCompany || ''} onChange={setField('insuranceCompany')} />
+      </div>
+      <div>
+        <label className="label">Insured First Name</label>
+        <input className="input" placeholder="First name" disabled={disabled}
+          value={form.insuredFirstName || ''} onChange={setNamePart('insuredFirstName')} />
+      </div>
+      <div>
+        <label className="label">Insured Last Name</label>
+        <input className="input" placeholder="Last name" disabled={disabled}
+          value={form.insuredLastName || ''} onChange={setNamePart('insuredLastName')} />
       </div>
       <div>
         <label className="label">Loss Date *</label>
         <input type="date" className="input" disabled={disabled} value={form.lossDate}
-          onChange={e => setForm(p => ({ ...p, lossDate: e.target.value }))} />
+          onChange={setField('lossDate')} />
       </div>
       <div>
         <label className="label">Loss Type *</label>
-        <select className="input" disabled={disabled} value={form.lossType}
-          onChange={e => setForm(p => ({ ...p, lossType: e.target.value }))}>
+        <select className="input" disabled={disabled} value={form.lossType} onChange={setField('lossType')}>
           {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
+      <div>
+        <label className="label">Claim Type</label>
+        <select className="input" disabled={disabled} value={form.claimType || 'Property'} onChange={setField('claimType')}>
+          {CLAIM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="label">Property Type</label>
+        <select className="input" disabled={disabled} value={form.propertyType || 'Single-Family Home'} onChange={setField('propertyType')}>
+          {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// Phase 12 (My Reports & Claims Management Completion): the row-level "More
+// actions" menu (Duplicate/Download/Share/Archive-or-Restore/Delete) shared by
+// every row in the My Reports table. Only one instance is ever open at a time,
+// controlled by the parent's `openRowMenuId` state.
+function RowActionsMenu({
+  report, isOpen, onToggle, onClose, onDuplicate, onDownload, onShare,
+  onArchive, onRestore, onDelete, duplicating, sharing,
+}) {
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, onClose]);
+
+  const isArchived = report.status === 'archived';
+  const canShare = ['finalized', 'approved', 'completed'].includes(report.status);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button type="button" onClick={onToggle} aria-label="More actions" aria-haspopup="true" aria-expanded={isOpen}
+        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="More actions">
+        <MoreVertical className="w-4 h-4 text-gray-600" />
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg py-1" role="menu">
+          <button type="button" role="menuitem" onClick={onDuplicate} disabled={duplicating}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <Copy className="w-4 h-4" /> {duplicating ? 'Duplicating…' : 'Duplicate'}
+          </button>
+          <button type="button" role="menuitem" onClick={onDownload}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <Download className="w-4 h-4" /> Download PDF
+          </button>
+          <button type="button" role="menuitem" onClick={onShare} disabled={!canShare || sharing}
+            title={canShare ? '' : 'Finalize this report before sharing'}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+            <Share2 className="w-4 h-4" /> {sharing ? 'Copying link…' : 'Share'}
+          </button>
+          <div className="my-1 border-t border-gray-100" />
+          {isArchived ? (
+            <button type="button" role="menuitem" onClick={onRestore}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              <ArchiveRestore className="w-4 h-4" /> Restore
+            </button>
+          ) : (
+            <button type="button" role="menuitem" onClick={onArchive}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              <Archive className="w-4 h-4" /> Archive
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={onDelete}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+            <Trash2 className="w-4 h-4" /> Delete permanently
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,6 +980,47 @@ export default function Dashboard() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Phase 11: the /reports/:id/preview page's "Edit" action deep-links back
+  // here as `?openReport=<id>` instead of duplicating the wizard/editor view --
+  // fetch that report directly (not just from the in-memory `reports` list,
+  // which may not be loaded yet on a fresh visit) and open it in the generate/
+  // review view, same as clicking a row in My Reports.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const openId = params.get('openReport');
+    if (!openId) return;
+    navigate('/dashboard', { replace: true });
+    reportsAPI.getOne(openId)
+      .then((res) => {
+        const report = res.data?.report || res.data;
+        if (report.status === 'processing') {
+          setAnalysisData(null);
+          setAnalysisReportId(report.id);
+          setActiveView('analysis');
+        } else {
+          setGeneratedReport(report);
+          setPdfPreviewUrl(null);
+          setActiveView('generate');
+          autoPreviewPDF(report);
+        }
+      })
+      .catch(() => toast.error('That report could not be opened.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 21 (Onboarding Flow): the final "Generate Your First Report" CTA
+  // deep-links here as `?startWizard=1` -- same clean-URL-then-switch-view
+  // shape as `?openReport=` above. `step`/`form`/`generatedReport` are all
+  // already at their fresh initial values on this first mount, so switching
+  // to the 'generate' view lands directly on the wizard's first step.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('startWizard') !== '1') return;
+    navigate('/dashboard', { replace: true });
+    setActiveView('generate');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle pending plan checkout after email verification redirect
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -345,11 +1046,40 @@ export default function Dashboard() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [activeView, setActiveView] = useState('generate');
+  const [activeView, setActiveView] = useState('home');
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
+  const [recentReports, setRecentReports] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentError, setRecentError] = useState(false);
+  // Phase 19: reports someone else specifically shared/assigned to this
+  // account (direct invite or a supervisor review request) -- never the
+  // owner's own report pool.
+  const [assignedReports, setAssignedReports] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(FORM_INITIAL);
+  // Phase 6: each staged photo is `{ id, file, url, name, size, status, error }`.
+  // status: 'checking' (hash/decode validation in flight) | 'ready' |
+  // 'corrupt' (failed to decode) | 'duplicate' (same content already staged).
   const [photos, setPhotos] = useState([]);
+  const [photoView, setPhotoView] = useState('grid'); // 'grid' | 'list'
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+  const [previewPhotoId, setPreviewPhotoId] = useState(null);
+  const photoHashesRef = useRef(new Map()); // id -> content hash, for duplicate detection
+  // Phase 24: purely client-side reordering of the staged (not-yet-uploaded)
+  // photo list -- there's no report/photoId to persist against yet, so the
+  // chosen order here simply becomes each photo's submission order, which
+  // is what seeds its `position` field once uploaded (see
+  // photoBatchProcessor.js's `startPosition + index`).
+  const wizardPhotoReorder = useDragReorder({
+    ids: photos.map(p => p.id),
+    onReorder: (nextIds) => {
+      const byId = new Map(photos.map(p => [p.id, p]));
+      setPhotos(nextIds.map(id => byId.get(id)));
+    },
+  });
   // Agency/Enterprise: link report generation to a real CRM claim instead of free-typing
   // claim details (T-6.16). claimMode only matters for those tiers; Starter/Professional
   // have no CRM access and always see the manual fields.
@@ -359,18 +1089,39 @@ export default function Dashboard() {
   const [dragging, setDragging] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+  const [uploadPercent, setUploadPercent] = useState(0); // Phase 6 addendum: real byte-progress of the upload request
   const [genSteps, setGenSteps] = useState(GENERATION_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
+  // Phase 7 (Async Photo Analysis Pipeline) -- the report currently being
+  // watched on the analysis-progress view, and its last-polled status.
+  const [analysisReportId, setAnalysisReportId] = useState(null);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [analysisLoadError, setAnalysisLoadError] = useState(false);
+  const [retryingAnalysis, setRetryingAnalysis] = useState(false);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
-  const [confirmTarget, setConfirmTarget] = useState(null); // { type: 'report'|'bulk'|'template', id }
+  const [confirmTarget, setConfirmTarget] = useState(null); // { type: 'report'|'bulk'|'template'|'archive'|'archive-bulk', id }
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  // Phase 12 (My Reports & Claims Management Completion): advanced filters,
+  // collapsed by default so the list keeps its existing simple look until asked for.
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [lossTypeFilter, setLossTypeFilter] = useState('');
+  const [reportTypeFilter, setReportTypeFilter] = useState('');
+  const [creatorFilter, setCreatorFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [claimNumberFilter, setClaimNumberFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [crmClientOptions, setCrmClientOptions] = useState([]);
+  const [openRowMenuId, setOpenRowMenuId] = useState(null);
+  const [duplicatingId, setDuplicatingId] = useState(null);
+  const [sharingRowId, setSharingRowId] = useState(null);
   const [detailReport, setDetailReport] = useState(null);
   const [billingInfo, setBillingInfo] = useState(null);
   const [billingError, setBillingError] = useState(false);
@@ -385,6 +1136,10 @@ export default function Dashboard() {
   const [showVersions, setShowVersions] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [templateName, setTemplateName] = useState('');
+  // Phase 13 (Real Template Builder) -- the full structural template picker,
+  // distinct from the legacy field-only "My Templates" quick-load above.
+  const [activeTemplate, setActiveTemplate] = useState(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [signatureName, setSignatureName] = useState('');
   const [signatureTitle, setSignatureTitle] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
@@ -392,7 +1147,14 @@ export default function Dashboard() {
   const [company, setCompany] = useState('');
   const [confirmReview, setConfirmReview] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [reviewPhotos, setReviewPhotos] = useState(null); // Phase 10: kept in sync with ReportPhotoGallery's live per-photo review state
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const fileInputRef = useRef();
+  const cameraInputRef = useRef(); // Phase 6 addendum: dedicated "Take Photo" input (capture=environment)
+  const docInputRef = useRef();
   const autoSaveRef = useRef();
 
   useEffect(() => {
@@ -403,9 +1165,82 @@ export default function Dashboard() {
   useEffect(() => {
     autoSaveRef.current = setInterval(() => {
       localStorage.setItem(LS_KEY, JSON.stringify(form));
+      setLastSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     }, 30000);
     return () => clearInterval(autoSaveRef.current);
   }, [form]);
+
+  // Explicit "Save Draft" control (Phase 5) alongside the existing silent
+  // autosave above -- same localStorage mechanism, just user-triggered with
+  // visible confirmation. Only claim/inspection text fields are saved; photos
+  // and documents are File objects that can't be persisted to localStorage,
+  // same pre-existing limitation the silent autosave already had for photos.
+  const handleSaveDraft = () => {
+    localStorage.setItem(LS_KEY, JSON.stringify(form));
+    setLastSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    toast.success('Draft saved');
+  };
+
+  // Property Street/City/State/Zip are additive structured capture (Phase 5):
+  // mirrors ClaimIdentityFields' name-part fix above -- keeps composing into
+  // Property Address as each part is typed (not just once, then frozen) by
+  // comparing against the *previous* composed value rather than only
+  // checking "is it empty", while still never overwriting a Quick Demo /
+  // linked CRM claim / manually-typed address.
+  const handleAddressPartChange = (key) => (e) => {
+    const value = e.target.value;
+    setForm(p => {
+      const next = { ...p, [key]: value };
+      const prevStreet = p.propertyStreet || '';
+      const prevCity = p.propertyCity || '';
+      const prevState = p.propertyState || '';
+      const prevZip = p.propertyZip || '';
+      const prevComposed = composeAddress(prevStreet, prevCity, prevState, prevZip);
+      if (!p.propertyAddress || p.propertyAddress === prevComposed) {
+        const street = key === 'propertyStreet' ? value : prevStreet;
+        const city = key === 'propertyCity' ? value : prevCity;
+        const state = key === 'propertyState' ? value : prevState;
+        const zip = key === 'propertyZip' ? value : prevZip;
+        next.propertyAddress = composeAddress(street, city, state, zip);
+      }
+      return next;
+    });
+  };
+
+  // Supporting-document upload (Phase 5) -- validated client-side (extension +
+  // size) before being staged; same all-at-once-with-the-report submission
+  // model photos already use (no standalone pre-generate upload endpoint).
+  const handleDocumentAdd = (files) => {
+    const incoming = Array.from(files);
+    const valid = [];
+    for (const f of incoming) {
+      const ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
+      if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(ext)) {
+        toast.error(`${f.name}: unsupported file type (PDF, DOC, DOCX, or TXT only)`);
+        continue;
+      }
+      if (f.size > MAX_DOCUMENT_SIZE) {
+        toast.error(`${f.name}: exceeds 10MB limit`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (valid.length === 0) return;
+    if (documents.length + valid.length > MAX_DOCUMENTS) {
+      toast.error(`Maximum ${MAX_DOCUMENTS} documents allowed`);
+      return;
+    }
+    setDocuments(prev => [...prev, ...valid.map(f => ({ file: f, name: f.name, size: f.size, status: 'ready' }))]);
+  };
+
+  const handleDocumentDrop = (e) => {
+    e.preventDefault();
+    handleDocumentAdd(e.dataTransfer.files);
+  };
+
+  const removeDocument = (idx) => {
+    setDocuments(prev => { const next = [...prev]; next.splice(idx, 1); return next; });
+  };
 
   const fetchReports = useCallback(async () => {
     setReportsLoading(true);
@@ -414,6 +1249,13 @@ export default function Dashboard() {
       const params = { page, limit: 10 };
       if (search) params.search = search;
       if (statusFilter !== 'All') params.status = statusFilter;
+      if (lossTypeFilter) params.lossType = lossTypeFilter;
+      if (reportTypeFilter) params.reportType = reportTypeFilter;
+      if (creatorFilter) params.creator = creatorFilter;
+      if (clientFilter) params.clientId = clientFilter;
+      if (claimNumberFilter) params.claimNumber = claimNumberFilter;
+      if (dateFrom) params.startDate = dateFrom;
+      if (dateTo) params.endDate = dateTo;
       const res = await reportsAPI.getAll(params);
       setReports(res.data.data || res.data.reports || res.data || []);
       setTotalPages(res.data.totalPages || Math.ceil((res.data.total || 0) / 10) || 1);
@@ -423,21 +1265,161 @@ export default function Dashboard() {
     } finally {
       setReportsLoading(false);
     }
-  }, [page, search, statusFilter]);
+  }, [page, search, statusFilter, lossTypeFilter, reportTypeFilter, creatorFilter, clientFilter, claimNumberFilter, dateFrom, dateTo]);
+
+  // Home-view data is deliberately fetched separately from the "My Reports" tab's
+  // own state (search/filter/pagination/bulk-select) -- the home widget only ever
+  // needs a small, fixed "5 most recent" slice, not the full paginated table.
+  const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(false);
+    try {
+      const res = await reportsAPI.getDashboardSummary();
+      setSummary(res.data.summary);
+    } catch {
+      setSummaryError(true);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  const fetchRecentReports = useCallback(async () => {
+    setRecentLoading(true);
+    setRecentError(false);
+    try {
+      const res = await reportsAPI.getAll({ limit: 5, page: 1 });
+      setRecentReports(res.data.data || res.data.reports || res.data || []);
+    } catch {
+      setRecentError(true);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    if (activeView === 'home') {
+      fetchSummary();
+      fetchRecentReports();
+      // Best-effort, silent on failure -- this is a nice-to-have surface,
+      // not core dashboard functionality.
+      reportsAPI.getAssignedToMe().then((res) => setAssignedReports(res.data?.reports || [])).catch(() => {});
+    }
     if (activeView === 'reports') fetchReports();
     if (activeView === 'billing') fetchBilling();
-  }, [activeView, fetchReports]);
+  }, [activeView, fetchReports, fetchSummary, fetchRecentReports]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeView]);
+
+  // Phase 12: the "Organization" filter is only meaningful for Agency/Enterprise
+  // accounts that actually use CRM clients -- fetched once, lazily, the first
+  // time My Reports is opened by a tier that could plausibly have any.
+  useEffect(() => {
+    if (activeView !== 'reports' || !['agency', 'enterprise'].includes(tier) || crmClientOptions.length) return;
+    crmAPI.getClients({ limit: 100 })
+      .then(res => {
+        const list = res.data?.data ?? res.data?.clients ?? [];
+        setCrmClientOptions(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setCrmClientOptions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, tier]);
+
+  // Phase 7 (Async Photo Analysis Pipeline): poll the analysis-status endpoint
+  // while watching a report that's still being analyzed/generated in the
+  // background. This is what lets a user navigate away (My Reports, another
+  // tab, closing the browser entirely) and come back later to accurate,
+  // resumed progress -- the pipeline itself keeps running server-side
+  // regardless of whether anything is polling it. Stops automatically once
+  // the pipeline reaches a terminal state (draft = succeeded).
+  useEffect(() => {
+    if (activeView !== 'analysis' || !analysisReportId) return undefined;
+    let cancelled = false;
+    setAnalysisLoadError(false);
+
+    const poll = async () => {
+      try {
+        const res = await reportsAPI.getAnalysisStatus(analysisReportId);
+        if (cancelled) return;
+        setAnalysisData(res.data);
+        if (res.data.reportStatus === 'draft') {
+          const reportRes = await reportsAPI.getOne(analysisReportId);
+          if (cancelled) return;
+          const report = reportRes.data.report || reportRes.data;
+          setGeneratedReport(report);
+          setReports(prev => [report, ...prev.filter(r => r.id !== analysisReportId)]);
+          setActiveView('generate');
+          setAnalysisReportId(null);
+          toast.success('Report generated successfully!');
+          refreshProfile();
+          autoPreviewPDF(report);
+        }
+      } catch {
+        if (!cancelled) setAnalysisLoadError(true);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, analysisReportId]);
+
+  // Runs the async duplicate/corrupt checks for one staged photo and updates
+  // its status in place once they resolve. Kept separate from handlePhotoAdd
+  // so "Retry Failed Uploads" can re-run it for an already-staged photo.
+  const validateStagedPhoto = useCallback(async (id, file) => {
+    const { decodable, width, height } = await isDecodableImage(file);
+    if (!decodable) {
+      setPhotos(prev => prev.map(p => p.id === id
+        ? { ...p, status: 'corrupt', error: 'This file could not be read as a valid image.' }
+        : p));
+      return;
+    }
+    // Phase 24: an immediate, client-only low-resolution flag (blur can't be
+    // cheaply detected client-side -- see isDecodableImage's comment). Never
+    // blocks the upload; purely informational, same as the server-side flag
+    // it mirrors.
+    const lowResolution = width < CLIENT_MIN_WIDTH || height < CLIENT_MIN_HEIGHT;
+    let hash;
+    try {
+      hash = await hashFile(file);
+    } catch {
+      // Hashing failed (unsupported browser/context) -- skip duplicate
+      // detection for this file rather than blocking a decodable photo.
+      setPhotos(prev => prev.map(p => (p.id === id ? { ...p, status: 'ready', qualityWarning: lowResolution, qualityReasons: lowResolution ? ['low_resolution'] : [] } : p)));
+      return;
+    }
+    const duplicateOf = [...photoHashesRef.current.entries()].find(([otherId, h]) => otherId !== id && h === hash);
+    photoHashesRef.current.set(id, hash);
+    if (duplicateOf) {
+      setPhotos(prev => prev.map(p => (p.id === id
+        ? { ...p, status: 'duplicate', error: `Duplicate of "${prev.find(x => x.id === duplicateOf[0])?.name || 'another photo'}"` }
+        : p)));
+      return;
+    }
+    setPhotos(prev => prev.map(p => (p.id === id
+      ? { ...p, status: 'ready', qualityWarning: lowResolution, qualityReasons: lowResolution ? ['low_resolution'] : [] }
+      : p)));
+  }, []);
 
   const handlePhotoAdd = (files) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
-    if (photos.length + arr.length > 100) {
-      toast.error('Maximum 100 photos allowed');
+    if (arr.length === 0) return;
+    if (photos.length >= MAX_PHOTOS) {
+      toast.error(MAX_PHOTOS_MESSAGE);
       return;
     }
-    const previews = arr.map(f => ({ file: f, url: URL.createObjectURL(f), name: f.name }));
-    setPhotos(prev => [...prev, ...previews]);
+    if (photos.length + arr.length > MAX_PHOTOS) {
+      toast.error(MAX_PHOTOS_MESSAGE);
+      return;
+    }
+    const staged = arr.map(f => ({
+      id: crypto.randomUUID(), file: f, url: URL.createObjectURL(f), name: f.name, size: f.size, status: 'checking', error: null,
+    }));
+    setPhotos(prev => [...prev, ...staged]);
+    staged.forEach(p => validateStagedPhoto(p.id, p.file));
   };
 
   const handleDrop = (e) => {
@@ -445,20 +1427,74 @@ export default function Dashboard() {
     handlePhotoAdd(e.dataTransfer.files);
   };
 
-  const removePhoto = (idx) => {
-    setPhotos(prev => { const next = [...prev]; URL.revokeObjectURL(next[idx].url); next.splice(idx, 1); return next; });
+  const removePhoto = (id) => {
+    setPhotos(prev => {
+      const target = prev.find(p => p.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      return prev.filter(p => p.id !== id);
+    });
+    photoHashesRef.current.delete(id);
+    setSelectedPhotoIds(prev => prev.filter(pid => pid !== id));
   };
+
+  const rotatePhoto = async (id) => {
+    const target = photos.find(p => p.id === id);
+    if (!target || target.status !== 'ready') return;
+    try {
+      const rotated = await rotateImageFile(target.file);
+      URL.revokeObjectURL(target.url);
+      const newUrl = URL.createObjectURL(rotated);
+      setPhotos(prev => prev.map(p => (p.id === id ? { ...p, file: rotated, url: newUrl, size: rotated.size } : p)));
+      // The hash changes after rotation -- refresh it so later duplicate
+      // checks (e.g. a new file added afterward) compare against the rotated bytes.
+      try { photoHashesRef.current.set(id, await hashFile(rotated)); } catch { /* non-fatal */ }
+    } catch {
+      toast.error('Could not rotate this photo');
+    }
+  };
+
+  const toggleSelectPhoto = (id) => {
+    setSelectedPhotoIds(prev => (prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]));
+  };
+  const selectAllPhotos = () => setSelectedPhotoIds(photos.map(p => p.id));
+  const clearPhotoSelection = () => setSelectedPhotoIds([]);
+  const removeSelectedPhotos = () => {
+    selectedPhotoIds.forEach(id => {
+      const target = photos.find(p => p.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      photoHashesRef.current.delete(id);
+    });
+    setPhotos(prev => prev.filter(p => !selectedPhotoIds.includes(p.id)));
+    setSelectedPhotoIds([]);
+  };
+  const retryFailedPhotos = () => {
+    const failed = photos.filter(p => p.status === 'corrupt');
+    if (failed.length === 0) return;
+    setPhotos(prev => prev.map(p => (p.status === 'corrupt' ? { ...p, status: 'checking', error: null } : p)));
+    failed.forEach(p => validateStagedPhoto(p.id, p.file));
+  };
+
+  const previewPhoto = photos.find(p => p.id === previewPhotoId) || null;
+  // Corrupt/duplicate photos occupy a slot in the staged list but don't count
+  // toward the "at least one photo" requirement -- only successfully
+  // validated photos will actually be submitted (Phase 6).
+  const readyPhotoCount = photos.filter(p => p.status === 'ready').length;
+  // Phase 6 addendum: an explicit breakdown so "X / 100" never silently
+  // conflates ready/failed/duplicate photos into one ambiguous number.
+  const photoFailedCount = photos.filter(p => p.status === 'corrupt').length;
+  const photoDuplicateCount = photos.filter(p => p.status === 'duplicate').length;
 
   // Selecting/creating a CRM claim fills the display fields from it; the backend
   // re-derives the same fields from the claim record at generate-time regardless,
   // so this is for a consistent preview, not the source of truth.
-  const handleSelectClaim = (claim, clientName) => {
+  const handleSelectClaim = (claim, clientName, clientEmail) => {
     setLinkedClaim(claim);
     setLinkedClientName(clientName || '');
     setForm(p => ({
       ...p,
       claimNumber: claim.claimNumber || '',
       insuredName: clientName || '',
+      insuredEmail: clientEmail || p.insuredEmail,
       propertyAddress: claim.propertyAddress || '',
       lossDate: claim.lossDate || '',
       lossType: claim.lossType || p.lossType,
@@ -468,56 +1504,137 @@ export default function Dashboard() {
   const handleClearClaim = () => {
     setLinkedClaim(null);
     setLinkedClientName('');
-    setForm(p => ({ ...p, claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '' }));
+    setForm(p => ({ ...p, claimNumber: '', insuredName: '', insuredEmail: '', propertyAddress: '', lossDate: '' }));
   };
 
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
-    const steps = photos.length > 0 ? GENERATION_STEPS_WITH_PHOTOS : GENERATION_STEPS_NO_PHOTOS;
+    // Only successfully-validated photos are submitted -- corrupt/duplicate
+    // ones stay visible in the wizard for the user to remove or retry, but
+    // are never sent (Phase 6).
+    const readyPhotos = photos.filter(p => p.status === 'ready');
+    const steps = readyPhotos.length > 0 ? GENERATION_STEPS_WITH_PHOTOS : GENERATION_STEPS_NO_PHOTOS;
     setGenSteps(steps);
     setGenerating(true);
     setGenStep(0);
+    setUploadPercent(0);
     let stepInterval;
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       if (linkedClaim) fd.append('claimId', linkedClaim.id || linkedClaim._id);
-      photos.forEach(p => fd.append('images', p.file));
+      readyPhotos.forEach(p => fd.append('images', p.file));
+      documents.forEach(d => fd.append('documents', d.file));
 
-      stepInterval = setInterval(() => {
-        setGenStep(prev => Math.min(prev + 1, steps.length - 1));
-      }, 4000);
+      // Phase 6 addendum: real per-photo upload progress, driven by the
+      // browser's actual multipart byte-send progress -- not a fake timer.
+      // The "Uploading photos..." step stays live until the request body has
+      // genuinely finished sending; only then does the existing interval-
+      // based step advance take over for the remaining stages, since the
+      // backend doesn't yet report granular progress for those (Phase 7).
+      const onUploadProgress = (evt) => {
+        if (!evt.total) return;
+        const percent = Math.round((evt.loaded / evt.total) * 100);
+        setUploadPercent(percent);
+        if (percent >= 100 && !stepInterval) {
+          setGenStep(prev => Math.max(prev, 1));
+          stepInterval = setInterval(() => {
+            setGenStep(prev => Math.min(prev + 1, steps.length - 1));
+          }, 4000);
+        }
+      };
 
-      const res = await reportsAPI.generate(fd);
-      setGenStep(steps.length - 1);
+      // Phase 7: the response now arrives as soon as photos are uploaded and
+      // the report shell is created (status: 'processing') -- it does NOT
+      // wait for AI analysis/report generation to finish. Hand off to the
+      // dedicated analysis-progress view instead of treating this as "done".
+      const res = await reportsAPI.generate(fd, onUploadProgress);
       const report = res.data.report || res.data;
-      setGeneratedReport(report);
       setForm(FORM_INITIAL);
+      setActiveTemplate(null);
+      photos.forEach(p => URL.revokeObjectURL(p.url));
       setPhotos([]);
+      photoHashesRef.current.clear();
+      setSelectedPhotoIds([]);
+      setDocuments([]);
       setLinkedClaim(null);
       setLinkedClientName('');
       setClaimMode('linked');
       setStep(1);
       localStorage.removeItem(LS_KEY);
-      toast.success('Report generated successfully!');
-      // Refresh usage count in sidebar immediately
-      refreshProfile();
-      // Prepend to reports list so My Reports shows it right away
+      setLastSavedAt(null);
+      // Prepend to reports list so My Reports shows it right away (as "processing")
       setReports(prev => [report, ...prev]);
-      // Auto-load PDF preview
-      autoPreviewPDF(report);
+      setAnalysisData(null);
+      setAnalysisReportId(report.id);
+      setActiveView('analysis');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Generation failed');
+      const data = err.response?.data;
+      // Phase 13 (Real Template Builder): surface the template's own
+      // required-field validation clearly, instead of the generic fallback
+      // below (which never actually matched -- the backend returns `.error`,
+      // not `.message`; `.message` is checked first only to preserve any
+      // existing caller expecting it).
+      if (data?.code === 'TEMPLATE_REQUIRED_FIELD_MISSING') {
+        toast.error(data.error || 'This template requires additional fields before generating.');
+      } else {
+        toast.error(data?.message || data?.error || 'Generation failed');
+      }
     } finally {
       clearInterval(stepInterval);
       setGenerating(false);
     }
   };
 
-  const handleExport = async (format) => {
+  // Phase 7: a report still mid-pipeline has no content to show in the normal
+  // detail modal -- route into the same analysis-progress view instead,
+  // resuming real server-side progress (this is exactly the "navigate away
+  // and come back" acceptance criterion, just reached via My Reports instead
+  // of staying on the page after Generate).
+  const openReport = (r) => {
+    if (r.status === 'processing') {
+      setAnalysisData(null);
+      setAnalysisReportId(r.id);
+      setActiveView('analysis');
+    } else {
+      setDetailReport(r);
+    }
+  };
+
+  const handleRetryAnalysis = async () => {
+    if (!analysisReportId) return;
+    setRetryingAnalysis(true);
+    try {
+      await reportsAPI.retryAnalysis(analysisReportId);
+      toast.success('Retrying analysis...');
+      setAnalysisData(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not start a retry');
+    } finally {
+      setRetryingAnalysis(false);
+    }
+  };
+
+  // Phase 8 (Per-Photo Analysis Review UI): a report can be regenerated (its
+  // `content` rebuilt from the current photo review state) from either the
+  // post-generation view or from My Reports' detail modal -- keep whichever
+  // of those is currently showing this same report in sync with the result.
+  const handleReportRegenerated = (updatedReport) => {
+    setReports(prev => prev.map(r => (r.id === updatedReport.id ? { ...r, ...updatedReport } : r)));
+    setDetailReport(prev => (prev && prev.id === updatedReport.id ? { ...prev, ...updatedReport } : prev));
+    setGeneratedReport(prev => (prev && prev.id === updatedReport.id ? { ...prev, ...updatedReport } : prev));
+    if (generatedReport && generatedReport.id === updatedReport.id) {
+      setEditableContent(updatedReport.content);
+    }
+  };
+
+  // Phase 11: `options` carries the export modal's checkboxes/layout choice --
+  // omitted entirely for the quick-download path, which then gets today's
+  // existing (unchanged) default export output straight from the backend.
+  const handleExport = async (format, options = {}) => {
     if (!generatedReport) return;
     try {
-      const exportRes = await reportsAPI.export(generatedReport.id, { format });
+      const exportRes = await reportsAPI.export(generatedReport.id, { format, ...options });
       const { filename } = exportRes.data;
       const fileRes = await api.get(
         `/reports/${generatedReport.id}/download?file=${filename}`,
@@ -529,7 +1646,10 @@ export default function Dashboard() {
       a.href = url; a.download = filename; a.click();
       window.URL.revokeObjectURL(url);
       toast.success(`Exported as ${format.toUpperCase()}`);
-    } catch { toast.error('Export failed'); }
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Export failed');
+      throw err;
+    }
   };
 
   const autoPreviewPDF = async (report) => {
@@ -569,6 +1689,7 @@ export default function Dashboard() {
   // Keep the editable draft in sync when a new report is generated/opened
   useEffect(() => {
     if (generatedReport?.content != null) setEditableContent(generatedReport.content);
+    setReviewPhotos(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedReport?.id]);
 
@@ -592,7 +1713,10 @@ export default function Dashboard() {
     finally { setSavingContent(false); }
   };
 
-  const handleApprove = async () => {
+  // Phase 10: client-side validation gate before the confirmation modal opens --
+  // the modal itself is the deliberate final step, not a place to first surface
+  // "you forgot a field" errors.
+  const handleApproveClick = () => {
     if (!generatedReport) return;
     if (!signatureName.trim() || !licenseNumber.trim() || !licenseState.trim() || !company.trim()) {
       toast.error('Full name, license number, license state, and company/firm are required to approve.');
@@ -602,6 +1726,11 @@ export default function Dashboard() {
       toast.error('You must confirm you have reviewed the report before approving.');
       return;
     }
+    setShowApproveModal(true);
+  };
+
+  const handleApprove = async () => {
+    if (!generatedReport) return;
     setApproving(true);
     try {
       const signature = {
@@ -616,9 +1745,11 @@ export default function Dashboard() {
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
       toast.success('Report approved & finalized — exports are now clean');
+      setShowApproveModal(false);
       handlePreviewPDF();
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Approval failed');
+      setShowApproveModal(false);
     } finally { setApproving(false); }
   };
 
@@ -679,6 +1810,22 @@ export default function Dashboard() {
     toast.success(`Loaded "${t.name}"`);
   };
 
+  // Phase 13 (Real Template Builder): applies a full structural template
+  // (fields + templateId, sent through to POST /generate). Distinct from
+  // handleLoadTemplate above, which only ever applied the legacy shallow
+  // template's field-only defaults with no server-side structure/validation.
+  const handleUseTemplate = (t) => {
+    setForm(prev => ({ ...prev, ...t.fields, templateId: t.id }));
+    setActiveTemplate(t);
+    setShowTemplatePicker(false);
+    toast.success(`Using "${t.name}" template`);
+  };
+
+  const handleClearTemplate = () => {
+    setActiveTemplate(null);
+    setForm(prev => ({ ...prev, templateId: '' }));
+  };
+
   const handleDeleteTemplate = (id, e) => {
     e.stopPropagation();
     setConfirmTarget({ type: 'template', id });
@@ -691,6 +1838,19 @@ export default function Dashboard() {
   const handleBulkDelete = () => {
     if (!selectedIds.length) return;
     setConfirmTarget({ type: 'bulk' });
+  };
+
+  // Phase 12 (My Reports & Claims Management Completion): Archive is a
+  // separate, non-destructive action from permanent Delete -- distinct
+  // confirm-dialog copy and a distinct (non-danger) style, per the phase's
+  // explicit requirement to keep the two clearly apart.
+  const handleArchiveReport = (id) => {
+    setConfirmTarget({ type: 'archive', id });
+  };
+
+  const handleBulkArchive = () => {
+    if (!selectedIds.length) return;
+    setConfirmTarget({ type: 'archive-bulk' });
   };
 
   const runConfirmedDelete = async () => {
@@ -710,12 +1870,89 @@ export default function Dashboard() {
         toast.success(`Deleted ${selectedIds.length} reports`);
         setSelectedIds([]);
         fetchReports();
+      } else if (confirmTarget.type === 'archive') {
+        await reportsAPI.delete(confirmTarget.id, false);
+        toast.success('Report archived');
+        fetchReports();
+      } else if (confirmTarget.type === 'archive-bulk') {
+        await Promise.all(selectedIds.map(id => reportsAPI.delete(id, false)));
+        toast.success(`Archived ${selectedIds.length} reports`);
+        setSelectedIds([]);
+        fetchReports();
       }
       setConfirmTarget(null);
     } catch {
-      toast.error('Delete failed');
+      toast.error(confirmTarget.type.startsWith('archive') ? 'Archive failed' : 'Delete failed');
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handleRestoreReport = async (id) => {
+    try {
+      await reportsAPI.restore(id);
+      toast.success('Report restored');
+      fetchReports();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Restore failed');
+    }
+  };
+
+  // Duplicate is non-destructive (the original is untouched) so it fires
+  // immediately without a confirmation step, then opens the new draft right
+  // away since that's the natural next thing a reviewer wants to do with it.
+  const handleDuplicateReport = async (id) => {
+    setDuplicatingId(id);
+    try {
+      const res = await reportsAPI.duplicate(id);
+      const newReport = res.data?.report;
+      toast.success('Report duplicated as a new draft');
+      fetchReports();
+      if (newReport) {
+        setGeneratedReport(newReport);
+        setPdfPreviewUrl(null);
+        // A fresh duplicate's `content` is `null` (no AI generation has run
+        // for it yet) -- SectionedReportEditor's `String(content)` would
+        // otherwise render the literal text "null" as if it were real content.
+        setEditableContent(newReport.content || '');
+        setActiveView('generate');
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Duplicate failed');
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
+  const handleDownloadReport = async (report) => {
+    try {
+      const exportRes = await reportsAPI.export(report.id, { format: 'pdf' });
+      const { filename } = exportRes.data;
+      const fileRes = await api.get(`/reports/${report.id}/download?file=${filename}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([fileRes.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success('Downloaded PDF');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Download failed');
+    }
+  };
+
+  const handleShareReport = async (report) => {
+    if (!['finalized', 'approved', 'completed'].includes(report.status)) {
+      toast.error('Finalize this report before sharing it.');
+      return;
+    }
+    setSharingRowId(report.id);
+    try {
+      const res = await reportsAPI.share(report.id);
+      await navigator.clipboard.writeText(res.data.url);
+      toast.success('Share link copied to clipboard');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Could not create share link');
+    } finally {
+      setSharingRowId(null);
     }
   };
 
@@ -729,6 +1966,16 @@ export default function Dashboard() {
   const tierLimit = TIER_LIMITS[tier] ?? 1;
   const usedThisMonth = userProfile?.reportsThisMonth || 0;
   const usagePercent = tierLimit === -1 ? 0 : Math.min(100, Math.round((usedThisMonth / tierLimit) * 100));
+
+  // firstName falls back gracefully for accounts created before Phase 3 added
+  // structured first/last name fields (they only ever have `displayName`).
+  const firstName = userProfile?.firstName || userProfile?.displayName?.split(' ')[0] || 'there';
+  const greetingWord = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
 
   const fetchBilling = async () => {
     setBillingLoading(true);
@@ -749,12 +1996,19 @@ export default function Dashboard() {
   };
 
   const navLinks = [
+    { id: 'home', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'generate', label: 'Generate Report', icon: Zap },
     { id: 'reports', label: 'My Reports', icon: FileText },
+    { id: 'templates', label: 'Templates', icon: FolderOpen, href: '/templates' },
+    { id: 'analytics', label: 'Analytics', icon: LineChart, href: '/analytics' },
+    { id: 'integrations', label: 'Integrations', icon: Webhook, href: '/integrations' },
     ...(tier === 'agency' || tier === 'enterprise' ? [{ id: 'crm', label: 'CRM', icon: Users, href: '/crm' }] : []),
     { id: 'billing', label: 'Usage & Billing', icon: CreditCard },
     { id: 'settings', label: 'Settings', icon: Settings, href: '/settings' },
-    ...(tier === 'enterprise' ? [{ id: 'enterprise', label: 'Enterprise Portal', icon: ExternalLink, href: '/enterprise-dashboard' }] : []),
+    ...(tier === 'enterprise' ? [
+      { id: 'organization', label: 'Organization', icon: Building2, href: '/organization' },
+      { id: 'enterprise', label: 'Enterprise Portal', icon: ExternalLink, href: '/enterprise-dashboard' },
+    ] : []),
   ];
 
   return (
@@ -793,7 +2047,7 @@ export default function Dashboard() {
           {/* Profile Card */}
           <div className="rounded-2xl overflow-hidden border border-[#e5e7eb] bg-white">
             {/* Banner */}
-            <div className="h-16 relative" style={{ background: 'linear-gradient(135deg, #f97316 0%, #fb923c 50%, #fbbf24 100%)' }}>
+            <div className="h-16 relative bg-gradient-to-br from-brand-500 via-brand-400 to-amber-400">
               <div className="absolute inset-0 opacity-20"
                 style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(255,255,255,.15) 8px, rgba(255,255,255,.15) 16px)' }} />
               {/* Avatar */}
@@ -802,7 +2056,7 @@ export default function Dashboard() {
                   ? <img src={userProfile.logoUrl} alt="avatar"
                       className="w-11 h-11 rounded-xl border-2 border-white object-cover shadow-sm" />
                   : (
-                    <div className="w-11 h-11 rounded-xl border-2 border-white shadow-sm bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-lg">
+                    <div className="w-11 h-11 rounded-xl border-2 border-white shadow-sm bg-gradient-to-br from-brand-500 to-amber-500 flex items-center justify-center text-white font-bold text-lg">
                       {(userProfile?.displayName || user?.email || 'U')[0].toUpperCase()}
                     </div>
                   )
@@ -823,8 +2077,8 @@ export default function Dashboard() {
 
               {/* Stats row */}
               <div className="grid grid-cols-2 gap-2 mt-3">
-                <div className="rounded-lg bg-orange-50 border border-orange-100 px-2.5 py-2 text-center">
-                  <p className="text-orange-500 font-bold text-base leading-none">{usedThisMonth}</p>
+                <div className="rounded-lg bg-brand-50 border border-brand-100 px-2.5 py-2 text-center">
+                  <p className="text-brand-500 font-bold text-base leading-none">{usedThisMonth}</p>
                   <p className="text-gray-400 text-[10px] mt-0.5 leading-none">This month</p>
                 </div>
                 <div className="rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-2 text-center">
@@ -845,7 +2099,7 @@ export default function Dashboard() {
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-500 ${
-                    usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-amber-400' : 'bg-orange-500'
+                    usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-amber-400' : 'bg-brand-500'
                   }`} style={{ width: `${tierLimit === -1 ? 0 : usagePercent}%` }} />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1">
@@ -866,7 +2120,7 @@ export default function Dashboard() {
                 }}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeView === link.id
-                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-200'
+                    ? 'bg-brand-500 text-white shadow-sm shadow-brand-200'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white hover:shadow-sm hover:border hover:border-gray-100'
                 }`}>
                 <link.icon className="w-4 h-4 shrink-0" />
@@ -877,13 +2131,13 @@ export default function Dashboard() {
 
           {/* Upgrade CTA */}
           {tier === 'starter' && (
-            <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-50 p-4">
+            <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-amber-50 p-4">
               <p className="text-xs font-bold text-gray-800 mb-0.5">Unlock More Reports</p>
               <p className="text-[10px] text-gray-500 leading-relaxed mb-3">
                 Starter plan: {tierLimit} report/mo with watermark. Upgrade for more.
               </p>
               <button onClick={() => navigate('/pricing')}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+                className="w-full bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
                 <Star className="w-3 h-3" /> Upgrade Plan
               </button>
             </div>
@@ -915,7 +2169,7 @@ export default function Dashboard() {
           <div className="mx-3 mt-4 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] shadow-sm md:hidden">
             {/* User row */}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                 {(userProfile?.displayName || user?.email || 'U')[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -930,7 +2184,7 @@ export default function Dashboard() {
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-2 px-4 pb-3">
               <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
-                <p className="text-lg font-bold text-orange-500 leading-none">{usedThisMonth}</p>
+                <p className="text-lg font-bold text-brand-500 leading-none">{usedThisMonth}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Used</p>
               </div>
               <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-center shadow-sm">
@@ -964,7 +2218,7 @@ export default function Dashboard() {
                   className={`h-full rounded-full transition-all duration-500 ${
                     tierLimit === -1 ? 'bg-green-400' :
                     usagePercent >= 90 ? 'bg-red-500' :
-                    usagePercent >= 70 ? 'bg-amber-400' : 'bg-orange-500'
+                    usagePercent >= 70 ? 'bg-amber-400' : 'bg-brand-500'
                   }`}
                   style={{ width: tierLimit === -1 ? '100%' : `${usagePercent}%` }}
                 />
@@ -984,6 +2238,260 @@ export default function Dashboard() {
           </div>
 
           <AnimatePresence mode="wait">
+            {activeView === 'home' && (
+              <motion.div key="home" className="mx-auto max-w-6xl px-4 py-8 sm:p-6"
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+
+                {/* Greeting + primary CTA */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">{greetingWord}, {firstName}</h1>
+                    <p className="text-gray-600 text-sm mt-1">Here's what's happening with your reports.</p>
+                  </div>
+                  <button onClick={() => setActiveView('generate')} className="btn-primary flex items-center justify-center gap-2 shrink-0">
+                    <Zap className="w-4 h-4" /> Generate Report
+                  </button>
+                </div>
+
+                {/* Metric cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                  <MetricCard icon={FileText} label="Reports This Month"
+                    value={usedThisMonth} sub={tierLimit === -1 ? 'Unlimited plan' : `of ${tierLimit} limit`} />
+                  <MetricCard icon={ImageIcon} label="Photos Analyzed"
+                    value={summary?.photosAnalyzed} loading={summaryLoading} error={summaryError} />
+                  <MetricCard icon={Clock} label="Awaiting Review"
+                    value={summary?.reportsAwaitingReview} loading={summaryLoading} error={summaryError} />
+                  <MetricCard icon={CheckCircle} label="Completed Reports"
+                    value={summary?.reportsCompleted} loading={summaryLoading} error={summaryError} />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Recent Reports */}
+                  <div className="lg:col-span-2">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-lg font-bold text-gray-900">Recent Reports</h2>
+                      {recentReports.length > 0 && (
+                        <button onClick={() => setActiveView('reports')} className="text-sm font-medium text-brand-500 hover:text-brand-600">
+                          View all
+                        </button>
+                      )}
+                    </div>
+                    <div className="card overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-[#e5e7eb]">
+                              {['Claim #', 'Insured', 'Report Type', 'Photos', 'Status', 'Updated', 'Created By', 'Actions'].map(h => (
+                                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {recentLoading ? (
+                              [...Array(5)].map((_, i) => (
+                                <tr key={i}>
+                                  {[...Array(8)].map((__, j) => (
+                                    <td key={j} className="px-4 py-3"><div className="skeleton h-4 w-full" /></td>
+                                  ))}
+                                </tr>
+                              ))
+                            ) : recentError ? (
+                              <tr>
+                                <td colSpan={8} className="px-4 py-12 text-center">
+                                  <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                                  <p className="text-gray-600 text-sm font-medium">We couldn't load your reports</p>
+                                  <button onClick={fetchRecentReports} className="btn-secondary text-xs py-1.5 px-3 mt-3 inline-flex items-center gap-1.5">
+                                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                                  </button>
+                                </td>
+                              </tr>
+                            ) : recentReports.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="px-4 py-12 text-center">
+                                  <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                                  <p className="text-gray-600 text-sm font-medium">No reports yet</p>
+                                  <p className="text-gray-500 text-xs mt-1">Generate your first inspection report to get started.</p>
+                                  <button onClick={() => setActiveView('generate')} className="btn-primary text-xs py-1.5 px-3 mt-3 inline-flex items-center gap-1.5">
+                                    <Zap className="w-3.5 h-3.5" /> Generate Report
+                                  </button>
+                                </td>
+                              </tr>
+                            ) : recentReports.map(r => (
+                              <tr key={r.id} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer"
+                                onClick={() => openReport(r)}>
+                                <td className="px-4 py-3 text-sm font-mono text-brand-700 whitespace-nowrap">{r.claimNumber}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{r.insuredName}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.reportType || '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.imageCount ?? 0}</td>
+                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}><StatusBadge status={r.status} /></td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                  {r.updatedAt ? new Date(r.updatedAt).toLocaleDateString() : '—'}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap truncate max-w-[140px]">
+                                  {userProfile?.displayName || user?.email || '—'}
+                                </td>
+                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
+                                    aria-label="Open report" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Open">
+                                    <Eye className="w-4 h-4 text-gray-600" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Phase 19: reports shared/assigned to this account by
+                      someone else -- direct invite or a supervisor review
+                      request. Only rendered when non-empty (most accounts
+                      never touch this feature). */}
+                  {assignedReports.length > 0 && (
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900 mb-3">Shared With You</h2>
+                      <div className="card p-2 space-y-1">
+                        {assignedReports.slice(0, 5).map((r) => (
+                          <button
+                            key={r.id}
+                            onClick={() => navigate(`/reports/${r.id}/preview`)}
+                            className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
+                          >
+                            <span className="min-w-0 truncate text-sm text-gray-800">Claim {r.claimNumber || '—'}</span>
+                            <span className="shrink-0 text-xs font-semibold capitalize text-navy-600">
+                              {r.reviewRequestStatus === 'pending' ? 'Review requested' : r.myPermission}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FLACRON ENGINE usage panel */}
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900 mb-3">FLACRON ENGINE Usage</h2>
+                    <div className="card p-5 space-y-4">
+                      <div className="flex items-center gap-2 text-brand-600">
+                        <Zap className="w-5 h-5" />
+                        <span className="text-sm font-semibold">Powered by FLACRON ENGINE</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Photos processed</span>
+                        {summaryLoading ? (
+                          <div className="skeleton h-4 w-10" />
+                        ) : summaryError ? (
+                          <span className="text-gray-400 italic text-xs">Unavailable</span>
+                        ) : (
+                          <span className="font-semibold text-gray-900">{summary?.photosAnalyzed ?? 0}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Reports generated this month</span>
+                        <span className="font-semibold text-gray-900">{usedThisMonth}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Storage used</span>
+                        <span className="font-medium text-gray-400 italic text-xs" title="Storage usage tracking isn't available yet.">
+                          Not yet available
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Phase 7 (Async Photo Analysis Pipeline): shown right after Generate
+                Report is submitted, while the background pipeline analyzes
+                photos and drafts the report. Polling (see the useEffect above)
+                transitions away from this view automatically once the report
+                reaches 'draft' (success). Navigating away and back (or closing
+                the tab) is safe -- the pipeline runs server-side regardless. */}
+            {activeView === 'analysis' && (
+              <motion.div key="analysis" className="mx-auto max-w-2xl px-4 py-16 sm:p-6 text-center"
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+                <div className="relative w-20 h-20 mx-auto mb-6">
+                  <div className="absolute inset-0 rounded-full bg-brand-500/20 animate-ping" />
+                  <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-brand-500 to-amber-500 flex items-center justify-center shadow-lg shadow-brand-500/30">
+                    <Zap className="w-9 h-9 text-white" />
+                  </div>
+                </div>
+                <p className="text-xs font-semibold text-brand-600 uppercase tracking-wider mb-2">Powered by FLACRON ENGINE</p>
+
+                {analysisLoadError && !analysisData && (
+                  <>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">Couldn't load analysis progress</h1>
+                    <p className="text-gray-600 text-sm mb-6">Check your connection — this will keep retrying automatically.</p>
+                  </>
+                )}
+
+                {!analysisData && !analysisLoadError && (
+                  <>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">Starting analysis...</h1>
+                    <div className="skeleton h-3 w-full max-w-sm mx-auto rounded-full" />
+                  </>
+                )}
+
+                {analysisData && analysisData.reportStatus === 'processing' && (
+                  <>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">
+                      {analysisData.totalPhotos > 0 && analysisData.analyzed + analysisData.needsAttention + analysisData.failed < analysisData.totalPhotos
+                        ? 'FLACRON ENGINE is analyzing your inspection'
+                        : 'Drafting your report'}
+                    </h1>
+                    {analysisData.totalPhotos > 0 && (
+                      <>
+                        <p className="text-gray-600 text-sm mb-4">
+                          {analysisData.analyzed} of {analysisData.totalPhotos} photos analyzed
+                          {analysisData.needsAttention > 0 && ` — ${analysisData.needsAttention} need${analysisData.needsAttention === 1 ? 's' : ''} attention`}
+                        </p>
+                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden max-w-sm mx-auto mb-6">
+                          <div className="h-full bg-gradient-to-r from-brand-500 to-amber-500 rounded-full transition-all"
+                            style={{ width: `${Math.round(((analysisData.analyzed + analysisData.needsAttention + analysisData.failed) / analysisData.totalPhotos) * 100)}%` }} />
+                        </div>
+                      </>
+                    )}
+                    {analysisData.generation?.status === 'analyzing' && (
+                      <p className="text-sm text-brand-600 font-medium flex items-center justify-center gap-2 mb-6">
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Generating your draft report with FLACRON ENGINE...
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mb-6">You can safely leave this page — analysis continues in the background. Come back anytime to see live progress.</p>
+                    <button onClick={() => setActiveView('reports')} className="btn-secondary text-sm py-2 px-4">
+                      View My Reports
+                    </button>
+                  </>
+                )}
+
+                {analysisData && analysisData.reportStatus === 'failed' && (
+                  <>
+                    <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
+                      <AlertCircle className="w-7 h-7 text-red-500" />
+                    </div>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">Analysis couldn't finish</h1>
+                    <p className="text-gray-600 text-sm mb-1">
+                      {analysisData.pipelineError || analysisData.generation?.error || 'FLACRON ENGINE was unable to complete this report.'}
+                    </p>
+                    {analysisData.needsAttention > 0 && (
+                      <p className="text-amber-600 text-sm mb-4">{analysisData.needsAttention} photo{analysisData.needsAttention === 1 ? '' : 's'} need attention.</p>
+                    )}
+                    <div className="flex items-center justify-center gap-3 mt-4">
+                      <button onClick={handleRetryAnalysis} disabled={retryingAnalysis}
+                        className="btn-primary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-50">
+                        {retryingAnalysis ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Retry Analysis
+                      </button>
+                      <button onClick={() => setActiveView('reports')} className="btn-secondary text-sm py-2 px-4">
+                        View My Reports
+                      </button>
+                    </div>
+                  </>
+                )}
+              </motion.div>
+            )}
+
             {activeView === 'generate' && (
               <motion.div key="generate" className="mx-auto max-w-5xl px-4 py-8 sm:p-6"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
@@ -991,7 +2499,7 @@ export default function Dashboard() {
                 {tier === 'starter' && (
                   <div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 flex items-center gap-3">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <p className="text-sm text-amber-800 font-medium">Starter plan reports include a FlacronAI watermark. <button onClick={() => navigate('/pricing')} className="underline font-semibold text-orange-600 hover:text-orange-700">Upgrade</button> to remove.</p>
+                    <p className="text-sm text-amber-800 font-medium">Starter plan reports include a FlacronAI watermark. <button onClick={() => navigate('/pricing')} className="underline font-semibold text-brand-600 hover:text-brand-700">Upgrade</button> to remove.</p>
                   </div>
                 )}
 
@@ -1014,16 +2522,20 @@ export default function Dashboard() {
                       {[1, 2, 3, 4, 5].map(s => (
                         <div key={s} className="flex items-center gap-1">
                           <button onClick={() => {
-                              if (s === 5 && photos.length === 0) {
+                              if (s > 1 && (!form.insuredName.trim() || !isValidEmail(form.insuredEmail))) {
+                                toast.error('Enter the claimant\'s name and a valid email before continuing.');
+                                return;
+                              }
+                              if (s === 5 && readyPhotoCount === 0) {
                                 toast.error('Upload at least one photo before continuing.');
                                 return;
                               }
                               setStep(s);
                             }}
                             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                              step >= s ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              step >= s ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}>{s}</button>
-                          {s < 5 && <div className={`h-0.5 w-8 ${step > s ? 'bg-orange-500' : 'bg-gray-200'}`} />}
+                          {s < 5 && <div className={`h-0.5 w-8 ${step > s ? 'bg-brand-500' : 'bg-gray-200'}`} />}
                         </div>
                       ))}
                       <span className="text-sm text-gray-500 ml-2">
@@ -1055,11 +2567,11 @@ export default function Dashboard() {
                                       setLinkedClaim(null); setLinkedClientName(''); setClaimMode('manual');
                                       toast.success(`${demo.label} template loaded!`);
                                     }}
-                                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-500/5 transition-all text-center group">
-                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors group-hover:bg-orange-50 group-hover:text-orange-500">
+                                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 transition-all text-center group">
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors group-hover:bg-brand-50 group-hover:text-brand-500">
                                       <demo.icon className="h-5 w-5" aria-hidden="true" />
                                     </span>
-                                    <span className="text-xs font-medium text-gray-700 group-hover:text-orange-500">{demo.label}</span>
+                                    <span className="text-xs font-medium text-gray-700 group-hover:text-brand-500">{demo.label}</span>
                                   </button>
                                 ))}
                               </div>
@@ -1094,6 +2606,31 @@ export default function Dashboard() {
                               )}
                             </div>
 
+                            {/* Report Templates (Phase 13: Real Template Builder) — full
+                                structural templates (sections/required fields/photo layout/
+                                branding), distinct from the field-only "My Templates" above. */}
+                            <div className="border-t border-gray-100 pt-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Start From a Report Template</p>
+                                <button onClick={() => navigate('/templates')} className="text-xs text-gray-400 hover:text-brand-600 underline">Manage templates</button>
+                              </div>
+                              {activeTemplate ? (
+                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-brand-300 bg-brand-500/5">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-brand-700 truncate">{activeTemplate.name}</p>
+                                    {activeTemplate.requiredFields?.length > 0 && (
+                                      <p className="text-[11px] text-gray-500 truncate">Requires: {activeTemplate.requiredFields.join(', ')}</p>
+                                    )}
+                                  </div>
+                                  <button onClick={handleClearTemplate} className="text-xs text-gray-400 hover:text-red-500 shrink-0">Clear</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setShowTemplatePicker(true)} className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5">
+                                  <FolderOpen className="w-3.5 h-3.5" /> Browse Templates
+                                </button>
+                              )}
+                            </div>
+
                             <div className="border-t border-gray-100 pt-4 space-y-4">
                               {(tier === 'agency' || tier === 'enterprise') ? (
                                 <div className="space-y-2">
@@ -1111,6 +2648,7 @@ export default function Dashboard() {
                                     <ClaimIdentityFields form={form} setForm={setForm} />
                                   ) : (
                                     <ClaimLinkSection linkedClaim={linkedClaim} linkedClientName={linkedClientName}
+                                      insuredEmail={form.insuredEmail} onEmailChange={(v) => setForm(p => ({ ...p, insuredEmail: v }))}
                                       onSelect={handleSelectClaim} onClear={handleClearClaim} lossTypes={LOSS_TYPES} />
                                   )}
                                 </div>
@@ -1142,12 +2680,100 @@ export default function Dashboard() {
                                 value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
                               {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="sm:col-span-2">
+                                <label className="label">Street Address <span className="font-normal text-gray-400">(optional)</span></label>
+                                <input className="input" placeholder="e.g. 1425 Maple Street" disabled={!!linkedClaim}
+                                  value={form.propertyStreet || ''} onChange={handleAddressPartChange('propertyStreet')} />
+                              </div>
+                              <div>
+                                <label className="label">City <span className="font-normal text-gray-400">(optional)</span></label>
+                                <input className="input" placeholder="e.g. Austin" disabled={!!linkedClaim}
+                                  value={form.propertyCity || ''} onChange={handleAddressPartChange('propertyCity')} />
+                              </div>
+                              <div>
+                                <label className="label">State <span className="font-normal text-gray-400">(optional)</span></label>
+                                <input className="input" placeholder="e.g. TX" disabled={!!linkedClaim}
+                                  value={form.propertyState || ''} onChange={handleAddressPartChange('propertyState')} />
+                              </div>
+                              <div>
+                                <label className="label">ZIP Code <span className="font-normal text-gray-400">(optional)</span></label>
+                                <input className="input" placeholder="e.g. 78701" disabled={!!linkedClaim}
+                                  value={form.propertyZip || ''} onChange={handleAddressPartChange('propertyZip')} />
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-400 -mt-2">Fill these in for a structured record — they'll fill Property Address above automatically if it's still empty.</p>
                             <div>
                               <label className="label">Property Description</label>
                               <textarea className="input min-h-[160px] resize-y"
                                 placeholder="Describe the property — e.g.: 2-story single-family home, built in 1998, approx 2,200 sq ft. Brick veneer exterior, wood frame. 3 bedrooms, 2.5 bathrooms. Recently renovated kitchen..."
                                 value={form.propertyDetails} onChange={e => setForm(p => ({ ...p, propertyDetails: e.target.value }))} />
                               <p className="text-xs text-gray-400 mt-1">Include construction type, age, size, number of rooms, and any relevant features</p>
+                            </div>
+
+                            <div className="border-t border-gray-100 pt-4">
+                              <h3 className="text-sm font-semibold text-gray-900 mb-1">Inspection Details</h3>
+                              <p className="text-xs text-gray-400 mb-3">Optional — details about the site visit itself</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="label">Inspection Date</label>
+                                  <input type="date" className="input" value={form.inspectionDate || ''}
+                                    onChange={e => setForm(p => ({ ...p, inspectionDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="label">Inspection Time</label>
+                                  <input type="time" className="input" value={form.inspectionTime || ''}
+                                    onChange={e => setForm(p => ({ ...p, inspectionTime: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="label">Inspector Name</label>
+                                  <input className="input" placeholder="e.g. Jane Doe" value={form.inspectorName || ''}
+                                    onChange={e => setForm(p => ({ ...p, inspectorName: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="label">Inspector ID / License #</label>
+                                  <input className="input" placeholder="e.g. ADJ-10293" value={form.inspectorId || ''}
+                                    onChange={e => setForm(p => ({ ...p, inspectorId: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="label">Inspection Type</label>
+                                  <select className="input" value={form.inspectionType || 'Interior & Exterior'}
+                                    onChange={e => setForm(p => ({ ...p, inspectionType: e.target.value }))}>
+                                    {INSPECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="label">Weather Conditions</label>
+                                  <select className="input" value={form.weatherConditions || ''}
+                                    onChange={e => setForm(p => ({ ...p, weatherConditions: e.target.value }))}>
+                                    <option value="">Select...</option>
+                                    {WEATHER_CONDITIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="label">Occupancy Status</label>
+                                  <select className="input" value={form.occupancyStatus || 'Occupied'}
+                                    onChange={e => setForm(p => ({ ...p, occupancyStatus: e.target.value }))}>
+                                    {OCCUPANCY_STATUSES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="label">Contact Present During Inspection</label>
+                                  <select className="input" value={form.contactPresent || ''}
+                                    onChange={e => setForm(p => ({ ...p, contactPresent: e.target.value }))}>
+                                    <option value="">Select...</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                  </select>
+                                </div>
+                                {form.contactPresent === 'Yes' && (
+                                  <div className="sm:col-span-2">
+                                    <label className="label">Contact Name</label>
+                                    <input className="input" placeholder="Name of person present" value={form.contactName || ''}
+                                      onChange={e => setForm(p => ({ ...p, contactName: e.target.value }))} />
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </motion.div>
                         )}
@@ -1192,41 +2818,249 @@ export default function Dashboard() {
                           <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                             <div className="flex items-center justify-between mb-4">
                               <div>
-                                <h2 className="text-lg font-semibold text-gray-900">Upload Photos</h2>
-                                <p className="text-xs text-gray-500 mt-0.5">Required — upload at least one damage photo for analysis</p>
+                                <h2 className="text-lg font-semibold text-gray-900">Upload Photos & Documents</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">Photos required — upload at least one damage photo for analysis</p>
                               </div>
-                              <span className="text-sm text-gray-500">{photos.length} / 100</span>
+                              <div className="text-right">
+                                <span className="text-sm text-gray-500">{photos.length} / {MAX_PHOTOS}</span>
+                                {(photoFailedCount > 0 || photoDuplicateCount > 0) && (
+                                  <p className="text-[11px] text-gray-400 mt-0.5">
+                                    {readyPhotoCount} ready
+                                    {photoFailedCount > 0 && ` · ${photoFailedCount} failed`}
+                                    {photoDuplicateCount > 0 && ` · ${photoDuplicateCount} duplicate`}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <div
-                              className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer ${
-                                dragging ? 'border-orange-500 bg-orange-500/10' : 'border-gray-200 hover:border-orange-400 hover:bg-orange-500/5'
-                              }`}
-                              onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                              onDragLeave={() => setDragging(false)}
-                              onDrop={handleDrop}
-                              onClick={() => fileInputRef.current?.click()}>
-                              <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                              <p className="text-gray-700 font-medium">Drag & drop damage photos here</p>
-                              <p className="text-gray-500 text-sm mt-1">or click to browse — up to 100 photos, 10MB each</p>
-                              <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
-                                onChange={e => handlePhotoAdd(e.target.files)} />
+
+                            {/* Mobile/desktop explicit capture choice (Phase 6 addendum) --
+                                distinct from the drag-and-drop area below, so a mobile user can
+                                deliberately choose the camera vs. an existing photo, per spec. */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <button type="button" disabled={photos.length >= MAX_PHOTOS}
+                                onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } cameraInputRef.current?.click(); }}
+                                className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                <Camera className="w-4 h-4" /> Take Photo
+                              </button>
+                              <button type="button" disabled={photos.length >= MAX_PHOTOS}
+                                onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } fileInputRef.current?.click(); }}
+                                className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                <FolderOpen className="w-4 h-4" /> Choose From Library
+                              </button>
+                              {/* capture="environment" opens the rear camera directly on mobile
+                                  browsers that support it; on desktop it's ignored and behaves
+                                  like a normal file picker. Kept as a SEPARATE input from the
+                                  library one so the two buttons trigger genuinely distinct pickers. */}
+                              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" disabled={photos.length >= MAX_PHOTOS}
+                                onChange={e => { handlePhotoAdd(e.target.files); e.target.value = ''; }} />
                             </div>
                             {photos.length > 0 && (
-                              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-4">
-                                {photos.map((p, i) => (
-                                  <div key={i} className="relative group aspect-square">
-                                    <img src={p.url} alt={p.name} className="w-full h-full object-cover rounded-lg" />
-                                    <button onClick={() => removePhoto(i)} aria-label={`Remove photo ${i + 1}`} title="Remove photo"
+                              <p className="text-xs text-gray-400 -mt-1 mb-3">Tip: tap "Take Photo" again to keep capturing more without leaving this screen.</p>
+                            )}
+
+                            <div
+                              className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all ${
+                                photos.length >= MAX_PHOTOS ? 'opacity-50 cursor-not-allowed border-gray-200' :
+                                  dragging ? 'border-brand-500 bg-brand-500/10 cursor-pointer' : 'border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 cursor-pointer'
+                              }`}
+                              onDragOver={e => { e.preventDefault(); if (photos.length < MAX_PHOTOS) setDragging(true); }}
+                              onDragLeave={() => setDragging(false)}
+                              onDrop={e => { if (photos.length >= MAX_PHOTOS) { e.preventDefault(); toast.error(MAX_PHOTOS_MESSAGE); return; } handleDrop(e); }}
+                              onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } fileInputRef.current?.click(); }}>
+                              <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                              <p className="text-gray-700 font-medium">Drag & drop damage photos here</p>
+                              <p className="text-gray-500 text-sm mt-1">or click to browse — up to {MAX_PHOTOS} photos, 10MB each</p>
+                              <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" disabled={photos.length >= MAX_PHOTOS}
+                                onChange={e => { handlePhotoAdd(e.target.files); e.target.value = ''; }} />
+                            </div>
+                            {photos.length >= MAX_PHOTOS && (
+                              <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {MAX_PHOTOS_MESSAGE}</p>
+                            )}
+
+                            {photos.length > 0 && (
+                              <div className="flex items-center justify-between gap-2 mt-4 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <button type="button" onClick={selectedPhotoIds.length === photos.length ? clearPhotoSelection : selectAllPhotos}
+                                    className="text-xs font-medium text-gray-600 hover:text-brand-600 flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                                    {selectedPhotoIds.length === photos.length ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                                    {selectedPhotoIds.length === photos.length ? 'Deselect All' : 'Select All'}
+                                  </button>
+                                  {selectedPhotoIds.length > 0 && (
+                                    <button type="button" onClick={removeSelectedPhotos}
+                                      className="text-xs font-medium text-red-600 hover:text-red-700 flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                                      <Trash2 className="w-3.5 h-3.5" /> Remove Selected ({selectedPhotoIds.length})
+                                    </button>
+                                  )}
+                                  {photos.some(p => p.status === 'corrupt') && (
+                                    <button type="button" onClick={retryFailedPhotos}
+                                      className="text-xs font-medium text-gray-600 hover:text-brand-600 flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                                      <RefreshCw className="w-3.5 h-3.5" /> Retry Failed Uploads
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                                  <button type="button" onClick={() => setPhotoView('grid')} aria-label="Grid view" title="Grid view"
+                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'grid' ? 'bg-white shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                                    <LayoutGrid className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => setPhotoView('list')} aria-label="List view" title="List view"
+                                    className={`p-1.5 rounded-md transition-colors ${photoView === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                                    <List className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {photos.length > 0 && photoView === 'grid' && (
+                              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
+                                {photos.map(p => (
+                                  <div key={p.id}
+                                    ref={(node) => wizardPhotoReorder.registerNode(p.id, node)}
+                                    className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-shadow ${
+                                    selectedPhotoIds.includes(p.id) ? 'border-brand-500' : 'border-transparent'} ${
+                                    wizardPhotoReorder.overId === p.id && wizardPhotoReorder.draggingId && wizardPhotoReorder.draggingId !== p.id ? 'ring-2 ring-brand-500' : ''} ${
+                                    wizardPhotoReorder.draggingId === p.id ? 'opacity-50' : ''}`}>
+                                    <button type="button" onClick={() => p.status !== 'checking' && setPreviewPhotoId(p.id)}
+                                      className="w-full h-full block" aria-label={`Preview ${p.name}`} title="Click to preview">
+                                      <img src={p.url} alt={p.name} className={`w-full h-full object-cover ${p.status === 'corrupt' ? 'opacity-40' : ''}`} />
+                                    </button>
+                                    <div className="absolute top-1 left-1 flex items-center gap-1">
+                                      {photos.length > 1 && (
+                                        <span {...wizardPhotoReorder.getHandleProps(p.id)} aria-label={`Drag to reorder ${p.name}`} title="Drag to reorder"
+                                          className="w-5 h-5 rounded bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <GripVertical className="w-3.5 h-3.5" />
+                                        </span>
+                                      )}
+                                      <button onClick={() => toggleSelectPhoto(p.id)} aria-label={`Select ${p.name}`} title="Select"
+                                        className="w-5 h-5 rounded bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {selectedPhotoIds.includes(p.id) ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                                      </button>
+                                    </div>
+                                    <button onClick={() => removePhoto(p.id)} aria-label={`Remove photo ${p.name}`} title="Remove photo"
                                       className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                       <X className="w-3 h-3 text-white" />
                                     </button>
+                                    {p.status === 'ready' && (
+                                      <button onClick={() => rotatePhoto(p.id)} aria-label={`Rotate ${p.name}`} title="Rotate 90°"
+                                        className="absolute bottom-1 left-1 w-5 h-5 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <RotateCw className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                    <div className="absolute bottom-1 right-1 flex items-center gap-1">
+                                      <QualityWarningBadge qualityWarning={p.qualityWarning} qualityReasons={p.qualityReasons} compact />
+                                      <PhotoStatusBadge status={p.status} compact />
+                                    </div>
                                   </div>
                                 ))}
                               </div>
                             )}
-                            {photos.length === 0 && (
+
+                            {photos.length > 0 && photoView === 'list' && (
+                              <ul className="mt-3 space-y-1.5">
+                                {photos.map(p => (
+                                  <li key={p.id}
+                                    ref={(node) => wizardPhotoReorder.registerNode(p.id, node)}
+                                    className={`flex items-center gap-3 p-2 rounded-xl border bg-gray-50 transition-shadow ${
+                                    wizardPhotoReorder.overId === p.id && wizardPhotoReorder.draggingId && wizardPhotoReorder.draggingId !== p.id ? 'border-brand-500 ring-2 ring-brand-500' : 'border-gray-100'} ${
+                                    wizardPhotoReorder.draggingId === p.id ? 'opacity-50' : ''}`}>
+                                    {photos.length > 1 && (
+                                      <span {...wizardPhotoReorder.getHandleProps(p.id)} aria-label={`Drag to reorder ${p.name}`} title="Drag to reorder"
+                                        className="shrink-0 text-gray-400 hover:text-brand-600">
+                                        <GripVertical className="w-4 h-4" />
+                                      </span>
+                                    )}
+                                    <button onClick={() => toggleSelectPhoto(p.id)} aria-label={`Select ${p.name}`} title="Select" className="shrink-0 text-gray-400 hover:text-brand-600">
+                                      {selectedPhotoIds.includes(p.id) ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
+                                    </button>
+                                    <button type="button" onClick={() => p.status !== 'checking' && setPreviewPhotoId(p.id)} title="Click to preview" className="shrink-0">
+                                      <img src={p.url} alt={p.name} className={`w-10 h-10 rounded-lg object-cover ${p.status === 'corrupt' ? 'opacity-40' : ''}`} />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                                      <p className="text-xs text-gray-500">{formatFileSize(p.size)}{p.error ? ` — ${p.error}` : ''}</p>
+                                    </div>
+                                    <QualityWarningBadge qualityWarning={p.qualityWarning} qualityReasons={p.qualityReasons} />
+                                    <PhotoStatusBadge status={p.status} />
+                                    {p.status === 'ready' && (
+                                      <button onClick={() => rotatePhoto(p.id)} aria-label={`Rotate ${p.name}`} title="Rotate 90°"
+                                        className="w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 shrink-0 transition-colors">
+                                        <RotateCw className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    <button onClick={() => removePhoto(p.id)} aria-label={`Remove ${p.name}`} title="Remove photo"
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 shrink-0 transition-colors">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {readyPhotoCount === 0 && (
                               <p className="text-xs text-red-400 mt-2">At least one photo is required to continue</p>
                             )}
+
+                            {previewPhoto && (
+                              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true"
+                                onClick={() => setPreviewPhotoId(null)}>
+                                <div className="relative max-w-3xl max-h-[85vh] w-full" onClick={e => e.stopPropagation()}>
+                                  <img src={previewPhoto.url} alt={previewPhoto.name} className="w-full h-full max-h-[75vh] object-contain rounded-xl bg-black" />
+                                  <div className="flex items-center justify-between mt-3 text-white">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate">{previewPhoto.name}</p>
+                                      <p className="text-xs text-gray-300">{formatFileSize(previewPhoto.size)}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {previewPhoto.status === 'ready' && (
+                                        <button onClick={() => rotatePhoto(previewPhoto.id)} className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
+                                          <RotateCw className="w-3.5 h-3.5" /> Rotate
+                                        </button>
+                                      )}
+                                      <button onClick={() => setPreviewPhotoId(null)} className="btn-secondary text-xs py-1.5 px-3">Close</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-8 pt-6 border-t border-gray-100">
+                              <div className="flex items-center justify-between mb-3">
+                                <div>
+                                  <h3 className="text-sm font-semibold text-gray-900">Supporting Documents <span className="font-normal text-gray-400">(optional)</span></h3>
+                                  <p className="text-xs text-gray-500 mt-0.5">Policy documents, estimates, prior reports — PDF, Word, or plain text</p>
+                                </div>
+                                <span className="text-sm text-gray-500">{documents.length} / {MAX_DOCUMENTS}</span>
+                              </div>
+                              <div
+                                className="border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer border-gray-200 hover:border-brand-400 hover:bg-brand-500/5"
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={handleDocumentDrop}
+                                onClick={() => docInputRef.current?.click()}>
+                                <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                                <p className="text-gray-700 text-sm font-medium">Drag & drop documents here</p>
+                                <p className="text-gray-500 text-xs mt-1">or click to browse — PDF, DOC, DOCX, or TXT, up to 10MB each</p>
+                                <input ref={docInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt" className="hidden"
+                                  onChange={e => handleDocumentAdd(e.target.files)} />
+                              </div>
+                              {documents.length > 0 && (
+                                <ul className="mt-3 space-y-2">
+                                  {documents.map((d, i) => (
+                                    <li key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 bg-gray-50">
+                                      <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium text-gray-900 truncate">{d.name}</p>
+                                        <p className="text-xs text-gray-500">{formatFileSize(d.size)}</p>
+                                      </div>
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20 shrink-0">Ready</span>
+                                      <button onClick={() => removeDocument(i)} aria-label={`Remove ${d.name}`} title="Remove document"
+                                        className="w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 shrink-0 transition-colors">
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           </motion.div>
                         )}
 
@@ -1240,12 +3074,22 @@ export default function Dashboard() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
                               {[
                                 ['Claim Number', form.claimNumber],
+                                ['Policy Number', form.policyNumber || 'Not provided', Boolean(form.policyNumber)],
                                 ['Insured Name', form.insuredName],
+                                ['Insured Email', form.insuredEmail],
+                                ['Insurance Company', form.insuranceCompany || 'Not provided', Boolean(form.insuranceCompany)],
                                 ['Property Address', form.propertyAddress],
+                                ['Claim Type', form.claimType || 'Property'],
                                 ['Loss Date', form.lossDate],
                                 ['Loss Type', form.lossType],
+                                ['Property Type', form.propertyType || 'Single-Family Home'],
                                 ['Report Type', form.reportType],
-                                ['Photos', `${photos.length} uploaded`],
+                                ['Inspector', form.inspectorName || 'Not provided', Boolean(form.inspectorName)],
+                                ['Inspection Date', form.inspectionDate || 'Not provided', Boolean(form.inspectionDate)],
+                                ['Photos', photos.length > readyPhotoCount
+                                  ? `${readyPhotoCount} ready (${photos.length - readyPhotoCount} excluded)`
+                                  : `${readyPhotoCount} uploaded`],
+                                ['Documents', `${documents.length} attached`],
                                 ['Property Description', form.propertyDetails ? 'Provided' : 'Not provided', Boolean(form.propertyDetails)],
                                 ['Loss Description', form.lossDescription ? 'Provided' : 'Not provided', Boolean(form.lossDescription)],
                                 ['Damages Observed', form.damagesObserved ? 'Provided' : 'Not provided', Boolean(form.damagesObserved)],
@@ -1272,25 +3116,35 @@ export default function Dashboard() {
                                 Starter plan: PDF only with FlacronAI watermark. <button onClick={() => navigate('/pricing')} className="underline font-semibold ml-1">Upgrade to remove</button>
                               </div>
                             )}
-                            <button onClick={handleGenerate} disabled={!canGenerate || generating || !form.claimNumber || !form.insuredName}
+                            <button onClick={handleGenerate} disabled={!canGenerate || generating || !form.claimNumber || !form.insuredName.trim() || !isValidEmail(form.insuredEmail)}
                               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed py-3 text-base">
                               <Zap className="w-5 h-5" /> Generate Report
                             </button>
-                            {(!form.claimNumber || !form.insuredName) && (
-                              <p className="text-xs text-red-400 mt-2 text-center">Claim Number and Insured Name are required</p>
+                            {(!form.claimNumber || !form.insuredName.trim() || !isValidEmail(form.insuredEmail)) && (
+                              <p className="text-xs text-red-400 mt-2 text-center">Claim Number, Insured Name, and a valid Insured Email are required</p>
                             )}
                           </motion.div>
                         )}
                       </AnimatePresence>
 
-                      <div className="flex justify-between mt-6">
+                      <div className="flex items-center justify-between mt-6 mb-2">
+                        <button type="button" onClick={handleSaveDraft}
+                          className="text-xs font-medium text-gray-500 hover:text-brand-600 flex items-center gap-1.5 transition-colors">
+                          <Save className="w-3.5 h-3.5" /> Save Draft
+                        </button>
+                        <span className="text-xs text-gray-400">
+                          {lastSavedAt ? `Saved ${lastSavedAt}` : 'Claim & inspection fields are auto-saved as you go'}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between">
                         <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
                           className="btn-secondary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-30">
                           <ChevronLeft className="w-4 h-4" /> Back
                         </button>
                         {step < 5 && (
                           <button onClick={() => setStep(s => Math.min(5, s + 1))}
-                            disabled={step === 4 && photos.length === 0}
+                            disabled={(step === 1 && (!form.insuredName.trim() || !isValidEmail(form.insuredEmail))) || (step === 4 && readyPhotoCount === 0)}
                             className="btn-primary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed">
                             Next <ChevronRight className="w-4 h-4" />
                           </button>
@@ -1306,22 +3160,38 @@ export default function Dashboard() {
                     <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
                       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                       <div className="card p-8 max-w-md w-full text-center">
-                        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-orange-500/20 flex items-center justify-center">
-                          <Zap className="w-8 h-8 text-orange-400 animate-pulse" />
+                        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-brand-500/20 flex items-center justify-center">
+                          <Zap className="w-8 h-8 text-brand-400 animate-pulse" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 mb-2">Generating Your Report</h2>
-                        <p className="text-gray-600 text-sm mb-6">Please wait while the Flacron Engine processes your claim...</p>
+                        <p className="text-gray-600 text-sm mb-6">Please wait while the FLACRON ENGINE processes your claim...</p>
                         <div className="space-y-3">
                           {genSteps.map((s, i) => (
-                            <div key={i} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                              i < genStep ? 'bg-green-500/10 text-green-400' :
-                              i === genStep ? 'bg-orange-500/10 text-orange-400' :
-                              'bg-gray-100 text-gray-500'
-                            }`}>
-                              {i < genStep ? <CheckCircle className="w-4 h-4 shrink-0" /> :
-                               i === genStep ? <RefreshCw className="w-4 h-4 shrink-0 animate-spin" /> :
-                               <Clock className="w-4 h-4 shrink-0" />}
-                              <span className="text-sm font-medium">{s}</span>
+                            <div key={i}>
+                              <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                                i < genStep ? 'bg-green-500/10 text-green-400' :
+                                i === genStep ? 'bg-brand-500/10 text-brand-400' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>
+                                {i < genStep ? <CheckCircle className="w-4 h-4 shrink-0" /> :
+                                 i === genStep ? <RefreshCw className="w-4 h-4 shrink-0 animate-spin" /> :
+                                 <Clock className="w-4 h-4 shrink-0" />}
+                                <span className="text-sm font-medium">{s}</span>
+                              </div>
+                              {/* Phase 6 addendum: real per-photo upload progress, driven by
+                                  actual bytes sent -- not a fake timer. Only shown during the
+                                  live "Uploading photos..." step. */}
+                              {i === 0 && i === genStep && readyPhotoCount > 0 && (
+                                <div className="px-3 pb-1 pt-1">
+                                  <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+                                    <span>Photo {Math.min(readyPhotoCount, Math.max(1, Math.ceil((uploadPercent / 100) * readyPhotoCount)))} of {readyPhotoCount}</span>
+                                    <span>{uploadPercent}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                                    <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${uploadPercent}%` }} />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1340,13 +3210,13 @@ export default function Dashboard() {
                       <div className="card p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                           <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-orange-500" />
+                            <FileText className="w-4 h-4 text-brand-500" />
                             <h2 className="text-sm font-semibold text-gray-900">PDF Preview</h2>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             {generatedReport.qualityScore && (
                               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30"
-                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the FLACRON ENGINE's findings.">
                                 Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
@@ -1367,7 +3237,7 @@ export default function Dashboard() {
 
                         {previewing && !pdfPreviewUrl && (
                           <div className="flex flex-col items-center justify-center py-16 gap-3 bg-gray-50 rounded-xl border border-gray-200">
-                            <RefreshCw className="w-8 h-8 text-orange-500 animate-spin" />
+                            <RefreshCw className="w-8 h-8 text-brand-500 animate-spin" />
                             <p className="text-sm text-gray-500 font-medium">Rendering PDF...</p>
                           </div>
                         )}
@@ -1407,9 +3277,23 @@ export default function Dashboard() {
                         </div>
                         <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
                       </div>
+
+                      {/* Phase 8 (Per-Photo Analysis Review UI) -- edit/approve/exclude/note
+                          each photo's AI observation, then regenerate the report to reflect it. */}
+                      {generatedReport.imageCount > 0 && (
+                        <div className="card p-4">
+                          <h2 className="text-sm font-semibold text-gray-900 mb-1">Photo Review</h2>
+                          <p className="text-xs text-gray-500 mb-3">Edit, approve, or exclude each photo&apos;s FLACRON ENGINE observation, then regenerate the report to use your changes.</p>
+                          <ReportPhotoGallery reportId={generatedReport.id} interactive onRegenerated={handleReportRegenerated} onPhotosChange={setReviewPhotos} />
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-4">
+                      {/* Pre-approval review checklist (Phase 10) */}
+                      <div className="card p-4">
+                        <ReportReviewChecklist report={generatedReport} photos={generatedReport.imageCount > 0 ? reviewPhotos : []} />
+                      </div>
                       {/* Human-review gate (Golden Rule #3) */}
                       <div className={`card p-4 border ${reportReviewed ? 'border-green-200' : 'border-amber-300 bg-amber-50/40'}`}>
                         <div className="flex items-center gap-2 mb-2">
@@ -1468,7 +3352,7 @@ export default function Dashboard() {
                                 className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
                               <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that automatically generated content must be independently verified.</span>
                             </label>
-                            <button onClick={handleApprove} disabled={approving}
+                            <button onClick={handleApproveClick} disabled={approving}
                               className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
                               {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
                             </button>
@@ -1501,7 +3385,11 @@ export default function Dashboard() {
                         )}
                       </div>
                       <div className="card p-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Export Options</h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-gray-700">Export Options</h3>
+                          <button onClick={() => setShowExportModal(true)}
+                            className="text-xs font-semibold text-brand-600 hover:text-brand-700">Customize…</button>
+                        </div>
                         <div className="space-y-2">
                           {['pdf', 'docx', 'html'].map(fmt => {
                             const allowed = allowedExports.includes(fmt);
@@ -1512,7 +3400,7 @@ export default function Dashboard() {
                               </button>
                             ) : (
                               <button key={fmt} onClick={() => navigate('/pricing')}
-                                className="w-full text-sm py-2 flex items-center gap-2 justify-center border border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-orange-300 hover:text-orange-500 transition-colors">
+                                className="w-full text-sm py-2 flex items-center gap-2 justify-center border border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-brand-300 hover:text-brand-500 transition-colors">
                                 <Lock className="w-3.5 h-3.5" /> {fmt.toUpperCase()} — Upgrade
                               </button>
                             );
@@ -1524,6 +3412,10 @@ export default function Dashboard() {
                       </div>
                       <div className="card p-4">
                         <h3 className="text-sm font-semibold text-gray-700 mb-3">Actions</h3>
+                        <button onClick={() => navigate(`/reports/${generatedReport.id}/preview`)}
+                          className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center mb-2">
+                          <Eye className="w-4 h-4" /> Open Full Preview
+                        </button>
                         <button onClick={() => { setGeneratedReport(null); setPdfPreviewUrl(null); setStep(1); }}
                           className="w-full btn-primary text-sm py-2 flex items-center gap-2 justify-center">
                           <Zap className="w-4 h-4" /> Generate New Report
@@ -1544,13 +3436,18 @@ export default function Dashboard() {
                     <p className="text-gray-600 text-sm mt-1">View and manage all generated reports</p>
                   </div>
                   {selectedIds.length > 0 && (
-                    <button onClick={handleBulkDelete} className="btn-danger text-sm py-2 flex items-center gap-2">
-                      <Trash2 className="w-4 h-4" /> Delete Selected ({selectedIds.length})
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleBulkArchive} className="btn-secondary text-sm py-2 flex items-center gap-2">
+                        <Archive className="w-4 h-4" /> Archive Selected ({selectedIds.length})
+                      </button>
+                      <button onClick={handleBulkDelete} className="btn-danger text-sm py-2 flex items-center gap-2">
+                        <Trash2 className="w-4 h-4" /> Delete Selected ({selectedIds.length})
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <div className="flex flex-col sm:flex-row gap-3 mb-3">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                     <input className="input pl-10" placeholder="Search by claim number or insured name..."
@@ -1560,7 +3457,69 @@ export default function Dashboard() {
                     onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
                     {STATUSES.map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                   </select>
+                  <button type="button" onClick={() => setShowMoreFilters(v => !v)}
+                    className="btn-secondary text-sm py-2 px-3 flex items-center gap-2 shrink-0">
+                    <SlidersHorizontal className="w-4 h-4" /> Filters
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMoreFilters ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
+
+                {/* Phase 12: report type / creator / date range / organization / claim
+                    number -- collapsed by default so the list keeps its existing simple
+                    look until a reviewer actually needs the extra filters. */}
+                {showMoreFilters && (
+                  <div className="card p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Claim #</label>
+                      <input className="input" placeholder="e.g. CLM-2024-001" value={claimNumberFilter}
+                        onChange={e => { setClaimNumberFilter(e.target.value); setPage(1); }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Loss Type</label>
+                      <select className="input" value={lossTypeFilter} onChange={e => { setLossTypeFilter(e.target.value); setPage(1); }}>
+                        <option value="">All Loss Types</option>
+                        {LOSS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Report Type</label>
+                      <select className="input" value={reportTypeFilter} onChange={e => { setReportTypeFilter(e.target.value); setPage(1); }}>
+                        <option value="">All Report Types</option>
+                        {REPORT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Creator</label>
+                      <input className="input" placeholder="Creator email" value={creatorFilter}
+                        onChange={e => { setCreatorFilter(e.target.value); setPage(1); }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Created From</label>
+                      <input type="date" className="input" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Created To</label>
+                      <input type="date" className="input" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+                    </div>
+                    {['agency', 'enterprise'].includes(tier) && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Organization</label>
+                        <select className="input" value={clientFilter} onChange={e => { setClientFilter(e.target.value); setPage(1); }}>
+                          <option value="">All Organizations</option>
+                          {crmClientOptions.map(c => <option key={c.id || c._id} value={c.id || c._id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="flex items-end">
+                      <button type="button" onClick={() => {
+                        setClaimNumberFilter(''); setLossTypeFilter(''); setReportTypeFilter('');
+                        setCreatorFilter(''); setDateFrom(''); setDateTo(''); setClientFilter(''); setPage(1);
+                      }} className="text-sm text-gray-500 hover:text-gray-700 underline">
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="card overflow-hidden">
                   <div className="overflow-x-auto">
@@ -1572,15 +3531,15 @@ export default function Dashboard() {
                               onClick={() => setSelectedIds(selectedIds.length === reports.length && reports.length > 0 ? [] : reports.map(r => r.id))}
                               className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-colors cursor-pointer ${
                                 selectedIds.length === reports.length && reports.length > 0
-                                  ? 'bg-orange-500 border-orange-500'
+                                  ? 'bg-brand-500 border-brand-500'
                                   : selectedIds.length > 0
-                                    ? 'bg-orange-200 border-orange-400'
-                                    : 'border-gray-300 hover:border-orange-400 bg-white'
+                                    ? 'bg-brand-200 border-brand-400'
+                                    : 'border-gray-300 hover:border-brand-400 bg-white'
                               }`}
                             >
                               {selectedIds.length === reports.length && reports.length > 0 && <Check className="w-3 h-3 text-white" />}
                               {selectedIds.length > 0 && selectedIds.length < reports.length && (
-                                <div className="w-2.5 h-0.5 rounded-full bg-orange-500" />
+                                <div className="w-2.5 h-0.5 rounded-full bg-brand-500" />
                               )}
                             </button>
                           </th>
@@ -1617,20 +3576,20 @@ export default function Dashboard() {
                         ) : reports.map(r => (
                           <motion.tr key={r.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                             className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer"
-                            onClick={() => setDetailReport(r)}>
+                            onClick={() => openReport(r)}>
                             <td className="px-4 py-3 w-10" onClick={e => e.stopPropagation()}>
                               <button
                                 onClick={() => toggleSelect(r.id)}
                                 className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-colors cursor-pointer ${
                                   selectedIds.includes(r.id)
-                                    ? 'bg-orange-500 border-orange-500'
-                                    : 'border-gray-300 hover:border-orange-400 bg-white'
+                                    ? 'bg-brand-500 border-brand-500'
+                                    : 'border-gray-300 hover:border-brand-400 bg-white'
                                 }`}
                               >
                                 {selectedIds.includes(r.id) && <Check className="w-3 h-3 text-white" />}
                               </button>
                             </td>
-                            <td className="px-4 py-3 text-sm font-mono text-orange-700">{r.claimNumber}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-brand-700">{r.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{r.insuredName}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{r.lossType}</td>
@@ -1639,16 +3598,38 @@ export default function Dashboard() {
                             </td>
                             <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
-                                <button onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
-                                  aria-label="Review and edit report" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
-                                  <ShieldCheck className="w-4 h-4 text-amber-600" />
-                                </button>
-                                <button onClick={() => setDetailReport(r)} aria-label="View report details" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
-                                  <Eye className="w-4 h-4 text-gray-600" />
-                                </button>
-                                <button onClick={() => handleDeleteReport(r.id)} aria-label="Delete report" className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
-                                  <Trash2 className="w-4 h-4 text-red-400" />
-                                </button>
+                                {r.status === 'processing' ? (
+                                  <button onClick={() => openReport(r)} aria-label="View analysis progress" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View progress">
+                                    <RefreshCw className="w-4 h-4 text-brand-600" />
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button onClick={() => { setGeneratedReport(r); setPdfPreviewUrl(null); setActiveView('generate'); autoPreviewPDF(r); }}
+                                      aria-label="Review and edit report" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Review &amp; edit">
+                                      <ShieldCheck className="w-4 h-4 text-amber-600" />
+                                    </button>
+                                    <button onClick={() => setDetailReport(r)} aria-label="View report details" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="View">
+                                      <Eye className="w-4 h-4 text-gray-600" />
+                                    </button>
+                                    <button onClick={() => navigate(`/reports/${r.id}/preview`)} aria-label="Open full preview" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Full preview">
+                                      <ExternalLink className="w-4 h-4 text-gray-600" />
+                                    </button>
+                                  </>
+                                )}
+                                <RowActionsMenu
+                                  report={r}
+                                  isOpen={openRowMenuId === r.id}
+                                  onToggle={() => setOpenRowMenuId(prev => (prev === r.id ? null : r.id))}
+                                  onClose={() => setOpenRowMenuId(null)}
+                                  duplicating={duplicatingId === r.id}
+                                  sharing={sharingRowId === r.id}
+                                  onDuplicate={() => { setOpenRowMenuId(null); handleDuplicateReport(r.id); }}
+                                  onDownload={() => { setOpenRowMenuId(null); handleDownloadReport(r); }}
+                                  onShare={() => { setOpenRowMenuId(null); handleShareReport(r); }}
+                                  onArchive={() => { setOpenRowMenuId(null); handleArchiveReport(r.id); }}
+                                  onRestore={() => { setOpenRowMenuId(null); handleRestoreReport(r.id); }}
+                                  onDelete={() => { setOpenRowMenuId(null); handleDeleteReport(r.id); }}
+                                />
                               </div>
                             </td>
                           </motion.tr>
@@ -1686,7 +3667,7 @@ export default function Dashboard() {
                   <h2 className="text-base font-semibold text-gray-900 mb-4">This Month's Usage</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
                     {[
-                      { label: 'Reports Used', value: usedThisMonth, color: 'text-orange-500' },
+                      { label: 'Reports Used', value: usedThisMonth, color: 'text-brand-500' },
                       { label: 'Reports Limit', value: tierLimit === -1 ? '∞' : tierLimit, color: 'text-gray-900' },
                       { label: 'Remaining', value: reportsRemaining === -1 ? '∞' : reportsRemaining, color: 'text-green-600' },
                       { label: 'Current Plan', value: tier.charAt(0).toUpperCase() + tier.slice(1), color: 'text-blue-600' },
@@ -1702,7 +3683,7 @@ export default function Dashboard() {
                     <span>{usagePercent}%</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-yellow-500' : 'bg-orange-500'}`}
+                    <div className={`h-full rounded-full transition-all ${usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-amber-500' : 'bg-brand-500'}`}
                       style={{ width: `${usagePercent}%` }} />
                   </div>
                   {usagePercent >= 80 && (
@@ -1718,7 +3699,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between flex-wrap gap-4">
                     <div>
                       <h2 className="text-base font-semibold text-gray-900">Current Plan</h2>
-                      <p className="text-2xl font-bold text-orange-500 mt-1">{tier.charAt(0).toUpperCase() + tier.slice(1)}</p>
+                      <p className="text-2xl font-bold text-brand-500 mt-1">{tier.charAt(0).toUpperCase() + tier.slice(1)}</p>
                       <p className="text-sm text-gray-500 mt-0.5">
                         {tierLimit === -1 ? 'Unlimited reports per month' : `${tierLimit} report${tierLimit !== 1 ? 's' : ''} per month`}
                       </p>
@@ -1728,7 +3709,7 @@ export default function Dashboard() {
                     ) : billingError ? (
                       <div className="text-right">
                         <span className="text-sm font-semibold px-3 py-1.5 rounded-full border bg-amber-50 text-amber-600 border-amber-200">Status unavailable</span>
-                        <button onClick={fetchBilling} className="block ml-auto mt-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium">Retry</button>
+                        <button onClick={fetchBilling} className="block ml-auto mt-1.5 text-xs text-brand-500 hover:text-brand-600 font-medium">Retry</button>
                       </div>
                     ) : billingInfo ? (
                       <div className="text-right">
@@ -1812,7 +3793,7 @@ export default function Dashboard() {
                               <td className="py-3">
                                 {inv.pdf ? (
                                   <a href={inv.pdf} target="_blank" rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 font-medium">
+                                    className="inline-flex items-center gap-1 text-xs text-brand-500 hover:text-brand-600 font-medium">
                                     <Download className="w-3.5 h-3.5" /> PDF
                                   </a>
                                 ) : (
@@ -1840,24 +3821,80 @@ export default function Dashboard() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Reserves scroll room below the fixed mobile nav-toggle FAB (bottom-5 h-12)
+              so it never rests permanently over the last block of real content. */}
+          <div className="h-20 md:hidden" aria-hidden="true" />
         </main>
       </div>
 
-      <ReportDetailModal report={detailReport} onClose={() => setDetailReport(null)} />
+      <ReportDetailModal report={detailReport} onClose={() => setDetailReport(null)} onReportUpdated={handleReportRegenerated} />
 
       <AnimatePresence>
         {confirmTarget && (
           <ConfirmDialog
-            title={confirmTarget.type === 'bulk' ? `Delete ${selectedIds.length} reports?` : confirmTarget.type === 'template' ? 'Delete template?' : 'Delete report?'}
-            message={confirmTarget.type === 'bulk'
-              ? 'This permanently deletes the selected reports, including their photos and exports. This cannot be undone.'
-              : confirmTarget.type === 'template'
-                ? 'This template will no longer be available to load for future reports.'
-                : 'This permanently deletes the report, including its photos and exports. This cannot be undone.'}
-            confirmLabel="Delete"
+            title={
+              confirmTarget.type === 'bulk' ? `Delete ${selectedIds.length} reports?`
+                : confirmTarget.type === 'archive-bulk' ? `Archive ${selectedIds.length} reports?`
+                : confirmTarget.type === 'archive' ? 'Archive this report?'
+                : confirmTarget.type === 'template' ? 'Delete template?'
+                : 'Delete report?'
+            }
+            message={
+              confirmTarget.type === 'bulk'
+                ? 'This permanently deletes the selected reports, including their photos and exports. This cannot be undone.'
+                : confirmTarget.type === 'archive-bulk'
+                  ? 'Archived reports are hidden from the default My Reports view but can be restored at any time. Nothing is deleted.'
+                  : confirmTarget.type === 'archive'
+                    ? 'This report will be hidden from the default My Reports view but can be restored at any time. Nothing is deleted.'
+                    : confirmTarget.type === 'template'
+                      ? 'This template will no longer be available to load for future reports.'
+                      : 'This permanently deletes the report, including its photos and exports. This cannot be undone.'
+            }
+            confirmLabel={confirmTarget.type.startsWith('archive') ? 'Archive' : 'Delete'}
+            danger={!confirmTarget.type.startsWith('archive')}
             loading={confirmLoading}
             onConfirm={runConfirmedDelete}
             onClose={() => setConfirmTarget(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 10: deliberate confirmation step before the existing /approve call fires. */}
+      <AnimatePresence>
+        {showApproveModal && (
+          <ConfirmDialog
+            title="Approve this report?"
+            message={`This finalizes the report as reviewed and approved by ${signatureName.trim() || 'you'}${licenseState.trim() || licenseNumber.trim() ? ` (${[licenseState.trim(), licenseNumber.trim()].filter(Boolean).join(' ')})` : ''}. Exports will no longer carry the DRAFT watermark. Any later edit will reopen the report as a draft and require re-approval.`}
+            confirmLabel="Approve & Finalize"
+            danger={false}
+            loading={approving}
+            onConfirm={handleApprove}
+            onClose={() => setShowApproveModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 11: export options modal (cover page / captions / page numbers /
+          appendix / branding / photo layout), reused by the /reports/:id/preview page. */}
+      <AnimatePresence>
+        {showExportModal && generatedReport && (
+          <ExportOptionsModal
+            report={generatedReport}
+            allowedExports={allowedExports}
+            onExport={handleExport}
+            onClose={() => setShowExportModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 13: full structural template picker for the wizard's "Start
+          From a Report Template" step. */}
+      <AnimatePresence>
+        {showTemplatePicker && (
+          <TemplatePickerModal
+            onSelect={handleUseTemplate}
+            onClose={() => setShowTemplatePicker(false)}
           />
         )}
       </AnimatePresence>

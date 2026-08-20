@@ -20,10 +20,20 @@ const BUCKET_NAME =
   `${process.env.FIREBASE_PROJECT_ID}.firebasestorage.app`;
 
 // ── Object-path builders ────────────────────────────────────────────────────────
-const reportImageObject = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/${filename}`;
+// reportImageObject() is the "display" (EXIF-normalized/optimized) asset --
+// the one every existing consumer (AI analysis, exports, full-size preview)
+// already reads via a photo record's `objectPath`. reportOriginalObject() is
+// new (Phase 6 addendum, 2026-08-16): the untouched original upload, stored
+// separately so normalization never discards it (spec requirement -- "the
+// original must not be permanently altered").
+const reportImageObject     = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/${filename}`;
+const reportOriginalObject  = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/originals/${filename}`;
+const reportThumbnailObject = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/thumbnails/${filename}`;
+const reportDocumentObject = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/documents/${filename}`;
 const exportObject      = (uid, filename)            => `users/${uid}/exports/${filename}`;
 const logoObject        = (uid, filename)            => `users/${uid}/logos/${filename}`;
 const whiteLabelObject  = (uid, filename)            => `users/${uid}/whitelabel/${filename}`;
+const templateLogoObject = (uid, templateId, filename) => `users/${uid}/templates/${templateId}/${filename}`;
 
 // ── Core operations ───────────────────────────────────────────────────────────
 // Uploads a buffer. When `publicToken` is set, attaches a Firebase download
@@ -90,9 +100,13 @@ const getSignedUrl = async (objectPath, expiresMs = 24 * 60 * 60 * 1000) => {
 module.exports = {
   BUCKET_NAME,
   reportImageObject,
+  reportOriginalObject,
+  reportThumbnailObject,
+  reportDocumentObject,
   exportObject,
   logoObject,
   whiteLabelObject,
+  templateLogoObject,
   uploadBuffer,
   tokenUrl,
   downloadBuffer,

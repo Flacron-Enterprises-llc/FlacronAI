@@ -4,6 +4,8 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { sendPaymentFailedEmail } = require('../services/emailService');
+const { isNotificationEnabled } = require('../utils/notificationPrefs');
+const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
 const {
   TIER_ORDER,
   getStripePriceId,
@@ -226,7 +228,19 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         const snapshot = await db.collection('users').where('stripeCustomerId', '==', invoice.customer).limit(1).get();
         if (!snapshot.empty) {
           const userData = snapshot.docs[0].data();
-          sendPaymentFailedEmail(userData.email, userData.displayName).catch(() => {});
+          // Phase 18 (Notifications): gated by 'billing' (defaults enabled).
+          if (isNotificationEnabled(userData.notifications, 'billing')) {
+            sendPaymentFailedEmail(userData.email, userData.displayName).catch(() => {});
+          }
+          // Phase 20: in-app bell entry, same gate. dedupeKey guards against a
+          // redelivered webhook double-firing (Stripe's own `processedWebhooks`
+          // idempotency check upstream already prevents most of this, but a
+          // deterministic id here is cheap defense-in-depth).
+          if (isNotificationEnabled(userData.notifications, 'billing')) {
+            notifyUser(db, snapshot.docs[0].id, NOTIFICATION_TYPES.SUBSCRIPTION_ISSUE, {}, {
+              dedupeKey: `sub_issue_${invoice.id}`,
+            }).catch(() => {});
+          }
           await snapshot.docs[0].ref.update({ subscriptionStatus: 'past_due', updatedAt: new Date().toISOString() });
         }
         break;
