@@ -36,7 +36,7 @@ const PLANS = [
     id: 'professional', name: 'Professional', icon: Star,
     ...PLAN_PRICING.professional,
     description: 'For active adjusters who need more power',
-    color: 'blue', popular: true,
+    color: 'brand', popular: true,
     features: [
       { label: '50 reports/month', included: true },
       { label: 'Automated report generation', included: true },
@@ -54,7 +54,7 @@ const PLANS = [
     id: 'agency', name: 'Agency', icon: Users,
     ...PLAN_PRICING.agency,
     description: 'For agencies managing multiple adjusters',
-    color: 'purple',
+    color: 'amber',
     features: [
       { label: '200 reports/month', included: true },
       { label: 'Automated report generation', included: true },
@@ -109,8 +109,7 @@ const FAQS = [
 
 const COLOR_MAP = {
   gray: { border: 'border-gray-500/30', bg: 'bg-gray-500/10', text: 'text-gray-600', btn: 'bg-gray-500 hover:bg-gray-600' },
-  blue: { border: 'border-orange-500/30', bg: 'bg-orange-500/10', text: 'text-orange-400', btn: 'bg-orange-500 hover:bg-orange-600' },
-  purple: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-400', btn: 'bg-amber-500 hover:bg-amber-600' },
+  brand: { border: 'border-brand-500/30', bg: 'bg-brand-500/10', text: 'text-brand-400', btn: 'bg-brand-500 hover:bg-brand-600' },
   amber: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-400', btn: 'bg-amber-500 hover:bg-amber-600' },
 };
 
@@ -242,7 +241,7 @@ export default function Pricing() {
   const navigate = useNavigate();
 
   const handleCheckout = async (planId) => {
-    if (!isAuthenticated) { navigate(`/auth?mode=signup&plan=${planId}${annual ? '_annual' : ''}`); return; }
+    if (!isAuthenticated) { navigate(`/signup?plan=${planId}${annual ? '_annual' : ''}`); return; }
     if (planId === 'enterprise') { setShowSalesModal(true); return; }
     if (planId === 'starter') return;
     setLoadingTier(planId);
@@ -282,7 +281,7 @@ export default function Pricing() {
               <span className={`text-sm font-medium ${!annual ? 'text-gray-900' : 'text-gray-500'}`}>Monthly</span>
               <button onClick={() => setAnnual(p => !p)}
                 role="switch" aria-checked={annual} aria-label="Toggle annual billing"
-                className={`relative w-12 h-6 rounded-full transition-colors ${annual ? 'bg-orange-500' : 'bg-gray-200'}`}>
+                className={`relative w-12 h-6 rounded-full transition-colors ${annual ? 'bg-brand-500' : 'bg-gray-200'}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${annual ? 'translate-x-7' : 'translate-x-1'}`} />
               </button>
               <span className={`text-sm font-medium ${annual ? 'text-gray-900' : 'text-gray-500'}`}>
@@ -301,9 +300,9 @@ export default function Pricing() {
               return (
                 <motion.div key={plan.id} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.1 }}
-                  className={`card p-6 flex flex-col relative ${plan.popular ? 'border-orange-500/50 ring-1 ring-orange-500/30' : ''}`}>
+                  className={`card p-6 flex flex-col relative ${plan.popular ? 'border-brand-500/50 ring-1 ring-brand-500/30' : ''}`}>
                   {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-orange-500 text-gray-900 text-xs font-bold rounded-full">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-brand-500 text-gray-900 text-xs font-bold rounded-full">
                       Most Popular
                     </div>
                   )}
@@ -339,7 +338,7 @@ export default function Pricing() {
                     {loadingTier === plan.id ? 'Loading...' :
                      currentTier === plan.id ? 'Current Plan' :
                      plan.id === 'starter' ? 'Get Started Free' :
-                     plan.id === 'enterprise' ? 'Contact Sales' :
+                     plan.id === 'enterprise' ? 'Talk to Sales' :
                      'Get Started'}
                   </button>
                 </motion.div>

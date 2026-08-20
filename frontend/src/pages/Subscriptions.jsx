@@ -17,7 +17,7 @@ const TIER_INFO = {
     features: ['5 reports/month', 'PDF export', 'Automated report generation', 'Email support', 'FlacronAI watermark on reports'],
   },
   professional: {
-    name: 'Professional', price: PLAN_PRICING.professional.monthly, icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10',
+    name: 'Professional', price: PLAN_PRICING.professional.monthly, icon: Star, color: 'text-brand-400', bg: 'bg-brand-500/10',
     features: ['50 reports/month', 'No watermarks', 'PDF, DOCX, HTML export', 'Report history & search', 'Priority email support'],
   },
   agency: {
@@ -148,14 +148,14 @@ function SubscriptionContent() {
             </div>
             <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
               <motion.div
-                className={`h-full rounded-full ${usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-yellow-500' : 'bg-orange-500'}`}
+                className={`h-full rounded-full ${usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-amber-500' : 'bg-brand-500'}`}
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min(usagePercent, 100)}%` }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
             </div>
             {usagePercent >= 80 && (
-              <p className="text-yellow-400 text-xs mt-1.5 flex items-center gap-1">
+              <p className="text-amber-400 text-xs mt-1.5 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" /> You have used {usagePercent}% of your monthly limit.
               </p>
             )}
@@ -202,14 +202,14 @@ function SubscriptionContent() {
                   </div>
                   <button onClick={() => navigate('/pricing')}
                     className={`text-xs py-1.5 px-3 whitespace-nowrap rounded-xl font-medium transition-all active:scale-95 ${
-                      isUpgrade ? 'bg-orange-500 hover:bg-orange-600 text-gray-900' : 'bg-gray-100 hover:bg-gray-100 text-gray-700'}`}>
+                      isUpgrade ? 'bg-brand-500 hover:bg-brand-600 text-gray-900' : 'bg-gray-100 hover:bg-gray-100 text-gray-700'}`}>
                     {isUpgrade ? 'Upgrade' : 'Downgrade'}
                   </button>
                 </div>
               );
             })}
           </div>
-          <p className="text-gray-500 text-xs mt-3">Upgrades take effect immediately with a prorated adjustment. Downgrades start after the current paid period. Visit the <button onClick={() => navigate('/pricing')} className="text-orange-400 underline">pricing page</button> for full details.</p>
+          <p className="text-gray-500 text-xs mt-3">Upgrades take effect immediately with a prorated adjustment. Downgrades start after the current paid period. Visit the <button onClick={() => navigate('/pricing')} className="text-brand-400 underline">pricing page</button> for full details.</p>
         </motion.div>
       </div>
 

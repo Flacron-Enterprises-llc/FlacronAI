@@ -16,11 +16,11 @@ We reserve the right to modify these Terms at any time. We will notify users of 
   {
     id: 'service',
     title: '2. Service Description',
-    content: `FlacronAI provides an automated insurance claim report generation platform, powered by the Flacron Engine. The Service enables users to submit claim data and damage photographs for automated analysis, resulting in professionally formatted insurance claim reports.
+    content: `FlacronAI provides an automated insurance claim report generation platform, powered by the FLACRON ENGINE. The Service enables users to submit claim data and damage photographs for automated analysis, resulting in professionally formatted insurance claim reports.
 
 **Core service capabilities include:**
 - Automated damage photo analysis using computer vision
-- Structured report generation using the Flacron Engine
+- Structured report generation using the FLACRON ENGINE
 - Report export in PDF, DOCX, and HTML formats (plan-dependent)
 - A customer relationship management (CRM) module for client and claim tracking
 - White-label portal configuration for enterprise users
@@ -82,7 +82,7 @@ The Service is provided on an "as-is" and "as-available" basis. FlacronAI does n
   {
     id: 'intellectual-property',
     title: '6. Intellectual Property',
-    content: `**FlacronAI's intellectual property:** The Service, including its software, the Flacron Engine, user interface, design, documentation, and trademarks, is owned by FlacronAI, Inc. and protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use FlacronAI's trademarks, logos, or brand elements.
+    content: `**FlacronAI's intellectual property:** The Service, including its software, the FLACRON ENGINE, user interface, design, documentation, and trademarks, is owned by FlacronAI, Inc. and protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use FlacronAI's trademarks, logos, or brand elements.
 
 **Your content:** You retain all ownership rights to claim data, photos, and other content you submit to the Service ("Your Content"). By submitting content, you grant FlacronAI a limited, non-exclusive, worldwide, royalty-free license to process, store, and use Your Content solely to provide the Service to you.
 
@@ -159,8 +159,8 @@ export default function TermsOfService() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
             <p className="text-gray-600 text-sm">Last updated: March 1, 2026 · Effective: March 1, 2026</p>
-            <div className="mt-4 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
-              <p className="text-orange-300 text-sm">Please read these Terms of Service carefully before using FlacronAI. By creating an account or using any part of the Service, you agree to be bound by these Terms.</p>
+            <div className="mt-4 p-4 rounded-xl bg-brand-500/10 border border-brand-500/20">
+              <p className="text-brand-300 text-sm">Please read these Terms of Service carefully before using FlacronAI. By creating an account or using any part of the Service, you agree to be bound by these Terms.</p>
             </div>
           </div>
 
@@ -170,7 +170,7 @@ export default function TermsOfService() {
               <nav className="sticky top-24 space-y-1">
                 {SECTIONS.map(s => (
                   <a key={s.id} href={`#${s.id}`}
-                    className="block text-xs text-gray-500 hover:text-orange-400 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors leading-snug">
+                    className="block text-xs text-gray-500 hover:text-brand-400 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors leading-snug">
                     {s.title}
                   </a>
                 ))}

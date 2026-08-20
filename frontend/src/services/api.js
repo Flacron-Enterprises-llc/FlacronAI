@@ -63,8 +63,9 @@ api.interceptors.response.use(
       }
       // No Firebase user or refresh failed — session is genuinely gone
       localStorage.removeItem('flac_token');
-      if (!window.location.pathname.includes('/auth')) {
-        window.location.href = '/auth';
+      const onAuthPage = ['/auth', '/login', '/signup'].some(p => window.location.pathname.startsWith(p));
+      if (!onAuthPage) {
+        window.location.href = '/login';
       }
       return Promise.reject(error);
     }
@@ -110,13 +111,27 @@ export const authAPI = {
 };
 
 export const reportsAPI = {
-  generate: (formData) => api.post('/reports/generate', formData, {
+  // Longer timeout than the client default: analyzing up to 100 photos (batched
+  // vision calls) plus report generation can take well over 2 minutes.
+  // `onUploadProgress` (Phase 6 addendum) surfaces real byte-level progress of
+  // the multipart body actually being sent -- used to drive genuine per-photo
+  // upload progress in the wizard, not a fake timer.
+  generate: (formData, onUploadProgress) => api.post('/reports/generate', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000,
+    onUploadProgress,
   }),
   getAll: (params) => api.get('/reports', { params }),
+  getDashboardSummary: () => api.get('/reports/dashboard-summary'),
   getOne: (id) => api.get(`/reports/${id}`),
   update: (id, data) => api.put(`/reports/${id}`, data),
   suggestSection: (id, data) => api.post(`/reports/${id}/sections/suggest`, data),
+  // Phase 9 (Report Editor Rich-Text & AI Panel Upgrade): the 6 additional
+  // FLACRON ENGINE writing-assistance functions (Improve/Shorten/Expand/
+  // Rewrite Professionally/Check Consistency/Check Missing Information/
+  // Review Photo Documentation) -- distinct from suggestSection above, which
+  // now also backs the "Regenerate Section" instructed-rewrite workflow.
+  assistSection: (id, data) => api.post(`/reports/${id}/sections/assist`, data),
   approve: (id, data) => api.post(`/reports/${id}/approve`, data),
   versions: (id) => api.get(`/reports/${id}/versions`),
   listTemplates: () => api.get('/reports/templates'),
@@ -125,13 +140,56 @@ export const reportsAPI = {
   share: (id) => api.post(`/reports/${id}/share`),
   revokeShare: (id) => api.delete(`/reports/${id}/share`),
   getShared: (token) => api.get(`/reports/shared/${token}`),
+  // Phase 19 (Sharing Permissions, Expiry, Comments & Review Requests)
+  createShare: (id, data) => api.post(`/reports/${id}/shares`, data),
+  listShares: (id) => api.get(`/reports/${id}/shares`),
+  revokeShareById: (id, shareId) => api.delete(`/reports/${id}/shares/${shareId}`),
+  inviteToReport: (id, data) => api.post(`/reports/${id}/share/invite`, data),
+  revokeInvite: (id, uid) => api.delete(`/reports/${id}/share/invite/${uid}`),
+  requestReview: (id, data) => api.post(`/reports/${id}/request-review`, data),
+  reviewResponse: (id, data) => api.post(`/reports/${id}/review-response`, data),
+  getAssignedToMe: () => api.get('/reports/assigned-to-me'),
+  getComments: (id) => api.get(`/reports/${id}/comments`),
+  addComment: (id, data) => api.post(`/reports/${id}/comments`, data),
+  resolveComment: (id, commentId) => api.post(`/reports/${id}/comments/${commentId}/resolve`),
+  reopenComment: (id, commentId) => api.post(`/reports/${id}/comments/${commentId}/reopen`),
+  getSharedComments: (token) => api.get(`/reports/shared/${token}/comments`),
+  addSharedComment: (token, data) => api.post(`/reports/shared/${token}/comments`, data),
+  resolveSharedComment: (token, commentId) => api.post(`/reports/shared/${token}/comments/${commentId}/resolve`),
+  reopenSharedComment: (token, commentId) => api.post(`/reports/shared/${token}/comments/${commentId}/reopen`),
   delete: (id, permanent = false) => api.delete(`/reports/${id}`, { params: { permanent } }),
+  restore: (id) => api.post(`/reports/${id}/restore`),
+  duplicate: (id) => api.post(`/reports/${id}/duplicate`),
   export: (id, data) => api.post(`/reports/${id}/export`, data),
   getDownloadUrl: (id, filename) => `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
   download: (id, filename) => api.get(`/reports/${id}/download?file=${filename}`, { responseType: 'blob' }),
+  downloadDocument: (id, fileName) => api.get(`/reports/${id}/documents/download?file=${encodeURIComponent(fileName)}`, { responseType: 'blob' }),
   analyzeImages: (formData) => api.post('/reports/analyze-images', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   aiStatus: () => api.get('/reports/ai-status'),
   addImages: (id, formData) => api.post(`/reports/${id}/images`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  // Phase 6 (Photo Upload & Per-Photo UX Hardening) -- per-photo gallery for a
+  // generated report. Photos are private objects (same as documents/exports
+  // above), so images are fetched as authenticated blobs, not a public <img src>.
+  getPhotos: (id) => api.get(`/reports/${id}/photos`),
+  getPhotoImageBlob: (id, photoId, variant = 'thumbnail') =>
+    api.get(`/reports/${id}/photos/${photoId}/image`, { params: { variant }, responseType: 'blob' }),
+  // Phase 7 (Async Photo Analysis Pipeline) -- polled while a report's status
+  // is 'processing' to drive the analysis-progress view.
+  getAnalysisStatus: (id) => api.get(`/reports/${id}/analysis-status`),
+  retryAnalysis: (id) => api.post(`/reports/${id}/analysis/retry`),
+  // Phase 8 (Per-Photo Analysis Review UI) -- Edit/Approve/Exclude/Add Note/
+  // Include-restore actions on one photo's AI observation, and regenerating
+  // report content from the current review state.
+  updatePhotoReview: (id, photoId, action, payload = {}) =>
+    api.put(`/reports/${id}/photos/${photoId}/review`, { action, ...payload }),
+  regeneratePhotoReview: (id) => api.post(`/reports/${id}/photos/regenerate`),
+  // Phase 24 (Photo Quality Warnings, Ordering, Grouping & Annotations).
+  reorderPhotos: (id, order) => api.patch(`/reports/${id}/photos/reorder`, { order }),
+  updatePhotoAnnotations: (id, photoId, shapes, expectedUpdatedAt = null) =>
+    api.put(`/reports/${id}/photos/${photoId}/annotations`, { shapes, expectedUpdatedAt }),
+  // Phase 18 (Settings Completion, Data tab): permanently deletes every
+  // already-archived report the caller owns, plus its Storage files.
+  deleteAllArchived: () => api.post('/reports/archived/delete-all'),
 };
 
 export const usersAPI = {
@@ -149,6 +207,14 @@ export const usersAPI = {
   getApiUsage: () => api.get('/users/api-usage'),
   deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
   recordRegistrationConsent: (policyVersion) => api.post('/users/consent/registration', { policyVersion }),
+  getLoginHistory: (params) => api.get('/users/login-history', { params }),
+  // Phase 18 (Settings Completion)
+  getOrganization: () => api.get('/users/organization'),
+  updateOrganization: (data) => api.put('/users/organization', data),
+  exportData: () => api.get('/users/export-data'),
+  // Phase 21 (Onboarding Flow)
+  saveOnboardingStep: (data) => api.post('/users/onboarding/step', data),
+  completeOnboarding: (data) => api.post('/users/onboarding/complete', data),
 };
 
 export const paymentAPI = {
@@ -192,13 +258,71 @@ export const whiteLabelAPI = {
   preview: () => api.post('/white-label/preview', {}, { responseType: 'blob' }),
 };
 
+export const templatesAPI = {
+  list: (params) => api.get('/templates', { params }),
+  get: (id) => api.get(`/templates/${id}`),
+  create: (data) => api.post('/templates', data),
+  update: (id, data) => api.put(`/templates/${id}`, data),
+  duplicate: (id) => api.post(`/templates/${id}/duplicate`),
+  archive: (id) => api.post(`/templates/${id}/archive`),
+  restore: (id) => api.post(`/templates/${id}/restore`),
+  remove: (id) => api.delete(`/templates/${id}`),
+  uploadLogo: (id, formData) => api.post(`/templates/${id}/logo`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  removeLogo: (id) => api.delete(`/templates/${id}/logo`),
+};
+
 export const teamsAPI = {
   getMembers: () => api.get('/teams/members'),
+  getMember: (memberId) => api.get(`/teams/members/${memberId}`),
   invite: (email, role) => api.post('/teams/invite', { email, role }),
   updateRole: (memberId, role) => api.put(`/teams/members/${memberId}/role`, { role }),
+  suspendMember: (memberId) => api.post(`/teams/members/${memberId}/suspend`),
+  reactivateMember: (memberId) => api.post(`/teams/members/${memberId}/reactivate`),
   remove: (memberId) => api.delete(`/teams/members/${memberId}`),
   getRoles: () => api.get('/teams/roles'),
   acceptInvite: (token) => api.post(`/teams/accept/${token}`),
+};
+
+export const analyticsAPI = {
+  // `tzOffset` = the browser's own `-new Date().getTimezoneOffset()`, so the
+  // backend can bucket "Reports/Photos Over Time" by the viewer's local
+  // calendar day/week/month instead of a hardcoded UTC one.
+  get: (params = {}) => api.get('/analytics', { params: { ...params, tzOffset: -new Date().getTimezoneOffset() } }),
+};
+
+export const organizationAPI = {
+  getMetrics: () => api.get('/organization/metrics'),
+  getSecuritySummary: () => api.get('/organization/security-summary'),
+  getAuditLogs: (params) => api.get('/organization/audit-logs', { params }),
+};
+
+export const webhooksAPI = {
+  getEvents: () => api.get('/webhooks/events'),
+  getAll: () => api.get('/webhooks'),
+  create: (data) => api.post('/webhooks', data),
+  rotateSecret: (id) => api.post(`/webhooks/${id}/rotate-secret`),
+  remove: (id) => api.delete(`/webhooks/${id}`),
+};
+
+export const notificationsAPI = {
+  list: (params) => api.get('/notifications', { params }),
+  markRead: (id) => api.post(`/notifications/${id}/read`),
+  markAllRead: () => api.post('/notifications/mark-all-read'),
+};
+
+export const searchAPI = {
+  // `signal` lets the caller cancel an in-flight request (a debounced global
+  // search firing a new query before the previous one resolves) via
+  // AbortController -- axios forwards it straight to the underlying fetch/XHR.
+  search: (q, signal) => api.get('/search', { params: { q }, signal }),
+};
+
+// Phase 22 (Photo Analysis Library) -- cross-report photo search/filter/
+// pagination. Reuses reportsAPI.getPhotoImageBlob/updatePhotoReview above for
+// the expanded photo's actual image bytes and review actions (both routes
+// now accept any of the caller's owned/assigned reports, not just owned).
+export const photosAPI = {
+  list: (params, signal) => api.get('/photos', { params, signal }),
 };
 
 export const salesAPI = {

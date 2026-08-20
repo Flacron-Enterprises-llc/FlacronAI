@@ -4,13 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, ArrowRight, Building2, CheckCircle, AlertCircle, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { whiteLabelAPI } from '../services/api';
+import { whiteLabelAPI, usersAPI } from '../services/api';
 import Seo from '../components/Seo.jsx';
 
 const DEFAULT_BRAND = {
   companyName: 'FlacronAI',
-  primaryColor: '#f97316',
-  secondaryColor: '#8b5cf6',
+  primaryColor: '#FD4403',
+  secondaryColor: '#002A64',
   logoUrl: null,
   headerText: 'Automated Insurance Claim Reports',
   footerText: '© 2026 FlacronAI, Inc. All rights reserved.',
@@ -81,6 +81,22 @@ export default function EnterpriseOnboarding() {
         await login(form.email, form.password);
       } else {
         await register(form.email, form.password, form.displayName);
+        // Phase 21 (Onboarding Flow) is explicitly scoped to REGULAR
+        // (non-enterprise-subdomain) signups -- this portal is itself a
+        // dedicated first-run experience, so a brand-new account created
+        // here should never also be funneled into the generic wizard.
+        // getProfile() first guarantees the full default profile doc (which
+        // is what actually sets onboardingCompleted: false) exists before
+        // this immediately overwrites just that one field -- same ordering
+        // Auth.jsx's persistSignupProfileDetails already relies on, and
+        // necessary here for the same reason: racing ahead of the
+        // auto-create would leave the doc missing its other defaults.
+        try {
+          await usersAPI.getProfile();
+          await usersAPI.completeOnboarding({ skipped: true, reason: 'enterprise_subdomain' });
+        } catch (skipErr) {
+          console.error('Failed to skip generic onboarding for enterprise-subdomain signup:', skipErr?.response?.data || skipErr.message);
+        }
       }
       navigate('/dashboard');
     } catch (err) {
@@ -94,8 +110,8 @@ export default function EnterpriseOnboarding() {
 
   if (loading) return <SkeletonPortal />;
 
-  const primary = brand.primaryColor || '#f97316';
-  const secondary = brand.secondaryColor || '#8b5cf6';
+  const primary = brand.primaryColor || '#FD4403';
+  const secondary = brand.secondaryColor || '#002A64';
 
   return (
     <div className="min-h-screen bg-[#ffffff] flex flex-col">

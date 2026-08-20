@@ -7,8 +7,8 @@ import Seo from '../components/Seo.jsx';
 
 const METHOD_COLORS = {
   GET: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  POST: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-  PUT: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+  POST: 'bg-brand-500/20 text-brand-400 border border-brand-500/30',
+  PUT: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
   DELETE: 'bg-red-500/20 text-red-400 border border-red-500/30',
 };
 
@@ -636,7 +636,7 @@ function EndpointCard({ endpoint }) {
     <div className="card overflow-hidden mb-3">
       <button onClick={() => setOpen(p => !p)} className="w-full flex items-center gap-3 p-4 text-left hover:bg-gray-100 transition-colors">
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${METHOD_COLORS[endpoint.method]}`}>{endpoint.method}</span>
-        <code className="text-sm font-mono text-orange-300 flex-1">{endpoint.url}</code>
+        <code className="text-sm font-mono text-brand-300 flex-1">{endpoint.url}</code>
         <span className="text-gray-600 text-sm hidden sm:block">{endpoint.description}</span>
         {open ? <ChevronUp className="w-4 h-4 text-gray-600 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-600 shrink-0" />}
       </button>
@@ -657,7 +657,7 @@ function EndpointCard({ endpoint }) {
                   </tr></thead>
                   <tbody>{endpoint.params.map((p, i) => (
                     <tr key={i} className="border-b border-gray-100">
-                      <td className="py-1.5 px-2 font-mono text-orange-300 text-xs">{p.name}</td>
+                      <td className="py-1.5 px-2 font-mono text-brand-300 text-xs">{p.name}</td>
                       <td className="py-1.5 px-2 text-amber-400 text-xs">{p.type}</td>
                       <td className="py-1.5 px-2">{p.required ? <span className="text-xs text-red-400">required</span> : <span className="text-xs text-gray-500">optional</span>}</td>
                       <td className="py-1.5 px-2 text-gray-600 text-xs">{p.desc}</td>
@@ -676,7 +676,7 @@ function EndpointCard({ endpoint }) {
             <div className="flex gap-1 mb-2">
               {['curl', 'js', 'python'].map(t => (
                 <button key={t} onClick={() => setActiveTab(t)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === t ? 'bg-orange-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === t ? 'bg-brand-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
                   {t === 'js' ? 'JavaScript' : t === 'curl' ? 'cURL' : 'Python'}
                 </button>
               ))}
@@ -709,7 +709,7 @@ export default function ApiDocs() {
             <nav className="sticky top-24 space-y-1">
               <button onClick={() => setActiveSection('Quick Start')}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  activeSection === 'Quick Start' ? 'bg-orange-500/20 text-orange-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
+                  activeSection === 'Quick Start' ? 'bg-brand-500/20 text-brand-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
                 Quick Start Guide
               </button>
               <div className="border-t border-[#e5e7eb] my-3" />
@@ -717,7 +717,7 @@ export default function ApiDocs() {
               {categories.map(cat => (
                 <button key={cat} onClick={() => setActiveSection(cat)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    activeSection === cat ? 'bg-orange-500/20 text-orange-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
+                    activeSection === cat ? 'bg-brand-500/20 text-brand-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
                   {cat}
                 </button>
               ))}
@@ -725,7 +725,7 @@ export default function ApiDocs() {
               {['Base URL', 'Auth Guide', 'Webhooks', 'Downloads', 'Reliability', 'Rate Limits', 'Errors'].map(s => (
                 <button key={s} onClick={() => setActiveSection(s)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    activeSection === s ? 'bg-orange-500/20 text-orange-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
+                    activeSection === s ? 'bg-brand-500/20 text-brand-400' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
                   {s}
                 </button>
               ))}
@@ -770,7 +770,7 @@ export default function ApiDocs() {
                   {QUICK_START_STEPS.map((s) => (
                     <div key={s.step} className="card p-5">
                       <div className="flex items-start gap-4">
-                        <span className="shrink-0 w-8 h-8 rounded-full bg-orange-500 text-white font-bold flex items-center justify-center text-sm">{s.step}</span>
+                        <span className="shrink-0 w-8 h-8 rounded-full bg-brand-500 text-white font-bold flex items-center justify-center text-sm">{s.step}</span>
                         <div className="flex-1 min-w-0">
                           <h3 className="text-lg font-semibold text-gray-900 mb-1">{s.title}</h3>
                           <p className="text-gray-600 text-sm mb-3">{s.description}</p>
@@ -841,10 +841,10 @@ export default function ApiDocs() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-6 card p-5 border-orange-200 bg-orange-50/40">
+                <div className="mt-6 card p-5 border-brand-200 bg-brand-50/40">
                   <h3 className="font-semibold text-gray-900 mb-2">Next Steps</h3>
                   <p className="text-sm text-gray-700">
-                    Browse the full endpoint reference in the sidebar, review the <button onClick={() => setActiveSection('Auth Guide')} className="text-orange-600 underline underline-offset-2">Authentication Guide</button> for scope details, or check <button onClick={() => setActiveSection('Rate Limits')} className="text-orange-600 underline underline-offset-2">Rate Limits</button> before going to production.
+                    Browse the full endpoint reference in the sidebar, review the <button onClick={() => setActiveSection('Auth Guide')} className="text-brand-600 underline underline-offset-2">Authentication Guide</button> for scope details, or check <button onClick={() => setActiveSection('Rate Limits')} className="text-brand-600 underline underline-offset-2">Rate Limits</button> before going to production.
                   </p>
                 </div>
               </motion.div>
@@ -856,15 +856,15 @@ export default function ApiDocs() {
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Base URL</h2>
                 <div className="card p-5 mb-4">
                   <p className="text-gray-600 text-sm mb-3">
-                    All endpoints below are shown relative to your API base URL. Replace <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">YOUR_API_BASE_URL</code> in every example with your own deployment's backend host — it is not a fixed public hostname you can copy as-is.
+                    All endpoints below are shown relative to your API base URL. Replace <code className="text-brand-700 font-mono text-xs bg-brand-50 px-1.5 py-0.5 rounded">YOUR_API_BASE_URL</code> in every example with your own deployment's backend host — it is not a fixed public hostname you can copy as-is.
                   </p>
                   <p className="text-gray-600 text-sm mb-3">
-                    The current API version is <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">v1</code>. Prefix every path with <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">/api/v1</code>. For local development, this is:
+                    The current API version is <code className="text-brand-700 font-mono text-xs bg-brand-50 px-1.5 py-0.5 rounded">v1</code>. Prefix every path with <code className="text-brand-700 font-mono text-xs bg-brand-50 px-1.5 py-0.5 rounded">/api/v1</code>. For local development, this is:
                   </p>
                 </div>
                 <CodeBlock code={`http://localhost:3000/api/v1`} lang="text" />
                 <p className="text-gray-500 text-xs mt-4">In production, use your deployed backend's own host (see your environment configuration / the person who manages your deployment for the exact address).</p>
-                <div className="card p-5 mt-4 border-orange-200 bg-orange-50/40">
+                <div className="card p-5 mt-4 border-brand-200 bg-brand-50/40">
                   <p className="text-gray-700 text-sm">
                     <strong>Legacy unversioned paths.</strong> Requests to the older un-prefixed <code className="font-mono text-xs">/api/...</code> base are still served and behave identically to <code className="font-mono text-xs">/api/v1/...</code>, so existing integrations keep working with no change. New integrations should use <code className="font-mono text-xs">/api/v1</code>; the unversioned base is retained only for backward compatibility and may be deprecated in a future release.
                   </p>
@@ -876,7 +876,7 @@ export default function ApiDocs() {
             {activeSection === 'Auth Guide' && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Authentication Guide</h2>
-                <div className="card p-5 mb-4 border-orange-200 bg-orange-50/40">
+                <div className="card p-5 mb-4 border-brand-200 bg-brand-50/40">
                   <p className="text-gray-700 text-sm">
                     <strong>For third-party integrations and server-to-server access, use an API key</strong> — it can be revoked and rotated independently of any person's login. Every key has immutable, least-privilege scopes selected at creation. The email/password login below issues a session token for signing into the FlacronAI web app itself; it is not intended as an integration credential and should not be embedded in another application or server.
                   </p>
@@ -890,7 +890,7 @@ export default function ApiDocs() {
                   </div>
                   <div className="card p-5">
                     <h3 className="text-base font-semibold text-gray-900 mb-3">Bearer Token (JWT) — web app sessions only</h3>
-                    <p className="text-gray-600 text-sm mb-3">Returned by <code className="text-orange-700 font-mono text-xs bg-orange-50 px-1.5 py-0.5 rounded">/api/v1/auth/login</code> for the FlacronAI web app's own sign-in flow. It represents a specific person's session, expires, and is invalidated on logout or password change — don't use it as a long-lived integration credential.</p>
+                    <p className="text-gray-600 text-sm mb-3">Returned by <code className="text-brand-700 font-mono text-xs bg-brand-50 px-1.5 py-0.5 rounded">/api/v1/auth/login</code> for the FlacronAI web app's own sign-in flow. It represents a specific person's session, expires, and is invalidated on logout or password change — don't use it as a long-lived integration credential.</p>
                     <CodeBlock code={`Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...`} lang="text" />
                   </div>
                 </div>
@@ -911,7 +911,7 @@ export default function ApiDocs() {
                     <div className="space-y-2">
                       {WEBHOOK_EVENTS_DOC.map((e) => (
                         <div key={e.name} className="border-b border-[#e5e7eb] last:border-0 pb-2 last:pb-0">
-                          <code className="font-mono text-sm text-orange-600 font-semibold">{e.name}</code>
+                          <code className="font-mono text-sm text-brand-600 font-semibold">{e.name}</code>
                           <p className="text-sm text-gray-600 mt-1">{e.desc}</p>
                         </div>
                       ))}
@@ -1066,8 +1066,8 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                     ['/flacronai.postman_collection.json', 'Postman collection', 'Importable requests with base URL, API-key, and report-ID variables.'],
                     ['/api-changelog.md', 'API changelog', 'Dated behavior and compatibility notes.'],
                   ].map(([href, title, description]) => (
-                    <a key={href} href={href} download className="card block p-5 transition-colors hover:border-orange-300">
-                      <h3 className="font-semibold text-gray-900">{title}</h3><p className="mt-2 text-sm text-gray-600">{description}</p><span className="mt-4 inline-block text-sm font-semibold text-orange-600">Download</span>
+                    <a key={href} href={href} download className="card block p-5 transition-colors hover:border-brand-300">
+                      <h3 className="font-semibold text-gray-900">{title}</h3><p className="mt-2 text-sm text-gray-600">{description}</p><span className="mt-4 inline-block text-sm font-semibold text-brand-600">Download</span>
                     </a>
                   ))}
                 </div>
@@ -1118,8 +1118,8 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                     <tbody>{RATE_LIMITS.map((r, i) => (
                       <tr key={i} className="border-b border-[#e5e7eb]">
                         <td className="px-4 py-3 text-gray-900 text-sm font-medium">{r.tier}</td>
-                        <td className="px-4 py-3 text-orange-400 text-sm font-mono">{r.rpm}</td>
-                        <td className="px-4 py-3 text-orange-400 text-sm font-mono">{r.daily}</td>
+                        <td className="px-4 py-3 text-brand-400 text-sm font-mono">{r.rpm}</td>
+                        <td className="px-4 py-3 text-brand-400 text-sm font-mono">{r.daily}</td>
                         <td className="px-4 py-3 text-gray-600 text-sm">{r.notes}</td>
                       </tr>
                     ))}</tbody>
@@ -1136,7 +1136,7 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                   {ERROR_CODES.map((e, i) => (
                     <div key={i} className="card p-4 flex items-start gap-4">
                       <span className={`text-sm font-bold font-mono px-3 py-1 rounded-lg shrink-0 ${
-                        e.code >= 500 ? 'bg-red-500/20 text-red-400' : e.code === 429 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-500/20 text-gray-600'}`}>{e.code}</span>
+                        e.code >= 500 ? 'bg-red-500/20 text-red-400' : e.code === 429 ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-600'}`}>{e.code}</span>
                       <div>
                         <p className="text-gray-900 text-sm font-semibold">{e.name}</p>
                         <p className="text-gray-600 text-sm mt-0.5">{e.desc}</p>
@@ -1153,7 +1153,7 @@ app.post('/webhooks/flacronai', express.raw({type: 'application/json'}), (req, r
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">{activeSection}</h2>
                 {activeSection === 'Authentication' && (
                   <p className="text-gray-600 text-sm mb-4 -mt-2">
-                    These endpoints issue a per-person web-app session and aren't meant to be called from a third-party integration. If you're building an integration, see <button onClick={() => setActiveSection('Auth Guide')} className="text-orange-600 underline underline-offset-2">API keys in the Auth Guide</button> instead.
+                    These endpoints issue a per-person web-app session and aren't meant to be called from a third-party integration. If you're building an integration, see <button onClick={() => setActiveSection('Auth Guide')} className="text-brand-600 underline underline-offset-2">API keys in the Auth Guide</button> instead.
                   </p>
                 )}
                 {ENDPOINTS[activeSection].map((ep, i) => <EndpointCard key={i} endpoint={ep} />)}

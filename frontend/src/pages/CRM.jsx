@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Users, Calendar, FileText, Plus, Search, X,
   Trash2, ChevronLeft, ChevronRight, Upload, Eye, CheckCircle,
-  AlertCircle, TrendingUp, Activity
+  AlertCircle, TrendingUp, Activity, Pencil, Archive, ArchiveRestore
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import PageLoader from '../components/PageLoader';
@@ -24,7 +24,7 @@ const SIDEBAR_TABS = [
 
 // -600/-700 text weights, not -400 -- -400 on these translucent light backgrounds
 // falls well below WCAG AA contrast (client-flagged: "pale orange status badges").
-const APPT_STATUSES = { scheduled: 'bg-orange-500/20 text-orange-700 border-orange-500/30', completed: 'bg-green-500/20 text-green-700 border-green-500/30', cancelled: 'bg-red-500/20 text-red-700 border-red-500/30' };
+const APPT_STATUSES = { scheduled: 'bg-brand-500/20 text-brand-700 border-brand-500/30', completed: 'bg-green-500/20 text-green-700 border-green-500/30', cancelled: 'bg-red-500/20 text-red-700 border-red-500/30' };
 const CLAIM_STATUSES = ['open', 'in-progress', 'pending-review', 'closed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -175,19 +175,36 @@ function NewAppointmentModal({ clients, onClose, onSaved }) {
   );
 }
 
-function NewClaimModal({ clients, onClose, onSaved }) {
-  const [form, setForm] = useState({ clientId: '', claimNumber: '', lossType: 'Water Damage', lossDate: '', status: 'open', propertyAddress: '', notes: '' });
+// Phase 12 (My Reports & Claims Management Completion): also used as the Edit
+// Claim modal -- pass an existing `claim` to pre-fill the form and PUT instead
+// of POST, reusing the exact same fields/validation instead of a second form.
+function NewClaimModal({ clients, claim, onClose, onSaved }) {
+  const isEdit = !!claim;
+  const [form, setForm] = useState(() => claim
+    ? {
+        clientId: claim.clientId || '', claimNumber: claim.claimNumber || '',
+        lossType: claim.lossType || 'Water Damage', lossDate: claim.lossDate || '',
+        status: claim.status || 'open', propertyAddress: claim.propertyAddress || '',
+        notes: claim.notes || '',
+      }
+    : { clientId: '', claimNumber: '', lossType: 'Water Damage', lossDate: '', status: 'open', propertyAddress: '', notes: '' });
   const [loading, setLoading] = useState(false);
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      await crmAPI.createClaim(form);
-      toast.success('Claim created'); onSaved();
-    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create claim')); }
+      if (isEdit) {
+        await crmAPI.updateClaim(getRecordId(claim), form);
+        toast.success('Claim updated');
+      } else {
+        await crmAPI.createClaim(form);
+        toast.success('Claim created');
+      }
+      onSaved();
+    } catch (err) { toast.error(apiErrorMessage(err, isEdit ? 'Failed to update claim' : 'Failed to create claim')); }
     finally { setLoading(false); }
   };
   return (
-    <Modal title="New Claim" onClose={onClose}>
+    <Modal title={isEdit ? 'Edit Claim' : 'New Claim'} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div><label className="label">Client</label>
           <select className="input" required value={form.clientId} onChange={e => setForm(p => ({ ...p, clientId: e.target.value }))}>
@@ -214,7 +231,9 @@ function NewClaimModal({ clients, onClose, onSaved }) {
         <div><label className="label">Property Address</label><input className="input" value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} /></div>
         <div><label className="label">Notes</label><textarea className="input min-h-[70px]" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div>
         <div className="flex gap-3">
-          <button type="submit" disabled={loading} className="btn-primary flex-1 text-sm py-2">{loading ? 'Creating...' : 'Create Claim'}</button>
+          <button type="submit" disabled={loading} className="btn-primary flex-1 text-sm py-2">
+            {loading ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save Changes' : 'Create Claim')}
+          </button>
           <button type="button" onClick={onClose} className="btn-secondary text-sm py-2 px-4">Cancel</button>
         </div>
       </form>
@@ -342,7 +361,7 @@ function ClaimSlideOver({ claim, client, onClose }) {
             claim.status === 'closed'
               ? 'bg-gray-100 text-gray-600'
               : claim.status === 'open'
-                ? 'bg-orange-50 text-orange-600'
+                ? 'bg-brand-50 text-brand-600'
                 : 'bg-amber-50 text-amber-700'
           }`}>
             {(claim.status || 'unknown').replaceAll('-', ' ')}
@@ -415,14 +434,14 @@ function CalendarGrid({ appointments, month, year, onPrev, onNext }) {
           return (
             <div key={i} className="min-w-0 min-h-11 rounded-lg p-0.5 transition-colors hover:bg-gray-50 sm:min-h-[68px] sm:p-1">
               <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-medium sm:text-xs ${
-                isToday ? 'bg-orange-500 font-semibold text-white shadow-sm' : 'text-gray-600'
+                isToday ? 'bg-brand-500 font-semibold text-white shadow-sm' : 'text-gray-600'
               }`}>{day}</span>
               <div className="mt-0.5 flex flex-wrap gap-0.5 sm:block sm:space-y-0.5">
                 {dayAppts.slice(0, 2).map((a, ai) => (
                   <div key={ai} title={a.title} className={`h-1.5 w-1.5 rounded-full sm:h-auto sm:w-auto sm:truncate sm:px-1 sm:py-0.5 sm:text-xs ${
                     a.status === 'completed' ? 'bg-green-500/30 text-green-300' :
                     a.status === 'cancelled' ? 'bg-red-500/30 text-red-300' :
-                    'bg-orange-500/30 text-orange-700'}`}>
+                    'bg-brand-500/30 text-brand-700'}`}>
                     <span className="hidden sm:inline">{a.title}</span>
                   </div>
                 ))}
@@ -449,6 +468,20 @@ export default function CRM() {
   const [claimStatusFilter, setClaimStatusFilter] = useState('all');
   const [crmReady, setCrmReady] = useState(false);
   const [crmError, setCrmError] = useState(null);
+
+  // Phase 12 (My Reports & Claims Management Completion): Claims search/date
+  // filters + archive visibility, fetched server-side via a dedicated
+  // `fetchClaims` (separate from the combined `fetchAll` initial load).
+  const [claimSearchInput, setClaimSearchInput] = useState('');
+  const [claimSearch, setClaimSearch] = useState('');
+  const [claimDateFrom, setClaimDateFrom] = useState('');
+  const [claimDateTo, setClaimDateTo] = useState('');
+  const [showArchivedClaims, setShowArchivedClaims] = useState(false);
+  const [editClaim, setEditClaim] = useState(null);
+  const [archiveClaimTarget, setArchiveClaimTarget] = useState(null);
+  const [archiveClaimLoading, setArchiveClaimLoading] = useState(false);
+  const [deleteClaimId, setDeleteClaimId] = useState(null);
+  const [deleteClaimLoading, setDeleteClaimLoading] = useState(false);
 
   const [showNewClient, setShowNewClient] = useState(false);
   const [showNewAppt, setShowNewAppt] = useState(false);
@@ -493,6 +526,39 @@ export default function CRM() {
 
   useEffect(() => { if (['agency', 'enterprise'].includes(tier)) fetchAll(); }, [tier, fetchAll]);
 
+  // Debounce the free-text claim search the same way ClaimLinkSection does.
+  useEffect(() => {
+    const t = setTimeout(() => setClaimSearch(claimSearchInput), 300);
+    return () => clearTimeout(t);
+  }, [claimSearchInput]);
+
+  // Phase 12: Claims search/status/date/archived filters, all applied
+  // server-side -- separate from `fetchAll`'s combined initial load so
+  // changing a claims filter never re-fetches Clients/Appointments/Analytics.
+  const fetchClaims = useCallback(async () => {
+    setClaimsLoading(true);
+    try {
+      const res = await crmAPI.getClaims({
+        limit: 200,
+        status: claimStatusFilter === 'all' ? undefined : claimStatusFilter,
+        search: claimSearch || undefined,
+        startDate: claimDateFrom || undefined,
+        endDate: claimDateTo || undefined,
+        archived: showArchivedClaims ? 'true' : undefined,
+      });
+      const list = res.data?.data ?? res.data?.claims ?? [];
+      setClaims(Array.isArray(list) ? list : []);
+    } catch {
+      toast.error('Failed to load claims');
+    } finally {
+      setClaimsLoading(false);
+    }
+  }, [claimStatusFilter, claimSearch, claimDateFrom, claimDateTo, showArchivedClaims]);
+
+  useEffect(() => {
+    if (crmReady && ['agency', 'enterprise'].includes(tier)) fetchClaims();
+  }, [crmReady, tier, fetchClaims]);
+
   const handleDeleteClient = (id) => setDeleteClientId(id);
 
   const confirmDeleteClient = async () => {
@@ -517,6 +583,34 @@ export default function CRM() {
       setDeleteApptId(null);
     } catch { toast.error('Delete failed'); }
     finally { setDeleteApptLoading(false); }
+  };
+
+  // Phase 12 (My Reports & Claims Management Completion): Archive and
+  // permanent Delete are kept clearly distinct -- Archive is a reversible
+  // `PUT /claims/:id { archived: true }` (no dedicated endpoint needed, same
+  // pattern as any other claim field update); Delete is the existing,
+  // unmodified hard-delete endpoint, gated behind its own confirm dialog.
+  const confirmArchiveClaim = async () => {
+    if (!archiveClaimTarget) return;
+    setArchiveClaimLoading(true);
+    try {
+      await crmAPI.updateClaim(getRecordId(archiveClaimTarget), { archived: !archiveClaimTarget.archived });
+      toast.success(archiveClaimTarget.archived ? 'Claim restored' : 'Claim archived');
+      setArchiveClaimTarget(null);
+      fetchClaims();
+    } catch (err) { toast.error(apiErrorMessage(err, 'Update failed')); }
+    finally { setArchiveClaimLoading(false); }
+  };
+
+  const confirmDeleteClaim = async () => {
+    setDeleteClaimLoading(true);
+    try {
+      await crmAPI.deleteClaim(deleteClaimId);
+      toast.success('Claim deleted');
+      setDeleteClaimId(null);
+      fetchClaims();
+    } catch (err) { toast.error(apiErrorMessage(err, 'Delete failed')); }
+    finally { setDeleteClaimLoading(false); }
   };
 
   const handleUpdateAppointmentStatus = async (id, status) => {
@@ -560,7 +654,8 @@ export default function CRM() {
     c.email?.toLowerCase().includes(clientSearch.toLowerCase())
   );
 
-  const filteredClaims = claimStatusFilter === 'all' ? claims : claims.filter(c => c.status === claimStatusFilter);
+  // Status/search/date/archived filtering all now happens server-side via
+  // `fetchClaims` -- `claims` is already the correctly filtered set.
 
   if (!['agency', 'enterprise'].includes(tier)) {
     return (
@@ -623,7 +718,7 @@ export default function CRM() {
           {SIDEBAR_TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                activeTab === tab.id ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                activeTab === tab.id ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}>
               <tab.icon className="w-4 h-4" /> {tab.label}
             </button>
@@ -638,7 +733,7 @@ export default function CRM() {
                 <h1 className="text-2xl font-bold text-gray-900 mb-6">CRM Dashboard</h1>
                 <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
                   {[
-                    { label: 'Total Clients', value: analytics?.totalClients ?? 0, icon: Users, color: 'text-orange-400 bg-orange-500/10' },
+                    { label: 'Total Clients', value: analytics?.totalClients ?? 0, icon: Users, color: 'text-brand-400 bg-brand-500/10' },
                     { label: 'Open Claims', value: analytics?.openClaims ?? 0, icon: AlertCircle, color: 'text-red-400 bg-red-500/10' },
                     { label: 'Awaiting Review', value: analytics?.reportsAwaitingReview ?? 0, icon: FileText, color: 'text-amber-500 bg-amber-500/10' },
                     { label: 'Overdue Appointments', value: analytics?.overdueAppointments ?? 0, icon: Calendar, color: 'text-red-500 bg-red-500/10' },
@@ -661,7 +756,7 @@ export default function CRM() {
                       : !analytics?.recentClaims?.length ? <p className="text-sm text-gray-500">No claims yet.</p>
                       : analytics.recentClaims.map(claim => (
                         <button type="button" key={claim.id} onClick={() => navigate(`/crm/claims/${claim.id}`)} className="flex w-full items-center gap-3 border-b border-[#e5e7eb] py-2 text-left last:border-0 hover:bg-gray-50">
-                          <FileText className="w-4 h-4 text-orange-500" />
+                          <FileText className="w-4 h-4 text-brand-500" />
                           <div><p className="font-mono text-gray-900 text-sm">{claim.claimNumber}</p><p className="text-gray-500 text-xs">{claim.lossType}</p></div>
                           <span className="ml-auto text-xs text-gray-500">{formatStatus(claim.status)}</span>
                         </button>
@@ -676,7 +771,7 @@ export default function CRM() {
                         return d && d >= startOfToday;
                       }).slice(0, 5).map(a => (
                         <div key={getRecordId(a)} className="flex items-center gap-3 py-2 border-b border-[#e5e7eb] last:border-0">
-                          <Calendar className="w-4 h-4 text-orange-400 shrink-0" />
+                          <Calendar className="w-4 h-4 text-brand-400 shrink-0" />
                           <div><p className="text-gray-900 text-sm">{a.title}</p><p className="text-gray-500 text-xs">{a.date} {a.time}</p></div>
                           <StatusPill status={a.status} />
                         </div>
@@ -690,7 +785,7 @@ export default function CRM() {
                         : Object.entries(analytics.claimsByStatus).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
                           <div key={status}>
                             <div className="mb-1 flex justify-between text-xs"><span className="text-gray-600">{formatStatus(status)}</span><span className="font-semibold text-gray-900">{count}</span></div>
-                            <div className="h-2 rounded-full bg-gray-100"><div className="h-2 rounded-full bg-orange-500" style={{ width: `${Math.round((count / Math.max(analytics.totalClaims, 1)) * 100)}%` }} /></div>
+                            <div className="h-2 rounded-full bg-gray-100"><div className="h-2 rounded-full bg-brand-500" style={{ width: `${Math.round((count / Math.max(analytics.totalClaims, 1)) * 100)}%` }} /></div>
                           </div>
                         ))}
                     </div>
@@ -702,7 +797,7 @@ export default function CRM() {
                         const max = Math.max(...analytics.usageTrend.map(item => item.reports), 1);
                         return <div key={month.key} className="flex flex-1 flex-col items-center gap-2">
                           <span className="text-xs font-semibold text-gray-700">{month.reports}</span>
-                          <div className="w-full rounded-t bg-orange-500" style={{ height: `${Math.max((month.reports / max) * 88, month.reports ? 8 : 2)}px` }} />
+                          <div className="w-full rounded-t bg-brand-500" style={{ height: `${Math.max((month.reports / max) * 88, month.reports ? 8 : 2)}px` }} />
                           <span className="text-[11px] text-gray-500">{month.label}</span>
                         </div>;
                       })}
@@ -753,7 +848,7 @@ export default function CRM() {
                       ) : filteredClients.map(c => (
                         <tr key={getRecordId(c)} className="border-b border-[#e5e7eb] hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => navigate(`/crm/clients/${getRecordId(c)}`)}>
                           <td className="px-4 py-3"><div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-orange-500/20 flex items-center justify-center text-xs font-bold text-orange-400">{(c.name || 'C')[0].toUpperCase()}</div>
+                            <div className="w-7 h-7 rounded-full bg-brand-500/20 flex items-center justify-center text-xs font-bold text-brand-400">{(c.name || 'C')[0].toUpperCase()}</div>
                             <span className="text-gray-900 text-sm font-medium">{c.name}</span>
                           </div></td>
                           <td className="px-4 py-3 text-sm text-gray-600">{c.email}</td>
@@ -784,7 +879,7 @@ export default function CRM() {
                     <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-[#e5e7eb] sm:flex-none">
                       {['month', 'week', 'list'].map(v => (
                         <button key={v} onClick={() => setCalView(v)}
-                          className={`min-w-0 flex-1 px-2 py-2 text-xs font-medium transition-colors sm:flex-none sm:px-3 sm:text-sm ${calView === v ? 'bg-orange-500 text-white' : 'text-gray-600 hover:text-gray-900'}`}>
+                          className={`min-w-0 flex-1 px-2 py-2 text-xs font-medium transition-colors sm:flex-none sm:px-3 sm:text-sm ${calView === v ? 'bg-brand-500 text-white' : 'text-gray-600 hover:text-gray-900'}`}>
                           {v.charAt(0).toUpperCase() + v.slice(1)}
                         </button>
                       ))}
@@ -814,7 +909,7 @@ export default function CRM() {
                           return d >= weekStart && d <= weekEnd;
                         }).map(a => (
                           <div key={getRecordId(a)} className={`flex flex-col items-start gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-4 ${isOverdueAppt(a) ? 'border-red-500/30 bg-red-500/5' : 'border-gray-200 bg-gray-100'}`}>
-                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-24">{a.date}{a.time ? ` ${a.time}` : ''}</div>
+                            <div className="shrink-0 text-sm font-medium text-brand-500 sm:w-24">{a.date}{a.time ? ` ${a.time}` : ''}</div>
                             <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
                             {isOverdueAppt(a) && <OverdueBadge />}
                             <StatusPill status={a.status} />
@@ -831,7 +926,7 @@ export default function CRM() {
                           <div className="text-center py-8"><Calendar className="w-8 h-8 text-gray-600 mx-auto mb-2" /><p className="text-gray-600">No appointments yet.</p></div>
                         ) : appointments.map(a => (
                           <div key={getRecordId(a)} className={`flex flex-col items-start gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-4 ${isOverdueAppt(a) ? 'border-red-500/30 bg-red-500/5' : 'border-gray-200 bg-gray-100'}`}>
-                            <div className="shrink-0 text-sm font-medium text-orange-500 sm:w-32">{a.date} {a.time}</div>
+                            <div className="shrink-0 text-sm font-medium text-brand-500 sm:w-32">{a.date} {a.time}</div>
                             <div className="min-w-0 flex-1"><p title={a.title} className="truncate text-sm font-medium text-gray-900">{a.title}</p><p title={a.location} className="truncate text-xs text-gray-500">{a.location}</p></div>
                             {isOverdueAppt(a) && <OverdueBadge />}
                             <StatusPill status={a.status} />
@@ -853,13 +948,28 @@ export default function CRM() {
                     <Plus className="w-4 h-4" /> New Claim
                   </button>
                 </div>
-                <div className="flex gap-2 mb-4 flex-wrap">
+                <div className="flex gap-2 mb-3 flex-wrap">
                   {['all', ...CLAIM_STATUSES].map(s => (
                     <button key={s} onClick={() => setClaimStatusFilter(s)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${claimStatusFilter === s ? 'bg-orange-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${claimStatusFilter === s ? 'bg-brand-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
                       {s === 'all' ? 'All' : formatStatus(s)}
                     </button>
                   ))}
+                  <button onClick={() => setShowArchivedClaims(v => !v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${showArchivedClaims ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-900'}`}>
+                    <Archive className="w-3.5 h-3.5" /> {showArchivedClaims ? 'Showing Archived' : 'Show Archived'}
+                  </button>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input className="input pl-10" placeholder="Search by claim number, loss type, or address..."
+                      value={claimSearchInput} onChange={e => setClaimSearchInput(e.target.value)} />
+                  </div>
+                  <input type="date" className="input w-auto" title="Loss date from" value={claimDateFrom}
+                    onChange={e => setClaimDateFrom(e.target.value)} />
+                  <input type="date" className="input w-auto" title="Loss date to" value={claimDateTo}
+                    onChange={e => setClaimDateTo(e.target.value)} />
                 </div>
                 <div className="card overflow-hidden">
                   <div className="overflow-x-auto">
@@ -872,33 +982,54 @@ export default function CRM() {
                     <tbody>
                       {claimsLoading ? [...Array(5)].map((_, i) => (
                         <tr key={i}>{[...Array(6)].map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 w-full" /></td>)}</tr>
-                      )) : filteredClaims.length === 0 ? (
+                      )) : claims.length === 0 ? (
                         <tr><td colSpan={6} className="px-4 py-12 text-center">
                           <FileText className="w-8 h-8 text-gray-600 mx-auto mb-2" />
                           <p className="text-gray-600">No claims found.</p>
                         </td></tr>
-                      ) : filteredClaims.map(c => {
+                      ) : claims.map(c => {
                         const client = clients.find(cl => getRecordId(cl) === c.clientId);
                         return (
                           <tr key={getRecordId(c)} className="cursor-pointer border-b border-[#e5e7eb] hover:bg-gray-100" onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}>
-                            <td className="px-4 py-3 text-sm font-mono text-orange-700">{c.claimNumber}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-brand-700">{c.claimNumber}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{client?.name || c.clientId}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{c.lossType}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{c.lossDate}</td>
-                            <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                              c.status === 'closed' ? 'bg-gray-500/20 text-gray-600' :
-                              c.status === 'open' ? 'bg-orange-500/20 text-orange-700' :
-                              'bg-yellow-500/20 text-yellow-700'}`}>{formatStatus(c.status)}</span></td>
                             <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}
-                                className="rounded-lg p-1.5 hover:bg-gray-100"
-                                aria-label={`View claim ${c.claimNumber}`}
-                                title="View claim"
-                              >
-                                <Eye className="h-4 w-4 text-gray-600" />
-                              </button>
+                              {c.archived && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-500/20 text-gray-600 mr-1.5">Archived</span>
+                              )}
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                c.status === 'closed' ? 'bg-gray-500/20 text-gray-600' :
+                                c.status === 'open' ? 'bg-brand-500/20 text-brand-700' :
+                                'bg-amber-500/20 text-amber-700'}`}>{formatStatus(c.status)}</span>
+                            </td>
+                            <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => navigate(`/crm/claims/${getRecordId(c)}`)}
+                                  className="rounded-lg p-1.5 hover:bg-gray-100" aria-label={`View claim ${c.claimNumber}`} title="View claim">
+                                  <Eye className="h-4 w-4 text-gray-600" />
+                                </button>
+                                <button type="button" onClick={() => setEditClaim(c)}
+                                  className="rounded-lg p-1.5 hover:bg-gray-100" aria-label={`Edit claim ${c.claimNumber}`} title="Edit claim">
+                                  <Pencil className="h-4 w-4 text-gray-600" />
+                                </button>
+                                {c.archived ? (
+                                  <button type="button" onClick={() => setArchiveClaimTarget(c)}
+                                    className="rounded-lg p-1.5 hover:bg-gray-100" aria-label={`Restore claim ${c.claimNumber}`} title="Restore claim">
+                                    <ArchiveRestore className="h-4 w-4 text-gray-600" />
+                                  </button>
+                                ) : (
+                                  <button type="button" onClick={() => setArchiveClaimTarget(c)}
+                                    className="rounded-lg p-1.5 hover:bg-gray-100" aria-label={`Archive claim ${c.claimNumber}`} title="Archive claim">
+                                    <Archive className="h-4 w-4 text-gray-600" />
+                                  </button>
+                                )}
+                                <button type="button" onClick={() => setDeleteClaimId(getRecordId(c))}
+                                  className="rounded-lg p-1.5 hover:bg-red-500/10" aria-label={`Delete claim ${c.claimNumber}`} title="Delete claim">
+                                  <Trash2 className="h-4 w-4 text-red-400" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -916,7 +1047,34 @@ export default function CRM() {
       <AnimatePresence>
         {showNewClient && <NewClientModal onClose={() => setShowNewClient(false)} onSaved={() => { setShowNewClient(false); fetchAll(); }} />}
         {showNewAppt && <NewAppointmentModal clients={clients} onClose={() => setShowNewAppt(false)} onSaved={() => { setShowNewAppt(false); fetchAll(); }} />}
-        {showNewClaim && <NewClaimModal clients={clients} onClose={() => setShowNewClaim(false)} onSaved={() => { setShowNewClaim(false); fetchAll(); }} />}
+        {showNewClaim && <NewClaimModal clients={clients} onClose={() => setShowNewClaim(false)} onSaved={() => { setShowNewClaim(false); fetchClaims(); }} />}
+        {editClaim && (
+          <NewClaimModal clients={clients} claim={editClaim} onClose={() => setEditClaim(null)}
+            onSaved={() => { setEditClaim(null); fetchClaims(); }} />
+        )}
+        {archiveClaimTarget && (
+          <ConfirmDialog
+            title={archiveClaimTarget.archived ? 'Restore this claim?' : 'Archive this claim?'}
+            message={archiveClaimTarget.archived
+              ? 'This claim will reappear in the default Claims view.'
+              : 'Archived claims are hidden from the default Claims view but can be restored at any time. Nothing is deleted.'}
+            confirmLabel={archiveClaimTarget.archived ? 'Restore' : 'Archive'}
+            danger={false}
+            loading={archiveClaimLoading}
+            onConfirm={confirmArchiveClaim}
+            onClose={() => setArchiveClaimTarget(null)}
+          />
+        )}
+        {deleteClaimId && (
+          <ConfirmDialog
+            title="Delete claim?"
+            message="This permanently deletes the claim. Any reports linked to it are not deleted, but will lose their claim link. This cannot be undone."
+            confirmLabel="Delete"
+            loading={deleteClaimLoading}
+            onConfirm={confirmDeleteClaim}
+            onClose={() => setDeleteClaimId(null)}
+          />
+        )}
         {selectedClaim && (
           <ClaimSlideOver
             claim={selectedClaim}

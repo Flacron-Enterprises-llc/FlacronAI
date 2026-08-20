@@ -66,7 +66,7 @@ const FAQS = [
   {
     category: 'Technical',
     q: 'What technology powers FlacronAI\'s report drafting?',
-    a: 'FlacronAI\'s Flacron Engine drafts report text and analyzes supported images, with an automatic backup engine that takes over for text drafting if the primary is unavailable. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
+    a: 'FlacronAI\'s FLACRON ENGINE drafts report text and analyzes supported images, with an automatic backup engine that takes over for text drafting if the primary is unavailable. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
   },
   {
     category: 'Technical',
@@ -159,8 +159,8 @@ export default function FAQs() {
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-3xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-orange-500/20 flex items-center justify-center">
-            <HelpCircle className="w-7 h-7 text-orange-400" />
+          <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-brand-500/20 flex items-center justify-center">
+            <HelpCircle className="w-7 h-7 text-brand-400" />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Frequently Asked <span className="gradient-text">Questions</span></h1>
           <p className="text-gray-600">Find answers about FlacronAI, billing, features, and the API.</p>
@@ -175,7 +175,7 @@ export default function FAQs() {
           {CATEGORIES.map(cat => (
             <button key={cat} onClick={() => setCategory(cat)}
               className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
-                category === cat ? 'bg-orange-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200'}`}>
+                category === cat ? 'bg-brand-500 text-gray-900' : 'bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200'}`}>
               {cat}
             </button>
           ))}

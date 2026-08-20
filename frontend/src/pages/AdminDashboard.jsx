@@ -20,11 +20,11 @@ const TIER_COLORS = {
   starter:      'bg-gray-100 text-gray-600 border-gray-200',
   professional: 'bg-blue-50 text-blue-600 border-blue-200',
   agency:       'bg-purple-50 text-purple-600 border-purple-200',
-  enterprise:   'bg-orange-50 text-orange-600 border-orange-200',
+  enterprise:   'bg-brand-50 text-brand-600 border-brand-200',
 };
 const LEAD_STATUS_COLORS = {
   new:       'bg-blue-50 text-blue-600 border-blue-200',
-  contacted: 'bg-yellow-50 text-yellow-600 border-yellow-200',
+  contacted: 'bg-amber-50 text-amber-600 border-amber-200',
   qualified: 'bg-purple-50 text-purple-600 border-purple-200',
   converted: 'bg-green-50 text-green-600 border-green-200',
   closed:    'bg-gray-100 text-gray-500 border-gray-200',
@@ -105,7 +105,7 @@ function TierEditor({ uid, email, currentTier, onUpdated }) {
         <div className="absolute z-30 top-full left-0 mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
           {TIERS.map(t => (
             <button key={t} onClick={() => handleSelect(t)}
-              className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 capitalize ${t === currentTier ? 'text-orange-500 bg-orange-50/50' : 'text-gray-700'}`}>
+              className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 capitalize ${t === currentTier ? 'text-brand-500 bg-brand-50/50' : 'text-gray-700'}`}>
               {t} {t === currentTier && <Check className="w-3 h-3 inline ml-1" />}
             </button>
           ))}
@@ -166,7 +166,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb] shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-lg font-bold text-orange-500">
+              <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-lg font-bold text-brand-500">
                 {(user.displayName || user.email || 'U')[0].toUpperCase()}
               </div>
               <div>
@@ -207,7 +207,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
           <div className="flex border-b border-[#e5e7eb] shrink-0">
             {[{ id: 'reports', label: 'Reports', icon: FileText }, { id: 'billing', label: 'Billing', icon: CreditCard }].map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setTab(id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${tab === id ? 'border-orange-500 text-orange-500' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${tab === id ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                 <Icon className="w-4 h-4" /> {label}
               </button>
             ))}
@@ -218,7 +218,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
             {loading ? (
               <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />)}</div>
             ) : loadError ? (
-              <div className="py-12 text-center"><AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" /><p className="text-sm text-gray-600">User details could not be loaded.</p><button onClick={fetchDetails} className="mt-3 text-sm font-semibold text-orange-600">Retry</button></div>
+              <div className="py-12 text-center"><AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" /><p className="text-sm text-gray-600">User details could not be loaded.</p><button onClick={fetchDetails} className="mt-3 text-sm font-semibold text-brand-600">Retry</button></div>
             ) : tab === 'reports' ? (
               reports.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
@@ -229,9 +229,9 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                 <div className="space-y-2">
                   {reports.map(r => (
                     <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-[#e5e7eb] hover:bg-gray-50">
-                      <FileText className="w-4 h-4 text-orange-400 shrink-0" />
+                      <FileText className="w-4 h-4 text-brand-400 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-mono text-orange-500 truncate">{r.claimNumber}</p>
+                        <p className="text-sm font-mono text-brand-500 truncate">{r.claimNumber}</p>
                         <p className="text-xs text-gray-500">{r.lossType} · {r.lossDate ? new Date(r.lossDate).toLocaleDateString() : '—'}</p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${r.status === 'completed' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
@@ -250,7 +250,7 @@ function UserSlideOver({ user, onClose, onDeleted }) {
                       <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Active Subscription</p>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between"><span className="text-gray-500">Status</span>
-                          <span className={`font-semibold ${billing.subscription.status === 'active' ? 'text-green-600' : 'text-yellow-600'}`}>{billing.subscription.status}</span></div>
+                          <span className={`font-semibold ${billing.subscription.status === 'active' ? 'text-green-600' : 'text-amber-600'}`}>{billing.subscription.status}</span></div>
                         <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-semibold text-gray-900">{fmtMoney(billing.subscription.amount)}/{billing.subscription.interval}</span></div>
                         <div className="flex justify-between"><span className="text-gray-500">Renews</span><span className="text-gray-700">{new Date(billing.subscription.currentPeriodEnd).toLocaleDateString()}</span></div>
                         {billing.subscription.cancelAtPeriodEnd && <p className="text-xs text-amber-600 font-medium">⚠ Cancels at period end</p>}
@@ -333,17 +333,17 @@ function EmailModal({ to, onClose }) {
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</label>
-            <input className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400"
+            <input className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400"
               placeholder="Subject line…" value={subject} onChange={e => setSubject(e.target.value)} required />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Message</label>
-            <textarea className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[140px] resize-none"
+            <textarea className="w-full mt-1 px-3 py-2 text-sm border border-[#e5e7eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-400 min-h-[140px] resize-none"
               placeholder="Write your message…" value={message} onChange={e => setMessage(e.target.value)} required />
           </div>
           <div className="flex gap-3">
             <button type="submit" disabled={sending}
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              className="flex-1 bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
               <Mail className="w-4 h-4" /> {sending ? 'Sending…' : 'Send Email'}
             </button>
             <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-medium border border-[#e5e7eb] rounded-xl hover:bg-gray-50 transition-colors text-gray-700">
@@ -362,7 +362,7 @@ function LeadNoteEditor({ lead, onSave, onCancel }) {
   return (
     <div className="flex items-center gap-1">
       <input autoFocus
-        className="text-xs border border-orange-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-orange-400"
+        className="text-xs border border-brand-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-brand-400"
         value={notes} onChange={e => setNotes(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') onSave(notes); if (e.key === 'Escape') onCancel(); }} />
       <button onClick={() => onSave(notes)} aria-label="Save note" title="Save note" className="p-1 hover:bg-green-50 rounded text-green-600"><Check className="w-3.5 h-3.5" /></button>
@@ -482,8 +482,8 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-5 h-5 text-orange-500" />
-              <span className="text-xs font-semibold text-orange-500 uppercase tracking-wider">Owner Panel</span>
+              <Shield className="w-5 h-5 text-brand-500" />
+              <span className="text-xs font-semibold text-brand-500 uppercase tracking-wider">Owner Panel</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
             <p className="text-gray-500 text-sm mt-0.5">Platform-wide overview — FlacronAI</p>
@@ -501,7 +501,7 @@ export default function AdminDashboard() {
             { id: 'leads',    label: 'Leads', icon: MessageSquare },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === id ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === id ? 'bg-brand-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               <Icon className="w-4 h-4" /> {label}
             </button>
           ))}
@@ -515,16 +515,16 @@ export default function AdminDashboard() {
                 {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 animate-pulse" />)}
               </div>
             ) : statsError ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-orange-600 shadow-sm">Retry</button></div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 py-16 text-center"><AlertCircle className="mx-auto mb-3 h-9 w-9 text-amber-600" /><p className="text-sm text-amber-900">Admin statistics could not be loaded.</p><button onClick={fetchStats} className="mt-3 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-600 shadow-sm">Retry</button></div>
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <StatCard label="Total Users" value={fmt(stats.totalUsers)} icon={Users} color="bg-blue-50 text-blue-500" />
-                  <StatCard label="Paid Users" value={fmt(stats.paidUsers)} sub={`${stats.totalUsers ? Math.round(stats.paidUsers / stats.totalUsers * 100) : 0}% conversion`} icon={Crown} color="bg-orange-50 text-orange-500" />
+                  <StatCard label="Paid Users" value={fmt(stats.paidUsers)} sub={`${stats.totalUsers ? Math.round(stats.paidUsers / stats.totalUsers * 100) : 0}% conversion`} icon={Crown} color="bg-brand-50 text-brand-500" />
                   <StatCard label="Est. MRR" value={fmtMoney(stats.mrr)} sub="Based on tier counts" icon={DollarSign} color="bg-green-50 text-green-600" />
                   <StatCard label="Stripe (30d)" value={stats.stripeRevenue30d != null ? fmtMoney(stats.stripeRevenue30d) : 'N/A'} sub="Collected payments" icon={TrendingUp} color="bg-purple-50 text-purple-600" />
                   <StatCard label="Total Reports" value={fmt(stats.totalReports)} icon={FileText} color="bg-gray-100 text-gray-600" />
-                  <StatCard label="Reports This Month" value={fmt(stats.reportsThisMonth)} icon={BarChart3} color="bg-yellow-50 text-yellow-600" />
+                  <StatCard label="Reports This Month" value={fmt(stats.reportsThisMonth)} icon={BarChart3} color="bg-amber-50 text-amber-600" />
                   <StatCard label="Total Leads" value={fmt(stats.totalLeads)} icon={MessageSquare} color="bg-pink-50 text-pink-500" />
                   <StatCard label="New Leads (MTD)" value={fmt(stats.newLeadsThisMonth)} icon={TrendingUp} color="bg-indigo-50 text-indigo-500" />
                 </div>
@@ -557,10 +557,10 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input className="w-full pl-10 pr-4 py-2 text-sm border border-[#e5e7eb] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                <input className="w-full pl-10 pr-4 py-2 text-sm border border-[#e5e7eb] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
                   placeholder="Search by email or name…" value={userSearchInput} onChange={e => setUserSearchInput(e.target.value)} />
               </div>
-              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={userTierFilter} onChange={e => { setUserTierFilter(e.target.value); setUserPage(1); }}>
                 <option value="">All Plans</option>
                 {TIERS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
@@ -596,7 +596,7 @@ export default function AdminDashboard() {
                         </tr>
                       ))
                     ) : usersError ? (
-                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Customers could not be loaded.</p><button onClick={fetchUsers} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Customers could not be loaded.</p><button onClick={fetchUsers} className="mt-2 text-sm font-semibold text-brand-600">Retry</button></td></tr>
                     ) : users.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No users found</td></tr>
                     ) : users.map(u => (
@@ -649,7 +649,7 @@ export default function AdminDashboard() {
         {tab === 'leads' && (
           <motion.div key="leads" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex gap-3 mb-4">
-              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+              <select className="text-sm border border-[#e5e7eb] rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={leadsStatus} onChange={e => setLeadsStatus(e.target.value)}>
                 <option value="">All Statuses</option>
                 {['new', 'contacted', 'qualified', 'converted', 'closed'].map(s => (
@@ -680,7 +680,7 @@ export default function AdminDashboard() {
                         </tr>
                       ))
                     ) : leadsError ? (
-                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Sales leads could not be loaded.</p><button onClick={fetchLeads} className="mt-2 text-sm font-semibold text-orange-600">Retry</button></td></tr>
+                      <tr><td colSpan={6} className="px-4 py-12 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Sales leads could not be loaded.</p><button onClick={fetchLeads} className="mt-2 text-sm font-semibold text-brand-600">Retry</button></td></tr>
                     ) : leads.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">No leads yet</td></tr>
                     ) : leads.map(l => (

@@ -7,24 +7,14 @@ const { WEBHOOK_EVENTS, DELIVERY_POLICY } = require('../config/webhookEvents');
 const {
   registerEndpoint, listEndpoints, deleteEndpoint, rotateSecret,
 } = require('../services/webhookService');
-
-// Only allow public HTTPS destinations. Reject http:// and obvious internal
-// hosts so a registered webhook can't be pointed at our own metadata service or
-// a loopback address (SSRF hardening).
-const isSafeWebhookUrl = (value) => {
-  let u;
-  try { u = new URL(value); } catch { return false; }
-  if (u.protocol !== 'https:') return false;
-  const host = u.hostname.toLowerCase();
-  const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'metadata.google.internal'];
-  if (blocked.includes(host)) return false;
-  // Block RFC-1918 / link-local literals.
-  if (/^10\./.test(host)) return false;
-  if (/^192\.168\./.test(host)) return false;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
-  if (/^169\.254\./.test(host)) return false;
-  return true;
-};
+// Only allow public HTTPS destinations that don't resolve to a loopback/
+// private/link-local address -- see backend/utils/webhookUrlSafety.js for
+// the full rationale (SSRF hardening, including DNS-rebinding protection) and
+// why the route wires in `assertSafeWebhookUrl` (throws) rather than
+// `isSafeWebhookUrl` (returns a boolean) -- express-validator's async
+// `.custom()` only treats a REJECTED promise as invalid, not a resolved
+// `false`.
+const { assertSafeWebhookUrl } = require('../utils/webhookUrlSafety');
 
 // GET /api/webhooks/events — catalog of events a caller can subscribe to.
 router.get('/events', authenticateToken, requireApiAccess, (req, res) => {
@@ -42,7 +32,7 @@ router.get('/events', authenticateToken, requireApiAccess, (req, res) => {
 
 // POST /api/webhooks — register a webhook endpoint (returns signing secret once).
 router.post('/', authenticateToken, requireApiAccess, [
-  body('url').isString().custom(isSafeWebhookUrl).withMessage('url must be a public HTTPS URL'),
+  body('url').isString().custom(assertSafeWebhookUrl).withMessage('url must be a public HTTPS URL that does not resolve to a private, loopback, or link-local address'),
   body('events').isArray({ min: 1 }).withMessage('Subscribe to at least one event'),
   body('events.*').isIn(WEBHOOK_EVENTS).withMessage('Unknown webhook event'),
   body('description').optional().isString().isLength({ max: 200 }),

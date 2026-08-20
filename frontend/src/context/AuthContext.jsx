@@ -9,7 +9,7 @@ import {
   updateProfile as firebaseUpdateProfile,
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
-import { usersAPI } from '../services/api.js';
+import { usersAPI, authAPI } from '../services/api.js';
 
 const AuthContext = createContext(null);
 
@@ -147,15 +147,24 @@ export const AuthProvider = ({ children }) => {
     };
   }, [user, profileError, fetchUserProfile]);
 
+  // Phase 17: real Login History (Settings -> Security) needs a real
+  // login_success record for every sign-in, not just MFA ones -- this
+  // `authAPI.verify()` call is what actually produces it server-side (see
+  // that route's own comment). Fire-and-forget: a network hiccup recording
+  // the audit entry must never block or fail the login itself.
   const login = async (email, password) => {
     setMfaVerified(false);
-    return signInWithEmailAndPassword(auth, email, password);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    authAPI.verify().catch(() => {});
+    return result;
   };
 
   const loginWithGoogle = async () => {
     setMfaVerified(false);
     const provider = new GoogleAuthProvider();
-    return signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    authAPI.verify().catch(() => {});
+    return result;
   };
 
   const register = async (email, password, displayName) => {

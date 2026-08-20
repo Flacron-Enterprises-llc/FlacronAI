@@ -17,9 +17,20 @@ import { getAdminEmail } from '../utils/adminEmail.js';
 // this when either document materially changes so consent stays auditable.
 const REGISTRATION_POLICY_VERSION = '2026-03-01';
 
+// Route (/login, /signup) is authoritative; ?mode=signup is kept only as a
+// fallback for any caller that still lands on this component another way
+// (e.g. a stale deep link) — see also App.jsx's AuthLegacyRedirect for /auth.
+const modeFromLocation = (pathname, searchParams) => {
+  if (pathname === '/signup') return 'signup';
+  if (pathname === '/login') return 'login';
+  return searchParams.get('mode') === 'signup' ? 'signup' : 'login';
+};
+
 const Auth = () => {
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState(() => modeFromLocation(location.pathname, searchParams));
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -31,14 +42,31 @@ const Auth = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   useEscapeToClose(() => { setForgotOpen(false); setForgotSent(false); }, forgotOpen && !forgotLoading, forgotOpen);
 
-  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', company: '' });
   // Required Terms + Privacy acknowledgement for sign-up. Never pre-checked.
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { login, register, loginWithGoogle, emailVerified, reloadUser } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
 
   const pendingPlan = searchParams.get('plan');
+
+  // Keep `mode` in sync with the URL for direct navigation, browser
+  // back/forward between /login and /signup, and refresh/bookmarks.
+  useEffect(() => {
+    setMode(modeFromLocation(location.pathname, searchParams));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Switching tabs (or the "Sign up free"/"Sign in" link) navigates to the
+  // matching dedicated route, carrying router state (e.g. ProtectedRoute's
+  // `{ from: location }`) along so a mode switch never loses the original
+  // post-login destination. Pushes a new history entry (not `replace`) so the
+  // browser Back button steps between /login and /signup as expected, instead
+  // of jumping past both to whatever page preceded the auth flow entirely.
+  const switchMode = (nextMode) => {
+    setErrors({});
+    setAgreedToTerms(false);
+    navigate(nextMode === 'signup' ? '/signup' : '/login', { state: location.state });
+  };
 
   // Save pending plan to sessionStorage on mount so it survives auth redirects
   useEffect(() => {
@@ -77,7 +105,7 @@ const Auth = () => {
       }
     }
     const requestedPath = location.state?.from?.pathname;
-    const destination = requestedPath && requestedPath !== '/auth' ? requestedPath : '/dashboard';
+    const destination = requestedPath && !['/auth', '/login', '/signup'].includes(requestedPath) ? requestedPath : '/dashboard';
     navigate(destination, { replace: true });
   }, [location.state, pendingPlan, navigate]);
 
@@ -93,12 +121,29 @@ const Auth = () => {
     if (!form.password) errs.password = 'Password is required';
     else if (form.password.length < 12) errs.password = 'Password must be at least 12 characters';
     if (mode === 'signup') {
-      if (!form.displayName) errs.displayName = 'Full name is required';
+      if (!form.firstName.trim()) errs.firstName = 'First name is required';
+      if (!form.lastName.trim()) errs.lastName = 'Last name is required';
       if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
       if (!agreedToTerms) errs.agreedToTerms = 'You must agree to the Terms of Service and Privacy Policy to create an account';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  // Firebase Auth only has one `displayName` field; firstName/lastName/company
+  // are FlacronAI-specific and live in Firestore. getProfile() is called first
+  // to make sure the FULL default profile doc (tier, usage counters, etc. --
+  // see backend/routes/users.js's GET /profile auto-create) exists before
+  // merging these extra fields on top; calling updateProfile() alone here
+  // first would risk creating a partial doc missing those defaults, since
+  // this runs on the very first authenticated request for a brand-new account.
+  const persistSignupProfileDetails = async ({ firstName, lastName, company, displayName }) => {
+    try {
+      await usersAPI.getProfile();
+      await usersAPI.updateProfile({ firstName, lastName, company, displayName });
+    } catch (err) {
+      console.error('Failed to persist signup profile details:', err?.response?.data || err.message);
+    }
   };
 
   const handleResendVerification = async () => {
@@ -140,7 +185,11 @@ const Auth = () => {
         toast.success('Welcome back!');
         await handlePostAuth(result.user);
       } else {
-        await register(form.email, form.password, form.displayName);
+        const firstName = form.firstName.trim();
+        const lastName = form.lastName.trim();
+        const company = form.company.trim();
+        const displayName = `${firstName} ${lastName}`.trim();
+        await register(form.email, form.password, displayName);
         toast.success('Account created! Please verify your email.');
         // Record the Terms + Privacy acceptance server-side (auditable). The auth
         // user now exists, so the request carries a valid token. Non-blocking —
@@ -153,6 +202,8 @@ const Auth = () => {
           console.error('Failed to send verification email:', err?.response?.data || err.message);
           toast.error('Could not send verification email. Please use the resend button below.');
         });
+        // Non-blocking — the verification screen shows regardless of whether this succeeds.
+        persistSignupProfileDetails({ firstName, lastName, company, displayName });
         setAuthState('verifying');
       }
     } catch (err) {
@@ -196,6 +247,17 @@ const Auth = () => {
         usersAPI.recordRegistrationConsent(REGISTRATION_POLICY_VERSION).catch((err) => {
           console.error('Failed to record registration consent:', err?.response?.data || err.message);
         });
+        // Derive first/last name from whatever Google actually gave us. The raw
+        // Google profile (given_name/family_name) is the most reliable source;
+        // fall back to splitting the Firebase displayName if that's all we have.
+        const googleProfile = getAdditionalUserInfo(result)?.profile || {};
+        const fallbackName = result.user?.displayName || '';
+        const [fallbackFirst, ...fallbackRestParts] = fallbackName.trim().split(/\s+/).filter(Boolean);
+        const firstName = googleProfile.given_name || fallbackFirst || '';
+        const lastName = googleProfile.family_name || fallbackRestParts.join(' ') || '';
+        if (firstName || lastName) {
+          persistSignupProfileDetails({ firstName, lastName, company: '', displayName: fallbackName || undefined });
+        }
       }
       // Google users are already verified — go straight to post-auth
       await handlePostAuth(result.user);
@@ -238,10 +300,10 @@ const Auth = () => {
   if (authState === 'verifying' || authState === 'processing') {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
-        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first automated insurance inspection report." path="/auth" noindex />
+        <Seo title={mode === 'signup' ? 'Sign Up — FlacronAI' : 'Sign In — FlacronAI'} description="Sign in to FlacronAI or create a free account to generate your first automated insurance inspection report." path={mode === 'signup' ? '/signup' : '/login'} noindex />
         {/* Background */}
         <div className="absolute inset-0">
-          <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/8 rounded-full blur-3xl" />
+          <div className="absolute top-1/4 -left-40 w-80 h-80 bg-brand-500/8 rounded-full blur-3xl" />
           <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-amber-500/8 rounded-full blur-3xl" />
           <div className="absolute inset-0 bg-[linear-gradient(rgba(249,115,22,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
         </div>
@@ -254,8 +316,8 @@ const Auth = () => {
           </Link>
 
           <div className="card p-8 text-center">
-            <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <Mail className="w-8 h-8 text-orange-500" />
+            <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <Mail className="w-8 h-8 text-brand-500" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Verify your email</h2>
             <p className="text-gray-600 text-sm mb-6">
@@ -266,7 +328,7 @@ const Auth = () => {
 
             {authState === 'processing' ? (
               <div className="flex items-center justify-center gap-2 py-3 mb-4 text-gray-600">
-                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
                 <span className="text-sm">Checking verification status...</span>
               </div>
             ) : (
@@ -295,7 +357,7 @@ const Auth = () => {
               Wrong email?{' '}
               <button
                 onClick={() => setAuthState('form')}
-                className="text-orange-500 hover:text-orange-600 font-medium underline"
+                className="text-brand-500 hover:text-brand-600 font-medium underline"
               >
                 Go back
               </button>
@@ -311,13 +373,13 @@ const Auth = () => {
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
-        <div className="absolute top-1/4 -left-40 w-80 h-80 bg-orange-500/8 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 -left-40 w-80 h-80 bg-brand-500/8 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-amber-500/8 rounded-full blur-3xl" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(249,115,22,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
       </div>
 
       <div className="relative w-full max-w-md">
-        <Seo title="Sign In — FlacronAI" description="Sign in to FlacronAI or create a free account to generate your first automated insurance inspection report." path="/auth" noindex />
+        <Seo title={mode === 'signup' ? 'Sign Up — FlacronAI' : 'Sign In — FlacronAI'} description="Sign in to FlacronAI or create a free account to generate your first automated insurance inspection report." path={mode === 'signup' ? '/signup' : '/login'} noindex />
         <h1 className="sr-only">Sign in or create your FlacronAI account</h1>
         {/* Logo */}
         <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
@@ -329,7 +391,7 @@ const Auth = () => {
         <div className="card p-8">
           {/* Plan context banner */}
           {pendingPlan && pendingPlan !== 'starter' && (
-            <div className="mb-6 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-800">
+            <div className="mb-6 px-4 py-3 bg-brand-50 border border-brand-200 rounded-xl text-sm text-brand-800">
               <span className="font-semibold">
                 {pendingPlan.replace('_annual', '').charAt(0).toUpperCase() + pendingPlan.replace('_annual', '').slice(1)} Plan selected
               </span>
@@ -342,8 +404,8 @@ const Auth = () => {
             {['login', 'signup'].map(m => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setErrors({}); setAgreedToTerms(false); }}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all capitalize ${mode === m ? 'bg-orange-500 text-gray-900 shadow-lg' : 'text-gray-600 hover:text-gray-900'}`}
+                onClick={() => switchMode(m)}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all capitalize ${mode === m ? 'bg-brand-500 text-gray-900 shadow-lg' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 {m === 'login' ? 'Sign In' : 'Sign Up'}
               </button>
@@ -360,25 +422,39 @@ const Auth = () => {
             >
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === 'signup' && (
-                  <div>
-                    <label className="label">Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                      <input
-                        name="displayName"
-                        type="text"
-                        value={form.displayName}
-                        onChange={handleChange}
-                        placeholder="John Smith"
-                        className={`input pl-10 ${errors.displayName ? 'border-red-500' : ''}`}
-                      />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">First Name</label>
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <input
+                          name="firstName"
+                          type="text"
+                          value={form.firstName}
+                          onChange={handleChange}
+                          placeholder="John"
+                          className={`input pl-10 ${errors.firstName ? 'border-red-500' : ''}`}
+                        />
+                      </div>
+                      {errors.firstName && <p className="text-red-400 text-xs mt-1">{errors.firstName}</p>}
                     </div>
-                    {errors.displayName && <p className="text-red-400 text-xs mt-1">{errors.displayName}</p>}
+                    <div>
+                      <label className="label">Last Name</label>
+                      <input
+                        name="lastName"
+                        type="text"
+                        value={form.lastName}
+                        onChange={handleChange}
+                        placeholder="Smith"
+                        className={`input ${errors.lastName ? 'border-red-500' : ''}`}
+                      />
+                      {errors.lastName && <p className="text-red-400 text-xs mt-1">{errors.lastName}</p>}
+                    </div>
                   </div>
                 )}
 
                 <div>
-                  <label className="label">Email Address</label>
+                  <label className="label">{mode === 'signup' ? 'Work Email' : 'Email Address'}</label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                     <input
@@ -393,11 +469,25 @@ const Auth = () => {
                   {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
                 </div>
 
+                {mode === 'signup' && (
+                  <div>
+                    <label className="label">Company <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <input
+                      name="company"
+                      type="text"
+                      value={form.company}
+                      onChange={handleChange}
+                      placeholder="Acme Insurance Co."
+                      className="input"
+                    />
+                  </div>
+                )}
+
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="label mb-0">Password</label>
                     {mode === 'login' && (
-                      <button type="button" onClick={() => setForgotOpen(true)} className="text-xs text-orange-400 hover:text-orange-300">
+                      <button type="button" onClick={() => setForgotOpen(true)} className="text-xs text-brand-400 hover:text-brand-300">
                         Forgot password?
                       </button>
                     )}
@@ -457,9 +547,9 @@ const Auth = () => {
                       />
                       <span className="text-xs text-gray-600 leading-relaxed">
                         I have read and agree to the{' '}
-                        <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-medium">Terms of Service</Link>
+                        <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline font-medium">Terms of Service</Link>
                         {' '}and{' '}
-                        <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-medium">Privacy Policy</Link>.
+                        <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline font-medium">Privacy Policy</Link>.
                       </span>
                     </label>
                     {errors.agreedToTerms && (
@@ -480,7 +570,7 @@ const Auth = () => {
                     <div className="w-5 h-5 border-2 border-gray-300 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      {mode === 'login' ? 'Sign In' : 'Create Account'}
+                      {mode === 'login' ? 'Sign In' : 'Create Free Account'}
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -510,7 +600,7 @@ const Auth = () => {
 
         <p className="text-center text-gray-500 text-sm mt-4">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErrors({}); setAgreedToTerms(false); }} className="text-orange-400 hover:text-orange-300 font-medium">
+          <button onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')} className="text-brand-400 hover:text-brand-300 font-medium">
             {mode === 'login' ? 'Sign up free' : 'Sign in'}
           </button>
         </p>

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Zap, FileText, BarChart3, Users, Settings, Globe, Code2,
   Download, RefreshCw, Search, Plus, Trash2, Copy, Check,
   TrendingUp, Shield, Star, X, ChevronRight, ExternalLink, Key,
   Crown, CreditCard, Upload, Eye, AlertCircle, CheckCircle,
-  Edit2, UserPlus, UserX, Save, ShieldCheck, Menu, PanelLeftClose,
+  Edit2, UserPlus, UserX, Save, ShieldCheck, Menu, PanelLeftClose, FolderOpen,
+  Ban, UserCheck, Contact, Webhook, Building2, Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
@@ -15,17 +16,21 @@ import { formatStatus } from '../utils/formatStatus';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
 import SectionedReportEditor from '../components/SectionedReportEditor';
+import ReportReviewChecklist from '../components/ReportReviewChecklist';
+import NotificationBell from '../components/NotificationBell';
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
 // ── Quick Demos ───────────────────────────────────────────────────────────────
 const QUICK_DEMOS = [
-  { emoji: '💧', label: 'Water', claimNumber: 'CLM-2024-WD-001', insuredName: 'John & Mary Smith', propertyAddress: '1425 Maple Street, Austin TX 78701', lossDate: '2024-01-15', lossType: 'Water Damage', reportType: 'Initial', lossDescription: 'Upstairs bathroom supply line failed overnight.', damagesObserved: 'Ceiling collapse in kitchen below, hardwood buckling.', propertyDetails: '2-story residential, 2,400 sq ft, built 2005.' },
-  { emoji: '🔥', label: 'Fire', claimNumber: 'CLM-2024-FD-002', insuredName: 'Robert Chen', propertyAddress: '892 Oak Avenue, Dallas TX 75201', lossDate: '2024-02-03', lossType: 'Fire Damage', reportType: 'Initial', lossDescription: 'Kitchen fire started from stovetop grease ignition.', damagesObserved: 'Full kitchen destruction, smoke throughout home.', propertyDetails: 'Single-story ranch, 1,800 sq ft, built 1998.' },
-  { emoji: '🌪️', label: 'Wind', claimNumber: 'CLM-2024-WH-003', insuredName: 'Patricia Williams', propertyAddress: '3301 Pine Road, Houston TX 77001', lossDate: '2024-03-12', lossType: 'Wind/Hail Damage', reportType: 'Initial', lossDescription: 'Severe thunderstorm with hail caused roof damage.', damagesObserved: 'Roof shingles stripped, gutters destroyed, 3 windows broken.', propertyDetails: 'Two-story colonial, 3,100 sq ft, built 2012.' },
-  { emoji: '🔨', label: 'Vandalism', claimNumber: 'CLM-2024-VD-004', insuredName: 'Marcus Thompson', propertyAddress: '5521 Cedar Lane, San Antonio TX 78201', lossDate: '2024-04-10', lossType: 'Vandalism', reportType: 'Initial', lossDescription: 'Property broken into while owners on vacation.', damagesObserved: 'Graffiti on walls, smashed windows, stolen appliances.', propertyDetails: 'Single-story residential, 1,600 sq ft, built 2010.' },
+  { emoji: '💧', label: 'Water', claimNumber: 'CLM-2024-WD-001', insuredName: 'John & Mary Smith', insuredEmail: 'john.smith@example.com', propertyAddress: '1425 Maple Street, Austin TX 78701', lossDate: '2024-01-15', lossType: 'Water Damage', reportType: 'Initial', lossDescription: 'Upstairs bathroom supply line failed overnight.', damagesObserved: 'Ceiling collapse in kitchen below, hardwood buckling.', propertyDetails: '2-story residential, 2,400 sq ft, built 2005.' },
+  { emoji: '🔥', label: 'Fire', claimNumber: 'CLM-2024-FD-002', insuredName: 'Robert Chen', insuredEmail: 'robert.chen@example.com', propertyAddress: '892 Oak Avenue, Dallas TX 75201', lossDate: '2024-02-03', lossType: 'Fire Damage', reportType: 'Initial', lossDescription: 'Kitchen fire started from stovetop grease ignition.', damagesObserved: 'Full kitchen destruction, smoke throughout home.', propertyDetails: 'Single-story ranch, 1,800 sq ft, built 1998.' },
+  { emoji: '🌪️', label: 'Wind', claimNumber: 'CLM-2024-WH-003', insuredName: 'Patricia Williams', insuredEmail: 'patricia.williams@example.com', propertyAddress: '3301 Pine Road, Houston TX 77001', lossDate: '2024-03-12', lossType: 'Wind/Hail Damage', reportType: 'Initial', lossDescription: 'Severe thunderstorm with hail caused roof damage.', damagesObserved: 'Roof shingles stripped, gutters destroyed, 3 windows broken.', propertyDetails: 'Two-story colonial, 3,100 sq ft, built 2012.' },
+  { emoji: '🔨', label: 'Vandalism', claimNumber: 'CLM-2024-VD-004', insuredName: 'Marcus Thompson', insuredEmail: 'marcus.thompson@example.com', propertyAddress: '5521 Cedar Lane, San Antonio TX 78201', lossDate: '2024-04-10', lossType: 'Vandalism', reportType: 'Initial', lossDescription: 'Property broken into while owners on vacation.', damagesObserved: 'Graffiti on walls, smashed windows, stolen appliances.', propertyDetails: 'Single-story residential, 1,600 sq ft, built 2010.' },
 ];
 
-const FORM_INIT = { claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '', lossType: 'Water Damage', reportType: 'Initial', propertyDetails: '', lossDescription: '', damagesObserved: '', recommendations: '', additionalNotes: '' };
+const FORM_INIT = { claimNumber: '', insuredName: '', insuredEmail: '', propertyAddress: '', lossDate: '', lossType: 'Water Damage', reportType: 'Initial', propertyDetails: '', lossDescription: '', damagesObserved: '', recommendations: '', additionalNotes: '' };
 const LOSS_TYPES = ['Water Damage','Fire Damage','Wind/Hail Damage','Vandalism','Theft','Flood','Earthquake','Smoke Damage','Vehicle Impact','Other'];
 const REPORT_TYPES = ['Initial','Supplemental','Final','Re-inspection','Catastrophe'];
 // Only shows "Running AI vision on photos" when photos were actually uploaded --
@@ -33,17 +38,35 @@ const REPORT_TYPES = ['Initial','Supplemental','Final','Re-inspection','Catastro
 const GEN_STEPS_WITH_PHOTOS = ['Analyzing claim data…','Analyzing photos…','Generating report with FlacronAI…','Scoring & finalizing…'];
 const GEN_STEPS_NO_PHOTOS = ['Analyzing claim data…','Generating report with FlacronAI…','Scoring & finalizing…'];
 
+// Phase 14 (Team Roles Expansion & Member Profiles): the 7-role model (+ a
+// legacy "editor" alias) lives server-side in backend/utils/orgRoles.js and
+// is fetched at runtime via GET /teams/roles (`rolesInfo` state below) --
+// this file only needs a display color per role key and a human label for
+// each boolean capability flag, so the actual permission matrix is never
+// duplicated/hand-maintained here.
 const ROLE_COLORS = {
-  owner:  'bg-orange-100 text-orange-700 border border-orange-200',
-  admin:  'bg-blue-100 text-blue-700 border border-blue-200',
-  editor: 'bg-violet-100 text-violet-700 border border-violet-200',
-  viewer: 'bg-gray-100 text-gray-600 border border-gray-200',
+  owner:     'bg-brand-100 text-brand-700 border border-brand-200',
+  admin:     'bg-blue-100 text-blue-700 border border-blue-200',
+  manager:   'bg-teal-100 text-teal-700 border border-teal-200',
+  adjuster:  'bg-violet-100 text-violet-700 border border-violet-200',
+  inspector: 'bg-amber-100 text-amber-700 border border-amber-200',
+  reviewer:  'bg-indigo-100 text-indigo-700 border border-indigo-200',
+  viewer:    'bg-gray-100 text-gray-600 border border-gray-200',
+  editor:    'bg-violet-100 text-violet-700 border border-violet-200',
 };
-const ROLE_PERMS = {
-  admin:  ['Generate reports', 'Export all formats', 'Manage team', 'White-label settings'],
-  editor: ['Generate reports', 'Export all formats'],
-  viewer: ['View reports only'],
+const CAPABILITY_LABELS = {
+  canGenerate: 'Generate reports',
+  canEditReports: 'Edit report content',
+  canApprove: 'Approve & finalize',
+  canExport: 'Export reports',
+  canManageTemplates: 'Manage templates',
+  canWhiteLabel: 'White-label settings',
+  canBilling: 'Billing',
+  canViewAllProfiles: "View teammates' profiles",
+  canManageTeam: 'Manage team',
 };
+const describeCapabilities = (caps) =>
+  Object.entries(CAPABILITY_LABELS).filter(([key]) => caps?.[key]).map(([, label]) => label);
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, icon: Icon, trend, tooltip }) {
@@ -73,13 +96,13 @@ function NavItem({ item, active, onClick }) {
     <button onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
         active
-          ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25'
-          : 'text-gray-600 hover:text-gray-900 hover:bg-orange-50 hover:border-orange-100'
+          ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
+          : 'text-gray-600 hover:text-gray-900 hover:bg-brand-50 hover:border-brand-100'
       }`}>
       <item.icon className="w-4 h-4 shrink-0" />
       {item.label}
       {item.badge && (
-        <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25 text-white' : 'bg-orange-100 text-orange-600'}`}>
+        <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25 text-white' : 'bg-brand-100 text-brand-600'}`}>
           {item.badge}
         </span>
       )}
@@ -91,6 +114,7 @@ function NavItem({ item, active, onClick }) {
 export default function EnterpriseDashboard() {
   const { user, userProfile, tier, refreshProfile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     if (tier && tier !== 'enterprise') {
@@ -99,8 +123,15 @@ export default function EnterpriseDashboard() {
     }
   }, [tier, navigate]);
 
-  const [activeView, setActiveView] = useState('overview');
+  // Phase 14: lets TeamMemberProfile.jsx's back link return here on the
+  // Team tab specifically (?view=team), same narrowly-scoped query-param
+  // pattern Phase 11 used for Dashboard.jsx's ?openReport=.
+  const [activeView, setActiveView] = useState(() => searchParams.get('view') || 'overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeView]);
 
   // Report generation state
   const [form, setForm] = useState(FORM_INIT);
@@ -125,6 +156,7 @@ export default function EnterpriseDashboard() {
   const [licenseState, setLicenseState] = useState('');
   const [company, setCompany] = useState('');
   const [confirmReview, setConfirmReview] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
   const fileInputRef = useRef();
 
   // Reports list state
@@ -147,11 +179,16 @@ export default function EnterpriseDashboard() {
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState(false);
+  const [teamOwnerInfo, setTeamOwnerInfo] = useState(null);
+  // { roles, myRole, assignableRoles, manageableTargetRoles } from GET /teams/roles
+  const [rolesInfo, setRolesInfo] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('editor');
+  const [inviteRole, setInviteRole] = useState('adjuster');
   const [inviting, setInviting] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   const [editingRole, setEditingRole] = useState(null);
+  const [memberActionBusyId, setMemberActionBusyId] = useState(null);
+  const [memberPendingRemoval, setMemberPendingRemoval] = useState(null);
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
@@ -202,8 +239,25 @@ export default function EnterpriseDashboard() {
     try {
       const res = await teamsAPI.getMembers();
       setMembers(res.data?.members || []);
-    } catch { setMembersError(true); }
+      setTeamOwnerInfo(res.data?.owner || null);
+    } catch {
+      // A 403 here just means this viewer's role can't see the roster --
+      // the restricted view below (gated on `canSeeRoster`, from
+      // rolesInfo) is what actually renders for them, not this error state.
+      setMembersError(true);
+    }
     finally { setMembersLoading(false); }
+  }, []);
+
+  const fetchRolesInfo = useCallback(async () => {
+    try {
+      const res = await teamsAPI.getRoles();
+      setRolesInfo(res.data || null);
+      const assignable = res.data?.assignableRoles || [];
+      if (assignable.length) {
+        setInviteRole((prev) => (assignable.includes(prev) ? prev : assignable[0]));
+      }
+    } catch { /* role guide/invite form degrade to a minimal, capability-less view below */ }
   }, []);
 
   const fetchApiKeys = useCallback(async () => {
@@ -217,7 +271,7 @@ export default function EnterpriseDashboard() {
     finally { setApiKeysLoading(false); }
   }, []);
 
-  useEffect(() => { fetchReports(); fetchWlConfig(); fetchMembers(); fetchApiKeys(); }, [fetchReports, fetchWlConfig, fetchMembers, fetchApiKeys]);
+  useEffect(() => { fetchReports(); fetchWlConfig(); fetchMembers(); fetchApiKeys(); fetchRolesInfo(); }, [fetchReports, fetchWlConfig, fetchMembers, fetchApiKeys, fetchRolesInfo]);
 
   // ── Report generation ─────────────────────────────────────────────────────
   const applyDemo = (d) => {
@@ -232,13 +286,14 @@ export default function EnterpriseDashboard() {
   // Selecting/creating a CRM claim fills the display fields from it; the backend
   // re-derives the same fields from the claim record at generate-time regardless,
   // so this is for a consistent preview, not the source of truth.
-  const handleSelectClaim = (claim, clientName) => {
+  const handleSelectClaim = (claim, clientName, clientEmail) => {
     setLinkedClaim(claim);
     setLinkedClientName(clientName || '');
     setForm(p => ({
       ...p,
       claimNumber: claim.claimNumber || '',
       insuredName: clientName || '',
+      insuredEmail: clientEmail || p.insuredEmail,
       propertyAddress: claim.propertyAddress || '',
       lossDate: claim.lossDate || '',
       lossType: claim.lossType || p.lossType,
@@ -248,11 +303,14 @@ export default function EnterpriseDashboard() {
   const handleClearClaim = () => {
     setLinkedClaim(null);
     setLinkedClientName('');
-    setForm(p => ({ ...p, claimNumber: '', insuredName: '', propertyAddress: '', lossDate: '' }));
+    setForm(p => ({ ...p, claimNumber: '', insuredName: '', insuredEmail: '', propertyAddress: '', lossDate: '' }));
   };
 
   const handleGenerate = async () => {
-    if (!form.claimNumber || !form.insuredName) { toast.error('Claim Number and Insured Name are required'); return; }
+    if (!form.claimNumber || !form.insuredName || !isValidEmail(form.insuredEmail)) {
+      toast.error('Claim Number, Insured Name, and a valid Insured Email are required');
+      return;
+    }
     const steps = photos.length > 0 ? GEN_STEPS_WITH_PHOTOS : GEN_STEPS_NO_PHOTOS;
     setGenSteps(steps);
     setGenerating(true); setGenStep(0); setGeneratedReport(null); setPdfUrl(null);
@@ -317,7 +375,10 @@ export default function EnterpriseDashboard() {
     finally { setSavingContent(false); }
   };
 
-  const handleApprove = async () => {
+  // Phase 10: client-side validation gate before the confirmation modal opens --
+  // the modal itself is the deliberate final step, not a place to first surface
+  // "you forgot a field" errors.
+  const handleApproveClick = () => {
     if (!generatedReport) return;
     if (!signatureName.trim() || !licenseNumber.trim() || !licenseState.trim() || !company.trim()) {
       toast.error('Full name, license number, license state, and company/firm are required to approve.');
@@ -327,6 +388,11 @@ export default function EnterpriseDashboard() {
       toast.error('You must confirm you have reviewed the report before approving.');
       return;
     }
+    setShowApproveModal(true);
+  };
+
+  const handleApprove = async () => {
+    if (!generatedReport) return;
     setApproving(true);
     try {
       const signature = {
@@ -341,9 +407,11 @@ export default function EnterpriseDashboard() {
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
       toast.success('Report approved & finalized — exports are now clean');
+      setShowApproveModal(false);
       autoPreviewPdf({ ...generatedReport, status: 'finalized' });
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Approval failed');
+      setShowApproveModal(false);
     } finally { setApproving(false); }
   };
 
@@ -418,16 +486,54 @@ export default function EnterpriseDashboard() {
       toast.success('Role updated');
       setEditingRole(null);
       fetchMembers();
-    } catch { toast.error('Failed to update role'); }
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to update role'); }
   };
 
-  const handleRemoveMember = async (memberId) => {
+  const handleSuspendMember = async (memberId) => {
+    setMemberActionBusyId(memberId);
     try {
-      await teamsAPI.remove(memberId);
-      toast.success('Member removed');
+      await teamsAPI.suspendMember(memberId);
+      toast.success('Member suspended — their access is revoked immediately');
       fetchMembers();
-    } catch { toast.error('Failed to remove member'); }
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to suspend member'); }
+    finally { setMemberActionBusyId(null); }
   };
+
+  const handleReactivateMember = async (memberId) => {
+    setMemberActionBusyId(memberId);
+    try {
+      await teamsAPI.reactivateMember(memberId);
+      toast.success('Member reactivated');
+      fetchMembers();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to reactivate member'); }
+    finally { setMemberActionBusyId(null); }
+  };
+
+  const handleConfirmRemoveMember = async () => {
+    if (!memberPendingRemoval) return;
+    const id = memberPendingRemoval.id;
+    setMemberActionBusyId(id);
+    try {
+      await teamsAPI.remove(id);
+      toast.success('Member removed');
+      setMemberPendingRemoval(null);
+      fetchMembers();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to remove member'); }
+    finally { setMemberActionBusyId(null); }
+  };
+
+  // Read-only helpers driven entirely by server-provided data (GET
+  // /teams/roles' assignableRoles/manageableTargetRoles) -- the anti-
+  // escalation hierarchy itself is never duplicated here, only consumed.
+  const myRole = rolesInfo?.myRole;
+  const myCapabilities = rolesInfo?.roles?.[myRole] || null;
+  const canManageTeam = !!myCapabilities?.canManageTeam;
+  const canViewAllProfiles = !!myCapabilities?.canViewAllProfiles;
+  const canSeeRoster = canManageTeam || canViewAllProfiles;
+  const assignableRoles = rolesInfo?.assignableRoles || [];
+  const manageableTargetRoles = rolesInfo?.manageableTargetRoles || [];
+  const canActOnMember = (m) => canManageTeam && manageableTargetRoles.includes(m.role) && m.userId !== user?.uid;
+  const roleLabel = (role) => rolesInfo?.roles?.[role]?.label || role;
 
   // ── API Keys ──────────────────────────────────────────────────────────────
   const handleCreateKey = async () => {
@@ -461,6 +567,11 @@ export default function EnterpriseDashboard() {
     { id: 'overview',    label: 'Overview',       icon: BarChart3 },
     { id: 'generate',    label: 'Generate Report', icon: Zap },
     { id: 'reports',     label: 'My Reports',      icon: FileText, badge: stats.total || undefined },
+    { id: 'photos',      label: 'Photo Library',   icon: ImageIcon, href: '/photos' },
+    { id: 'templates',   label: 'Templates',       icon: FolderOpen, href: '/templates' },
+    { id: 'analytics',   label: 'Analytics',       icon: TrendingUp, href: '/analytics' },
+    { id: 'integrations', label: 'Integrations',   icon: Webhook, href: '/integrations' },
+    { id: 'organization', label: 'Organization',   icon: Building2, href: '/organization' },
     { id: 'crm',         label: 'CRM',             icon: Users, href: '/crm' },
     { id: 'whitelabel',  label: 'White-Label',     icon: Globe },
     { id: 'team',        label: 'Team',            icon: Users, badge: members.length || undefined },
@@ -473,8 +584,8 @@ export default function EnterpriseDashboard() {
   );
 
   // Shared input classes
-  const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all';
-  const selectCls = 'px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 focus:outline-none focus:border-orange-500 transition-all';
+  const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all';
+  const selectCls = 'px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 focus:outline-none focus:border-brand-500 transition-all';
   const cardCls = 'bg-white border border-[#e5e7eb] rounded-2xl';
 
   return (
@@ -499,7 +610,7 @@ export default function EnterpriseDashboard() {
             <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
             <div>
               <p className="text-sm font-black text-gray-900 leading-none">FlacronAI</p>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500 text-white uppercase tracking-wide">
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-brand-500 text-white uppercase tracking-wide">
                 Enterprise
               </span>
             </div>
@@ -539,7 +650,7 @@ export default function EnterpriseDashboard() {
               <p className="text-xs font-semibold text-gray-900 truncate">{user?.displayName || 'Enterprise User'}</p>
               <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
             </div>
-            <Crown className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+            <Crown className="w-3.5 h-3.5 text-brand-500 shrink-0" />
           </div>
         </div>
       </aside>
@@ -563,8 +674,17 @@ export default function EnterpriseDashboard() {
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-xs text-green-700 font-medium">Engine Online</span>
             </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('flacron:open-search'))}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors text-sm"
+              aria-label="Search (Ctrl+K)"
+              title="Search (Ctrl+K)"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+            <NotificationBell />
             <button onClick={() => setActiveView('generate')}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-orange-500/20">
+              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-brand-500/20">
               <Zap className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Generate Report</span>
             </button>
           </div>
@@ -581,13 +701,13 @@ export default function EnterpriseDashboard() {
                   <StatCard label="This Month" value={stats.thisMonth} sub="Unlimited cap" icon={TrendingUp} trend={8} />
                   <StatCard label="Team Members" value={members.length + 1} sub="Including owner" icon={Users} />
                   <StatCard label="Avg Completeness" value={stats.qualityAvg ? `${stats.qualityAvg}/100` : 'N/A'} sub="Documentation completeness" icon={Shield} trend={3}
-                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings." />
+                    tooltip="Measures how many required fields and sections are filled in — not the accuracy of the FLACRON ENGINE's findings." />
                 </div>
 
                 {/* Quick-action cards */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
                   {[
-                    { icon: Zap, title: 'Generate Report', desc: 'Automated unlimited report generation', action: () => setActiveView('generate'), accent: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-500', chip: 'text-orange-600 bg-orange-100' },
+                    { icon: Zap, title: 'Generate Report', desc: 'Automated unlimited report generation', action: () => setActiveView('generate'), accent: 'bg-brand-50 border-brand-200', iconBg: 'bg-brand-500', chip: 'text-brand-600 bg-brand-100' },
                     { icon: Globe, title: 'White-Label Active', desc: 'Your brand on all reports, exports & portal', action: () => setActiveView('whitelabel'), accent: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-500', chip: 'text-blue-600 bg-blue-100' },
                     { icon: Users, title: 'Manage Team', desc: 'Invite members, set roles, control access', action: () => setActiveView('team'), accent: 'bg-violet-50 border-violet-200', iconBg: 'bg-violet-500', chip: 'text-violet-600 bg-violet-100' },
                   ].map(f => (
@@ -607,17 +727,17 @@ export default function EnterpriseDashboard() {
                   <div className="flex items-center justify-between px-6 py-4 border-b border-[#e5e7eb]">
                     <p className="text-sm font-bold text-gray-900">Recent Reports</p>
                     <button onClick={() => setActiveView('reports')}
-                      className="text-xs text-orange-500 hover:text-orange-600 flex items-center gap-1 font-medium">
+                      className="text-xs text-brand-500 hover:text-brand-600 flex items-center gap-1 font-medium">
                       View all <ChevronRight className="w-3 h-3" />
                     </button>
                   </div>
                   {reportsLoading ? (
-                    <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                    <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-brand-500 animate-spin" /></div>
                   ) : reportsError ? (
                     <div className="flex flex-col items-center py-12 gap-2">
                       <AlertCircle className="w-8 h-8 text-amber-500" />
                       <p className="text-sm text-gray-400">We couldn't load your reports.</p>
-                      <button onClick={fetchReports} className="text-xs text-orange-600 hover:text-orange-700 font-medium mt-1">Retry</button>
+                      <button onClick={fetchReports} className="text-xs text-brand-600 hover:text-brand-700 font-medium mt-1">Retry</button>
                     </div>
                   ) : reports.length === 0 ? (
                     <div className="flex flex-col items-center py-12 gap-2">
@@ -631,14 +751,14 @@ export default function EnterpriseDashboard() {
                         <tr className="border-b border-[#e5e7eb] bg-gray-50">
                           {['Claim #','Insured','Loss Type','Date','Completeness','Export'].map(h => (
                             <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
-                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the Flacron Engine's findings." : undefined}>{h}</th>
+                              title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the FLACRON ENGINE's findings." : undefined}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {reports.slice(0, 8).map((r, i) => (
-                          <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-orange-50/30 transition-colors">
-                            <td className="px-6 py-3 text-sm font-mono font-semibold text-orange-500">{r.claimNumber || '—'}</td>
+                          <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-brand-50/30 transition-colors">
+                            <td className="px-6 py-3 text-sm font-mono font-semibold text-brand-500">{r.claimNumber || '—'}</td>
                             <td className="px-6 py-3 text-sm text-gray-900">{r.insuredName || '—'}</td>
                             <td className="px-6 py-3 text-xs text-gray-500">{r.lossType || '—'}</td>
                             <td className="px-6 py-3 text-xs text-gray-400">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}</td>
@@ -651,7 +771,7 @@ export default function EnterpriseDashboard() {
                               <div className="flex gap-1">
                                 {['pdf','docx'].map(f => (
                                   <button key={f} onClick={() => handleExport(r.id, f)}
-                                    className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-orange-500 hover:text-white text-gray-600 transition-colors uppercase font-bold">
+                                    className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-brand-500 hover:text-white text-gray-600 transition-colors uppercase font-bold">
                                     {f}
                                   </button>
                                 ))}
@@ -678,7 +798,7 @@ export default function EnterpriseDashboard() {
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Quick Demo:</p>
                         {QUICK_DEMOS.map(d => (
                           <button key={d.emoji} onClick={() => applyDemo(d)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e5e7eb] bg-white hover:bg-orange-50 hover:border-orange-300 text-xs text-gray-600 hover:text-orange-600 transition-all">
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e5e7eb] bg-white hover:bg-brand-50 hover:border-brand-300 text-xs text-gray-600 hover:text-brand-600 transition-all">
                             {d.emoji} {d.label}
                           </button>
                         ))}
@@ -689,7 +809,7 @@ export default function EnterpriseDashboard() {
                           <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider">Claim</label>
                           {!linkedClaim && (
                             <button type="button" onClick={() => setClaimMode(m => (m === 'manual' ? 'linked' : 'manual'))}
-                              className="text-xs text-gray-500 hover:text-orange-600 underline">
+                              className="text-xs text-gray-500 hover:text-brand-600 underline">
                               {claimMode === 'manual' ? 'Link to a CRM claim instead' : 'Enter details manually instead'}
                             </button>
                           )}
@@ -699,6 +819,7 @@ export default function EnterpriseDashboard() {
                             {[
                               { label: 'Claim Number *', key: 'claimNumber', placeholder: 'CLM-2024-001' },
                               { label: 'Insured Name *', key: 'insuredName', placeholder: 'John Smith' },
+                              { label: 'Insured Email *', key: 'insuredEmail', type: 'email', placeholder: 'claimant@example.com' },
                               { label: 'Date of Loss *', key: 'lossDate', type: 'date' },
                               { label: 'Property Address *', key: 'propertyAddress', placeholder: '123 Main St, City, ST' },
                             ].map(f => (
@@ -707,11 +828,15 @@ export default function EnterpriseDashboard() {
                                 <input type={f.type || 'text'} value={form[f.key]}
                                   onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                                   placeholder={f.placeholder} className={inputCls} />
+                                {f.key === 'insuredEmail' && form.insuredEmail && !isValidEmail(form.insuredEmail) && (
+                                  <p className="text-xs text-red-500 mt-1">Enter a valid email address</p>
+                                )}
                               </div>
                             ))}
                           </div>
                         ) : (
                           <ClaimLinkSection linkedClaim={linkedClaim} linkedClientName={linkedClientName}
+                            insuredEmail={form.insuredEmail} onEmailChange={(v) => setForm(p => ({ ...p, insuredEmail: v }))}
                             onSelect={handleSelectClaim} onClear={handleClearClaim} lossTypes={LOSS_TYPES} />
                         )}
                       </div>
@@ -750,8 +875,14 @@ export default function EnterpriseDashboard() {
                       {/* Photos */}
                       <div className="mb-5">
                         <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Damage Photos (up to 100)</label>
-                        <div onClick={() => fileInputRef.current?.click()}
-                          className="flex items-center justify-center gap-3 border-2 border-dashed border-[#e5e7eb] rounded-xl py-4 cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-all">
+                        <div onClick={() => {
+                            if (!form.insuredName.trim() || !isValidEmail(form.insuredEmail)) {
+                              toast.error('Enter the claimant\'s name and a valid email before uploading photos.');
+                              return;
+                            }
+                            fileInputRef.current?.click();
+                          }}
+                          className="flex items-center justify-center gap-3 border-2 border-dashed border-[#e5e7eb] rounded-xl py-4 cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-all">
                           <Upload className="w-5 h-5 text-gray-400" />
                           <span className="text-sm text-gray-400">Click to add photos {photos.length > 0 && `(${photos.length} added)`}</span>
                         </div>
@@ -778,15 +909,15 @@ export default function EnterpriseDashboard() {
 
                       {generating ? (
                         <div className="flex flex-col items-center py-8 gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-orange-100 border border-orange-200 flex items-center justify-center">
-                            <Zap className="w-7 h-7 text-orange-500 animate-pulse" />
+                          <div className="w-14 h-14 rounded-2xl bg-brand-100 border border-brand-200 flex items-center justify-center">
+                            <Zap className="w-7 h-7 text-brand-500 animate-pulse" />
                           </div>
                           <p className="text-base font-bold text-gray-900">Generating Report…</p>
                           <div className="w-full max-w-sm space-y-2">
                             {genSteps.map((s, i) => (
                               <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all ${
                                 i < genStep ? 'bg-green-50 text-green-700 border border-green-200' :
-                                i === genStep ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+                                i === genStep ? 'bg-brand-50 text-brand-700 border border-brand-200' :
                                 'bg-gray-50 text-gray-400 border border-gray-200'
                               }`}>
                                 {i < genStep
@@ -800,8 +931,8 @@ export default function EnterpriseDashboard() {
                           </div>
                         </div>
                       ) : (
-                        <button onClick={handleGenerate} disabled={!form.claimNumber || !form.insuredName}
-                          className="w-full py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                        <button onClick={handleGenerate} disabled={!form.claimNumber || !form.insuredName.trim() || !isValidEmail(form.insuredEmail)}
+                          className="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2">
                           <Zap className="w-5 h-5" /> Generate Report — No Watermark
                         </button>
                       )}
@@ -819,7 +950,7 @@ export default function EnterpriseDashboard() {
                           <div className="flex items-center gap-2">
                             {generatedReport.qualityScore && (
                               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700"
-                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the Flacron Engine's findings.">
+                                title="Documentation Completeness: measures how many required fields and sections are filled in — not the accuracy of the FLACRON ENGINE's findings.">
                                 Completeness {generatedReport.qualityScore}/100
                               </span>
                             )}
@@ -831,14 +962,14 @@ export default function EnterpriseDashboard() {
                         </div>
                         {pdfLoading && !pdfUrl ? (
                           <div className="flex items-center justify-center py-16 bg-gray-50 rounded-xl border border-[#e5e7eb]">
-                            <RefreshCw className="w-7 h-7 text-orange-500 animate-spin" />
+                            <RefreshCw className="w-7 h-7 text-brand-500 animate-spin" />
                           </div>
                         ) : pdfUrl ? (
                           <iframe src={pdfUrl} className="w-full rounded-xl border border-[#e5e7eb]" style={{ height: 780 }} title="PDF Preview" />
                         ) : (
                           <div className="flex flex-col items-center py-16 gap-3 rounded-xl border-2 border-dashed border-[#e5e7eb]">
                             <FileText className="w-10 h-10 text-gray-300" />
-                            <button onClick={() => autoPreviewPdf(generatedReport)} className="text-sm text-orange-500 hover:text-orange-600 font-medium">Load PDF Preview</button>
+                            <button onClick={() => autoPreviewPdf(generatedReport)} className="text-sm text-brand-500 hover:text-brand-600 font-medium">Load PDF Preview</button>
                           </div>
                         )}
                       </div>
@@ -858,6 +989,10 @@ export default function EnterpriseDashboard() {
                       </div>
                     </div>
                     <div className="space-y-4">
+                      {/* Pre-approval review checklist (Phase 10) */}
+                      <div className={`${cardCls} p-4`}>
+                        <ReportReviewChecklist report={generatedReport} />
+                      </div>
                       {/* Human-review gate */}
                       <div className={`${cardCls} p-4 border ${reportReviewed ? 'border-green-200' : 'border-amber-300 bg-amber-50/40'}`}>
                         <div className="flex items-center gap-2 mb-2">
@@ -886,34 +1021,34 @@ export default function EnterpriseDashboard() {
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
                                 <input value={signatureName} onChange={e => setSignatureName(e.target.value)} placeholder="Jane Adjuster"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
                                 <input value={signatureTitle} onChange={e => setSignatureTitle(e.target.value)} placeholder="Senior Adjuster"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">License number *</label>
                                 <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="TX-ADJ-583920"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">License state *</label>
                                 <input value={licenseState} onChange={e => setLicenseState(e.target.value)} placeholder="TX"
-                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                                  className="w-full text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                               </div>
                             </div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Company / adjusting firm *</label>
                             <input value={company} onChange={e => setCompany(e.target.value)} placeholder="ABC Claims Services"
-                              className="w-full mb-3 text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500" />
+                              className="w-full mb-3 text-xs border border-[#e5e7eb] rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500" />
                             <label className="flex items-start gap-2 mb-3 text-xs text-gray-700 cursor-pointer">
                               <input type="checkbox" checked={confirmReview} onChange={e => setConfirmReview(e.target.checked)}
-                                className="mt-0.5 rounded border-gray-300 text-orange-600 focus:ring-orange-400" />
+                                className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400" />
                               <span>I confirm that I have reviewed this report, made any necessary corrections, and approve this version for final export. I understand that automatically generated content must be independently verified.</span>
                             </label>
-                            <button onClick={handleApprove} disabled={approving}
-                              className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                            <button onClick={handleApproveClick} disabled={approving}
+                              className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                               {approving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Approve &amp; Finalize
                             </button>
                           </>
@@ -923,13 +1058,13 @@ export default function EnterpriseDashboard() {
                         <p className="text-sm font-bold text-gray-900 mb-3">Export</p>
                         {['pdf', 'docx', 'html'].map(f => (
                           <button key={f} onClick={() => handleExport(generatedReport.id, f)}
-                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-orange-50 hover:border-orange-300 text-sm text-gray-700 hover:text-orange-600 transition-all">
+                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-brand-50 hover:border-brand-300 text-sm text-gray-700 hover:text-brand-600 transition-all">
                             <Download className="w-4 h-4" /> Download {f.toUpperCase()}
                           </button>
                         ))}
                       </div>
                       <button onClick={() => { setGeneratedReport(null); setPdfUrl(null); setForm(FORM_INIT); setPhotos([]); setLinkedClaim(null); setLinkedClientName(''); setClaimMode('linked'); }}
-                        className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2">
+                        className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2">
                         <Zap className="w-4 h-4" /> Generate Another
                       </button>
                     </div>
@@ -945,7 +1080,7 @@ export default function EnterpriseDashboard() {
                   <div className="relative flex-1 sm:max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search reports…"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-500 transition-all" />
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-500 transition-all" />
                   </div>
                   <div className="flex items-center gap-3">
                     <button onClick={fetchReports}
@@ -953,7 +1088,7 @@ export default function EnterpriseDashboard() {
                       <RefreshCw className={`w-4 h-4 text-gray-400 ${reportsLoading ? 'animate-spin' : ''}`} />
                     </button>
                     <button onClick={() => setActiveView('generate')}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors shadow-sm whitespace-nowrap">
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition-colors shadow-sm whitespace-nowrap">
                       <Plus className="w-4 h-4" /> New Report
                     </button>
                   </div>
@@ -965,7 +1100,7 @@ export default function EnterpriseDashboard() {
                       <tr className="border-b border-[#e5e7eb] bg-gray-50">
                         {['Claim #','Insured','Loss Type','Report Type','Date','Completeness','Export'].map(h => (
                           <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
-                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the Flacron Engine's findings." : undefined}>{h}</th>
+                            title={h === 'Completeness' ? "Documentation completeness — not the accuracy of the FLACRON ENGINE's findings." : undefined}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -991,8 +1126,8 @@ export default function EnterpriseDashboard() {
                           : filteredReports.length === 0
                             ? <tr><td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No reports found</td></tr>
                             : filteredReports.map((r, i) => (
-                              <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-orange-50/30 transition-colors">
-                                <td className="px-5 py-3.5 text-sm font-mono font-semibold text-orange-500">{r.claimNumber || '—'}</td>
+                              <tr key={r.id || i} className="border-b border-[#e5e7eb] hover:bg-brand-50/30 transition-colors">
+                                <td className="px-5 py-3.5 text-sm font-mono font-semibold text-brand-500">{r.claimNumber || '—'}</td>
                                 <td className="px-5 py-3.5 text-sm text-gray-900">{r.insuredName || '—'}</td>
                                 <td className="px-5 py-3.5 text-xs text-gray-500">{r.lossType || '—'}</td>
                                 <td className="px-5 py-3.5 text-xs text-gray-500">{r.reportType || '—'}</td>
@@ -1006,7 +1141,7 @@ export default function EnterpriseDashboard() {
                                   <div className="flex gap-1">
                                     {['pdf','docx','html'].map(f => (
                                       <button key={f} onClick={() => handleExport(r.id, f)}
-                                        className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-orange-500 hover:text-white text-gray-600 transition-colors uppercase font-bold">
+                                        className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-brand-500 hover:text-white text-gray-600 transition-colors uppercase font-bold">
                                         {f}
                                       </button>
                                     ))}
@@ -1024,16 +1159,16 @@ export default function EnterpriseDashboard() {
             {/* ══ WHITE-LABEL ════════════════════════════════════════════════════ */}
             {activeView === 'whitelabel' && (
               <motion.div key="wl" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-2xl space-y-5">
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 flex items-start gap-3">
-                  <Crown className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+                <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 flex items-start gap-3">
+                  <Crown className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold text-orange-700">White-Label Active</p>
-                    <p className="text-xs text-orange-600 mt-0.5">Your reports, exports & portal carry your branding. Changes apply to all future reports immediately.</p>
+                    <p className="text-sm font-bold text-brand-700">White-Label Active</p>
+                    <p className="text-xs text-brand-600 mt-0.5">Your reports, exports & portal carry your branding. Changes apply to all future reports immediately.</p>
                   </div>
                 </div>
 
                 {wlLoading ? (
-                  <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                  <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 text-brand-500 animate-spin" /></div>
                 ) : wlError ? (
                   <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 py-12 text-center"><AlertCircle className="h-8 w-8 text-amber-600" /><p className="text-sm text-amber-800">White-label settings could not be loaded.</p><button onClick={fetchWlConfig} className="btn-secondary px-4 py-2 text-sm">Retry</button></div>
                 ) : (
@@ -1043,7 +1178,7 @@ export default function EnterpriseDashboard() {
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Company Logo</label>
                       <div className="flex items-center gap-4">
                         <div onClick={() => logoInputRef.current?.click()}
-                          className="w-24 h-14 rounded-xl border-2 border-dashed border-[#e5e7eb] hover:border-orange-400 hover:bg-orange-50 flex items-center justify-center cursor-pointer transition-colors">
+                          className="w-24 h-14 rounded-xl border-2 border-dashed border-[#e5e7eb] hover:border-brand-400 hover:bg-brand-50 flex items-center justify-center cursor-pointer transition-colors">
                           {logoFile
                             ? <img src={URL.createObjectURL(logoFile)} alt="logo" className="w-full h-full object-contain rounded-xl p-1" />
                             : <Upload className="w-5 h-5 text-gray-400" />}
@@ -1054,7 +1189,7 @@ export default function EnterpriseDashboard() {
                           <p className="text-sm font-semibold text-gray-900">Upload your logo</p>
                           <p className="text-xs text-gray-400">PNG, JPG, SVG — max 5MB. Appears on all PDF reports.</p>
                           {logoUploading && (
-                            <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                            <p className="text-xs text-brand-500 mt-1 flex items-center gap-1">
                               <RefreshCw className="w-3 h-3 animate-spin" /> Uploading…
                             </p>
                           )}
@@ -1094,14 +1229,14 @@ export default function EnterpriseDashboard() {
                         <p className="text-xs text-gray-400 mt-0.5">Remove "Generated by FlacronAI" from all PDFs and exports</p>
                       </div>
                       <button onClick={() => setWlConfig(p => ({ ...p, hideFlacronBranding: !p.hideFlacronBranding }))}
-                        className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${wlConfig.hideFlacronBranding ? 'bg-orange-500' : 'bg-gray-200'}`}>
+                        className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${wlConfig.hideFlacronBranding ? 'bg-brand-500' : 'bg-gray-200'}`}>
                         <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${wlConfig.hideFlacronBranding ? 'left-6' : 'left-0.5'}`} />
                       </button>
                     </div>
 
                     <div className="flex gap-3">
                       <button onClick={handleSaveWl} disabled={wlSaving}
-                        className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center gap-2">
+                        className="flex-1 py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center gap-2">
                         {wlSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                         {wlSaving ? 'Saving…' : 'Save White-Label Settings'}
                       </button>
@@ -1119,134 +1254,199 @@ export default function EnterpriseDashboard() {
             {activeView === 'team' && (
               <motion.div key="team" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-3xl space-y-6">
 
-                {/* Role guide */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {Object.entries(ROLE_PERMS).map(([role, perms]) => (
-                    <div key={role} className={`${cardCls} p-4`}>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${ROLE_COLORS[role]}`}>{role}</span>
-                      <ul className="mt-3 space-y-1.5">
-                        {perms.map(p => (
-                          <li key={p} className="flex items-center gap-2 text-xs text-gray-500">
-                            <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />{p}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+                {/* Always available regardless of role -- any team member (or the
+                    owner) can see their own profile/stats/activity. */}
+                <Link to="/team/members/me"
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-brand-600 hover:text-brand-700">
+                  <Contact className="w-3.5 h-3.5" /> View My Profile
+                </Link>
 
-                {/* Invite form */}
-                <div className={`${cardCls} p-5`}>
-                  <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <UserPlus className="w-4 h-4 text-orange-500" /> Invite Team Member
-                  </h3>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                      placeholder="colleague@yourcompany.com"
-                      className={`${inputCls} sm:flex-1`} />
-                    <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-                      className={selectCls}>
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                    <button onClick={handleInvite} disabled={inviting}
-                      className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors whitespace-nowrap">
-                      {inviting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Invite
-                    </button>
+                {!canSeeRoster ? (
+                  <div className={`${cardCls} p-6 text-center`}>
+                    <Users className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-gray-900">Team management is limited to Owners, Admins, and Managers</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {myRole ? `Your role (${roleLabel(myRole)}) can view your own profile above, but not the full team roster.` : 'Loading your role…'}
+                    </p>
                   </div>
-
-                  {inviteLink && (
-                    <div className="mt-3 flex items-center gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
-                      <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                      <p className="text-xs text-green-700 flex-1 truncate">Invite link: <span className="font-mono">{inviteLink}</span></p>
-                      <button onClick={() => { navigator.clipboard.writeText(inviteLink); toast.success('Link copied!'); }}
-                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors">
-                        <Copy className="w-3.5 h-3.5 text-green-600" />
-                      </button>
+                ) : (
+                  <>
+                    {/* Role guide -- driven entirely by GET /teams/roles, never
+                        hand-maintained here (Phase 14). */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {['owner', 'admin', 'manager', 'adjuster', 'inspector', 'reviewer', 'viewer'].map((role) => {
+                        const caps = rolesInfo?.roles?.[role];
+                        if (!caps) return null;
+                        const perms = describeCapabilities(caps);
+                        return (
+                          <div key={role} className={`${cardCls} p-4`}>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ROLE_COLORS[role]}`}>{caps.label}</span>
+                            <ul className="mt-3 space-y-1.5">
+                              {perms.length ? perms.map(p => (
+                                <li key={p} className="flex items-center gap-2 text-xs text-gray-500">
+                                  <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />{p}
+                                </li>
+                              )) : (
+                                <li className="text-xs text-gray-400">View reports only</li>
+                              )}
+                            </ul>
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
 
-                {/* Members list */}
-                <div className={`${cardCls} overflow-hidden`}>
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
-                    <p className="text-sm font-bold text-gray-900">Team Members ({members.length + 1})</p>
-                    <button onClick={fetchMembers} aria-label="Refresh team members" title="Refresh team members" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                      <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${membersLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
-
-                  {/* Owner row */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] bg-orange-50/30">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-sm font-black text-white shrink-0">
-                        {(user?.displayName || user?.email || 'E')[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{user?.displayName || user?.email}</p>
-                        <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pl-12 sm:pl-0">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ROLE_COLORS.owner}`}>Owner</span>
-                      <span className="text-[10px] text-gray-400">You</span>
-                    </div>
-                  </div>
-
-                  {membersLoading ? (
-                    <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
-                  ) : membersError ? (
-                    <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Team members could not be loaded.</p><button onClick={fetchMembers} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
-                  ) : members.length === 0 ? (
-                    <p className="text-center text-gray-400 text-sm py-8">No team members yet. Invite someone above.</p>
-                  ) : members.map(m => (
-                    <div key={m.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-9 h-9 rounded-xl bg-gray-100 border border-[#e5e7eb] flex items-center justify-center text-sm font-black text-gray-600 shrink-0">
-                          {m.email[0].toUpperCase()}
+                    {/* Invite form */}
+                    {canManageTeam && (
+                      <div className={`${cardCls} p-5`}>
+                        <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                          <UserPlus className="w-4 h-4 text-brand-500" /> Invite Team Member
+                        </h3>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+                            placeholder="colleague@yourcompany.com"
+                            className={`${inputCls} sm:flex-1`} />
+                          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+                            className={selectCls}>
+                            {assignableRoles.map((r) => (
+                              <option key={r} value={r}>{roleLabel(r)}</option>
+                            ))}
+                          </select>
+                          <button onClick={handleInvite} disabled={inviting || !assignableRoles.length}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors whitespace-nowrap">
+                            {inviting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Invite
+                          </button>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-900 truncate">{m.email}</p>
-                          <p className="text-xs text-gray-400">Invited {new Date(m.invitedAt).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap pl-12 sm:pl-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {formatStatus(m.status)}
-                        </span>
-                        {editingRole === m.id ? (
-                          <div className="flex items-center gap-2">
-                            <select defaultValue={m.role} onChange={e => handleUpdateRole(m.id, e.target.value)}
-                              className="px-2 py-1 rounded-lg border border-[#e5e7eb] bg-white text-xs text-gray-700 focus:outline-none">
-                              <option value="admin">Admin</option>
-                              <option value="editor">Editor</option>
-                              <option value="viewer">Viewer</option>
-                            </select>
-                            <button onClick={() => setEditingRole(null)} aria-label="Cancel role edit" title="Cancel"
-                              className="p-1 hover:bg-gray-100 rounded transition-colors">
-                              <X className="w-3 h-3 text-gray-400" />
+
+                        {inviteLink && (
+                          <div className="mt-3 flex items-center gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
+                            <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                            <p className="text-xs text-green-700 flex-1 truncate">Invite link: <span className="font-mono">{inviteLink}</span></p>
+                            <button onClick={() => { navigator.clipboard.writeText(inviteLink); toast.success('Link copied!'); }}
+                              className="p-1.5 hover:bg-green-100 rounded-lg transition-colors">
+                              <Copy className="w-3.5 h-3.5 text-green-600" />
                             </button>
                           </div>
-                        ) : (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${ROLE_COLORS[m.role] || 'bg-gray-100 text-gray-500'}`}>{m.role}</span>
                         )}
-                        <div className="flex gap-1">
-                          <button onClick={() => setEditingRole(editingRole === m.id ? null : m.id)}
-                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Change role">
-                            <Edit2 className="w-3.5 h-3.5 text-gray-400" />
-                          </button>
-                          <button onClick={() => handleRemoveMember(m.id)}
-                            className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                            <UserX className="w-3.5 h-3.5 text-red-400" />
-                          </button>
+                      </div>
+                    )}
+
+                    {/* Members list */}
+                    <div className={`${cardCls} overflow-hidden`}>
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
+                        <p className="text-sm font-bold text-gray-900">Team Members ({members.length + 1})</p>
+                        <button onClick={fetchMembers} aria-label="Refresh team members" title="Refresh team members" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                          <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${membersLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      {/* Owner row -- shows the real org owner (teamOwnerInfo),
+                          not necessarily the viewer themself, since an
+                          Admin/Manager viewing this roster is not the owner. */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] bg-brand-50/30">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-sm font-black text-white shrink-0">
+                            {((teamOwnerInfo?.displayName || teamOwnerInfo?.email || user?.displayName || user?.email || 'E'))[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{teamOwnerInfo?.displayName || teamOwnerInfo?.email || user?.displayName || user?.email}</p>
+                            <p className="text-xs text-gray-400 truncate">{teamOwnerInfo?.email || user?.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pl-12 sm:pl-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ROLE_COLORS.owner}`}>Owner</span>
+                          {(!teamOwnerInfo || teamOwnerInfo.uid === user?.uid) && <span className="text-[10px] text-gray-400">You</span>}
                         </div>
                       </div>
+
+                      {membersLoading ? (
+                        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-brand-500 animate-spin" /></div>
+                      ) : membersError ? (
+                        <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">Team members could not be loaded.</p><button onClick={fetchMembers} className="mt-2 text-xs font-semibold text-brand-600">Retry</button></div>
+                      ) : members.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-8">No team members yet. Invite someone above.</p>
+                      ) : members.map(m => {
+                        const manageable = canActOnMember(m);
+                        const busy = memberActionBusyId === m.id;
+                        return (
+                          <div key={m.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-5 py-4 border-b border-[#e5e7eb] hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-9 h-9 rounded-xl bg-gray-100 border border-[#e5e7eb] flex items-center justify-center text-sm font-black text-gray-600 shrink-0">
+                                {m.email[0].toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <Link to={`/team/members/${m.id}`} className="text-sm text-gray-900 truncate hover:text-brand-600 hover:underline">{m.email}</Link>
+                                <p className="text-xs text-gray-400">Invited {new Date(m.invitedAt).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap pl-12 sm:pl-0">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.status === 'suspended' ? 'bg-red-100 text-red-700' : m.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {formatStatus(m.status)}
+                              </span>
+                              {editingRole === m.id ? (
+                                <div className="flex items-center gap-2">
+                                  <select defaultValue={m.role} onChange={e => handleUpdateRole(m.id, e.target.value)}
+                                    className="px-2 py-1 rounded-lg border border-[#e5e7eb] bg-white text-xs text-gray-700 focus:outline-none">
+                                    {!assignableRoles.includes(m.role) && (
+                                      <option value={m.role} disabled>{roleLabel(m.role)} (current)</option>
+                                    )}
+                                    {assignableRoles.map((r) => (
+                                      <option key={r} value={r}>{roleLabel(r)}</option>
+                                    ))}
+                                  </select>
+                                  <button onClick={() => setEditingRole(null)} aria-label="Cancel role edit" title="Cancel"
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors">
+                                    <X className="w-3 h-3 text-gray-400" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role] || 'bg-gray-100 text-gray-500'}`}>{roleLabel(m.role)}</span>
+                              )}
+                              {manageable && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => setEditingRole(editingRole === m.id ? null : m.id)} disabled={busy}
+                                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50" title="Change role">
+                                    <Edit2 className="w-3.5 h-3.5 text-gray-400" />
+                                  </button>
+                                  {m.status === 'suspended' ? (
+                                    <button onClick={() => handleReactivateMember(m.id)} disabled={busy}
+                                      className="p-1.5 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50" title="Reactivate">
+                                      <UserCheck className="w-3.5 h-3.5 text-green-500" />
+                                    </button>
+                                  ) : (
+                                    <button onClick={() => handleSuspendMember(m.id)} disabled={busy}
+                                      className="p-1.5 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50" title="Suspend">
+                                      <Ban className="w-3.5 h-3.5 text-amber-500" />
+                                    </button>
+                                  )}
+                                  <button onClick={() => setMemberPendingRemoval(m)} disabled={busy}
+                                    className="p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Remove">
+                                    <UserX className="w-3.5 h-3.5 text-red-400" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </motion.div>
             )}
+
+            <AnimatePresence>
+              {memberPendingRemoval && (
+                <ConfirmDialog
+                  title="Remove team member?"
+                  message={`${memberPendingRemoval.email} will lose access immediately and be removed from the team. This cannot be undone (they can be re-invited later).`}
+                  confirmLabel="Remove"
+                  danger
+                  loading={memberActionBusyId === memberPendingRemoval.id}
+                  onConfirm={handleConfirmRemoveMember}
+                  onClose={() => setMemberPendingRemoval(null)}
+                />
+              )}
+            </AnimatePresence>
 
             {/* ══ API & KEYS ═════════════════════════════════════════════════════ */}
             {activeView === 'api' && (
@@ -1257,8 +1457,8 @@ export default function EnterpriseDashboard() {
                   <fieldset className="grid gap-2 sm:grid-cols-2 mb-4">
                     <legend className="sr-only">API key permissions</legend>
                     {API_KEY_SCOPES.map(scope => (
-                      <label key={scope.id} className="flex gap-2 rounded-xl border border-[#e5e7eb] bg-gray-50 p-3 cursor-pointer hover:border-orange-300">
-                        <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                      <label key={scope.id} className="flex gap-2 rounded-xl border border-[#e5e7eb] bg-gray-50 p-3 cursor-pointer hover:border-brand-300">
+                        <input type="checkbox" className="mt-0.5 accent-brand-500" checked={newKeyScopes.includes(scope.id)}
                           onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
                         <span><span className="block text-xs font-semibold text-gray-900">{scope.label}</span><span className="block text-[11px] text-gray-400 mt-0.5">{scope.description}</span></span>
                       </label>
@@ -1270,7 +1470,7 @@ export default function EnterpriseDashboard() {
                       placeholder="Key name (e.g. Production Server)"
                       className={inputCls} />
                     <button onClick={handleCreateKey} disabled={creatingKey}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors whitespace-nowrap">
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors whitespace-nowrap">
                       {creatingKey ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create Key
                     </button>
                   </div>
@@ -1282,14 +1482,14 @@ export default function EnterpriseDashboard() {
                   </div>
                   <div className="p-4 space-y-2">
                     {apiKeysLoading ? (
-                      <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-orange-500 animate-spin" /></div>
+                      <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-brand-500 animate-spin" /></div>
                     ) : apiKeysError ? (
-                      <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">API keys could not be loaded.</p><button onClick={fetchApiKeys} className="mt-2 text-xs font-semibold text-orange-600">Retry</button></div>
+                      <div className="py-8 text-center"><AlertCircle className="mx-auto mb-2 h-7 w-7 text-amber-500" /><p className="text-sm text-gray-600">API keys could not be loaded.</p><button onClick={fetchApiKeys} className="mt-2 text-xs font-semibold text-brand-600">Retry</button></div>
                     ) : apiKeys.length === 0 ? (
                       <p className="text-center text-gray-400 text-sm py-8">No API keys yet.</p>
                     ) : apiKeys.map(k => (
                       <div key={k.id} className="flex items-center gap-3 p-4 rounded-xl border border-[#e5e7eb] bg-gray-50">
-                        <Key className="w-4 h-4 text-orange-500 shrink-0" />
+                        <Key className="w-4 h-4 text-brand-500 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{k.name || 'API Key'}</p>
                           <p className="text-xs text-gray-400 font-mono">{k.keyPrefix ? `${k.keyPrefix}••••••••` : '••••••••••••••••'}</p>
@@ -1317,10 +1517,6 @@ export default function EnterpriseDashboard() {
   -d '{ "claimNumber": "CLM-001", "insuredName": "John Smith",
         "propertyAddress": "123 Main St", "lossDate": "2024-01-15",
         "lossType": "Water Damage" }'`}</pre>
-                  <a href="/docs/api" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium transition-colors">
-                    Full API docs <ExternalLink className="w-3 h-3" />
-                  </a>
                 </div>
               </motion.div>
             )}
@@ -1335,11 +1531,11 @@ export default function EnterpriseDashboard() {
                   { icon: Code2, label: 'API Keys', desc: 'Manage integration keys', action: () => setActiveView('api') },
                   { icon: Users, label: 'Team Management', desc: 'Invite & manage team members', action: () => setActiveView('team') },
                 ].map(item => {
-                  const cls = `w-full flex items-center gap-4 p-5 ${cardCls} hover:shadow-md hover:border-orange-200 transition-all text-left`;
+                  const cls = `w-full flex items-center gap-4 p-5 ${cardCls} hover:shadow-md hover:border-brand-200 transition-all text-left`;
                   const inner = (
                     <>
-                      <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
-                        <item.icon className="w-5 h-5 text-orange-500" />
+                      <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0">
+                        <item.icon className="w-5 h-5 text-brand-500" />
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-gray-900">{item.label}</p>
@@ -1382,6 +1578,21 @@ export default function EnterpriseDashboard() {
             loading={revokeKeyLoading}
             onConfirm={confirmRevokeKey}
             onClose={() => setRevokeKeyId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 10: deliberate confirmation step before the existing /approve call fires. */}
+      <AnimatePresence>
+        {showApproveModal && (
+          <ConfirmDialog
+            title="Approve this report?"
+            message={`This finalizes the report as reviewed and approved by ${signatureName.trim() || 'you'}${licenseState.trim() || licenseNumber.trim() ? ` (${[licenseState.trim(), licenseNumber.trim()].filter(Boolean).join(' ')})` : ''}. Exports will no longer carry the DRAFT watermark. Any later edit will reopen the report as a draft and require re-approval.`}
+            confirmLabel="Approve & Finalize"
+            danger={false}
+            loading={approving}
+            onConfirm={handleApprove}
+            onClose={() => setShowApproveModal(false)}
           />
         )}
       </AnimatePresence>

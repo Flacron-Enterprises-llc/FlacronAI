@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Download, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -18,6 +19,8 @@ import { salesAPI } from '../services/api.js';
 export default function LeadCaptureModal({ isOpen, onClose, documentName, documentUrl, source }) {
   const [form, setForm] = useState({ name: '', email: '' });
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -35,6 +38,11 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
       toast.error('Please enter a valid email address');
       return;
     }
+    if (!agreedToTerms) {
+      setTermsError(true);
+      toast.error('Please agree to the Privacy Policy and Terms of Service to continue.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -45,8 +53,10 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
         subject: 'Document Download',
         message: `Requested download: ${documentName}`,
         source: source || 'document-download',
-        // Only include consent object if the user checked the box
+        // Only include consent object if the user checked the marketing box
         consent: marketingConsent ? buildConsent(false) : null,
+        // Required acknowledgment, distinct from optional marketing consent above
+        termsAccepted: agreedToTerms,
       });
 
       setSuccess(true);
@@ -67,6 +77,7 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
           setTimeout(() => {
             setForm({ name: '', email: '' });
             setMarketingConsent(false);
+            setAgreedToTerms(false);
             setSuccess(false);
           }, 300);
         }, 1500);
@@ -85,6 +96,8 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
     setTimeout(() => {
       setForm({ name: '', email: '' });
       setMarketingConsent(false);
+      setAgreedToTerms(false);
+      setTermsError(false);
       setSuccess(false);
     }, 300);
   };
@@ -189,6 +202,37 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
                     />
                   </div>
 
+                  {/* Required: must agree to Privacy Policy & Terms before downloading */}
+                  <div className="pt-2">
+                    <label htmlFor="lead-terms-agree" className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        id="lead-terms-agree"
+                        type="checkbox"
+                        checked={agreedToTerms}
+                        onChange={(e) => {
+                          setAgreedToTerms(e.target.checked);
+                          if (e.target.checked) setTermsError(false);
+                        }}
+                        disabled={loading}
+                        aria-required="true"
+                        aria-invalid={termsError}
+                        aria-describedby={termsError ? 'lead-terms-error' : undefined}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-[#FD4403] focus:ring-2 focus:ring-brand-500"
+                      />
+                      <span className="text-xs text-gray-500 leading-relaxed">
+                        I have read and agree to the{' '}
+                        <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline font-medium">Privacy Policy</Link>
+                        {' '}and{' '}
+                        <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline font-medium">Terms of Service</Link>. *
+                      </span>
+                    </label>
+                    {termsError && (
+                      <p id="lead-terms-error" className="mt-1.5 text-xs text-red-600">
+                        You must agree to the Privacy Policy and Terms of Service to continue.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Optional marketing consent — never pre-checked */}
                   <div className="pt-2">
                     <ConsentCheckbox
@@ -202,7 +246,7 @@ export default function LeadCaptureModal({ isOpen, onClose, documentName, docume
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !agreedToTerms}
                       className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (

@@ -40,9 +40,18 @@ app.use(cors({
 }));
 
 // ── RATE LIMITING ─────────────────────────────────────────────────────────────
+// max was 100 req/15min -- live-verified (2026-08-20) to be far too tight for
+// this app's real per-session call volume: a single Dashboard-home load
+// alone fires ~7-8 calls (reports list, dashboard-summary, assigned-to-me,
+// CRM clients, templates, notification poll, ...), each sharing this one
+// per-IP budget with every other endpoint. A repro of nothing more than 3
+// fresh logins + a few refreshes produced 40+ real 429s on ordinary reads
+// (reports, notifications, dashboard-summary, templates) within about a
+// minute. Raised to a level that comfortably covers real usage (including
+// several people behind one office/NAT IP) while still bounding abuse.
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -53,22 +62,19 @@ const globalLimiter = rateLimit({
       request_id: req.requestId,
     });
   },
-  skip: (req) => req.path === '/health',
+  // GET /users/profile has its own dedicated, per-user limiter
+  // (profileLimiter, backend/middleware/rateLimiters.js) instead -- see that
+  // file's comment for why sharing this global per-IP budget is what caused
+  // the recurring "Account data unavailable" bug.
+  skip: (req) => req.path === '/health' || (req.method === 'GET' && /^\/api(\/v1)?\/users\/profile$/.test(req.path)),
 });
 
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  handler: (req, res) => {
-    res.status(429).json({
-      success: false,
-      error: 'Report generation rate limit exceeded',
-      code: 'GENERATION_RATE_LIMITED',
-      request_id: req.requestId,
-    });
-  },
-  keyGenerator: (req) => req.user?.uid || req.ip,
-});
+// aiLimiter itself now lives in middleware/rateLimiters.js and is applied
+// directly to the specific AI/generation-heavy routes inside reports.js
+// (Phase 6 addendum fix) -- it used to be mounted as `pre` middleware on the
+// *entire* /reports router below, which meant ordinary reads (GET /reports,
+// /reports/templates, /reports/dashboard-summary, the new photo-gallery
+// routes) shared the same 10-req/60s budget as actual AI calls.
 
 app.use(globalLimiter);
 
@@ -120,6 +126,27 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
+  // Firebase ID-token verification can get permanently wedged inside an
+  // already-running process (confirmed by a live repro: a brand-new
+  // one-shot script verified a real token instantly while the running
+  // server rejected the same token as transient on every attempt, with no
+  // recovery over time -- the recurring root cause behind "Account data
+  // unavailable", see middleware/auth.js's isAuthVerificationWedged
+  // comment). No per-request retry can ever fix that -- only restarting the
+  // process can. Render already restarts the dyno on a failing
+  // healthCheckPath (render.yaml) -- reporting unhealthy here once enough
+  // consecutive failures pile up is what lets that existing mechanism
+  // actually catch and recover from this, instead of the service staying
+  // "healthy" forever while every real login silently fails.
+  if (isAuthVerificationWedged()) {
+    return res.status(503).json({
+      status: 'unhealthy',
+      reason: 'AUTH_VERIFICATION_WEDGED',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  }
   res.json({
     status: 'healthy',
     uptime: process.uptime(),
@@ -130,7 +157,10 @@ app.get('/health', (req, res) => {
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
 // Record API-key usage (no-op for token/browser requests) so usage analytics work.
-const { trackApiUsage } = require('./middleware/auth');
+// isAuthVerificationWedged is used by the /health route above -- safe to
+// require here since that route only reads it at request-time, long after
+// this module has finished loading.
+const { trackApiUsage, isAuthVerificationWedged } = require('./middleware/auth');
 
 // Every route is mounted under BOTH the legacy unversioned prefix (/api/*) and
 // the versioned prefix (/api/v1/*). Both share the exact same router instances,
@@ -141,13 +171,19 @@ const API_PREFIXES = ['/api', '/api/v1'];
 const routeTable = [
   { path: '/auth', router: require('./routes/auth') },
   { path: '/users', router: require('./routes/users') },
-  { path: '/reports', router: require('./routes/reports'), pre: [aiLimiter] },
+  { path: '/reports', router: require('./routes/reports') },
   { path: '/payment', router: require('./routes/payment') },
   { path: '/crm', router: require('./routes/crm') },
   { path: '/white-label', router: require('./routes/whitelabel') },
   { path: '/teams', router: require('./routes/teams') },
+  { path: '/templates', router: require('./routes/templates') },
+  { path: '/analytics', router: require('./routes/analytics') },
+  { path: '/organization', router: require('./routes/organization') },
   { path: '/sales', router: require('./routes/sales') },
   { path: '/webhooks', router: require('./routes/webhooks') },
+  { path: '/notifications', router: require('./routes/notifications') },
+  { path: '/search', router: require('./routes/search') },
+  { path: '/photos', router: require('./routes/photos') },
 ];
 
 for (const prefix of API_PREFIXES) {

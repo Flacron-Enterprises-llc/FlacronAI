@@ -108,7 +108,7 @@ export default function AdminTierUpdate() {
           {foundUser && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card p-6 space-y-5">
               <div className="flex items-center gap-4 pb-4 border-b border-[#e5e7eb]">
-                <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center text-xl font-bold text-orange-400">
+                <div className="w-12 h-12 rounded-full bg-brand-500/20 flex items-center justify-center text-xl font-bold text-brand-400">
                   {(foundUser.displayName || foundUser.email || 'U')[0].toUpperCase()}
                 </div>
                 <div>
@@ -150,11 +150,11 @@ export default function AdminTierUpdate() {
                   {TIER_OPTIONS.map(opt => (
                     <label key={opt.value}
                       className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                        selectedTier === opt.value ? 'border-orange-500/50 bg-orange-500/10' : 'border-gray-200 bg-gray-100 hover:bg-gray-100'}`}>
+                        selectedTier === opt.value ? 'border-brand-500/50 bg-brand-500/10' : 'border-gray-200 bg-gray-100 hover:bg-gray-100'}`}>
                       <input type="radio" name="tier" value={opt.value} checked={selectedTier === opt.value}
                         onChange={() => setSelectedTier(opt.value)} className="sr-only" />
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedTier === opt.value ? 'border-orange-500' : 'border-gray-600'}`}>
-                        {selectedTier === opt.value && <div className="w-2 h-2 rounded-full bg-orange-500" />}
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedTier === opt.value ? 'border-brand-500' : 'border-gray-600'}`}>
+                        {selectedTier === opt.value && <div className="w-2 h-2 rounded-full bg-brand-500" />}
                       </div>
                       <div className="flex-1">
                         <p className="text-gray-900 text-sm font-medium">{opt.label}</p>

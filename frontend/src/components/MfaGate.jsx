@@ -30,8 +30,8 @@ const MfaGate = ({ onVerified }) => {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <div className="card p-8 max-w-md w-full text-center">
-        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <ShieldCheck className="w-8 h-8 text-orange-500" />
+        <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldCheck className="w-8 h-8 text-brand-500" />
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Two-Factor Authentication</h2>
         <p className="text-gray-600 text-sm mb-6">Enter the 6-digit code from your authenticator app or a recovery code.</p>

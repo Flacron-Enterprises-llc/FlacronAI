@@ -17,7 +17,7 @@ export default function AcceptInvite() {
     if (authLoading) return;
     if (!isAuthenticated) {
       // Redirect to auth with redirect back here
-      navigate(`/auth?redirect=/invite/${token}`, { replace: true });
+      navigate(`/login?redirect=/invite/${token}`, { replace: true });
       return;
     }
     if (status !== 'pending') return;
@@ -46,8 +46,8 @@ export default function AcceptInvite() {
         animate={{ opacity: 1, scale: 1 }}
         className="card p-10 max-w-md w-full text-center"
       >
-        <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-orange-500/10 flex items-center justify-center">
-          <Users className="w-8 h-8 text-orange-500" />
+        <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-brand-500/10 flex items-center justify-center">
+          <Users className="w-8 h-8 text-brand-500" />
         </div>
 
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Team Invite</h1>
@@ -55,7 +55,7 @@ export default function AcceptInvite() {
         {(status === 'pending' || status === 'loading') && (
           <>
             <p className="text-gray-500 text-sm mb-8">Processing your invitation...</p>
-            <Loader className="w-8 h-8 text-orange-500 animate-spin mx-auto" />
+            <Loader className="w-8 h-8 text-brand-500 animate-spin mx-auto" />
           </>
         )}
 

@@ -130,7 +130,7 @@ FlacronAI uses third-party AI services to analyze claim photographs and generate
 Data sent to AI providers:
 When you generate a report, the following data is sent to the AI provider:
 - Claim details you entered (policyholder name, property address, date of loss, loss description, etc.)
-- Uploaded photographs (up to 10 images, JPEG/PNG/GIF/WebP formats only)
+- Uploaded photographs (JPEG/PNG/GIF/WebP formats only; up to 100 photos per report, sent to the vision model in batches of up to 10 images per request)
 - Instructions to generate structured report text
 
 Data retention by AI providers:

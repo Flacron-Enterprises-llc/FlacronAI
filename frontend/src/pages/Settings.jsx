@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   User, Lock, Key, Bell, CreditCard, Eye, EyeOff, Plus,
   Trash2, Copy, Check, AlertTriangle, ExternalLink, Download, X,
-  Shield, ShieldCheck, RefreshCw, Mail
+  Shield, ShieldCheck, RefreshCw, Mail, History, MapPin, Monitor,
+  Building2, Palette, Database, Info,
 } from 'lucide-react';
 import {
   reauthenticateWithCredential,
@@ -18,14 +19,22 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { usersAPI, paymentAPI, authAPI } from '../services/api';
+import { usersAPI, paymentAPI, authAPI, reportsAPI } from '../services/api';
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 
+// Phase 18 (Settings Completion): the spec's 7-tab structure (Profile/
+// Organization/Branding/Notifications/Security/Data/API), plus the
+// pre-existing Billing tab kept as-is (not part of the spec's named 7, but a
+// real, working, already-tested feature -- preserving it, not folding it in,
+// per "preserve existing functionality").
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
-  { id: 'security', label: 'Security', icon: Lock },
-  { id: 'api-keys', label: 'API Keys', icon: Key },
+  { id: 'organization', label: 'Organization', icon: Building2 },
+  { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'security', label: 'Security', icon: Lock },
+  { id: 'data', label: 'Data', icon: Database },
+  { id: 'api-keys', label: 'API', icon: Key },
   { id: 'billing', label: 'Billing', icon: CreditCard },
 ];
 
@@ -48,11 +57,11 @@ function KeyModal({ apiKey, onClose }) {
           <h2 id="key-modal-title" className="text-lg font-bold text-gray-900">API Key Created</h2>
           <button onClick={onClose} aria-label="Close" title="Close"><X className="w-5 h-5 text-gray-600" /></button>
         </div>
-        <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex gap-2 mb-4">
-          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
-          <p className="text-yellow-800 text-sm">Copy this key now. It will never be shown again.</p>
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex gap-2 mb-4">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-amber-800 text-sm">Copy this key now. It will never be shown again.</p>
         </div>
-        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-orange-800 break-all mb-4">{apiKey}</div>
+        <div className="bg-gray-200 rounded-xl p-3 font-mono text-sm text-brand-800 break-all mb-4">{apiKey}</div>
         <div className="flex gap-3">
           <button onClick={handleCopy} className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm py-2">
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -135,11 +144,93 @@ function DeleteAccountModal({ onConfirm, onClose, loading }) {
 export default function Settings() {
   const { userProfile, tier, refreshProfile, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [searchParams] = useSearchParams();
+  // Phase 16: allows a deep link (e.g. from /integrations' "Manage API Keys")
+  // to land directly on a specific tab instead of always defaulting to Profile.
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get('tab');
+    return TABS.some((t) => t.id === requested) ? requested : 'profile';
+  });
 
-  // Profile state
-  const [profileForm, setProfileForm] = useState({ displayName: '', phone: '', company: '', address: '' });
+  // Profile state (Phase 18: company/address moved to the Organization tab --
+  // see orgForm below -- since they're really org-scoped, not per-person).
+  const [profileForm, setProfileForm] = useState({ displayName: '', phone: '' });
   const [profileLoading, setProfileLoading] = useState(false);
+
+  // Organization state (Phase 18) -- shared by both the Organization tab
+  // (company/website/industry/address/timezone) and the Branding tab
+  // (reportFooter also lives here, same endpoint, same canManageTeam gate).
+  // A solo account is its own organization, so this behaves exactly like the
+  // old personal company/address fields did for every non-team account.
+  const [orgForm, setOrgForm] = useState({ company: '', website: '', industry: '', address: '', timezone: '', reportFooter: '' });
+  const [orgCanEdit, setOrgCanEdit] = useState(true);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState(false);
+  const [orgSaving, setOrgSaving] = useState(false);
+
+  const fetchOrganization = useCallback(() => {
+    setOrgLoading(true);
+    setOrgError(false);
+    usersAPI.getOrganization()
+      .then((res) => {
+        setOrgForm((prev) => ({ ...prev, ...res.data.organization }));
+        setOrgCanEdit(!!res.data.canEdit);
+      })
+      .catch(() => setOrgError(true))
+      .finally(() => setOrgLoading(false));
+  }, []);
+
+  const handleOrgSave = async () => {
+    setOrgSaving(true);
+    try {
+      await usersAPI.updateOrganization(orgForm);
+      toast.success('Organization info updated');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Failed to update organization info');
+    } finally {
+      setOrgSaving(false);
+    }
+  };
+
+  // Data tab state (Phase 18)
+  const [exportLoading, setExportLoading] = useState(false);
+  const [showDeleteArchivedModal, setShowDeleteArchivedModal] = useState(false);
+  const [deleteArchivedLoading, setDeleteArchivedLoading] = useState(false);
+
+  const handleExportData = async () => {
+    setExportLoading(true);
+    try {
+      const res = await usersAPI.exportData();
+      const blob = new Blob([JSON.stringify(res.data.export, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `flacronai-account-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Your data export has downloaded');
+    } catch {
+      toast.error('Failed to export account data');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleDeleteAllArchived = async () => {
+    setDeleteArchivedLoading(true);
+    try {
+      const res = await reportsAPI.deleteAllArchived();
+      const count = res.data.deletedCount ?? 0;
+      toast.success(count > 0 ? `${count} archived report(s) permanently deleted` : 'No archived reports to delete');
+      setShowDeleteArchivedModal(false);
+    } catch {
+      toast.error('Failed to delete archived reports');
+    } finally {
+      setDeleteArchivedLoading(false);
+    }
+  };
 
   // Security state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -158,9 +249,10 @@ export default function Settings() {
   const [revokeKeyId, setRevokeKeyId] = useState(null);
   const [revokeKeyLoading, setRevokeKeyLoading] = useState(false);
 
-  // Notifications state
+  // Notifications state (Phase 18: expanded from 3 to the full spec'd 6)
   const [notifications, setNotifications] = useState({
-    reportGenerated: true, subscriptionRenewal: true, usageLimitWarning: true
+    reportCompleted: true, analysisCompleted: true, reviewRequested: true,
+    reportApproved: true, reportShared: true, billing: true,
   });
   const [notifSaving, setNotifSaving] = useState(false);
 
@@ -183,15 +275,30 @@ export default function Settings() {
   const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState([]);
   const [mfaLoading, setMfaLoading] = useState(false);
 
+  // Login History state (Phase 17) -- real data backing the "Login History"
+  // claim that Security.jsx's public page has always made about this exact
+  // location; personal-only (the caller's own uid), available on every tier.
+  const [loginHistory, setLoginHistory] = useState(null);
+  const [loginHistoryLoading, setLoginHistoryLoading] = useState(false);
+  const [loginHistoryError, setLoginHistoryError] = useState(false);
+  const [loginHistoryPage, setLoginHistoryPage] = useState(1);
+
+  const fetchLoginHistory = useCallback((page = 1) => {
+    setLoginHistoryLoading(true);
+    setLoginHistoryError(false);
+    usersAPI.getLoginHistory({ page, limit: 10 })
+      .then((res) => { setLoginHistory(res.data); setLoginHistoryPage(page); })
+      .catch(() => setLoginHistoryError(true))
+      .finally(() => setLoginHistoryLoading(false));
+  }, []);
+
   useEffect(() => {
     if (userProfile) {
       setProfileForm({
         displayName: userProfile.displayName || '',
         phone: userProfile.phone || '',
-        company: userProfile.company || '',
-        address: userProfile.address || '',
       });
-      setNotifications(userProfile.notifications || { reportGenerated: true, subscriptionRenewal: true, usageLimitWarning: true });
+      setNotifications((prev) => ({ ...prev, ...(userProfile.notifications || {}) }));
     }
   }, [userProfile]);
 
@@ -200,8 +307,10 @@ export default function Settings() {
     if (activeTab === 'billing') fetchBilling();
     if (activeTab === 'security') {
       authAPI.mfaStatus().then(res => setMfaEnabled(!!res.data.mfaEnabled)).catch(() => {});
+      fetchLoginHistory(1);
     }
-  }, [activeTab, tier]);
+    if (activeTab === 'organization' || activeTab === 'branding') fetchOrganization();
+  }, [activeTab, tier, fetchLoginHistory, fetchOrganization]);
 
   const fetchApiKeys = async () => {
     setKeysLoading(true);
@@ -443,7 +552,7 @@ export default function Settings() {
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all shrink-0 whitespace-nowrap md:w-full ${
                     activeTab === tab.id
-                      ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                      ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                   }`}>
                   <tab.icon className="w-4 h-4" /> {tab.label}
@@ -464,8 +573,6 @@ export default function Settings() {
                       {[
                         { key: 'displayName', label: 'Display Name', placeholder: 'Your name' },
                         { key: 'phone', label: 'Phone Number', placeholder: '+1 (555) 000-0000' },
-                        { key: 'company', label: 'Company Name', placeholder: 'Your company' },
-                        { key: 'address', label: 'Business Address', placeholder: 'Your address' },
                       ].map(f => (
                         <div key={f.key}>
                           <label className="label">{f.label}</label>
@@ -474,11 +581,111 @@ export default function Settings() {
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-gray-400 mb-4 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" /> Company name and address moved to the Organization tab.
+                    </p>
                     <button onClick={handleProfileSave} disabled={profileLoading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
                       {profileLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       {profileLoading ? 'Saving...' : 'Save Changes'}
                     </button>
                   </div>
+                </motion.div>
+              )}
+
+              {/* Organization Tab (Phase 18) */}
+              {activeTab === 'organization' && (
+                <motion.div key="organization" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Organization Information</h2>
+                    <p className="text-gray-500 text-sm mb-6">
+                      Used on your report cover pages and exports. {orgCanEdit ? '' : 'Only Owners, Admins, and Managers can edit this — you can view it here.'}
+                    </p>
+                    {orgLoading ? (
+                      <div className="space-y-3 max-w-lg">{[...Array(5)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}</div>
+                    ) : orgError ? (
+                      <div className="text-center py-8">
+                        <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                        <p className="text-gray-600 text-sm font-medium">We couldn't load organization info</p>
+                        <button onClick={fetchOrganization} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4" /> Retry
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                          {[
+                            { key: 'company', label: 'Company Name', placeholder: 'Your company' },
+                            { key: 'website', label: 'Website', placeholder: 'https://example.com' },
+                            { key: 'industry', label: 'Industry', placeholder: 'e.g. Property & Casualty Insurance' },
+                            { key: 'address', label: 'Business Address', placeholder: 'Your address' },
+                            { key: 'timezone', label: 'Timezone', placeholder: 'e.g. America/New_York' },
+                          ].map(f => (
+                            <div key={f.key}>
+                              <label className="label">{f.label}</label>
+                              <input className="input" placeholder={f.placeholder} disabled={!orgCanEdit}
+                                value={orgForm[f.key]} onChange={e => setOrgForm(p => ({ ...p, [f.key]: e.target.value }))} />
+                            </div>
+                          ))}
+                        </div>
+                        {orgCanEdit && (
+                          <button onClick={handleOrgSave} disabled={orgSaving} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                            {orgSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                            {orgSaving ? 'Saving...' : 'Save Changes'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Branding Tab (Phase 18) */}
+              {activeTab === 'branding' && (
+                <motion.div key="branding" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
+                  {tier === 'enterprise' ? (
+                    <div className="card p-6">
+                      <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                        <Palette className="w-4 h-4 text-gray-400" /> White-Label Branding
+                      </h2>
+                      <p className="text-gray-500 text-sm mb-4">
+                        Full logo, color, and domain branding is managed in the White-Label Portal, not duplicated here.
+                      </p>
+                      <button onClick={() => navigate('/white-label')} className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
+                        <ExternalLink className="w-4 h-4" /> Manage White-Label Branding
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="card p-6">
+                      <h2 className="text-lg font-semibold text-gray-900 mb-1">Export Branding</h2>
+                      <p className="text-gray-500 text-sm mb-4">
+                        Your Organization tab's Company Name already appears on your exported reports instead of "FlacronAI". Add a custom footer line below for extra detail.
+                      </p>
+                      {orgLoading ? (
+                        <div className="skeleton h-10 w-full max-w-md" />
+                      ) : (
+                        <div className="max-w-md mb-4">
+                          <label className="label">Report Footer Text</label>
+                          <input className="input" placeholder="e.g. Licensed Adjuster, State of Texas" disabled={!orgCanEdit}
+                            value={orgForm.reportFooter} onChange={e => setOrgForm(p => ({ ...p, reportFooter: e.target.value }))} />
+                          <p className="text-xs text-gray-400 mt-1">Company Name is set in the <button type="button" onClick={() => setActiveTab('organization')} className="underline hover:text-gray-600">Organization tab</button>.</p>
+                        </div>
+                      )}
+                      {orgCanEdit && (
+                        <button onClick={handleOrgSave} disabled={orgSaving} className="btn-primary flex items-center gap-2 disabled:opacity-50 mb-6">
+                          {orgSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                          {orgSaving ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      )}
+                      <div className="rounded-xl border border-dashed border-gray-200 p-4 flex items-start gap-3">
+                        <Palette className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-700 font-medium">Want full logo, color, and domain branding?</p>
+                          <p className="text-xs text-gray-500 mt-0.5 mb-2">White-Label branding is available on Enterprise plans.</p>
+                          <button onClick={() => navigate('/pricing')} className="btn-secondary text-xs py-1.5 px-3">Upgrade to Enterprise</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -586,6 +793,62 @@ export default function Settings() {
                   </div>
 
                   <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                      <History className="w-4 h-4 text-gray-400" /> Login History
+                    </h2>
+                    <p className="text-gray-500 text-sm mb-4">Recent sign-in activity on your account, most recent first.</p>
+                    {loginHistoryLoading ? (
+                      <div className="space-y-2">
+                        {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-12 w-full" />)}
+                      </div>
+                    ) : loginHistoryError ? (
+                      <div className="text-center py-6">
+                        <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto mb-2" />
+                        <p className="text-gray-600 text-sm font-medium">We couldn't load your login history</p>
+                        <button onClick={() => fetchLoginHistory(1)} className="mt-3 btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4" /> Retry
+                        </button>
+                      </div>
+                    ) : !loginHistory?.items?.length ? (
+                      <p className="text-gray-500 text-sm py-4">No recorded sign-in activity yet.</p>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          {loginHistory.items.map((entry) => {
+                            const isFailed = entry.action === 'login_failed';
+                            const isNewDevice = entry.action === 'suspicious_login_new_device';
+                            return (
+                              <div key={entry.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-100 border border-gray-200">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <Monitor className={`w-4 h-4 shrink-0 ${isFailed ? 'text-red-500' : isNewDevice ? 'text-amber-500' : 'text-green-500'}`} />
+                                  <div className="min-w-0">
+                                    <p className="text-gray-900 text-sm font-medium">
+                                      {isFailed ? 'Failed sign-in attempt' : isNewDevice ? 'New device detected' : entry.action === 'logout' ? 'Signed out' : 'Signed in'}
+                                    </p>
+                                    <p className="text-gray-500 text-xs flex items-center gap-1">
+                                      {entry.ip && <><MapPin className="w-3 h-3" /> {entry.ip}</>}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-gray-500 text-xs shrink-0">{new Date(entry.timestamp).toLocaleString()}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {loginHistory.totalPages > 1 && (
+                          <div className="flex items-center justify-between mt-4 text-sm">
+                            <button onClick={() => fetchLoginHistory(loginHistoryPage - 1)} disabled={loginHistoryPage <= 1}
+                              className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-50">Previous</button>
+                            <span className="text-gray-500 text-xs">Page {loginHistory.page} of {loginHistory.totalPages}</span>
+                            <button onClick={() => fetchLoginHistory(loginHistoryPage + 1)} disabled={loginHistoryPage >= loginHistory.totalPages}
+                              className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-50">Next</button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="card p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-1">Forgot Your Password?</h2>
                     <p className="text-gray-500 text-sm mb-4">
                       We'll send a password reset link to <span className="font-medium text-gray-700">{auth.currentUser?.email}</span>.
@@ -630,8 +893,8 @@ export default function Settings() {
                           <legend className="text-sm font-medium text-gray-900 mb-2">Permissions</legend>
                           <div className="grid gap-2 sm:grid-cols-2">
                             {API_KEY_SCOPES.map(scope => (
-                              <label key={scope.id} className="flex gap-2 rounded-lg border border-gray-200 p-3 cursor-pointer hover:border-orange-300">
-                                <input type="checkbox" className="mt-0.5 accent-orange-500" checked={newKeyScopes.includes(scope.id)}
+                              <label key={scope.id} className="flex gap-2 rounded-lg border border-gray-200 p-3 cursor-pointer hover:border-brand-300">
+                                <input type="checkbox" className="mt-0.5 accent-brand-500" checked={newKeyScopes.includes(scope.id)}
                                   onChange={() => setNewKeyScopes(current => current.includes(scope.id) ? current.filter(item => item !== scope.id) : [...current, scope.id])} />
                                 <span><span className="block text-sm font-medium text-gray-900">{scope.label}</span><span className="block text-xs text-gray-500 mt-0.5">{scope.description}</span></span>
                               </label>
@@ -701,25 +964,71 @@ export default function Settings() {
                     <h2 className="text-lg font-semibold text-gray-900 mb-6">Email Notifications</h2>
                     <div className="space-y-4">
                       {[
-                        { key: 'reportGenerated', label: 'Report Generated', desc: 'Receive an email when your report is ready' },
-                        { key: 'subscriptionRenewal', label: 'Subscription Renewal', desc: 'Get notified 7 days before your plan renews' },
-                        { key: 'usageLimitWarning', label: 'Usage Limit Warning', desc: 'Alert when you reach 80% of your monthly limit' },
+                        { key: 'reportCompleted', label: 'Report Completed', desc: 'Receive an email when your report finishes generating' },
+                        { key: 'analysisCompleted', label: 'Analysis Completed', desc: 'Receive an email when photo analysis finishes' },
+                        { key: 'reviewRequested', label: 'Review Requested', desc: 'Receive an email when a teammate requests your review', comingSoon: true },
+                        { key: 'reportApproved', label: 'Report Approved', desc: 'Receive an email when a report is approved and finalized' },
+                        { key: 'reportShared', label: 'Report Shared', desc: 'Receive an email when a share link is created for your report' },
+                        { key: 'billing', label: 'Billing', desc: 'Receive an email about payment issues on your subscription' },
                       ].map(n => (
                         <div key={n.key} className="flex items-center justify-between p-4 rounded-xl bg-gray-100 border border-gray-200">
                           <div>
-                            <p className="text-gray-900 text-sm font-medium">{n.label}</p>
+                            <p className="text-gray-900 text-sm font-medium flex items-center gap-2">
+                              {n.label}
+                              {n.comingSoon && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">No trigger yet</span>}
+                            </p>
                             <p className="text-gray-500 text-xs mt-0.5">{n.desc}</p>
                           </div>
                           <button onClick={() => setNotifications(p => ({ ...p, [n.key]: !p[n.key] }))}
-                            className={`relative w-10 h-5 rounded-full transition-colors ${notifications[n.key] ? 'bg-orange-500' : 'bg-gray-200'}`}>
+                            className={`relative w-10 h-5 rounded-full transition-colors ${notifications[n.key] ? 'bg-brand-500' : 'bg-gray-200'}`}>
                             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${notifications[n.key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
                           </button>
                         </div>
                       ))}
                     </div>
-                    <button onClick={handleNotifSave} disabled={notifSaving} className="btn-primary mt-6 flex items-center gap-2 disabled:opacity-50">
+                    <p className="text-xs text-gray-400 mt-4 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 shrink-0" /> "Review Requested" is saved here for when supervisor review-requests ship — no such feature exists yet, so this preference has nothing to gate today.
+                    </p>
+                    <button onClick={handleNotifSave} disabled={notifSaving} className="btn-primary mt-4 flex items-center gap-2 disabled:opacity-50">
                       {notifSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       {notifSaving ? 'Saving...' : 'Save Preferences'}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Data Tab (Phase 18) */}
+              {activeTab === 'data' && (
+                <motion.div key="data" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
+                  <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                      <Download className="w-4 h-4 text-gray-400" /> Export Your Data
+                    </h2>
+                    <p className="text-gray-500 text-sm mb-4">
+                      Download a JSON file containing your profile, reports (including full content and photo/document references), templates, CRM records, and API key/webhook metadata. Actual photo and export files stay available for download from My Reports — this export references them by name, not by re-including the files themselves.
+                    </p>
+                    <button onClick={handleExportData} disabled={exportLoading} className="btn-primary flex items-center gap-2 text-sm py-2 disabled:opacity-50">
+                      {exportLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {exportLoading ? 'Preparing export...' : 'Export My Data'}
+                    </button>
+                  </div>
+
+                  <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-gray-400" /> Data Retention
+                    </h2>
+                    <p className="text-gray-500 text-sm">
+                      Reports, photos, and documents are retained for as long as your account exists, or until you delete them yourself (individually, or in bulk below). There is currently no automatic expiry — nothing you generate is silently deleted on a timer.
+                    </p>
+                  </div>
+
+                  <div className="card p-6 border-red-500/30">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Delete Archived Reports</h2>
+                    <p className="text-gray-500 text-sm mb-4">
+                      Permanently delete every report you've already archived, along with its photos and documents. This is separate from deleting your whole account — draft and finalized reports are never touched.
+                    </p>
+                    <button onClick={() => setShowDeleteArchivedModal(true)} className="btn-danger flex items-center gap-2 text-sm py-2">
+                      <Trash2 className="w-4 h-4" /> Delete All Archived Reports
                     </button>
                   </div>
                 </motion.div>
@@ -770,7 +1079,7 @@ export default function Settings() {
                               </span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${usagePercent > 80 ? 'bg-red-500' : 'bg-orange-500'}`}
+                              <div className={`h-full rounded-full transition-all ${usagePercent > 80 ? 'bg-red-500' : 'bg-brand-500'}`}
                                 style={{ width: `${Math.min(usagePercent, 100)}%` }} />
                             </div>
                           </div>
@@ -817,7 +1126,7 @@ export default function Settings() {
                                   <td className="px-3 py-3 text-sm text-gray-600 max-w-[180px] truncate" title={inv.description}>{inv.description || 'Subscription'}</td>
                                   <td className="px-3 py-3 text-sm text-gray-900 font-medium">${inv.amount.toFixed(2)}</td>
                                   <td className="px-3 py-3">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
                                       {formatStatus(inv.status)}
                                     </span>
                                   </td>
@@ -867,6 +1176,16 @@ export default function Settings() {
             loading={revokeKeyLoading}
             onConfirm={confirmRevokeKey}
             onClose={() => setRevokeKeyId(null)}
+          />
+        )}
+        {showDeleteArchivedModal && (
+          <ConfirmDialog
+            title="Delete all archived reports?"
+            message="This permanently deletes every report you've archived, along with its photos and documents. Draft and finalized reports are never affected. This cannot be undone."
+            confirmLabel="Delete Archived Reports"
+            loading={deleteArchivedLoading}
+            onConfirm={handleDeleteAllArchived}
+            onClose={() => setShowDeleteArchivedModal(false)}
           />
         )}
       </AnimatePresence>

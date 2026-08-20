@@ -72,14 +72,14 @@ export default function Contact() {
                 </motion.div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-3">Message Received!</h2>
                 <p className="text-gray-600 max-w-sm">Thank you for reaching out. Our team will review your inquiry and follow up at <span className="text-gray-900">{form.email}</span>.</p>
-                <p className="text-gray-500 text-sm mt-4">For urgent technical issues, please email <a href="mailto:support@flacronenterprises.com" className="text-orange-400 underline">support@flacronenterprises.com</a> directly.</p>
+                <p className="text-gray-500 text-sm mt-4">For urgent technical issues, please email <a href="mailto:support@flacronenterprises.com" className="text-brand-400 underline">support@flacronenterprises.com</a> directly.</p>
                 <button onClick={() => { setSuccess(false); setForm({ name: '', email: '', subject: '', message: '' }); }}
                   className="btn-secondary mt-6 text-sm py-2 px-6">Send Another Message</button>
               </div>
             ) : (
               <div className="card p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-orange-400" /> Send a Message
+                  <MessageSquare className="w-5 h-5 text-brand-400" /> Send a Message
                 </h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -121,7 +121,7 @@ export default function Contact() {
                 {
                   icon: Mail, title: 'Email Support',
                   lines: ['support@flacronenterprises.com'],
-                  color: 'text-orange-400 bg-orange-500/10',
+                  color: 'text-brand-400 bg-brand-500/10',
                 },
                 {
                   icon: MapPin, title: 'Office Location',

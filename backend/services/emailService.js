@@ -259,6 +259,137 @@ const sendNewDeviceLoginAlert = async (email, displayName, { ip, userAgent, at }
   return sendEmail({ to: email, subject: 'New sign-in to your FlacronAI account', html, text });
 };
 
+// ── Report completed (Phase 18: Notifications) ─────────────────────────────
+const sendReportCompletedEmail = async (email, displayName, { reportId, claimNumber }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const html = layout({
+    preheader: 'Your FlacronAI report draft is ready for review.',
+    heading:   'Your Report Is Ready',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;">Your report draft${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''} has finished generating and is ready for your review before it's finalized.</p>`,
+    cta: { label: 'Review Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\nYour report draft${claimNumber ? ` for claim ${claimNumber}` : ''} has finished generating and is ready for review:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'Your FlacronAI report is ready for review', html, text });
+};
+
+// ── Photo analysis completed (Phase 18: Notifications) ─────────────────────
+const sendAnalysisCompletedEmail = async (email, displayName, { reportId, claimNumber, photoCount }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const html = layout({
+    preheader: 'Photo analysis finished on your FlacronAI report.',
+    heading:   'Photo Analysis Complete',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;">FLACRON ENGINE has finished analyzing ${photoCount ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : 'your photos'}${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''}. Report generation is now underway.</p>`,
+    cta: { label: 'View Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\nPhoto analysis has finished${claimNumber ? ` for claim ${claimNumber}` : ''}. Report generation is now underway:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'Photo analysis complete on your FlacronAI report', html, text });
+};
+
+// ── Report approved (Phase 18: Notifications) ──────────────────────────────
+const sendReportApprovedEmail = async (email, displayName, { reportId, claimNumber }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const html = layout({
+    preheader: 'Your FlacronAI report has been approved and finalized.',
+    heading:   'Report Approved',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;">Your report${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''} has been reviewed, approved, and finalized. It's ready to export or share.</p>`,
+    cta: { label: 'View Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\nYour report${claimNumber ? ` for claim ${claimNumber}` : ''} has been approved and finalized:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'Your FlacronAI report has been approved', html, text });
+};
+
+// ── Report shared (Phase 18: Notifications) ─────────────────────────────────
+const sendReportSharedEmail = async (email, displayName, { claimNumber, shareUrl }) => {
+  const name = esc(displayName || 'there');
+  const html = layout({
+    preheader: 'A secure share link was created for your FlacronAI report.',
+    heading:   'Report Share Link Created',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;">A secure share link was just created for your report${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''}. Anyone with the link below can view it.</p>`,
+    cta: { label: 'Open Share Link', url: shareUrl },
+    footNote: 'If you didn\'t expect this, you can revoke the share link from My Reports at any time.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\nA secure share link was just created for your report${claimNumber ? ` for claim ${claimNumber}` : ''}:\n${shareUrl}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'Your FlacronAI report share link', html, text });
+};
+
+// ── Review requested (Phase 19: Sharing, Comments & Review Requests) ───────
+// Sent to the REVIEWER being assigned, not the requester -- gated by the
+// reviewer's own 'reviewRequested' preference (Phase 18 defined this key but
+// never had an event to fire it; this is that event).
+const sendReviewRequestedEmail = async (email, displayName, { reportId, claimNumber, requestedByName, notes }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const html = layout({
+    preheader: 'A report has been sent to you for review on FlacronAI.',
+    heading:   'Review Requested',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;"><strong>${esc(requestedByName || 'A team member')}</strong> asked you to review a report${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''}. You can comment, edit, and approve or return it for changes.</p>
+      ${notes ? `<p style="margin:0 0 16px;color:#6b7280;font-size:14px;line-height:1.6;background:#f9fafb;border-left:3px solid ${BRAND};padding:10px 14px;border-radius:6px;">"${esc(notes)}"</p>` : ''}`,
+    cta: { label: 'Review Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\n${requestedByName || 'A team member'} asked you to review a report${claimNumber ? ` for claim ${claimNumber}` : ''}:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'A report is waiting for your review — FlacronAI', html, text });
+};
+
+// ── Review response (Phase 19): reviewer returned changes or declined ──────
+// Sent to the report OWNER, gated by the owner's own 'reviewRequested'
+// preference (the closest existing toggle to "review lifecycle updates" --
+// approval itself still goes through the existing 'reportApproved' hook).
+const sendReviewResponseEmail = async (email, displayName, { reportId, claimNumber, reviewerName, decision, notes }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const decisionLabel = decision === 'rejected' ? 'declined to approve' : 'requested changes on';
+  const html = layout({
+    preheader: `A reviewer ${decisionLabel} your FlacronAI report.`,
+    heading:   decision === 'rejected' ? 'Review Declined' : 'Changes Requested',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;"><strong>${esc(reviewerName || 'Your reviewer')}</strong> ${decisionLabel} your report${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''}. It's back in your drafts for edits.</p>
+      ${notes ? `<p style="margin:0 0 16px;color:#6b7280;font-size:14px;line-height:1.6;background:#f9fafb;border-left:3px solid ${BRAND};padding:10px 14px;border-radius:6px;">"${esc(notes)}"</p>` : ''}`,
+    cta: { label: 'Open Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\n${reviewerName || 'Your reviewer'} ${decisionLabel} your report${claimNumber ? ` for claim ${claimNumber}` : ''}:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: `FlacronAI report ${decision === 'rejected' ? 'review declined' : 'changes requested'}`, html, text });
+};
+
+// ── Direct report access granted (Phase 19: "Invite User" sharing) ─────────
+// Sent to the invited (existing-account) user -- gated by their own
+// 'reportShared' preference, the closest existing toggle to "someone gave
+// you access to a report" (distinct from the anonymous-link flow above).
+const sendReportAccessGrantedEmail = async (email, displayName, { reportId, claimNumber, grantedByName, permission }) => {
+  const name = esc(displayName || 'there');
+  const link = `${FRONTEND_URL}/reports/${reportId}/preview`;
+  const permissionLabel = { view: 'view', comment: 'view and comment on', review: 'view, comment on, and review' }[permission] || 'view';
+  const html = layout({
+    preheader: 'You were given access to a report on FlacronAI.',
+    heading:   'Report Shared With You',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi <strong>${name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:15px;line-height:1.6;"><strong>${esc(grantedByName || 'A FlacronAI user')}</strong> gave you access to ${permissionLabel} a report${claimNumber ? ` for claim <strong>${esc(claimNumber)}</strong>` : ''}.</p>`,
+    cta: { label: 'Open Report', url: link },
+    footNote: 'You can turn this email off anytime in Settings → Notifications.',
+  });
+  const text = `Hi ${displayName || 'there'},\n\n${grantedByName || 'A FlacronAI user'} gave you access to ${permissionLabel} a report${claimNumber ? ` for claim ${claimNumber}` : ''}:\n${link}\n\n— FlacronAI`;
+  return sendEmail({ to: email, subject: 'A FlacronAI report was shared with you', html, text });
+};
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
@@ -268,4 +399,11 @@ module.exports = {
   sendSalesNotificationEmail,
   sendEmailVerificationEmail,
   sendNewDeviceLoginAlert,
+  sendReportCompletedEmail,
+  sendAnalysisCompletedEmail,
+  sendReportApprovedEmail,
+  sendReportSharedEmail,
+  sendReviewRequestedEmail,
+  sendReviewResponseEmail,
+  sendReportAccessGrantedEmail,
 };

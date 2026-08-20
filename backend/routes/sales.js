@@ -38,6 +38,16 @@ router.post('/contact', [
     });
   }
 
+  // Document downloads don't require marketing consent, but do require agreeing
+  // to the Privacy Policy / Terms of Service (distinct from marketing consent).
+  if (isDocumentDownload && req.body.termsAccepted !== true) {
+    return res.status(400).json({
+      success: false,
+      error: 'You must agree to the Privacy Policy and Terms of Service to continue.',
+      code: 'TERMS_REQUIRED',
+    });
+  }
+
   try {
     const db = getFirestore();
     const { name, email, subject, message, company, phone, companyType, monthlyVolume } = req.body;

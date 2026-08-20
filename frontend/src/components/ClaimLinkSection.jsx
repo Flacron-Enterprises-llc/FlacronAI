@@ -5,7 +5,7 @@ import { crmAPI } from '../services/api';
 // Agency/Enterprise claim picker (T-6.16): select an existing CRM claim or create
 // one inline, instead of free-typing claim details that can drift/duplicate.
 // Shared between Dashboard.jsx and EnterpriseDashboard.jsx.
-export default function ClaimLinkSection({ linkedClaim, linkedClientName, onSelect, onClear, lossTypes }) {
+export default function ClaimLinkSection({ linkedClaim, linkedClientName, insuredEmail, onEmailChange, onSelect, onClear, lossTypes }) {
   const [mode, setMode] = useState('search');
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
@@ -34,6 +34,7 @@ export default function ClaimLinkSection({ linkedClaim, linkedClientName, onSele
   }, [search, linkedClaim]);
 
   const resolveClientName = (clientId) => clients.find(c => (c.id || c._id) === clientId)?.name || '';
+  const resolveClientEmail = (clientId) => clients.find(c => (c.id || c._id) === clientId)?.email || '';
 
   const handleCreateClaim = async () => {
     if (!newForm.clientId || !newForm.claimNumber.trim() || !newForm.lossDate) {
@@ -44,7 +45,7 @@ export default function ClaimLinkSection({ linkedClaim, linkedClientName, onSele
     try {
       const res = await crmAPI.createClaim(newForm);
       const claim = res.data.claim;
-      onSelect(claim, resolveClientName(claim.clientId));
+      onSelect(claim, resolveClientName(claim.clientId), resolveClientEmail(claim.clientId));
       setMode('search');
       setNewForm({ clientId: '', claimNumber: '', lossType: lossTypes[0], lossDate: '', propertyAddress: '' });
       toast.success('Claim created and linked');
@@ -65,6 +66,14 @@ export default function ClaimLinkSection({ linkedClaim, linkedClientName, onSele
             {linkedClaim.propertyAddress && <p className="text-gray-500 text-xs truncate">{linkedClaim.propertyAddress}</p>}
           </div>
           <button type="button" onClick={onClear} className="text-xs text-brand-600 hover:text-brand-700 underline shrink-0">Change claim</button>
+        </div>
+        <div className="mt-3">
+          <label className="label">Insured Email *</label>
+          <input type="email" className="input" placeholder="claimant@example.com"
+            value={insuredEmail || ''} onChange={e => onEmailChange?.(e.target.value)} />
+          {!insuredEmail && (
+            <p className="text-xs text-gray-500 mt-1">Not on file for this client — enter it to continue.</p>
+          )}
         </div>
       </div>
     );
@@ -93,7 +102,7 @@ export default function ClaimLinkSection({ linkedClaim, linkedClientName, onSele
             ) : results.length === 0 ? (
               <p className="text-xs text-gray-400 px-1">{search ? 'No matching claims.' : 'No claims yet — create one with "+ New Claim".'}</p>
             ) : results.map(c => (
-              <button key={c.id || c._id} type="button" onClick={() => onSelect(c, resolveClientName(c.clientId))}
+              <button key={c.id || c._id} type="button" onClick={() => onSelect(c, resolveClientName(c.clientId), resolveClientEmail(c.clientId))}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 text-sm transition-colors">
                 <span className="font-mono font-semibold text-gray-900">{c.claimNumber}</span>
                 <span className="text-gray-500"> — {resolveClientName(c.clientId) || 'Unassigned'} — {c.lossType}</span>

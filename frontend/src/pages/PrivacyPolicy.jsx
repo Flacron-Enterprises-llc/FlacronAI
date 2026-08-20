@@ -42,7 +42,7 @@ We do not use your claim data, photos, or report content to train or improve any
     title: '3. Data Sharing',
     content: `We do not sell your personal data. We share data only as follows:
 
-- **Service providers:** Third-party vendors who assist in delivering the service. This includes Google Firebase (authentication, database), Stripe (payments), and the processing partners behind the Flacron Engine. All vendors are bound by data processing agreements and may not use your data for independent purposes.
+- **Service providers:** Third-party vendors who assist in delivering the service. This includes Google Firebase (authentication, database), Stripe (payments), and the processing partners behind the FLACRON ENGINE. All vendors are bound by data processing agreements and may not use your data for independent purposes.
 - **Automated processing data handling:** Photos and claim text submitted for report generation are transmitted to our processing partners. All partners process this data under strict confidentiality agreements and do not use submitted data for model training.
 - **Legal requirements:** We may disclose data when required by law, court order, or governmental authority, provided we have received proper legal process.
 - **Business transfers:** In the event of a merger, acquisition, or sale of assets, customer data may be transferred as part of that transaction. We will provide notice before data is subject to a different privacy policy.
@@ -137,8 +137,8 @@ export default function PrivacyPolicy() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
             <p className="text-gray-600 text-sm">Last updated: March 1, 2026</p>
-            <div className="mt-4 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
-              <p className="text-orange-300 text-sm">This Privacy Policy describes how FlacronAI, Inc. ("FlacronAI," "we," "our," or "us") collects, uses, and protects personal information when you use our platform at flacronai.com and related services.</p>
+            <div className="mt-4 p-4 rounded-xl bg-brand-500/10 border border-brand-500/20">
+              <p className="text-brand-300 text-sm">This Privacy Policy describes how FlacronAI, Inc. ("FlacronAI," "we," "our," or "us") collects, uses, and protects personal information when you use our platform at flacronai.com and related services.</p>
             </div>
           </div>
 
@@ -148,7 +148,7 @@ export default function PrivacyPolicy() {
               <nav className="sticky top-24 space-y-1">
                 {SECTIONS.map(s => (
                   <a key={s.id} href={`#${s.id}`}
-                    className="block text-xs text-gray-500 hover:text-orange-400 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors leading-snug">
+                    className="block text-xs text-gray-500 hover:text-brand-400 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors leading-snug">
                     {s.title}
                   </a>
                 ))}

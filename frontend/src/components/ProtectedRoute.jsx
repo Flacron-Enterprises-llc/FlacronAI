@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import MfaGate from './MfaGate.jsx';
 import PageLoader from './PageLoader.jsx';
 
-const ProtectedRoute = ({ children, requiredTier }) => {
+const ProtectedRoute = ({ children, requiredTier, skipOnboardingGate }) => {
   const {
     isAuthenticated,
     loading,
@@ -31,7 +31,7 @@ const ProtectedRoute = ({ children, requiredTier }) => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/auth" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (profileError || !userProfile) {
@@ -64,8 +64,8 @@ const ProtectedRoute = ({ children, requiredTier }) => {
     return (
       <div className="min-h-screen bg-[#ffffff] flex items-center justify-center p-4">
         <div className="card p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-8 h-8 text-orange-500" />
+          <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Mail className="w-8 h-8 text-brand-500" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Verify Your Email</h2>
           <p className="text-gray-600 text-sm mb-6">
@@ -95,13 +95,13 @@ const ProtectedRoute = ({ children, requiredTier }) => {
                 setResending(false);
               }}
               disabled={resending}
-              className="text-orange-500 hover:text-orange-600 text-sm font-medium underline disabled:opacity-50"
+              className="text-brand-500 hover:text-brand-600 text-sm font-medium underline disabled:opacity-50"
             >
               {resending ? 'Sending...' : 'Resend verification email'}
             </button>
           )}
           <button
-            onClick={() => navigate('/auth')}
+            onClick={() => navigate('/login')}
             className="block mx-auto mt-4 text-gray-500 hover:text-gray-700 text-xs"
           >
             ← Back to sign in
@@ -115,6 +115,17 @@ const ProtectedRoute = ({ children, requiredTier }) => {
     return <MfaGate onVerified={markMfaVerified} />;
   }
 
+  // Phase 21 (Onboarding Flow): `onboardingCompleted === false` is the ONLY
+  // value that means "genuinely needs it" -- `undefined` (an existing,
+  // pre-Phase-21 account) and `true` (already finished) both fall through
+  // here untouched, so an existing user is never incorrectly forced through
+  // it. `/onboarding` itself passes `skipOnboardingGate` to avoid redirecting
+  // to itself; it handles its own "already done -> bounce to /dashboard"
+  // case internally.
+  if (!skipOnboardingGate && userProfile?.onboardingCompleted === false && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   if (requiredTier) {
     const tierOrder = ['starter', 'professional', 'agency', 'enterprise'];
     const userIdx = tierOrder.indexOf(tier);
@@ -126,7 +137,7 @@ const ProtectedRoute = ({ children, requiredTier }) => {
             <div className="text-4xl mb-4">🔒</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">Upgrade Required</h2>
             <p className="text-gray-600 mb-6">
-              This feature requires <strong className="text-orange-400 capitalize">{requiredTier}</strong> tier or higher.
+              This feature requires <strong className="text-brand-400 capitalize">{requiredTier}</strong> tier or higher.
               You're currently on <strong className="text-gray-900 capitalize">{tier}</strong>.
             </p>
             <a href="/pricing" className="btn-primary inline-block">View Pricing Plans</a>
