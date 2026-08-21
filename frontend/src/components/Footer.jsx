@@ -99,29 +99,30 @@ const Footer = () => {
   ];
 
   return (
-    <footer className="bg-bg border-t border-gray-200 pt-14 pb-8">
+    <footer className="bg-navy-800 border-t border-navy-900/40 pt-14 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link to="/" className="flex items-center gap-2.5 mb-4">
-              <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
-              <span className="font-bold text-lg text-gray-900">FlacronAI</span>
+              <span className="flex items-center justify-center h-9 rounded-md bg-white px-1.5 py-1">
+                <img src="/new-logo.png" alt="FlacronAI logo" className="h-full w-auto object-contain" />
+              </span>
             </Link>
-            <p className="text-gray-500 text-sm leading-relaxed mb-5 max-w-xs">
+            <p className="text-white/80 text-sm leading-relaxed mb-5 max-w-xs">
               Automated insurance documentation. Build structured drafts from submitted claim information, then review and approve them before final use.
             </p>
             {/* Powered by badges */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-500 font-medium">Powered by</span>
-              <span className="text-xs bg-brand-500/10 text-brand-700 border border-brand-200 px-2 py-0.5 rounded font-semibold">FLACRON ENGINE</span>
+              <span className="text-xs text-white/70 font-medium">Powered by</span>
+              <span className="text-xs bg-white/15 text-white border border-white/30 px-2 py-0.5 rounded font-semibold">FLACRON ENGINE</span>
             </div>
           </div>
 
           {/* Product & Company links */}
           {Object.entries(links).map(([section, items]) => (
             <div key={section}>
-              <h4 className="text-brand-500 font-semibold text-sm mb-4">{section}</h4>
+              <h4 className="text-white font-semibold text-sm mb-4">{section}</h4>
               <ul className="space-y-2.5">
                 {items.map(item => (
                   <li key={item.label}>
@@ -129,22 +130,22 @@ const Footer = () => {
                       <button
                         type="button"
                         onClick={openCookiePreferences}
-                        className="text-gray-500 hover:text-brand-500 text-sm transition-colors text-left"
+                        className="text-white/80 hover:text-white text-sm transition-colors text-left"
                       >
                         {item.label}
                       </button>
                     ) : item.external ? (
                       <a href={item.href} target="_blank" rel="noopener noreferrer"
-                        className="text-gray-500 hover:text-brand-500 text-sm transition-colors">
+                        className="text-white/80 hover:text-white text-sm transition-colors">
                         {item.label}
                       </a>
                     ) : item.href.startsWith('/#') ? (
                       <a href={item.href} onClick={(e) => handleHashClick(e, item.href)}
-                        className="text-gray-500 hover:text-brand-500 text-sm transition-colors cursor-pointer">
+                        className="text-white/80 hover:text-white text-sm transition-colors cursor-pointer">
                         {item.label}
                       </a>
                     ) : (
-                      <Link to={item.href} className="text-gray-500 hover:text-brand-500 text-sm transition-colors">
+                      <Link to={item.href} className="text-white/80 hover:text-white text-sm transition-colors">
                         {item.label}
                       </Link>
                     )}
@@ -156,12 +157,12 @@ const Footer = () => {
 
           {/* Connect */}
           <div>
-            <h4 className="text-brand-500 font-semibold text-sm mb-4">Connect</h4>
+            <h4 className="text-white font-semibold text-sm mb-4">Connect</h4>
             <div className="flex flex-col gap-2.5">
               {socials.map(({ label, icon: Icon, href }) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 text-gray-500 hover:text-brand-500 transition-colors group">
-                  <div className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 group-hover:bg-brand-500/10 transition-colors">
+                  className="flex items-center gap-2.5 text-white/80 hover:text-white transition-colors group">
+                  <div className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
                     <Icon />
                   </div>
                   <span className="text-sm">{label}</span>
@@ -172,8 +173,8 @@ const Footer = () => {
         </div>
 
         {/* Bottom bar */}
-        <div className="border-t border-gray-200 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-brand-500 text-sm">© 2026 Flacron Enterprises. All rights reserved.</p>
+        <div className="border-t border-white/20 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-white/80 text-sm">© 2026 Flacron Enterprises. All rights reserved.</p>
         </div>
       </div>
     </footer>

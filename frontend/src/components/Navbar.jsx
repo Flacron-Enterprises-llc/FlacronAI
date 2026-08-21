@@ -32,6 +32,7 @@ const Navbar = ({
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const userMenuRef = useRef(null);
   const { isAuthenticated, user, userProfile, logout, tier } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -62,6 +63,32 @@ const Navbar = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Scroll progress bar: rAF-throttled so it costs at most one layout read
+  // per frame, recomputed on resize, and reset/re-measured on every route
+  // change (new page can be a different, possibly non-scrollable, height).
+  useEffect(() => {
+    let ticking = false;
+    const updateProgress = () => {
+      const doc = document.documentElement;
+      const scrollable = doc.scrollHeight - window.innerHeight;
+      setScrollProgress(scrollable > 0 ? Math.min(100, Math.max(0, (window.scrollY / scrollable) * 100)) : 0);
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(updateProgress);
+      }
+    };
+    updateProgress();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [location.pathname]);
+
   useEffect(() => setMobileOpen(false), [location]);
   useEffect(() => setUserMenuOpen(false), [location]);
 
@@ -85,7 +112,8 @@ const Navbar = ({
       : []),
   ];
 
-  const bgClass = scrolled || !transparent
+  const solid = scrolled || !transparent;
+  const bgClass = solid
     ? 'bg-bg/95 backdrop-blur-md border-b border-gray-200 shadow-lg shadow-black/20'
     : 'bg-transparent';
 
@@ -95,7 +123,9 @@ const Navbar = ({
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 group">
-            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-8 h-8 object-contain" />
+            <span className={`flex items-center justify-center h-9 rounded-md ${solid ? 'bg-white px-1.5 py-1' : ''}`}>
+              <img src="/new-logo.png" alt="FlacronAI logo" className="h-full w-auto object-contain" />
+            </span>
             <span className="font-bold text-lg text-gray-900 tracking-tight">FlacronAI</span>
           </Link>
 
@@ -107,7 +137,7 @@ const Navbar = ({
                   key={link.label}
                   href={link.href}
                   onClick={(e) => handleHashClick(e, link.href)}
-                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors font-medium cursor-pointer"
+                  className="text-sm text-brand-500 hover:text-brand-600 transition-colors font-medium cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                 >
                   {link.label}
                 </a>
@@ -115,12 +145,12 @@ const Navbar = ({
                 <Link
                   key={link.label}
                   to={link.href}
-                  className={`text-sm text-brand-500 hover:text-brand-600 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                  className={`text-sm transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
                     (link.href === '/crm' || link.href === '/solutions'
                       ? location.pathname.startsWith(link.href)
                       : location.pathname === link.href)
-                      ? 'font-semibold text-brand-600'
-                      : 'font-medium'
+                      ? 'font-semibold text-brand-600 underline underline-offset-4 decoration-2'
+                      : 'font-medium text-brand-500 hover:text-brand-600'
                   }`}
                 >
                   {link.label}
@@ -259,7 +289,7 @@ const Navbar = ({
                     key={link.label}
                     href={link.href}
                     onClick={(e) => handleHashClick(e, link.href)}
-                    className="block px-3 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                    className="block px-3 py-2.5 text-brand-500 hover:text-brand-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
                   >
                     {link.label}
                   </a>
@@ -267,12 +297,12 @@ const Navbar = ({
                   <Link
                     key={link.label}
                     to={link.href}
-                    className={`block px-3 py-2.5 rounded-lg text-brand-500 hover:text-brand-600 hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+                    className={`block px-3 py-2.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
                       (link.href === '/crm' || link.href === '/solutions'
                       ? location.pathname.startsWith(link.href)
                       : location.pathname === link.href)
-                        ? 'font-semibold bg-brand-50'
-                        : 'font-medium'
+                        ? 'font-semibold text-brand-600 bg-brand-50'
+                        : 'font-medium text-brand-500 hover:text-brand-600 hover:bg-gray-100'
                     }`}
                   >
                     {link.label}
@@ -337,6 +367,14 @@ const Navbar = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Scroll progress bar */}
+      <div
+        className="absolute bottom-0 left-0 h-[3px] bg-brand-500 transition-[width] duration-150 ease-out pointer-events-none"
+        style={{ width: `${scrollProgress}%` }}
+        role="progressbar"
+        aria-hidden="true"
+      />
     </nav>
   );
 };

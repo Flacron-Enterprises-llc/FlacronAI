@@ -22,7 +22,7 @@ const timeAgo = (iso) => {
   return new Date(iso).toLocaleDateString();
 };
 
-const NotificationBell = () => {
+const NotificationBell = ({ light = false }) => {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -108,14 +108,14 @@ const NotificationBell = () => {
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen((p) => !p)}
-        className="relative p-2 rounded-xl hover:bg-gray-100 transition-colors"
+        className={`relative p-2 rounded-xl transition-colors ${light ? 'text-white/90 hover:bg-white/15 hover:text-white' : 'text-gray-600 hover:bg-gray-100'}`}
         aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
         aria-expanded={open}
         title="Notifications"
       >
-        <Bell className="w-5 h-5 text-gray-600" />
+        <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-brand-500 text-white text-[10px] font-bold leading-none">
+          <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[10px] font-bold leading-none ${light ? 'bg-white text-brand-600' : 'bg-brand-500 text-white'}`}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

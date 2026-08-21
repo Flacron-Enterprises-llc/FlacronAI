@@ -97,8 +97,7 @@ const DashboardMock = () => {
         {/* App header */}
         <div className="bg-bg border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/logo-mark.svg" alt="" className="w-6 h-6 object-contain" />
-            <span className="font-bold text-sm text-gray-900">FlacronAI</span>
+            <img src="/new-logo.png" alt="" className="h-6 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -714,7 +713,7 @@ const Home = () => {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
-          <div className="mt-8 rounded-card border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+          <div className="mt-8 rounded-card border border-amber-200 bg-amber-50 p-5 text-sm text-gray-900">
             <strong>Drafting limitations:</strong> FlacronAI drafts documentation; it does not perform an inspection or make final decisions about coverage, liability, cause of loss, safety, code compliance, or repair cost. A qualified professional must independently verify and approve every report.
           </div>
         </div>

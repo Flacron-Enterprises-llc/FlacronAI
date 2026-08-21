@@ -71,8 +71,7 @@ export default function SharedReport() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6 print:hidden">
           <div className="flex items-center gap-2">
-            <img src="/logo-mark.svg" alt="FlacronAI" className="w-8 h-8" />
-            <span className="font-bold text-gray-900">Flacron<span className="text-brand-600">AI</span></span>
+            <img src="/new-logo.png" alt="FlacronAI" className="h-8 w-auto" />
           </div>
           <div className="flex items-center gap-2">
             {permission !== 'view' && (
