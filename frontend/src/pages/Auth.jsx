@@ -311,8 +311,7 @@ const Auth = () => {
         <div className="relative w-full max-w-md">
           {/* Logo */}
           <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
-            <span className="font-bold text-xl text-gray-900">FlacronAI</span>
+            <img src="/new-logo.png" alt="FlacronAI logo" className="h-12 w-auto object-contain" />
           </Link>
 
           <div className="card p-8 text-center">
@@ -383,8 +382,7 @@ const Auth = () => {
         <h1 className="sr-only">Sign in or create your FlacronAI account</h1>
         {/* Logo */}
         <Link to="/" className="flex items-center justify-center gap-2.5 mb-8">
-          <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-10 h-10 object-contain" />
-          <span className="font-bold text-xl text-gray-900">FlacronAI</span>
+          <img src="/new-logo.png" alt="FlacronAI logo" className="h-12 w-auto object-contain" />
         </Link>
 
         {/* Card */}

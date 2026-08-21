@@ -607,13 +607,10 @@ export default function EnterpriseDashboard() {
         {/* Logo */}
         <div className="p-5 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-mark.svg" alt="FlacronAI logo" className="w-9 h-9 object-contain" />
-            <div>
-              <p className="text-sm font-black text-gray-900 leading-none">FlacronAI</p>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-brand-500 text-white uppercase tracking-wide">
-                Enterprise
-              </span>
-            </div>
+            <img src="/new-logo.png" alt="FlacronAI logo" className="h-9 w-auto object-contain" />
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-brand-500 text-white uppercase tracking-wide">
+              Enterprise
+            </span>
           </div>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close navigation"
             className="rounded-xl border border-gray-200 bg-bg p-2 text-gray-600 shadow-sm md:hidden">

@@ -2224,7 +2224,7 @@ export default function Dashboard() {
           </div>
 
           {/* Nav */}
-          <nav className="flex flex-col gap-0.5 flex-1">
+          <nav className="flex flex-col gap-0.5">
             {navLinks.map(link => (
               <button key={link.id}
                 onClick={() => {

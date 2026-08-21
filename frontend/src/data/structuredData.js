@@ -8,7 +8,7 @@ export const ORGANIZATION_JSONLD = {
   '@type': 'Organization',
   name: 'FlacronAI',
   url: SITE_URL,
-  logo: `${SITE_URL}/logo-mark.png`,
+  logo: `${SITE_URL}/new-logo.png`,
   description:
     'FlacronAI is an automated platform that drafts professional insurance inspection reports for adjusters to review and approve.',
   parentOrganization: { '@type': 'Organization', name: 'Flacron Enterprises LLC' },
