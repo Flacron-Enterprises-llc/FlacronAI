@@ -354,16 +354,16 @@ export default function Pricing() {
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="px-6 py-4 text-left text-gray-600 text-sm font-medium">Feature</th>
+                    <th className="px-6 py-4 text-left text-primary text-sm font-medium">Feature</th>
                     {PLANS.map(p => (
-                      <th key={p.id} className="px-4 py-4 text-center text-gray-900 text-sm font-semibold">{p.name}</th>
+                      <th key={p.id} className="px-4 py-4 text-center text-primary text-sm font-semibold">{p.name}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {COMPARISON_FEATURES.map((row, i) => (
                     <tr key={i} className="border-b border-gray-200 hover:bg-gray-100">
-                      <td className="px-6 py-3 text-gray-700 text-sm">{row.label}</td>
+                      <td className="px-6 py-3 text-primary text-sm">{row.label}</td>
                       {(['starter', 'professional', 'agency', 'enterprise']).map(tier => (
                         <td key={tier} className="px-4 py-3 text-center text-sm">
                           {typeof row[tier] === 'boolean'
