@@ -140,10 +140,10 @@
     @apply bg-blue-500/20 text-blue-700 border border-blue-500/30 text-xs font-semibold px-2.5 py-1 rounded-full;
   }
   .tier-badge-agency {
-    @apply bg-amber-500/20 text-amber-700 border border-amber-500/30 text-xs font-semibold px-2.5 py-1 rounded-full;
+    @apply bg-blue-500/20 text-blue-700 border border-blue-500/30 text-xs font-semibold px-2.5 py-1 rounded-full;
   }
   .tier-badge-enterprise {
-    @apply bg-amber-500/20 text-amber-700 border border-amber-500/30 text-xs font-semibold px-2.5 py-1 rounded-full;
+    @apply bg-blue-500/20 text-blue-700 border border-blue-500/30 text-xs font-semibold px-2.5 py-1 rounded-full;
   }
   .skeleton {
     @apply bg-gray-100 animate-pulse rounded-lg;

@@ -2128,7 +2128,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
-      <div className="flex flex-1 pt-16">
+      <div className="flex flex-1 pt-16 min-h-0">
         {sidebarOpen && (
           <button
             type="button"

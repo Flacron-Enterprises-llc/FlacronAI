@@ -132,8 +132,8 @@ export default function PhotoAnalysis() {
 
       {/* Limitations, stated plainly (Golden Rule #2) */}
       <section className="pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto rounded-card border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950 flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
+        <div className="max-w-4xl mx-auto rounded-card border border-amber-200 bg-amber-50 p-6 text-sm text-gray-900 flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5 text-gray-900" />
           <p>
             <strong>What this doesn’t do:</strong> photo analysis flags visible conditions for your review — it
             does not determine cause of loss, coverage, liability, structural safety, code compliance, or final
