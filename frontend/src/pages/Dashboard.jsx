@@ -22,6 +22,7 @@ import ReportReviewChecklist from '../components/ReportReviewChecklist';
 import ExportOptionsModal from '../components/ExportOptionsModal';
 import TemplatePickerModal from '../components/TemplatePickerModal';
 import { PhotoStatusBadge, ReviewStatusDot, effectiveObservation, PhotoAnalysisPanel, QualityWarningBadge } from '../components/PhotoReview.jsx';
+import { VEHICLE_PANELS } from '../utils/photoTaxonomy.js';
 import PhotoAnnotator from '../components/PhotoAnnotator.jsx';
 import useDragReorder from '../hooks/useDragReorder.js';
 import { formatStatus } from '../utils/formatStatus';
@@ -32,7 +33,7 @@ import api from '../services/api';
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
-const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Other'];
+const LOSS_TYPES = ['Water Damage', 'Fire', 'Wind', 'Hail', 'Mold', 'Vandalism', 'Flood', 'Theft', 'Other'];
 const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'];
 const STATUSES = ['All', 'draft', 'finalized', 'processing', 'failed', 'archived'];
 
@@ -145,6 +146,28 @@ const FORM_INITIAL = {
   inspectionDate: '', inspectionTime: '', inspectorName: '', inspectorId: '',
   inspectionType: 'Interior & Exterior', weatherConditions: '', occupancyStatus: 'Occupied',
   contactPresent: '', contactName: '',
+  // Phase 31 (Liability Investigation Report) -- optional, only meaningful
+  // when claimType === 'Liability' (see the conditional fields in
+  // ClaimIdentityFields below).
+  claimantName: '', claimantContact: '',
+  // Phase 32 (Commercial Property Inspection Report) -- optional, only
+  // meaningful when claimType === 'Commercial'.
+  propertyManagerName: '', propertyManagerContact: '',
+  roofType: '', roofAge: '', tenantSuiteCount: '',
+  // Phase 33 (Flood (NFIP) Inspection Report) -- optional, only meaningful
+  // when lossType === 'Flood' (see the conditional fields in
+  // ClaimIdentityFields below). NFIP policy number reuses `policyNumber`
+  // above with a contextual label.
+  floodZone: '', lowestFloorElevation: '', baseFloodElevation: '',
+  floodEventSource: '', reportedCrest: '',
+  // Phase 34 (Theft/Burglary Inspection Report) -- optional, only meaningful
+  // when lossType === 'Theft' (see the conditional fields in
+  // ClaimIdentityFields below).
+  policeIncidentNumber: '', pointsOfEntry: '',
+  // Phase 35 (Vehicle/Auto Inspection Report) -- optional, only meaningful
+  // when claimType === 'Auto' (see the conditional fields in
+  // ClaimIdentityFields and Step 2 below).
+  vin: '', vehicleMakeModelYear: '', odometer: '', licensePlate: '', vehicleColor: '',
   // Phase 13 (Real Template Builder) -- set when the wizard is started from a
   // saved template; sent through as-is by the existing
   // `Object.entries(form).forEach(...)` FormData submission in handleGenerate.
@@ -298,7 +321,13 @@ function MetricCard({ icon: Icon, label, value, sub, loading, error }) {
 // controls and the "Regenerate Report" action; without it, this is the
 // original read-only gallery (used nowhere currently, kept for API
 // compatibility since every call site now passes `interactive`).
-function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPhotosChange }) {
+function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPhotosChange, claimType }) {
+  // Phase 35 (Vehicle/Auto Inspection Report): an Auto claim tags photos by
+  // vehicle panel instead of room/area -- same underlying roomOrArea field
+  // and set_area action, just a claim-appropriate option list/label.
+  const isAutoClaim = claimType === 'Auto';
+  const locationOptions = isAutoClaim ? VEHICLE_PANELS : undefined;
+  const locationLabel = isAutoClaim ? 'Vehicle Panel' : undefined;
   const [photos, setPhotos] = useState(null); // null = still loading
   const [loadError, setLoadError] = useState(false);
   const [thumbUrls, setThumbUrls] = useState({});
@@ -627,6 +656,8 @@ function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPh
                     areaSaving={areaSaving}
                     onSaveArea={doSetArea}
                     onOpenAnnotator={() => setAnnotatorOpen(true)}
+                    locationOptions={locationOptions}
+                    locationLabel={locationLabel}
                   />
                 </div>
               )}
@@ -727,7 +758,7 @@ function ReportDetailModal({ report, onClose, onReportUpdated }) {
           {(report.imageCount > 0) && (
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Photos ({report.imageCount})</h3>
-              <ReportPhotoGallery reportId={report.id} interactive onRegenerated={onReportUpdated} />
+              <ReportPhotoGallery reportId={report.id} interactive onRegenerated={onReportUpdated} claimType={report.claimType} />
             </div>
           )}
           {report.content && (
@@ -803,8 +834,8 @@ function ClaimIdentityFields({ form, setForm, disabled = false }) {
           value={form.claimNumber} onChange={setField('claimNumber')} />
       </div>
       <div>
-        <label className="label">Policy Number</label>
-        <input className="input" placeholder="e.g. POL-4821093" disabled={disabled}
+        <label className="label">{form.lossType === 'Flood' ? 'NFIP Policy Number' : 'Policy Number'}</label>
+        <input className="input" placeholder={form.lossType === 'Flood' ? 'e.g. FL-889213-TX' : 'e.g. POL-4821093'} disabled={disabled}
           value={form.policyNumber || ''} onChange={setField('policyNumber')} />
       </div>
       <div>
@@ -859,6 +890,121 @@ function ClaimIdentityFields({ form, setForm, disabled = false }) {
           {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
+      {form.claimType === 'Liability' && (
+        <>
+          <div>
+            <label className="label">Claimant Name</label>
+            <input className="input" placeholder="Name of the person making the claim" disabled={disabled}
+              value={form.claimantName || ''} onChange={setField('claimantName')} />
+          </div>
+          <div>
+            <label className="label">Claimant Contact</label>
+            <input className="input" placeholder="Phone or email" disabled={disabled}
+              value={form.claimantContact || ''} onChange={setField('claimantContact')} />
+          </div>
+        </>
+      )}
+      {form.claimType === 'Commercial' && (
+        <>
+          <div>
+            <label className="label">Property Manager Name</label>
+            <input className="input" placeholder="e.g. K. Sullivan, CBRE Property Management" disabled={disabled}
+              value={form.propertyManagerName || ''} onChange={setField('propertyManagerName')} />
+          </div>
+          <div>
+            <label className="label">Property Manager Contact</label>
+            <input className="input" placeholder="Phone or email" disabled={disabled}
+              value={form.propertyManagerContact || ''} onChange={setField('propertyManagerContact')} />
+          </div>
+          <div>
+            <label className="label">Roof Type</label>
+            <input className="input" placeholder="e.g. Single-ply TPO membrane" disabled={disabled}
+              value={form.roofType || ''} onChange={setField('roofType')} />
+          </div>
+          <div>
+            <label className="label">Roof Age</label>
+            <input className="input" placeholder="e.g. 8 years" disabled={disabled}
+              value={form.roofAge || ''} onChange={setField('roofAge')} />
+          </div>
+          <div>
+            <label className="label">Number of Tenant Suites</label>
+            <input className="input" placeholder="e.g. 6" disabled={disabled}
+              value={form.tenantSuiteCount || ''} onChange={setField('tenantSuiteCount')} />
+          </div>
+        </>
+      )}
+      {form.lossType === 'Flood' && (
+        <>
+          <div>
+            <label className="label">Flood Zone</label>
+            <input className="input" placeholder="e.g. AE" disabled={disabled}
+              value={form.floodZone || ''} onChange={setField('floodZone')} />
+          </div>
+          <div>
+            <label className="label">Lowest Floor Elevation</label>
+            <input className="input" placeholder="e.g. 512.4 ft" disabled={disabled}
+              value={form.lowestFloorElevation || ''} onChange={setField('lowestFloorElevation')} />
+          </div>
+          <div>
+            <label className="label">Base Flood Elevation (BFE)</label>
+            <input className="input" placeholder="e.g. 514.0 ft" disabled={disabled}
+              value={form.baseFloodElevation || ''} onChange={setField('baseFloodElevation')} />
+          </div>
+          <div>
+            <label className="label">Flood Event Data Source</label>
+            <input className="input" placeholder="e.g. NWS river forecast / local gauge report" disabled={disabled}
+              value={form.floodEventSource || ''} onChange={setField('floodEventSource')} />
+          </div>
+          <div>
+            <label className="label">Reported Crest</label>
+            <input className="input" placeholder="e.g. 3.2 ft above flood stage" disabled={disabled}
+              value={form.reportedCrest || ''} onChange={setField('reportedCrest')} />
+          </div>
+        </>
+      )}
+      {form.lossType === 'Theft' && (
+        <>
+          <div>
+            <label className="label">Police Incident Number</label>
+            <input className="input" placeholder="e.g. CPPD-2024-04417" disabled={disabled}
+              value={form.policeIncidentNumber || ''} onChange={setField('policeIncidentNumber')} />
+          </div>
+          <div>
+            <label className="label">Points of Entry Reported</label>
+            <input className="input" placeholder="e.g. Rear window, side entry door" disabled={disabled}
+              value={form.pointsOfEntry || ''} onChange={setField('pointsOfEntry')} />
+          </div>
+        </>
+      )}
+      {form.claimType === 'Auto' && (
+        <>
+          <div className="sm:col-span-2">
+            <label className="label">Vehicle (Year / Make / Model)</label>
+            <input className="input" placeholder="e.g. 2021 Toyota RAV4 XLE" disabled={disabled}
+              value={form.vehicleMakeModelYear || ''} onChange={setField('vehicleMakeModelYear')} />
+          </div>
+          <div>
+            <label className="label">VIN</label>
+            <input className="input" placeholder="e.g. JTMRWRFV1MD012345" disabled={disabled}
+              value={form.vin || ''} onChange={setField('vin')} />
+          </div>
+          <div>
+            <label className="label">License Plate</label>
+            <input className="input" placeholder="e.g. TX ABC1234" disabled={disabled}
+              value={form.licensePlate || ''} onChange={setField('licensePlate')} />
+          </div>
+          <div>
+            <label className="label">Odometer at Inspection</label>
+            <input className="input" placeholder="e.g. 31,240 mi" disabled={disabled}
+              value={form.odometer || ''} onChange={setField('odometer')} />
+          </div>
+          <div>
+            <label className="label">Vehicle Color</label>
+            <input className="input" placeholder="e.g. Magnetic Gray Metallic" disabled={disabled}
+              value={form.vehicleColor || ''} onChange={setField('vehicleColor')} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2144,7 +2290,7 @@ export default function Dashboard() {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="flex items-center justify-between px-1 md:hidden">
+          <div className="shrink-0 flex items-center justify-between px-1 md:hidden">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
               Dashboard
             </p>
@@ -2159,7 +2305,7 @@ export default function Dashboard() {
           </div>
 
           {/* Profile Card */}
-          <div className="rounded-2xl overflow-hidden border border-gray-200 bg-bg">
+          <div className="shrink-0 rounded-2xl overflow-hidden border border-gray-200 bg-bg">
             {/* Banner */}
             <div className="h-16 relative bg-gradient-to-br from-brand-500 via-brand-400 to-amber-400">
               <div className="absolute inset-0 opacity-20"
@@ -2224,7 +2370,7 @@ export default function Dashboard() {
           </div>
 
           {/* Nav */}
-          <nav className="flex flex-col gap-0.5">
+          <nav className="shrink-0 flex flex-col gap-0.5">
             {navLinks.map(link => (
               <button key={link.id}
                 onClick={() => {
@@ -2245,7 +2391,7 @@ export default function Dashboard() {
 
           {/* Upgrade CTA */}
           {tier === 'starter' && (
-            <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-amber-50 p-4">
+            <div className="shrink-0 rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-amber-50 p-4">
               <p className="text-xs font-bold text-gray-800 mb-0.5">Unlock More Reports</p>
               <p className="text-[10px] text-gray-500 leading-relaxed mb-3">
                 Starter plan: {tierLimit} report/mo with watermark. Upgrade for more.
@@ -2257,7 +2403,7 @@ export default function Dashboard() {
             </div>
           )}
           {tier === 'professional' && (
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+            <div className="shrink-0 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
               <p className="text-[10px] font-semibold text-blue-700 mb-2">Professional Plan</p>
               <button onClick={() => navigate('/pricing')}
                 className="w-full border border-blue-200 text-blue-600 hover:bg-blue-100 text-xs font-medium py-1.5 rounded-lg transition-colors">
@@ -2785,45 +2931,64 @@ export default function Dashboard() {
                           <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                             className="space-y-4">
                             <div className="flex items-center justify-between">
-                              <h2 className="text-lg font-semibold text-gray-900">Property Details</h2>
+                              <h2 className="text-lg font-semibold text-gray-900">{form.claimType === 'Auto' ? 'Vehicle Details' : 'Property Details'}</h2>
                               <span className="text-xs text-gray-500">Step 2 of 5</span>
                             </div>
-                            <div>
-                              <label className="label">Property Address *</label>
-                              <input className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
-                                value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
-                              {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="sm:col-span-2">
-                                <label className="label">Street Address <span className="font-normal text-gray-400">(optional)</span></label>
-                                <input className="input" placeholder="e.g. 1425 Maple Street" disabled={!!linkedClaim}
-                                  value={form.propertyStreet || ''} onChange={handleAddressPartChange('propertyStreet')} />
-                              </div>
-                              <div>
-                                <label className="label">City <span className="font-normal text-gray-400">(optional)</span></label>
-                                <input className="input" placeholder="e.g. Austin" disabled={!!linkedClaim}
-                                  value={form.propertyCity || ''} onChange={handleAddressPartChange('propertyCity')} />
-                              </div>
-                              <div>
-                                <label className="label">State <span className="font-normal text-gray-400">(optional)</span></label>
-                                <input className="input" placeholder="e.g. TX" disabled={!!linkedClaim}
-                                  value={form.propertyState || ''} onChange={handleAddressPartChange('propertyState')} />
-                              </div>
-                              <div>
-                                <label className="label">ZIP Code <span className="font-normal text-gray-400">(optional)</span></label>
-                                <input className="input" placeholder="e.g. 78701" disabled={!!linkedClaim}
-                                  value={form.propertyZip || ''} onChange={handleAddressPartChange('propertyZip')} />
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-400 -mt-2">Fill these in for a structured record — they'll fill Property Address above automatically if it's still empty.</p>
-                            <div>
-                              <label className="label">Property Description</label>
-                              <textarea className="input min-h-[160px] resize-y"
-                                placeholder="Describe the property — e.g.: 2-story single-family home, built in 1998, approx 2,200 sq ft. Brick veneer exterior, wood frame. 3 bedrooms, 2.5 bathrooms. Recently renovated kitchen..."
-                                value={form.propertyDetails} onChange={e => setForm(p => ({ ...p, propertyDetails: e.target.value }))} />
-                              <p className="text-xs text-gray-400 mt-1">Include construction type, age, size, number of rooms, and any relevant features</p>
-                            </div>
+                            {form.claimType === 'Auto' ? (
+                              <>
+                                <div>
+                                  <label className="label">Vehicle Inspection Location *</label>
+                                  <input className="input" placeholder="e.g. ABC Auto Body, 4400 Burnet Rd, Austin, TX 78756" disabled={!!linkedClaim}
+                                    value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                                  <p className="text-xs text-gray-400 mt-1">Where the vehicle was inspected — a body shop, insured's address, etc.</p>
+                                </div>
+                                <div>
+                                  <label className="label">Vehicle Condition Notes</label>
+                                  <textarea className="input min-h-[120px] resize-y"
+                                    placeholder="Describe the vehicle's condition — e.g.: Pre-existing wear on front bumper, prior windshield repair, aftermarket wheels..."
+                                    value={form.propertyDetails} onChange={e => setForm(p => ({ ...p, propertyDetails: e.target.value }))} />
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <label className="label">Property Address *</label>
+                                  <input className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
+                                    value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                                  {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="sm:col-span-2">
+                                    <label className="label">Street Address <span className="font-normal text-gray-400">(optional)</span></label>
+                                    <input className="input" placeholder="e.g. 1425 Maple Street" disabled={!!linkedClaim}
+                                      value={form.propertyStreet || ''} onChange={handleAddressPartChange('propertyStreet')} />
+                                  </div>
+                                  <div>
+                                    <label className="label">City <span className="font-normal text-gray-400">(optional)</span></label>
+                                    <input className="input" placeholder="e.g. Austin" disabled={!!linkedClaim}
+                                      value={form.propertyCity || ''} onChange={handleAddressPartChange('propertyCity')} />
+                                  </div>
+                                  <div>
+                                    <label className="label">State <span className="font-normal text-gray-400">(optional)</span></label>
+                                    <input className="input" placeholder="e.g. TX" disabled={!!linkedClaim}
+                                      value={form.propertyState || ''} onChange={handleAddressPartChange('propertyState')} />
+                                  </div>
+                                  <div>
+                                    <label className="label">ZIP Code <span className="font-normal text-gray-400">(optional)</span></label>
+                                    <input className="input" placeholder="e.g. 78701" disabled={!!linkedClaim}
+                                      value={form.propertyZip || ''} onChange={handleAddressPartChange('propertyZip')} />
+                                  </div>
+                                </div>
+                                <p className="text-xs text-gray-400 -mt-2">Fill these in for a structured record — they'll fill Property Address above automatically if it's still empty.</p>
+                                <div>
+                                  <label className="label">Property Description</label>
+                                  <textarea className="input min-h-[160px] resize-y"
+                                    placeholder="Describe the property — e.g.: 2-story single-family home, built in 1998, approx 2,200 sq ft. Brick veneer exterior, wood frame. 3 bedrooms, 2.5 bathrooms. Recently renovated kitchen..."
+                                    value={form.propertyDetails} onChange={e => setForm(p => ({ ...p, propertyDetails: e.target.value }))} />
+                                  <p className="text-xs text-gray-400 mt-1">Include construction type, age, size, number of rooms, and any relevant features</p>
+                                </div>
+                              </>
+                            )}
 
                             <div className="border-t border-gray-100 pt-4">
                               <h3 className="text-sm font-semibold text-gray-900 mb-1">Inspection Details</h3>
@@ -3408,7 +3573,7 @@ export default function Dashboard() {
                         <div className="card p-4">
                           <h2 className="text-sm font-semibold text-gray-900 mb-1">Photo Review</h2>
                           <p className="text-xs text-gray-500 mb-3">Edit, approve, or exclude each photo&apos;s FLACRON ENGINE observation, then regenerate the report to use your changes.</p>
-                          <ReportPhotoGallery reportId={generatedReport.id} interactive onRegenerated={handleReportRegenerated} onPhotosChange={setReviewPhotos} />
+                          <ReportPhotoGallery reportId={generatedReport.id} interactive onRegenerated={handleReportRegenerated} onPhotosChange={setReviewPhotos} claimType={generatedReport.claimType} />
                         </div>
                       )}
                     </div>

@@ -42,8 +42,9 @@
 | 28 | SSO & White-Label Verification and Completion | — | Medium (Enterprise-gating) | Not Started **(new — 2026-08-16, promoted from Open Question #9)** |
 | 29 | Usage & Billing Completion & Storage-Usage Tracking | — | Medium | Not Started **(new — 2026-08-16 full-spec audit)** |
 | 30 | Routing Migration: Real, Bookmarkable URLs | — | **Critical — blocks 9,10,12,13,14,15,16,17,22** | Not Started **(new — 2026-08-16, client-decided architecture change)** |
+| 31 | Liability Investigation Report (Document Type) | — | Medium | **Completed** (2026-08-24) |
 
-**30 phases total** (23 original + 7 added 2026-08-16: 6 from a full-specification audit, plus the routing migration decided the same day). "Soft" dependency = strongly recommended ordering, not a hard technical blocker. **Despite its number, Phase 30 must be picked up *before* every phase whose Depends-On column references it** — it's numbered last only because it was added last; its own section below explains why it isn't renumbered to the front.
+**31 phases total** (23 original + 7 added 2026-08-16 + Phase 31 added 2026-08-24, part of a document-type series through Phase 39 — see those phases' own sections below). "Soft" dependency = strongly recommended ordering, not a hard technical blocker. **Despite its number, Phase 30 must be picked up *before* every phase whose Depends-On column references it** — it's numbered last only because it was added last; its own section below explains why it isn't renumbered to the front. Rows 19-22 in this table read "Not Started" but are stale — see those phases' own sections and `PROGRESS.md` for their real (Completed) status; left uncorrected here since fixing pre-existing drift unrelated to this phase's own task was out of scope.
 
 > **⚠️ Phase 6 has a post-completion gap-audit addendum** (see the end of the Phase 6 section) — it was marked Completed against its *original*, narrower task list, but the 2026-08-16 full-spec audit found real gaps against the complete specification, now resolved into concrete decisions (see "2026-08-16 Full-Specification Gap Audit — Resolutions" below) and largely implemented same-day. Do not treat Phase 6 as fully spec-complete until its addendum's remaining items (HEIC real-device confirmation) are re-verified per that section.
 
@@ -1729,3 +1730,245 @@ Verification: 207/207 backend unit tests pass (7 new for `notificationPrefs.js`)
 **Risks/considerations:** This is the single largest refactor in the entire roadmap by file-churn (touches the app's biggest file extensively) — do it incrementally, one view per commit per Golden Rule #7, and re-run the full test suite + a live-browser smoke pass after each view migrates, not just once at the end. Resist the temptation to "just do it all at once" even though `Dashboard.jsx` is already large and tangled — a partial, working migration that stops safely between phases is far preferable to a half-broken big-bang rewrite.
 
 **Status:** Not Started
+
+---
+
+## Phase 31 — Liability Investigation Report (Document Type)
+
+**Objective:** Add a Liability Investigation Report as a distinct document type, generated when a report's `claimType === 'Liability'`, matching the client's sample document's structure reliably rather than hoping a single freeform AI prompt reproduces it.
+
+**Scope:** Backend section-assembly + prompt architecture + PDF/DOCX cover text only. No wizard document-type picker (claimType already selects it), no changes to the generic Property path or to any other Phase 32-39 document type.
+
+**Workflow location:** Same wizard entry point as today's report generation (`Dashboard.jsx` 5-step wizard) — auto-selected when `claimType='Liability'`; no new screen or step.
+
+**Required fields:**
+- Reused as-is (already exist and are validated in `reports.js`): `claimNumber`, `insuredName` (premises owner), `insuredEmail`, `propertyAddress`, `lossDate`, `lossType`, `policyNumber`, `reportType`, `lossDescription`, `damagesObserved`, `recommendations`, `additionalNotes`.
+- New: `claimantName`, `claimantContact` (both optional, ~150-char limit, validated the same way as the existing `optionalFieldLimits` pattern).
+
+**Architecture (single structured AI call, not per-section calls):**
+- Define a code-level section manifest: `static` sections (Parties table, Incident Data table, Adjuster Review Checklist) built directly from report fields — zero AI involvement, so they render exactly right every time.
+- All `narrative` sections (Incident Summary, Scene Observations, Investigation Checklist suggestions, Recommendations, Conclusion) are requested in **one** AI call that returns a structured object with one key per narrative slot (reuse `aiService.js`'s `generateWithFallback` plumbing; request/parse a single JSON object; on a missing/malformed key, do one repair retry scoped to just that key, mirroring the existing `ensureLossSummary`/`ensureConclusion` partial-failure repair pattern — never silently ship a blank section).
+- A deterministic assembler stitches static + parsed narrative sections into final markdown in manifest order, then hands off to the existing generic PDF/DOCX renderers unchanged.
+- Net effect: one AI call per report (same cost/latency as today's generic report), no partial-failure risk from N independent calls, and the tabular/static parts of the layout never depend on the model getting formatting right.
+
+**Files/components likely affected:** `backend/services/aiService.js` (Liability manifest, single structured narrative prompt + parser/validator, assembler); `backend/routes/reports.js` (`claimantName`/`claimantContact` fields + validation, claimType→manifest wiring); `backend/utils/properPdfGenerator.js` and `documentGenerator.js` (`reportTitle`/`reportSubtitle` options, defaulting to today's generic text when unset); `backend/test/` (new test file).
+
+**Dependencies/prerequisites:** None — `claimType='Liability'` already exists and is validated server-side, currently unused for anything but the generic template.
+
+**Client decisions:** None blocking. Confirmed 2026-08-24: no new tier restriction (same access as generic reports); selection is automatic via `claimType`, not a manual document-type picker.
+
+**Risks/considerations:** Structured-output parsing must handle a malformed/partial model response gracefully (one repair retry, then a clear generation-failure — never ship a section with missing narrative). No content-based filter against sample/fixture names (a real user's data can legitimately match a sample name) — the only safeguard against sample-data leakage is that no new code may hardcode a sample name/claim number/address as a default anywhere, checked in code review.
+
+**Acceptance criteria:** A Liability-claimType report generates end-to-end (PDF+DOCX) with the sample's section structure; static sections render exactly from input data; narrative sections contain the existing cautious-language markers and no hard liability/fault verdict phrases; the generic Property-report path is functionally unaffected (same sections/title/validation as before — a structural regression check, not a literal byte diff, since AI narrative is inherently non-deterministic).
+
+**Testing/verification steps:** Backend test asserting static-section markdown exactly matches expected output for given input fields; a generation test with realistic non-fixture data checking narrative markers/absence of verdict phrases and that exactly one AI call is made per report (not one per section); manual PDF+DOCX generation to visually confirm cover title/subtitle and layout; full existing report-generation test suite re-run to confirm no regression to the generic path.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("start Phase 31 only"). Full detail in `PROGRESS.md`'s Phase 31 entry; summary: implemented exactly as specced above (static Parties/Incident Data/Adjuster Review Checklist + one structured AI call for the 5 narrative slots + deterministic assembler), plus a `claimantName`/`claimantContact` conditional UI in the wizard and a Table-of-Contents fix (found live) so the PDF's ToC matches the Liability manifest instead of the generic one. Backend 292/292 tests pass (10 new). Live-verified end-to-end against the real Anthropic API + real Firebase project via a throwaway QA account (created and fully deleted afterward): a real browser wizard run produced a Liability report with all 9 sections correctly populated, cautious language throughout, no hard liability/fault verdict, and correct PDF + DOCX exports (including the fixed cover title/ToC).
+
+---
+
+## Phase 32 — Commercial Property Inspection Report (Document Type)
+
+**Objective:** Add a Commercial Property Inspection Report, generated when `claimType === 'Commercial'`, reusing Phase 31's static+single-structured-call architecture.
+
+**Scope:** Backend prompt/assembly + cover text + new commercial-specific fields. No new document-type picker — `claimType='Commercial'` already exists and auto-selects it.
+
+**Workflow location:** Same wizard, same auto-detect-by-`claimType` mechanism as Phase 31; new commercial fields shown conditionally when `claimType='Commercial'`.
+
+**Required fields:** Reused baseline as Phase 31. New: `propertyManagerName`/`propertyManagerContact`, `roofType`, `roofAge`, `tenantSuiteCount` (all optional, length/enum-limited like the existing `optionalFieldLimits` pattern).
+
+**Exact tasks:** Section manifest — static: Insured & Property Information table, Adjuster Review Checklist; narrative (single structured call): Loss Description, Damage Assessment (roof/RTU/signage/interior), Roof Moisture Scan recommendation, Scope of Work, Recommendations, Conclusion.
+
+**Files/components likely affected:** Same set as Phase 31 (`aiService.js`, `reports.js`, `properPdfGenerator.js`, `documentGenerator.js`, `backend/test/`), plus `Dashboard.jsx`/`EnterpriseDashboard.jsx` to conditionally render the new commercial fields.
+
+**Dependencies/prerequisites:** Phase 31 must land first — this phase reuses its manifest + single-structured-call pattern rather than inventing a new one.
+
+**Client decisions:** None identified as blocking, but confirm the "no new tier restriction" default explicitly applies here too before starting — do not assume it carries over automatically from Phase 31.
+
+**Risks/considerations:** Business-interruption/tenant-specific claims are explicitly out of scope per the sample ("outside the scope of this structural report") — the narrative rules must keep the model from drifting into BI coverage territory.
+
+**Acceptance criteria:** Commercial-claimType report generates end-to-end with correct static/narrative sections; new fields validated and rendered; generic/Liability paths unaffected.
+
+**Testing/verification steps:** Same pattern as Phase 31 — static-section exact-match test, narrative marker/verdict-phrase test, single-AI-call assertion, full regression pass, manual PDF/DOCX visual check.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 32 only"). Full detail in `PROGRESS.md`'s Phase 32 entry; summary: reused Phase 31's static+single-structured-call architecture exactly — one "Insured & Property Information" static table + Adjuster Review Checklist, plus one structured AI call for the 6 narrative slots (Loss Description, Damage Assessment, Roof Moisture Scan, Scope of Work, Recommendations, Conclusion) — with the 5 new commercial-specific fields (`propertyManagerName`/`propertyManagerContact`/`roofType`/`roofAge`/`tenantSuiteCount`) and a `Dashboard.jsx` conditional-fields block (`EnterpriseDashboard.jsx` intentionally left untouched — it has no `claimType` selector at all, same reasoning Phase 31 already applied). Per PHASES.md's own exact task list, the manifest has no cost/estimate section (deferred to the future Phase 37). Backend 303/303 tests pass (11 new). Live-verified end-to-end against the real Anthropic API + real Firebase project via a throwaway QA account (created and fully deleted afterward): a real browser wizard run produced a Commercial report with all 9 sections correctly populated from real (non-fixture) input data, cautious language throughout, business-interruption explicitly out of scope, zero dollar figures, and both PDF + DOCX exports generated without error. A direct regression call confirmed the generic Property and Liability paths still generate correctly, unaffected by the new Commercial dispatch branch.
+
+---
+
+## Phase 33 — Flood (NFIP) Inspection Report (Document Type)
+
+**Objective:** Add a Flood/NFIP-specific Inspection Report, generated when `lossType === 'Flood'` (a new enum value — the first document type in this set keyed off `lossType` rather than `claimType`).
+
+**Scope:** Add `'Flood'` to `LOSS_TYPES`; new NFIP-specific fields; same static+single-structured-call architecture as Phase 31.
+
+**Workflow location:** Wizard loss-type dropdown gains "Flood"; auto-detected by `lossType='Flood'`.
+
+**Required fields:** New — `floodZone`, `lowestFloorElevation`, `baseFloodElevation`, `nfipPolicyNumber` (or reuse `policyNumber` with a contextual label), `floodEventSource`/`reportedCrest` (all optional).
+
+**Files/components likely affected:** `LOSS_TYPES` in `Dashboard.jsx` + `EnterpriseDashboard.jsx`; `reports.js` (new fields + validation); `aiService.js` (Flood manifest); `properPdfGenerator.js`/`documentGenerator.js` (title/subtitle); `backend/test/`.
+
+**Dependencies/prerequisites:** Phase 31's manifest/single-call pattern. Also depends on resolving the `claimType`-vs-`lossType` document-type precedence rule below — this is the first phase where both signals could theoretically apply to the same report (e.g. a Commercial claim with a Flood loss type).
+
+**Client decisions (blocking, resolved 2026-08-24):** (1) Precedence rule when both a `claimType`-keyed and `lossType`-keyed template could apply to the same report: **`lossType === 'Flood'` takes precedence over any `claimType` template** — a Commercial claim with a Flood loss still gets the Flood manifest, with the applicable commercial-property fields (Property Manager Contact, Roof Type, Roof Age, Number of Tenant Suites) folded into its Property & Flood Zone Data table rather than a separate manifest. (2) Genuine NFIP regulatory/legal accuracy is NOT required — cautious/generic framing (as in the client's sample) is sufficient, backstopped by a **fixed, deterministic (non-AI) disclaimer** stating the document is an inspection draft, does not fully represent federal NFIP requirements, and is not an official coverage or claim determination.
+
+**Risks/considerations:** Adding a `LOSS_TYPES` value is backward-compatible in principle but touches existing filter/search/analytics code keyed off that enum — verify nothing assumes a fixed, closed set. Confirmed 2026-08-24: `reports.js`'s list/search/filter endpoints and `crmService.js`'s analytics tally already treat `lossType` as an open string (exact-match filter + free-text search + a dynamic `claimsByLossType[lossType]++` tally), so no closed-enum assumption existed to fix.
+
+**Acceptance criteria:** "Flood" selectable in the wizard; Flood-lossType report generates the NFIP-specific structure end-to-end; existing `lossType` filter/search/analytics behavior unaffected by the new enum value.
+
+**Testing/verification steps:** Same pattern as Phase 31, plus a test that `lossType='Flood'` selects the Flood manifest under the decided precedence rule even when `claimType` is something else; a regression check on existing `lossType` filter UI/queries.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 33 only"). Full detail in `PROGRESS.md`'s Phase 33 entry; summary: reused Phase 31/32's static+single-structured-call architecture — 3 static sections (Insured & Policy Information, Property & Flood Zone Data, Flood Event Data) + Adjuster Review Checklist, all zero-AI, plus one structured AI call for 5 narrative slots (Property Description, Damage Assessment, Scope of Work, Recommendations, Conclusion). `lossType === 'Flood'` is checked FIRST in `generateReport`'s dispatcher, before the existing `claimType` checks, implementing the approved precedence rule; when `claimType === 'Commercial'`, the applicable commercial-property fields are folded into the Property & Flood Zone Data table. A fixed, deterministic NFIP disclaimer (not AI-generated) is always included verbatim. New optional fields: `floodZone`, `lowestFloorElevation`, `baseFloodElevation`, `floodEventSource`, `reportedCrest` (NFIP policy number reuses the existing `policyNumber` field with a contextual label). Backend 14/14 new tests pass (317/317 across the three document-type suites combined, 0 regressions). Live-verified end-to-end against the real Anthropic API + real Firebase project via a throwaway QA account (created and fully deleted afterward, along with all its test reports/photos): a real browser wizard run produced a correct Flood report (all 10 sections, fixed disclaimer verbatim, cautious language, zero dollar figures, correct PDF+DOCX export), a Commercial-claimType + Flood-lossType report correctly won on the Flood template with commercial fields folded in, and direct regression checks confirmed Property (generic), Liability, and Commercial (non-Flood) reports all still generate their own correct, unaffected structures.
+
+---
+
+## Phase 34 — Theft/Burglary Inspection Report (Document Type)
+
+**Objective:** Add a Theft/Burglary Inspection Report, generated when `lossType === 'Theft'` (a new enum value), scoped to structural entry-point damage only — contents/valuation are explicitly out of scope per the sample, tracked via a separate insured-provided inventory and police report.
+
+**Scope/workflow:** Same `lossType`-driven pattern and precedence rule established in Phase 33.
+
+**Required fields:** New — `policeIncidentNumber`, `pointsOfEntry` (both optional). Reuses `damagesObserved`/`lossDescription` narratively for the rest — the smallest new-field surface of the property-side additions.
+
+**Files/components likely affected:** Same set as Phase 33 (`LOSS_TYPES`, `reports.js`, `aiService.js`, PDF/DOCX title options, `backend/test/`).
+
+**Dependencies/prerequisites:** Phase 31's manifest pattern; reuses the `claimType`-vs-`lossType` precedence rule decided in Phase 33 (no new decision needed here).
+
+**Client decisions:** Confirm no new tier restriction, consistent with Phase 31 — do not assume it carries over automatically; confirm per phase per Golden Rule #4.
+
+**Risks/considerations:** The report must never imply a determination of which items were present or missing before the loss — that is explicitly deferred to the insured's contents inventory and the police report per the sample. Keep this boundary explicit in the narrative-generation rules.
+
+**Acceptance criteria / testing:** Same pattern as Phases 31/33 (static exact-match, narrative marker/verdict checks, single-call assertion, regression pass, visual PDF/DOCX check).
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 34 only"). Full detail in `PROGRESS.md`'s Phase 34 entry; summary: reused Phase 33's `lossType`-keyed pattern and precedence rule exactly — `lossType === 'Theft'` checked immediately after Flood in `generateReport`'s dispatcher, before any `claimType` check — with 3 static sections (Insured & Policy Information, Property & Loss Information, Incident Data — Police Report) + Adjuster Review Checklist, all zero-AI, plus one structured AI call for 5 narrative slots (Incident Summary, Damage Assessment, Scope of Work, Recommendations, Conclusion). A fixed, deterministic (non-AI) disclaimer states that whether items existed, were stolen, or their value is established solely by the insured's contents inventory and the police report. New optional fields: `policeIncidentNumber`, `pointsOfEntry`. Backend 12/12 new tests pass (329/329 total, 0 regressions). Live-verified end-to-end against the real Anthropic API + real Firebase project via a throwaway QA account (created and fully deleted afterward, along with all its test reports/photos): a real browser check confirmed the two new conditional wizard fields render correctly; a real-API-generated Theft report produced all 10 sections, the fixed disclaimer verbatim, cautious language throughout, correct handling of the police-incident/points-of-entry fields, zero dollar figures, no claim about what items existed/were stolen/their value, and a successful PDF export; a Commercial-claimType + Theft-lossType report correctly won on the Theft template (precedence rule holds against the real API); a generic Property/Water-Damage regression report generated correctly, unaffected by the new dispatch branch.
+
+---
+
+## Phase 35 — Vehicle/Auto Inspection Report (Document Type)
+
+**Objective:** Add a Vehicle Damage Inspection Report (e.g. hail/collision), generated when `claimType === 'Auto'` (existing enum value, currently unused for anything but the generic template).
+
+**Scope:** First phase requiring genuinely new field types outside the property domain — VIN, vehicle make/model/year, odometer, license plate, panel-by-panel damage entries — and likely new photo-intake UX (panel-tagged rather than room-tagged photos).
+
+**Workflow location:** The wizard needs a materially different "property details" step for Auto claims (vehicle info instead of address/structure fields) — a larger UI change than Phases 31-34.
+
+**Required fields:** New — `vin`, `vehicleMakeModelYear`, `odometer`, `licensePlate`, `vehicleColor` (all optional); panel-by-panel damage is new structured-array territory (panel name + observation), not a flat field set.
+
+**Files/components likely affected:** `Dashboard.jsx`/`EnterpriseDashboard.jsx` (vehicle-specific wizard step/fields, possibly panel-tagged photo UX extending the existing `PHOTO_LOCATIONS` taxonomy in `aiService.js`); `reports.js` (new fields + validation); `aiService.js` (Vehicle manifest + panel-assessment narrative); `properPdfGenerator.js`/`documentGenerator.js` (title/subtitle + panel-table rendering, reusing the existing generic table renderer); `backend/test/`.
+
+**Dependencies/prerequisites:** Phase 31's manifest/single-call architecture; otherwise independent of Phases 32-34.
+
+**Client decision (applied):** Client approved building a real vehicle panel-selection photo workflow now, not the generic room-tagged interim option — implemented as its own `VEHICLE_PANELS` taxonomy reusing the existing `roomOrArea`/`set_area` tagging mechanism (Phase 24), not a new field.
+
+**Risks/considerations:** Largest scope jump of the additive phases. Repairability language ("PDR candidate", "replacement likely") needs the same cautious-language treatment as everything else — must never let the model state a final repairability or total-loss determination (Golden Rule #2). No cost/estimate section was added (matches the Liability/Commercial/Flood/Theft precedent — deferred to Phase 37).
+
+**Acceptance criteria:** Auto-claimType report generates end-to-end with vehicle fields + panel assessment; no repairability/total-loss verdict language ships without adjuster-review qualifying language. — **Met**, verified live.
+
+**Testing/verification steps:** Same pattern as prior phases, plus a check that panel-assessment narrative never emits a bare "repairable"/"total loss" determination without qualifying language. — **Done.**
+
+**Status:** DONE (2026-08-24), per explicit instruction ("implement Phase 35 only"). Not committed/pushed per standing instruction. See PROGRESS.md for full QA detail.
+
+---
+
+## Phase 36 — Mold Assessment (Supplemental) Report (Document Type)
+
+**Objective:** Add a Mold Assessment — Preliminary Report as a supplemental document attached to an existing report/claim (not a primary loss-type entry point), matching the sample's explicit "NOT a certified mold assessment" framing.
+
+**Scope:** First phase requiring a claim-linking mechanism that doesn't exist yet (`relatedClaimId`/`relatedClaimNumber`).
+
+**Workflow location:** A "Generate Supplemental Document" action on an existing report's detail view — not the primary wizard; the user explicitly triggers this from a report they've already created, linking back to it.
+
+**Required fields:** New — `relatedClaimId` (or `relatedClaimNumber`), `dateOfDiscovery`. Reuses `propertyAddress`/`insuredName` from the linked report rather than re-collecting them.
+
+**Files/components likely affected:** `backend/routes/reports.js` (new `relatedClaimId` field + lookup for linked-report context, likely a new sub-route e.g. `POST /api/reports/:id/mold-supplement`); frontend report-detail view (new action + linking UI); `aiService.js` (Mold manifest — smallest narrative surface of any phase: Visual Observations + Recommended Next Steps only; the scope-notice block is fixed/static, never AI-generated); `properPdfGenerator.js`/`documentGenerator.js` (title/subtitle + the fixed scope-notice static section).
+
+**Dependencies/prerequisites:** Phase 31's manifest pattern; the `relatedClaimId` linkage is new and built as part of this phase.
+
+**Client decisions:** None identified as strictly blocking, but confirm the linking UX (user picks from their existing reports list, vs. only reachable from within an already-open report) before building the UI.
+
+**Risks/considerations:** This is the document type most exposed to Golden Rules #2/#3 if mishandled — the "NOT a certified assessment" disclaimer and the explicit list of what it does NOT include (species ID, air quality, health-risk determination, remediation protocol) must be a fixed static section, never left to AI narrative generation, so it can never be paraphrased away or omitted.
+
+**Acceptance criteria:** Mold supplement generates linked to a real existing report; the "not a certified assessment" scope-notice section is present verbatim (static) in every output; narrative sections stay within visual-observation-only language.
+
+**Testing/verification steps:** Test that the static scope-notice section is exactly identical across generations (it's fully static, so an exact match is the correct test here, unlike narrative sections elsewhere); link-integrity test (supplement correctly references an existing report); narrative marker/verdict-phrase test as in prior phases.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 36 only"). Full detail in `PROGRESS.md`'s Phase 36 entry; summary: implemented as a supplement generated from an already-open EXISTING report (not the primary wizard) via new `POST /api/reports/:id/mold-supplement`, keyed off a new `documentType === 'MoldSupplement'` flag checked first (before any claimType/lossType) in `generateReport()`'s dispatcher. New fields `relatedClaimId` and `dateOfDiscovery`; the linked report's `insuredName`/`insuredEmail`/`propertyAddress`/`policyNumber` and its REVIEWED (non-excluded) photo/imageAnalysis data are reused via the existing `buildEffectiveImageAnalysis`, not re-collected or re-uploaded. Manifest: 4 static sections (Report Information, Insured Information, Background — Related Claim, Adjuster Review Checklist) + the fixed, verbatim, non-AI "NOT a certified mold assessment" scope notice (`MOLD_SCOPE_NOTICE`, exact-match tested) + exactly one structured AI call for 2 narrative slots (Visual Observations, Recommended Next Steps) + a fixed Conclusion/AI-disclosure section — the smallest AI narrative surface of any document type per the phase's own spec. No cost/price section (matches the Liability/Commercial/Flood/Theft/Vehicle precedent of deferring cost math to Phase 37, and keeps the draft clear of any repair/remediation cost determination). The supplement is stored as its own normal `reports` doc (`relatedReportId` linking back to the parent) so every existing generic endpoint — GET `/:id`, `/:id/preview` (frontend), approve, export (PDF/DOCX), download, and `/:id/photos/regenerate` — works on it completely unmodified; ownership/authorization is therefore identical to any other report (userId match), including cross-user denial. Frontend: a "Mold Supplement" action + modal on `ReportPreviewPage.jsx` (the existing report detail view), reachable only from an already-open non-supplement report, plus a linked-report badge when viewing a supplement itself. Backend 14/14 new tests pass (365/365 total, 0 regressions) — static-section exact-match, scope-notice byte-for-byte-identical-across-generations, single-AI-call assertion, repair-retry/failure paths, and dispatch-precedence-over-Flood/Theft/Liability/Commercial/Auto. Live-verified end-to-end against the real Anthropic API + real Firebase project via two throwaway QA accounts (created and fully deleted afterward, along with all test reports/photos) using a real HTTP-driven script exercising the exact same endpoints the UI calls (no browser-automation tool was available in this environment, so this substituted for a manual click-through): 25/25 checks passed, including generation linked to a real parent report, the scope notice appearing verbatim with no species/health-risk/coverage/cost verdicts, cross-user denial on both generation and read, PDF export (with the correct DRAFT filename marker), regeneration via the existing generic endpoint staying on the Mold architecture, and the parent (generic) report generating/exporting correctly afterward, unaffected.
+
+---
+
+## Phase 37 — Repair Estimate (Line-Item, with Depreciation Schedule)
+
+**Objective:** Add a Repair Estimate document generated from an existing report, with a real structured line-item + depreciation data model — the first document type built on genuinely new structured data rather than mostly-narrative AI content.
+
+**Scope:** A data-modeling phase more than a prompt-engineering phase. Backend data model + generation action + export.
+
+**Workflow location:** A "Generate Document → Repair Estimate" action on an existing (ideally reviewed/finalized) report's detail view — not the wizard.
+
+**Required fields (all new):** `lineItems` (array of `{code, description, qty, unit, unitPrice}` — `lineTotal` computed, never AI-supplied), `overheadProfitPercent`, `taxRate`/`taxBasis`, `depreciationSchedule` (array of `{item, ageYears, lifeExpectancyYears, condition, depreciationPercent}` — RCV/depreciation-$/ACV all computed in code, never AI-computed), `estimateNumber`/`revision`, `revisionHistory`.
+
+**Files/components likely affected:** `backend/routes/reports.js` (new sub-route, e.g. `POST /api/reports/:id/estimate`, its own request schema); a new backend module for estimate math (line totals, O&P, tax, depreciation — pure deterministic calculation, explicitly not delegated to the AI); `properPdfGenerator.js`/`documentGenerator.js` (new static table rendering for line items + depreciation schedule, reusing the existing generic table renderer); frontend report-detail view (line-item entry UI — likely the most form-heavy new UI of all nine phases); `backend/test/` (dedicated math-correctness tests).
+
+**Dependencies/prerequisites:** An existing report to attach to. Independent of Phases 32-36's manifest pattern since this is data/math-driven, not narrative-driven — AI's role, if any, should be limited to drafting line-item *descriptions* from photos/damage data, with all dollar math computed deterministically in code.
+
+**Client decisions (blocking):** Confirm the estimate's dollar figures are always computed in code from user/adjuster-entered inputs (rates, quantities, %) rather than AI-generated numbers end-to-end — "final repair costs" are explicitly listed under Golden Rule #2 as something AI must not determine, so this must be confirmed explicitly before building the math module.
+
+**Risks/considerations:** Real money math shown to end users (insureds/adjusters) — arithmetic bugs here are higher-stakes than a narrative wording issue elsewhere; needs dedicated unit tests for every calculation, not just end-to-end generation tests.
+
+**Acceptance criteria:** Estimate generates from a real report with correct line totals/O&P/tax/depreciation math verified against hand-calculated expected values; revision history tracked; PDF/DOCX layout matches the sample's table structure.
+
+**Testing/verification steps:** Unit tests for every calculation (line total, subtotal, O&P, tax, RCV/ACV per depreciation row) against known expected values; end-to-end generation test; manual PDF/DOCX visual check against the sample layout.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 37 only") and the approved rule: quantities, rates, tax, O&P, depreciation inputs, and revisions come from the user/adjuster; every dollar figure is computed deterministically in code; AI never provides or calculates a dollar amount. Full detail in `PROGRESS.md`'s Phase 37 entry; summary: two new pure, dependency-free backend modules do all the work with zero AI/Firestore coupling -- `backend/utils/estimateCalculations.js` (line-total/subtotal/O&P/tax/RCV/depreciation-$/ACV math, cents-based rounding throughout to avoid float drift, and `validateLineItems`/`validateDepreciationSchedule`/`validatePercent` rejecting missing/negative/non-finite/out-of-range/duplicate-code/unknown-code input) and `backend/utils/estimateContent.js` (deterministic markdown assembly using the same `##`/pipe-table dialect the existing PDF/DOCX generators already parse -- no export-generator code changes needed). A depreciation row's RCV is the SUM of the `lineTotal`s of the line items it names via `relatedLineItemCodes` (matches the sample's implied Roof/Gutters/Stucco groupings), never a client-supplied number. New routes on `backend/routes/reports.js`: `POST /:id/estimate` (owner-only, same generation-limit/tier gating as Phase 36's Mold Supplement, creates a new `documentType: 'RepairEstimate'` doc linked via `relatedReportId`) and `PUT /:id/estimate` (owner-or-review-grantee access via `getReportAccess`/`hasCapability`, same pattern as the generic content-edit route -- appends exactly one new `revisionHistory` entry per call, requires `changeSummary`, reopens `status` to `'draft'` per Golden Rule #3). `reportTitle`/`tocSections` mapping extended for `documentType === 'RepairEstimate'` so the existing generic PDF/DOCX/preview/approve/export/download endpoints render it correctly, completely unmodified otherwise (same reuse pattern as every prior phase's document type). Frontend: a "Repair Estimate" / "Revise Estimate" action + a form-heavy `RepairEstimateModal` on `ReportPreviewPage.jsx` (dynamic line-item rows with a taxable checkbox, dynamic depreciation rows with toggle-chip line-item linking, live client-side totals preview clearly labeled non-authoritative) -- confirmed the most form-heavy new UI of the nine phases, as PHASES.md anticipated. Backend: 26/26 new pure-function tests pass (391/391 total, 0 regressions) covering hand-verified line-total/subtotal/O&P/tax/RCV/depreciation-$/ACV math, float-drift avoidance, every rejection path (negative/zero/NaN/Infinity/out-of-range/duplicate/unknown-code/oversized-array), and markdown content assembly. Live end-to-end verified against the real Anthropic-configured backend + real Firebase project via a throwaway-QA-account HTTP script (no browser-automation tool available in this environment, matching Phase 36's substitution): 26/26 checks passed, including creation off a directly-inserted "existing eligible report" with hand-verified totals ($17,650 subtotal / $1,765 O&P / $1,334.03 tax with a non-taxable labor line correctly excluded from the tax base / $20,749.03 grand total), cross-user denial on create/read/revise, validation rejection of a negative quantity, a revision correctly appending Rev. 1 while leaving Rev. 0 untouched and requiring `changeSummary`, real PDF export downloaded and confirmed to start with the `%PDF` magic header, real DOCX export succeeding once tier-upgraded (starter tier correctly restricts to PDF-only, same enforcement as every other document type -- no special-cased bypass), and the original linked report still exporting cleanly afterward (existing report types unaffected). The generated PDF was visually inspected end-to-end and matches the client sample's structure: cover page, Table of Contents, Report Information table, Line Item Detail table with highlighted Subtotal/O&P/Tax/Total rows, Depreciation Schedule table, Revision History table, Terms & Conditions, and an Adjuster Review & Sign-Off section, plus the app's existing generic signature page. All QA users/reports were deleted after the run. AI's role in this phase is exactly zero -- it is never called from any estimate route or module.
+
+---
+
+## Phase 38 — Invoice (Document Type)
+
+**Objective:** Add an Invoice document (contractor billing — services rendered, payments received, change orders, remit-to) matching the sample's structure.
+
+**Scope (approved 2026-08-24):** The client's Invoice sample confirmed Invoice generation IS a wanted feature, scoped narrowly per explicit instruction: **document creation only, not a billing/payment-processing/accounting system.** No Stripe integration, no payment collection, no job/payment-tracking subsystem. An Invoice is generated FROM an existing Phase 37 Repair Estimate, reusing its already-approved, already-computed line items read-only — never re-entered, re-priced, or AI-generated. Every dollar figure (services subtotal, tax, payments-received total, balance due) is computed deterministically in code from that reused data plus adjuster-entered invoice fields (bill-to, dates, tax rate, payment history, change order log, remit-to) — AI is never called anywhere in this document type, matching Phase 37's precedent exactly.
+
+**Design decision (documented in PROGRESS.md):** the Change Order Log is informational documentation only, like the client's own sample invoice (its one logged CO is already folded into a normal services-rendered line, not summed separately) — `changeOrderLog` entries never feed into the totals, avoiding a real double-counting risk without a job-costing subsystem to disambiguate already-billed vs. not-yet-billed change orders (explicitly out of this narrow scope).
+
+**Workflow location:** A "Invoice" / "Revise Invoice" action on an existing Repair Estimate's detail view (`ReportPreviewPage.jsx`) — mirrors Phase 37's own action pattern exactly, one hop further down the chain (base report → estimate → invoice).
+
+**Required fields (implemented):** `billTo` `{name, address}`, `invoiceNumber`/`invoiceDate`/`dueDate`/`jobNumber`, `servicesRendered` (read-only snapshot of the linked Repair Estimate's `lineItems`), `paymentHistory` (array of `{date, description, method, amount}`), `changeOrderLog` (array of `{coNumber, description, amount}`, informational only), `remitTo` `{name, instructions}`, `taxRatePercent`, `paymentTerms`, `warrantyText` (optional).
+
+**Files/components affected:** `backend/utils/invoiceCalculations.js` (new, pure dollar math), `backend/utils/invoiceContent.js` (new, deterministic markdown assembly), `backend/routes/reports.js` (`POST /:id/invoice`, `PUT /:id/invoice`, `reportTitle`/`tocSections` mapping), `backend/test/invoice-report.test.js` (new), `frontend/src/pages/ReportPreviewPage.jsx` (`InvoiceModal`), `frontend/src/services/api.js`.
+
+**Dependencies/prerequisites:** Phase 37 (Repair Estimate) — an Invoice can only be created from an existing `documentType: 'RepairEstimate'` report; enforced server-side (400 `SOURCE_NOT_ESTIMATE` otherwise).
+
+**Risks/considerations mitigated:** real money math (same cents-based rounding discipline as Phase 37, hand-verified against the client's own sample invoice numbers); Golden Rule #2/#3 upheld — AI never touches a dollar figure, and an un-reviewed/revised invoice always exports watermarked DRAFT via the existing generic export gate.
+
+**Acceptance criteria:** Invoice generates from a real approved Repair Estimate with correct services-subtotal/tax/payments/balance-due math verified against the client's own sample PDF's exact figures; revision history tracked; PDF/DOCX layout matches the sample's structure (Bill To, Invoice Details, Services Rendered, Totals, Payment History, Change Order Log, Payment Terms, Remit-To, Warranty).
+
+**Testing/verification steps:** Unit tests for every calculation against the sample's hand-verified numbers; end-to-end generation/revision/export test; manual PDF visual check against the sample layout.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 38 only") with the scope explicitly limited to document creation (no billing/payment-processing/accounting system, no Stripe). Full detail in `PROGRESS.md`'s Phase 38 entry.
+
+---
+
+## Phase 39 — Coverage Determination Letter (Document Type)
+
+**Objective:** Add a Coverage Determination Letter — the carrier's actual per-item approve/deny/pending decision plus RCV/deductible/depreciation payment calculation.
+
+**Scope:** Not to be started until the authoring-model decision below is answered. This is the single highest-risk document type in the whole set because, unlike every other sample, its entire purpose IS a coverage/payment determination — the exact thing Golden Rule #2 says AI must never decide.
+
+**Client decision — RESOLVED 2026-08-24 (approved model, option (a)):** The licensed adjuster enters every coverage decision through a structured form; FlacronAI performs **zero AI drafting** of approval/denial, policy basis, rights/next-steps language, or payment figures anywhere in this document type. FlacronAI only validates, calculates (payment math only), formats, stores, and exports what the adjuster entered — the AI is never called anywhere in this route, this is the strictest AI-surface (zero) of any of the nine document-type phases.
+
+**Workflow location (implemented):** A "Coverage Determination Letter" action on an already-**FINALIZED** base report's detail view (`ReportPreviewPage.jsx`) — never offered on a draft. The modal requires picking an already-**APPROVED (finalized)** Repair Estimate linked to that same report before the rest of the form unlocks. Both eligibility checks (`REPORT_NOT_FINALIZED`, `ESTIMATE_NOT_APPROVED`/`ESTIMATE_NOT_LINKED`/`SOURCE_NOT_ESTIMATE`) are enforced server-side via a pure, unit-tested `validateSourceEligibility` gate — never client-trusted.
+
+**Required fields (implemented):** `addressee` `{name, address}`, `adjusterOfRecord` `{name, title, phone, email}` (new field — today's generic `reviewedBy` only stores uid/email, so this is a distinct, adjuster-typed display identity), `letterDate`, `determinationSummary` (e.g. "Partial Approval"), `deductible` `{description, amount}`, `coverageLimits` (array of `{coverageType, description, limit}`), `perItemDetermination` (array of `{item, determination: approved|denied|pending, policyBasis, relatedLineItemCodes[], pendingNote}` — an approved row must link ≥1 real linked-estimate line-item code, a pending row must carry its own `pendingNote`), `rightsAndNextSteps` (array of `{heading, text}`, entirely adjuster-typed, no default/boilerplate text), `enclosures` (optional array of strings). `paymentCalculation` (Approved RCV / Deductible / Recoverable Depreciation withheld / Initial Payment ACV) is **computed in code, never adjuster-entered directly** — see formula below.
+
+**Payment formula (implemented, hand-verified against the client's own sample figures):** Approved RCV = sum of the linked estimate's line-item totals for codes an "approved" row actually references (a denied/pending item contributes nothing). Recoverable Depreciation withheld = sum of the linked estimate's depreciation-schedule rows whose *entire* `relatedLineItemCodes` set is within the approved set (a row that also touches a non-approved item is excluded entirely, never partially estimated). Initial Payment (ACV) = Approved RCV − Deductible − Recoverable Depreciation. Reproducing the client sample's own numbers exactly (RCV $28,345.80 / deductible $1,500.00 / depreciation $4,182.60 / ACV $22,663.20) is exact-match unit-tested.
+
+**Files/components affected:** `backend/utils/coverageLetterCalculations.js` (new, pure dollar math + validation + the `validateSourceEligibility` gate), `backend/utils/coverageLetterContent.js` (new, deterministic markdown assembly incl. a fixed, exact-match-tested generic RCV/ACV definitional glossary and an attestation/legal-review-required notice), `backend/routes/reports.js` (`POST /:id/coverage-letter`, `PUT /:id/coverage-letter`, `reportTitle`/`tocSections` mapping, `relatedReportId`/`documentType` filters on `GET /`), `backend/test/coverage-letter.test.js` (new), `frontend/src/pages/ReportPreviewPage.jsx` (`CoverageLetterModal`), `frontend/src/services/api.js`.
+
+**Dependencies/prerequisites:** An existing **finalized** report and an existing **finalized (approved)** Repair Estimate (Phase 37) linked to that same report — both enforced server-side, not just hidden in the UI.
+
+**Risks/considerations mitigated:** Golden Rule #2 (the one genuine violation risk across all nine phases) — resolved by making the AI surface exactly zero: no AI call exists anywhere in either new module or route. Server-side role authorization: creating/revising this letter requires `canApprove` (not just `canGenerate`) in addition to ownership, since authoring it IS making a coverage determination — the same authority level as approving a report. Explicit adjuster attestation + approval-before-clean-export is inherited unmodified from the app's existing generic `/approve` endpoint (full name/license number/license state/company + `confirmReview: true`), so an un-reviewed/revised letter always exports DRAFT-watermarked. **Jurisdiction-specific wording (appeal/appraisal/statutory-notice language) has NOT been reviewed by legal/compliance counsel for any specific jurisdiction** — the letter's own fixed attestation notice states this explicitly, and it must receive that review before production use.
+
+**Acceptance criteria:** Letter generates only from a finalized report + approved estimate (both gates independently tested); every payment figure matches hand-verified math including the client sample's own numbers; revision history tracked (append-only); PDF/DOCX layout matches the sample's structure (Applicable Policy Coverages, Item-by-Item Coverage Rationale, Items Pending Further Review, Payment Calculation, Understanding Depreciation, Your Rights & Next Steps, Enclosures, Revision History, Adjuster Review & Sign-Off).
+
+**Testing/verification steps:** Unit tests for every calculation/validation path + the source-eligibility gate + role-capability matrix; end-to-end generation/revision/export test; manual PDF visual check against the sample layout.
+
+**Status:** ✅ Completed (2026-08-24), per explicit instruction ("implement Phase 39 only") using the approved authoring model above. Full detail in `PROGRESS.md`'s Phase 39 entry.

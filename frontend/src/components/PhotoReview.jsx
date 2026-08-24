@@ -110,6 +110,12 @@ export function PhotoAnalysisPanel({
   areaSaving,
   onSaveArea,
   onOpenAnnotator,
+  // Phase 35 (Vehicle/Auto Inspection Report): an Auto-claimType report's
+  // gallery passes VEHICLE_PANELS + a "Vehicle Panel" label here instead of
+  // the property PHOTO_LOCATIONS default -- same set_area mechanism, just a
+  // claim-appropriate option list/label.
+  locationOptions = PHOTO_LOCATIONS,
+  locationLabel = 'Room / Area',
 }) {
   if (!photo) return null;
 
@@ -128,20 +134,20 @@ export function PhotoAnalysisPanel({
       {hasAreaControls && (
         <div className="flex-1 min-w-[160px]">
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-            <MapPin className="w-3 h-3" /> Room / Area
+            <MapPin className="w-3 h-3" /> {locationLabel}
           </label>
           {canReview ? (
             <div className="flex gap-2">
               <select
-                value={PHOTO_LOCATIONS.includes(areaValue) ? areaValue : (areaValue ? 'Custom' : '')}
+                value={locationOptions.includes(areaValue) ? areaValue : (areaValue ? 'Custom' : '')}
                 onChange={(e) => onAreaValueChange(e.target.value === 'Custom' ? '' : e.target.value)}
                 className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-400"
               >
                 <option value="">Unassigned</option>
-                {PHOTO_LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
+                {locationOptions.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
                 <option value="Custom">Custom…</option>
               </select>
-              {(!PHOTO_LOCATIONS.includes(areaValue)) && (
+              {(!locationOptions.includes(areaValue)) && (
                 <input
                   type="text"
                   value={areaValue || ''}

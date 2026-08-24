@@ -209,6 +209,10 @@ const PARAGRAPH_RUN_PROPS = '<w:sz w:val="20"/><w:color w:val="374151"/>';
 // Generate DOCX from report data. Returns a Buffer (no disk I/O).
 const generateDOCX = async (report, options = {}) => {
   const {
+    // Phase 31 (Liability Investigation Report): cover title only -- defaults
+    // to today's generic text when unset, so every other document type is
+    // unaffected.
+    reportTitle = 'INSURANCE INSPECTION REPORT',
     companyName = 'FlacronAI',
     hideFlacronBranding = false,
     watermark = false,
@@ -436,7 +440,7 @@ const generateDOCX = async (report, options = {}) => {
     ? `<!-- Cover Header -->
     <w:p>
       <w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr>
-      <w:r><w:t>INSURANCE INSPECTION REPORT</w:t></w:r>
+      <w:r><w:t>${escapeXml(reportTitle)}</w:t></w:r>
     </w:p>
     ${watermark ? `<w:p><w:pPr><w:jc w:val="center"/><w:shd w:val="clear" w:fill="FEE2E2"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="991B1B"/><w:sz w:val="36"/></w:rPr><w:t>${escapeXml(watermarkText)}</w:t></w:r></w:p>` : ''}
     ${

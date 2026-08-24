@@ -312,6 +312,7 @@ const runReportPipeline = async ({ reportId, uid, analyzableImages, reportData, 
 
       const freshAnalysis = await analyzeImages(analyzableImages, {
         onBatchComplete: makeOnBatchComplete(reportId),
+        claimType: reportData.claimType,
       });
       // A retry only ever covers the SUBSET of photos previously stuck in
       // 'needs_attention' -- merge with whatever already-successful analysis
@@ -434,7 +435,7 @@ const runReportPipeline = async ({ reportId, uid, analyzableImages, reportData, 
 // regenerated report text when photos are added after the fact, and Phase 7
 // doesn't change that scope) or the monthly usage counters (those are
 // charged once, at report creation, not per photo added afterward).
-const runPhotoAnalysisOnly = async ({ reportId, uid, claimNumber, analyzableImages, existingImageAnalysis = null }) => {
+const runPhotoAnalysisOnly = async ({ reportId, uid, claimNumber, claimType, analyzableImages, existingImageAnalysis = null }) => {
   const db = getFirestore();
   const reportRef = db.collection('reports').doc(reportId);
   if (analyzableImages.length === 0) return;
@@ -455,6 +456,7 @@ const runPhotoAnalysisOnly = async ({ reportId, uid, claimNumber, analyzableImag
 
     const freshAnalysis = await analyzeImages(analyzableImages, {
       onBatchComplete: makeOnBatchComplete(reportId),
+      claimType,
     });
 
     const merged = existingImageAnalysis ? mergeImageAnalysis(existingImageAnalysis, freshAnalysis) : freshAnalysis;
@@ -520,6 +522,30 @@ const retryFailedAnalysis = async (reportId, uid) => {
     // the same template guidance/sections instead of silently losing them.
     templateGuidance: report.templateGuidance || null,
     templateSections: report.templateSections || null,
+    // claimType/lossType-selected document architectures (Phases 31-35) must
+    // survive a retry too, or a stuck Liability/Commercial/Flood/Theft/Auto
+    // report would silently fall back to the generic template on retry.
+    claimType: report.claimType || '',
+    claimantName: report.claimantName || '',
+    claimantContact: report.claimantContact || '',
+    propertyManagerName: report.propertyManagerName || '',
+    propertyManagerContact: report.propertyManagerContact || '',
+    roofType: report.roofType || '',
+    roofAge: report.roofAge || '',
+    tenantSuiteCount: report.tenantSuiteCount || '',
+    policyNumber: report.policyNumber || '',
+    floodZone: report.floodZone || '',
+    lowestFloorElevation: report.lowestFloorElevation || '',
+    baseFloodElevation: report.baseFloodElevation || '',
+    floodEventSource: report.floodEventSource || '',
+    reportedCrest: report.reportedCrest || '',
+    policeIncidentNumber: report.policeIncidentNumber || '',
+    pointsOfEntry: report.pointsOfEntry || '',
+    vin: report.vin || '',
+    vehicleMakeModelYear: report.vehicleMakeModelYear || '',
+    odometer: report.odometer || '',
+    licensePlate: report.licensePlate || '',
+    vehicleColor: report.vehicleColor || '',
   };
 
   // Fire the same pipeline shape, scoped to just what needs retrying. If only
@@ -816,7 +842,8 @@ const regenerateFromPhotoReview = async (reportId, uid, userEmail) => {
   try {
     const imageAnalysis = buildEffectiveImageAnalysis(data.imageAnalysis, data.photos);
     const reportData = {
-      claimNumber: data.claimNumber, insuredName: data.insuredName, propertyAddress: data.propertyAddress,
+      claimNumber: data.claimNumber, insuredName: data.insuredName, insuredEmail: data.insuredEmail || '',
+      propertyAddress: data.propertyAddress,
       lossDate: data.lossDate, lossType: data.lossType, reportType: data.reportType,
       additionalNotes: data.additionalNotes, propertyDetails: data.propertyDetails,
       lossDescription: data.lossDescription, damagesObserved: data.damagesObserved, recommendations: data.recommendations,
@@ -824,6 +851,43 @@ const regenerateFromPhotoReview = async (reportId, uid, userEmail) => {
       // the same template guidance/sections as the original generation.
       templateGuidance: data.templateGuidance || null,
       templateSections: data.templateSections || null,
+      // Phase 31 (Liability Investigation Report): preserved so a regenerate
+      // stays on the same document architecture as the original generation.
+      claimType: data.claimType || '',
+      claimantName: data.claimantName || '',
+      claimantContact: data.claimantContact || '',
+      // Phase 32 (Commercial Property Inspection Report): same reasoning.
+      propertyManagerName: data.propertyManagerName || '',
+      propertyManagerContact: data.propertyManagerContact || '',
+      roofType: data.roofType || '',
+      roofAge: data.roofAge || '',
+      tenantSuiteCount: data.tenantSuiteCount || '',
+      // Phase 33 (Flood (NFIP) Inspection Report): same reasoning -- a
+      // regenerate stays on the Flood architecture when lossType === 'Flood'.
+      policyNumber: data.policyNumber || '',
+      floodZone: data.floodZone || '',
+      lowestFloorElevation: data.lowestFloorElevation || '',
+      baseFloodElevation: data.baseFloodElevation || '',
+      floodEventSource: data.floodEventSource || '',
+      reportedCrest: data.reportedCrest || '',
+      // Phase 34 (Theft/Burglary Inspection Report): same reasoning -- a
+      // regenerate stays on the Theft architecture when lossType === 'Theft'.
+      policeIncidentNumber: data.policeIncidentNumber || '',
+      pointsOfEntry: data.pointsOfEntry || '',
+      // Phase 35 (Vehicle/Auto Inspection Report): same reasoning -- a
+      // regenerate stays on the Vehicle architecture when claimType === 'Auto'.
+      vin: data.vin || '',
+      vehicleMakeModelYear: data.vehicleMakeModelYear || '',
+      odometer: data.odometer || '',
+      licensePlate: data.licensePlate || '',
+      vehicleColor: data.vehicleColor || '',
+      // Phase 36 (Mold Assessment Supplemental Report): same reasoning -- a
+      // regenerate stays on the Mold architecture when documentType ===
+      // 'MoldSupplement', reusing this same generic regenerate-from-photo-
+      // review endpoint rather than needing a dedicated one.
+      documentType: data.documentType || '',
+      relatedClaimId: data.relatedClaimId || '',
+      dateOfDiscovery: data.dateOfDiscovery || '',
     };
     const gen = await generateReport(reportData, imageAnalysis, imageAnalysis.totalImagesAnalyzed);
     const content = appendTemplateSections(gen.content, reportData.templateSections);
