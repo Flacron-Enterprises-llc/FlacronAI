@@ -160,6 +160,31 @@ export const reportsAPI = {
   delete: (id, permanent = false) => api.delete(`/reports/${id}`, { params: { permanent } }),
   restore: (id) => api.post(`/reports/${id}/restore`),
   duplicate: (id) => api.post(`/reports/${id}/duplicate`),
+  // Phase 36 (Mold Assessment Supplemental Report): generates a new,
+  // separately-stored report linked back to `id` -- called from an
+  // already-open report's detail view, not the primary wizard.
+  generateMoldSupplement: (id, data) => api.post(`/reports/${id}/mold-supplement`, data, { timeout: 60000 }),
+  // Phase 37 (Repair Estimate with Depreciation Schedule): `createEstimate`
+  // spawns a new linked Repair Estimate document (like generateMoldSupplement
+  // above); `reviseEstimate` edits an existing one in place, appending one
+  // revisionHistory entry. All dollar math is computed server-side.
+  createEstimate: (id, data) => api.post(`/reports/${id}/estimate`, data),
+  reviseEstimate: (id, data) => api.put(`/reports/${id}/estimate`, data),
+  // Phase 38 (Invoice Document): `createInvoice` generates a new linked
+  // Invoice from an existing Repair Estimate's own id (`id` here is the
+  // ESTIMATE's id, reusing its line items); `reviseInvoice` edits an
+  // existing Invoice in place (here `id` is the INVOICE's own id), appending
+  // one revisionHistory entry. All dollar math is computed server-side.
+  createInvoice: (id, data) => api.post(`/reports/${id}/invoice`, data),
+  reviseInvoice: (id, data) => api.put(`/reports/${id}/invoice`, data),
+  // Phase 39 (Coverage Determination Letter): `createCoverageLetter` (id =
+  // the base FINALIZED report's id, data.estimateId = a linked, APPROVED
+  // Repair Estimate's id) generates a new linked letter; `reviseCoverageLetter`
+  // (id = the letter's own id) edits it in place, appending one
+  // revisionHistory entry. AI drafts zero coverage content in either call --
+  // every field is adjuster-entered or computed server-side.
+  createCoverageLetter: (id, data) => api.post(`/reports/${id}/coverage-letter`, data),
+  reviseCoverageLetter: (id, data) => api.put(`/reports/${id}/coverage-letter`, data),
   export: (id, data) => api.post(`/reports/${id}/export`, data),
   getDownloadUrl: (id, filename) => `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
   download: (id, filename) => api.get(`/reports/${id}/download?file=${filename}`, { responseType: 'blob' }),

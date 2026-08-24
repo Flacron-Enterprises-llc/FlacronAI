@@ -8,6 +8,24 @@ const generatePDF = async (report, options = {}) => {
   return new Promise((resolve, reject) => {
     try {
       const {
+        // Phase 31 (Liability Investigation Report): cover title + Table of
+        // Contents labels only -- both default to today's generic text when
+        // unset, so every other document type is unaffected. Found via a
+        // real end-to-end generation: the ToC used to be hardcoded to the
+        // generic 9 section titles regardless of what the report actually
+        // contained, so a Liability report's ToC didn't match its own body.
+        reportTitle = 'INSURANCE INSPECTION REPORT',
+        tocSections = [
+          'Section 1: Report Info',
+          'Section 2: Claim Info & Insured Info',
+          'Section 3: Property Info',
+          'Section 4: Inspection Details & Overview',
+          'Section 5: Area Observations',
+          'Section 6: Scope of Work',
+          'Section 7: Estimated Loss Summary',
+          'Section 8: Photo Documentation',
+          'Section 9: Additional Notes & Conclusion',
+        ],
         logoBuffer = null,
         companyName = 'FlacronAI',
         primaryColor = [253, 68, 3],
@@ -41,7 +59,7 @@ const generatePDF = async (report, options = {}) => {
         autoFirstPage: false,
         bufferPages: true, // key: buffer all pages for post-processing
         info: {
-          Title: `Insurance Inspection Report — ${report.claimNumber || 'N/A'}`,
+          Title: `${reportTitle} — ${report.claimNumber || 'N/A'}`,
           Author: companyName,
           Subject: `${report.lossType || ''} — ${report.reportType || ''}`,
           Creator: hideFlacronBranding ? companyName : 'FlacronAI',
@@ -188,7 +206,7 @@ const generatePDF = async (report, options = {}) => {
           .fontSize(26)
           .fillColor(NAVY)
           .font('Helvetica-Bold')
-          .text('INSURANCE INSPECTION REPORT', margin, coverY, {
+          .text(reportTitle, margin, coverY, {
             width: contentWidth,
             align: 'center',
           });
@@ -281,17 +299,6 @@ const generatePDF = async (report, options = {}) => {
       doc.fontSize(20).fillColor(NAVY).font('Helvetica-Bold').text('Table of Contents', margin, 72);
       doc.rect(margin, 97, contentWidth, 2).fill(accentHex);
 
-      const tocSections = [
-        'Section 1: Report Info',
-        'Section 2: Claim Info & Insured Info',
-        'Section 3: Property Info',
-        'Section 4: Inspection Details & Overview',
-        'Section 5: Area Observations',
-        'Section 6: Scope of Work',
-        'Section 7: Estimated Loss Summary',
-        'Section 8: Photo Documentation',
-        'Section 9: Additional Notes & Conclusion',
-      ];
       tocSections.forEach((sec, i) => {
         const y = 108 + i * 34;
         doc.rect(margin, y, contentWidth, 30).fill(i % 2 === 0 ? '#f8fafc' : 'white');

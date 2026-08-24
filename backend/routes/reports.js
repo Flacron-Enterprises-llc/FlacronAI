@@ -39,9 +39,33 @@ const {
   suggestReportSection,
   assistReportSection,
   SECTION_ASSIST_ACTIONS,
+  // Phase 36 (Mold Assessment Supplemental Report): the supplement's single
+  // structured AI call is synchronous within its own request handler (no
+  // photo upload/analysis pipeline needed -- it reuses the linked report's
+  // already-analyzed, reviewed photo data), so these are imported directly
+  // rather than only reached via photoJobService as every other document
+  // type's generation is.
+  generateReport,
+  checkQuality,
+  buildEffectiveImageAnalysis,
 } = require('../services/aiService');
 const { generatePDF } = require('../utils/properPdfGenerator');
 const { generateDOCX } = require('../utils/documentGenerator');
+// Phase 37 (Repair Estimate with Depreciation Schedule): pure, non-AI
+// dollar-math + markdown assembly -- see each module's own header comment.
+const { validateAndComputeEstimate } = require('../utils/estimateCalculations');
+const { buildEstimateContent } = require('../utils/estimateContent');
+// Phase 38 (Invoice Document): pure, non-AI dollar-math + markdown assembly
+// for an Invoice generated from an existing Repair Estimate -- see each
+// module's own header comment.
+const { validateAndComputeInvoice } = require('../utils/invoiceCalculations');
+const { buildInvoiceContent } = require('../utils/invoiceContent');
+// Phase 39 (Coverage Determination Letter): approved authoring model --
+// adjuster enters every coverage decision through a structured form; AI
+// drafts zero coverage/policy/payment/rights content. See each module's own
+// header comment.
+const { validateAndComputeCoverageLetter, validateSourceEligibility } = require('../utils/coverageLetterCalculations');
+const { buildCoverageLetterContent } = require('../utils/coverageLetterContent');
 const { addWatermarkToPDF } = require('../services/watermarkService');
 const {
   reportDocumentObject,
@@ -60,6 +84,7 @@ const {
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { isValidDocumentBuffer } = require('../utils/documentValidation');
 const { processPhotoBatch } = require('../utils/photoBatchProcessor');
+const { appendStagedPhoto } = require('../utils/photoDraftStaging');
 const photoJobService = require('../services/photoJobService');
 const { aiLimiter } = require('../middleware/rateLimiters');
 const { getTier, canGenerate } = require('../config/tiers');
@@ -478,13 +503,15 @@ router.post(
         existingPhotos.length
       );
       const record = records[0];
-      const photos = [...existingPhotos, record];
 
-      await ref.set({
-        userId: req.user.uid,
-        photos,
-        createdAt: doc.exists ? doc.data().createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // Transactional append -- see backend/utils/photoDraftStaging.js for
+      // why this must be a transaction (fixes a silent-data-loss race on
+      // concurrent multi-file uploads to the same draftId).
+      const photos = await appendStagedPhoto(db, {
+        draftId,
+        uid: req.user.uid,
+        record,
+        maxPhotos: MAX_PHOTOS,
       });
 
       return res.status(201).json({
@@ -493,6 +520,9 @@ router.post(
         uploadedCount: photos.filter((p) => p.status === 'uploaded').length,
       });
     } catch (err) {
+      if (err.code === 'MAX_PHOTOS') {
+        return res.status(400).json({ success: false, error: err.message, code: 'MAX_PHOTOS' });
+      }
       return res.status(500).json({ success: false, error: 'Photo upload failed', code: 'STAGE_ERROR' });
     }
   }
@@ -627,6 +657,39 @@ router.post(
         occupancyStatus,
         contactPresent,
         contactName,
+        // Phase 31 (Liability Investigation Report): optional, only meaningful
+        // when claimType === 'Liability' -- validated the same way as the
+        // rest of the optionalFieldLimits block below.
+        claimantName,
+        claimantContact,
+        // Phase 32 (Commercial Property Inspection Report): optional, only
+        // meaningful when claimType === 'Commercial' -- same validation
+        // pattern.
+        propertyManagerName,
+        propertyManagerContact,
+        roofType,
+        roofAge,
+        tenantSuiteCount,
+        // Phase 33 (Flood (NFIP) Inspection Report): optional, only meaningful
+        // when lossType === 'Flood' -- same validation pattern. NFIP policy
+        // number reuses `policyNumber` above with a contextual label rather
+        // than adding a duplicate field.
+        floodZone,
+        lowestFloorElevation,
+        baseFloodElevation,
+        floodEventSource,
+        reportedCrest,
+        // Phase 34 (Theft/Burglary Inspection Report): optional, only
+        // meaningful when lossType === 'Theft' -- same validation pattern.
+        policeIncidentNumber,
+        pointsOfEntry,
+        // Phase 35 (Vehicle/Auto Inspection Report): optional, only
+        // meaningful when claimType === 'Auto' -- same validation pattern.
+        vin,
+        vehicleMakeModelYear,
+        odometer,
+        licensePlate,
+        vehicleColor,
       } = req.body;
 
       // If generating against a real CRM claim (Agency/Enterprise), the server -- not
@@ -756,6 +819,25 @@ router.post(
         inspectorName: 150,
         inspectorId: 50,
         contactName: 150,
+        claimantName: 150,
+        claimantContact: 150,
+        propertyManagerName: 150,
+        propertyManagerContact: 150,
+        roofType: 150,
+        roofAge: 50,
+        tenantSuiteCount: 20,
+        floodZone: 50,
+        lowestFloorElevation: 50,
+        baseFloodElevation: 50,
+        floodEventSource: 200,
+        reportedCrest: 50,
+        policeIncidentNumber: 50,
+        pointsOfEntry: 300,
+        vin: 50,
+        vehicleMakeModelYear: 150,
+        odometer: 30,
+        licensePlate: 30,
+        vehicleColor: 50,
       };
       const optionalFieldValues = {
         policyNumber,
@@ -769,6 +851,25 @@ router.post(
         inspectorName,
         inspectorId,
         contactName,
+        claimantName,
+        claimantContact,
+        propertyManagerName,
+        propertyManagerContact,
+        roofType,
+        roofAge,
+        tenantSuiteCount,
+        floodZone,
+        lowestFloorElevation,
+        baseFloodElevation,
+        floodEventSource,
+        reportedCrest,
+        policeIncidentNumber,
+        pointsOfEntry,
+        vin,
+        vehicleMakeModelYear,
+        odometer,
+        licensePlate,
+        vehicleColor,
       };
       for (const [field, max] of Object.entries(optionalFieldLimits)) {
         const value = optionalFieldValues[field];
@@ -961,6 +1062,40 @@ router.post(
         recommendations,
         templateGuidance,
         templateSections,
+        // Phase 31 (Liability Investigation Report): `claimType` selects the
+        // document architecture inside generateReport() -- generic path is
+        // untouched when this isn't 'Liability'. `claimantName`/
+        // `claimantContact` are only used by that path.
+        claimType: claimType || '',
+        claimantName: claimantName || '',
+        claimantContact: claimantContact || '',
+        // Phase 32 (Commercial Property Inspection Report): only used by that
+        // path (claimType === 'Commercial').
+        propertyManagerName: propertyManagerName || '',
+        propertyManagerContact: propertyManagerContact || '',
+        roofType: roofType || '',
+        roofAge: roofAge || '',
+        tenantSuiteCount: tenantSuiteCount || '',
+        // Phase 33 (Flood (NFIP) Inspection Report): only used by that path
+        // (lossType === 'Flood'), including when folded into a Commercial
+        // claim's Flood report per the approved precedence rule.
+        policyNumber: policyNumber || '',
+        floodZone: floodZone || '',
+        lowestFloorElevation: lowestFloorElevation || '',
+        baseFloodElevation: baseFloodElevation || '',
+        floodEventSource: floodEventSource || '',
+        reportedCrest: reportedCrest || '',
+        // Phase 34 (Theft/Burglary Inspection Report): only used by that path
+        // (lossType === 'Theft').
+        policeIncidentNumber: policeIncidentNumber || '',
+        pointsOfEntry: pointsOfEntry || '',
+        // Phase 35 (Vehicle/Auto Inspection Report): only used by that path
+        // (claimType === 'Auto').
+        vin: vin || '',
+        vehicleMakeModelYear: vehicleMakeModelYear || '',
+        odometer: odometer || '',
+        licensePlate: licensePlate || '',
+        vehicleColor: vehicleColor || '',
       };
 
       const reportDoc = {
@@ -1001,6 +1136,35 @@ router.post(
         occupancyStatus: occupancyStatus || '',
         contactPresent: contactPresent || '',
         contactName: contactName || '',
+        // Phase 31 (Liability Investigation Report): optional, only meaningful
+        // when claimType === 'Liability'.
+        claimantName: claimantName || '',
+        claimantContact: claimantContact || '',
+        // Phase 32 (Commercial Property Inspection Report): optional, only
+        // meaningful when claimType === 'Commercial'.
+        propertyManagerName: propertyManagerName || '',
+        propertyManagerContact: propertyManagerContact || '',
+        roofType: roofType || '',
+        roofAge: roofAge || '',
+        tenantSuiteCount: tenantSuiteCount || '',
+        // Phase 33 (Flood (NFIP) Inspection Report): optional, only meaningful
+        // when lossType === 'Flood'.
+        floodZone: floodZone || '',
+        lowestFloorElevation: lowestFloorElevation || '',
+        baseFloodElevation: baseFloodElevation || '',
+        floodEventSource: floodEventSource || '',
+        reportedCrest: reportedCrest || '',
+        // Phase 34 (Theft/Burglary Inspection Report): optional, only
+        // meaningful when lossType === 'Theft'.
+        policeIncidentNumber: policeIncidentNumber || '',
+        pointsOfEntry: pointsOfEntry || '',
+        // Phase 35 (Vehicle/Auto Inspection Report): optional, only
+        // meaningful when claimType === 'Auto'.
+        vin: vin || '',
+        vehicleMakeModelYear: vehicleMakeModelYear || '',
+        odometer: odometer || '',
+        licensePlate: licensePlate || '',
+        vehicleColor: vehicleColor || '',
         documents: documentRecords,
         // Phase 7: content/analysis don't exist yet -- they're filled in by the
         // background pipeline once it completes. `status: 'processing'` (a
@@ -1168,6 +1332,11 @@ router.get('/', authenticateAny, reportsRead, async (req, res) => {
       creator,
       clientId,
       claimNumber,
+      // Phase 39 (Coverage Determination Letter): lets the frontend look up
+      // which Repair Estimate(s) are linked to a given base report, to offer
+      // as the letter's required source estimate.
+      relatedReportId,
+      documentType,
     } = req.query;
     const lim = Math.min(parseInt(limit), 100);
 
@@ -1202,6 +1371,8 @@ router.get('/', authenticateAny, reportsRead, async (req, res) => {
     if (startDate) reports = reports.filter((r) => r.createdAt >= startDate);
     if (endDate) reports = reports.filter((r) => r.createdAt <= endDate);
     if (reportType) reports = reports.filter((r) => r.reportType === reportType);
+    if (relatedReportId) reports = reports.filter((r) => r.relatedReportId === relatedReportId);
+    if (documentType) reports = reports.filter((r) => r.documentType === documentType);
     if (clientId) reports = reports.filter((r) => r.clientId === clientId);
     if (claimNumber) {
       const q = claimNumber.toLowerCase();
@@ -2855,6 +3026,12 @@ const DUPLICATE_FIELDS = [
   'contactName',
   'clientId',
   'claimId',
+  // Phase 35 (Vehicle/Auto Inspection Report)
+  'vin',
+  'vehicleMakeModelYear',
+  'odometer',
+  'licensePlate',
+  'vehicleColor',
 ];
 
 // POST /api/reports/:id/duplicate — Phase 12 (My Reports & Claims Management
@@ -2916,6 +3093,1054 @@ router.post('/:id/duplicate', authenticateAny, reportsWrite, async (req, res) =>
     return res
       .status(500)
       .json({ success: false, error: 'Failed to duplicate report', code: 'DUPLICATE_ERROR' });
+  }
+});
+
+// POST /api/reports/:id/mold-supplement — Phase 36 (Mold Assessment
+// Supplemental Report): generates a Mold Assessment — Preliminary Report as
+// its OWN report doc, linked back to an already-existing report (`:id`) the
+// caller has already generated and opened -- not a primary wizard entry
+// point. Reuses the linked report's claim/insured/property fields and its
+// REVIEWED (non-excluded, edit-honored) photo observations; no new photo
+// upload happens here. Stored in the same `reports` collection as any other
+// report, so every existing generic endpoint (GET /:id, preview, approve,
+// export, download, photos/regenerate) works on it completely unmodified --
+// ownership/authorization is therefore identical to every other report
+// (userId match on the new doc itself), including cross-user denial.
+router.post(
+  '/:id/mold-supplement',
+  authenticateAny,
+  reportsGenerate,
+  requireCanGenerate,
+  aiLimiter,
+  async (req, res) => {
+    try {
+      const db = getFirestore();
+      const userData = await checkAndResetMonthly(db, req.user.uid);
+      const tier = getTier(userData.tier || 'starter');
+      const reportsThisMonth = userData.reportsThisMonth || 0;
+      // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
+      // other report generation -- no new tier restriction for this document
+      // type (confirmed 2026-08-24, consistent with Phase 31's precedent).
+      if (!canGenerate(userData.tier, reportsThisMonth)) {
+        return res.status(429).json({
+          success: false,
+          error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
+          code: 'LIMIT_EXCEEDED',
+          limit: tier.reportsPerMonth,
+          used: reportsThisMonth,
+        });
+      }
+
+      const parentDoc = await loadOwnedReport(db, req.params.id, req.user.uid);
+      if (!parentDoc || parentDoc.data().status === 'archived') {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const parent = parentDoc.data();
+      if (parent.status === 'processing') {
+        return res.status(409).json({
+          success: false,
+          error: 'The linked report is still being analyzed. Please wait for it to finish first.',
+          code: 'REPORT_PROCESSING',
+        });
+      }
+
+      const dateOfDiscovery = String(req.body.dateOfDiscovery || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfDiscovery)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Date of discovery must be a valid date (YYYY-MM-DD)',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      let relatedClaimId = String(
+        req.body.relatedClaimId || req.body.relatedClaimNumber || ''
+      ).trim();
+      if (relatedClaimId.length > 60) {
+        return res.status(400).json({
+          success: false,
+          error: 'relatedClaimId exceeds the 60-character limit',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      // Defaults to the linked report's own claim number when the caller
+      // doesn't supply a distinct related-claim identifier.
+      if (!relatedClaimId) relatedClaimId = parent.claimNumber || '';
+
+      // Reuse the linked report's REVIEWED photo data only -- the same
+      // reviewer-authoritative transform (excluded photos dropped, edited
+      // observations honored) that report generation/regeneration already
+      // use, never the raw pre-review AI batch output.
+      const parentPhotos = Array.isArray(parent.photos) ? parent.photos : [];
+      const imageAnalysis = buildEffectiveImageAnalysis(parent.imageAnalysis, parentPhotos);
+      const photoCount = imageAnalysis.totalImagesAnalyzed || 0;
+
+      const newId = uuidv4();
+      const claimNumber = `${parent.claimNumber || 'CLAIM'}-M`;
+      const reportData = {
+        documentType: 'MoldSupplement',
+        claimNumber,
+        relatedClaimId,
+        insuredName: parent.insuredName || '',
+        insuredEmail: parent.insuredEmail || '',
+        propertyAddress: parent.propertyAddress || '',
+        policyNumber: parent.policyNumber || '',
+        dateOfDiscovery,
+        lossDescription: parent.lossDescription || '',
+        damagesObserved: parent.damagesObserved || '',
+        additionalNotes: parent.additionalNotes || '',
+      };
+
+      let gen;
+      try {
+        gen = await generateReport(reportData, imageAnalysis, photoCount);
+      } catch (err) {
+        console.error('Mold supplement generation error:', err);
+        return res.status(503).json({
+          success: false,
+          error:
+            err.message || 'Report generation is temporarily unavailable. Please try again shortly.',
+          code: 'GENERATION_FAILED',
+        });
+      }
+      const qualityCheck = await checkQuality(gen.content);
+
+      // Reference (not copy) the linked report's Storage objects -- read-only,
+      // so the supplement's photo appendix/export renders identically to the
+      // parent's reviewed photos without duplicating any Storage bytes.
+      const reviewedPhotos = parentPhotos.filter((p) => p.review?.status !== 'excluded');
+      const now = new Date().toISOString();
+      const newReport = {
+        id: newId,
+        userId: req.user.uid,
+        documentType: 'MoldSupplement',
+        relatedReportId: req.params.id,
+        relatedClaimId,
+        dateOfDiscovery,
+        claimNumber,
+        insuredName: reportData.insuredName,
+        insuredEmail: reportData.insuredEmail,
+        propertyAddress: reportData.propertyAddress,
+        policyNumber: reportData.policyNumber,
+        lossDate: parent.lossDate || dateOfDiscovery,
+        lossType: 'Mold',
+        reportType: 'Preliminary Visual Assessment',
+        content: gen.content,
+        modelUsed: gen.modelUsed,
+        imageAnalysis,
+        photos: reviewedPhotos,
+        imagePaths: [],
+        imageCount: reviewedPhotos.length,
+        qualityScore: qualityCheck.score,
+        status: 'draft',
+        reviewedBy: null,
+        reviewedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        createdByEmail: req.user.email || null,
+      };
+      await db.collection('reports').doc(newId).set(newReport);
+      await db
+        .collection('users')
+        .doc(req.user.uid)
+        .update({ reportsThisMonth: (userData.reportsThisMonth || 0) + 1 });
+      await recordVersion(db.collection('reports').doc(newId), {
+        action: 'generated',
+        by: req.user.email || req.user.uid,
+        content: gen.content,
+        note: `Mold Assessment Supplement generated, linked to report ${req.params.id}.`,
+      });
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'mold_supplement_generated',
+        targetType: 'report',
+        targetId: newId,
+        meta: { parentReportId: req.params.id, relatedClaimId, claimNumber },
+        req,
+      });
+      return res.status(201).json({ success: true, report: newReport });
+    } catch (err) {
+      console.error('Mold supplement error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to generate mold supplement',
+        code: 'MOLD_SUPPLEMENT_ERROR',
+      });
+    }
+  }
+);
+
+// POST /api/reports/:id/estimate — Phase 37 (Repair Estimate with
+// Depreciation Schedule): creates a NEW Repair Estimate report doc, linked
+// back to an already-existing report (`:id`) the caller owns. Every dollar
+// figure (line totals, subtotal, O&P, tax, RCV, depreciation $, ACV, grand
+// total) is computed deterministically in estimateCalculations.js from the
+// adjuster-entered lineItems/percentages/depreciationSchedule in the request
+// body -- the AI is NEVER called here (Golden Rule #2 explicitly lists
+// "final repair costs" as something AI must not determine). Stored as its
+// own `reports` doc (documentType: 'RepairEstimate', relatedReportId), so
+// every existing generic endpoint (GET /:id, preview, approve, export,
+// download) works on it completely unmodified, same as Phase 36's Mold
+// Supplement precedent. Owner-only, like Mold Supplement -- a share
+// grantee cannot spawn a new derivative document off someone else's report.
+router.post(
+  '/:id/estimate',
+  authenticateAny,
+  reportsGenerate,
+  requireCanGenerate,
+  async (req, res) => {
+    try {
+      const db = getFirestore();
+      const userData = await checkAndResetMonthly(db, req.user.uid);
+      const tier = getTier(userData.tier || 'starter');
+      const reportsThisMonth = userData.reportsThisMonth || 0;
+      // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
+      // other generated report -- no new tier restriction for this document
+      // type (consistent with Phase 31/36's precedent).
+      if (!canGenerate(userData.tier, reportsThisMonth)) {
+        return res.status(429).json({
+          success: false,
+          error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
+          code: 'LIMIT_EXCEEDED',
+          limit: tier.reportsPerMonth,
+          used: reportsThisMonth,
+        });
+      }
+
+      const parentDoc = await loadOwnedReport(db, req.params.id, req.user.uid);
+      if (!parentDoc || parentDoc.data().status === 'archived') {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const parent = parentDoc.data();
+      if (parent.status === 'processing') {
+        return res.status(409).json({
+          success: false,
+          error: 'The linked report is still being analyzed. Please wait for it to finish first.',
+          code: 'REPORT_PROCESSING',
+        });
+      }
+
+      const computed = validateAndComputeEstimate(req.body);
+      if (computed.error) {
+        return res
+          .status(400)
+          .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+      }
+
+      const newId = uuidv4();
+      const now = new Date().toISOString();
+      const revisionHistory = [
+        {
+          version: 0,
+          date: now.slice(0, 10),
+          changeSummary: computed.changeSummary || 'Initial estimate created',
+          total: computed.totals.grandTotal,
+        },
+      ];
+      const content = buildEstimateContent(
+        {
+          claimNumber: parent.claimNumber,
+          insuredName: parent.insuredName,
+          propertyAddress: parent.propertyAddress,
+        },
+        computed,
+        0,
+        revisionHistory
+      );
+      const qualityCheck = await checkQuality(content);
+
+      const newReport = {
+        id: newId,
+        userId: req.user.uid,
+        documentType: 'RepairEstimate',
+        relatedReportId: req.params.id,
+        claimNumber: parent.claimNumber || '',
+        insuredName: parent.insuredName || '',
+        insuredEmail: parent.insuredEmail || '',
+        propertyAddress: parent.propertyAddress || '',
+        policyNumber: parent.policyNumber || '',
+        lossDate: parent.lossDate || '',
+        lossType: parent.lossType || '',
+        reportType: 'Repair Estimate',
+        estimateNumber: computed.estimateNumber,
+        revision: 0,
+        revisionHistory,
+        lineItems: computed.lineItems,
+        depreciationSchedule: computed.depreciationSchedule,
+        overheadProfitPercent: computed.overheadProfitPercent,
+        taxRatePercent: computed.taxRatePercent,
+        taxBasis: computed.taxBasis,
+        priceListBasis: computed.priceListBasis,
+        preparedWith: computed.preparedWith,
+        estimateDate: computed.estimateDate,
+        totals: computed.totals,
+        content,
+        modelUsed: 'none (deterministic — no AI)',
+        photos: [],
+        imagePaths: [],
+        imageCount: 0,
+        qualityScore: qualityCheck.score,
+        status: 'draft',
+        reviewedBy: null,
+        reviewedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        createdByEmail: req.user.email || null,
+      };
+      await db.collection('reports').doc(newId).set(newReport);
+      await db
+        .collection('users')
+        .doc(req.user.uid)
+        .update({ reportsThisMonth: reportsThisMonth + 1 });
+      await recordVersion(db.collection('reports').doc(newId), {
+        action: 'generated',
+        by: req.user.email || req.user.uid,
+        content,
+        note: `Repair Estimate created, linked to report ${req.params.id}.`,
+      });
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'repair_estimate_created',
+        targetType: 'report',
+        targetId: newId,
+        meta: { parentReportId: req.params.id, estimateNumber: computed.estimateNumber },
+        req,
+      });
+      return res.status(201).json({ success: true, report: newReport });
+    } catch (err) {
+      console.error('Repair estimate creation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create repair estimate',
+        code: 'ESTIMATE_ERROR',
+      });
+    }
+  }
+);
+
+// PUT /api/reports/:id/estimate — revises an EXISTING Repair Estimate
+// (`:id` here is the estimate document's OWN id, not the parent report's).
+// Recomputes every dollar figure from the new inputs and appends exactly one
+// new revisionHistory entry -- prior entries are never mutated, matching the
+// client sample's append-only Rev 0/Rev 1/Rev 2 log. Uses the same
+// owner-or-review-grantee access check as the generic PUT /:id content edit
+// (not the owner-only loadOwnedReport used by POST above), since this is an
+// edit to an already-shared document, not spawning a new derivative one.
+router.put('/:id/estimate', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const existing = doc.data();
+    const access = getReportAccess(existing, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const isOwnerPath = access === 'owner';
+    if (isOwnerPath && !hasCapability(req.user, 'canEditReports')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your team role does not have permission to do this (canEditReports).',
+        code: 'TEAM_PERMISSION_DENIED',
+        capability: 'canEditReports',
+      });
+    }
+    if (!isOwnerPath && access !== 'review') {
+      return res.status(403).json({
+        success: false,
+        error: 'You only have view or comment access to this report.',
+        code: 'SHARE_PERMISSION_DENIED',
+      });
+    }
+    if (existing.documentType !== 'RepairEstimate') {
+      return res.status(400).json({
+        success: false,
+        error: 'This endpoint only revises a Repair Estimate document',
+        code: 'NOT_AN_ESTIMATE',
+      });
+    }
+
+    const computed = validateAndComputeEstimate(req.body);
+    if (computed.error) {
+      return res
+        .status(400)
+        .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+    }
+    if (!String(req.body.changeSummary || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'changeSummary is required when revising an estimate',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const nextRevision = (existing.revision || 0) + 1;
+    const now = new Date().toISOString();
+    const revisionHistory = [
+      ...(Array.isArray(existing.revisionHistory) ? existing.revisionHistory : []),
+      {
+        version: nextRevision,
+        date: now.slice(0, 10),
+        changeSummary: computed.changeSummary,
+        total: computed.totals.grandTotal,
+      },
+    ];
+    const content = buildEstimateContent(
+      {
+        claimNumber: existing.claimNumber,
+        insuredName: existing.insuredName,
+        propertyAddress: existing.propertyAddress,
+      },
+      computed,
+      nextRevision,
+      revisionHistory
+    );
+    const qualityCheck = await checkQuality(content);
+
+    const updates = {
+      revision: nextRevision,
+      revisionHistory,
+      estimateNumber: computed.estimateNumber,
+      lineItems: computed.lineItems,
+      depreciationSchedule: computed.depreciationSchedule,
+      overheadProfitPercent: computed.overheadProfitPercent,
+      taxRatePercent: computed.taxRatePercent,
+      taxBasis: computed.taxBasis,
+      priceListBasis: computed.priceListBasis,
+      preparedWith: computed.preparedWith,
+      estimateDate: computed.estimateDate,
+      totals: computed.totals,
+      content,
+      qualityScore: qualityCheck.score,
+      // Golden Rule #3: any content change reopens a finalized report as a
+      // draft, same as the generic edit path (PUT /:id above).
+      status: 'draft',
+      reviewedBy: null,
+      reviewedAt: null,
+      updatedAt: now,
+    };
+    await ref.update(updates);
+    await recordVersion(ref, {
+      action: 'edited',
+      by: req.user.email || req.user.uid,
+      content,
+      note: `Repair Estimate revised to Rev. ${nextRevision}: ${computed.changeSummary}`,
+    });
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'repair_estimate_revised',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { revision: nextRevision },
+      req,
+    });
+    return res.json({ success: true, report: { ...existing, ...updates, id: req.params.id } });
+  } catch (err) {
+    console.error('Repair estimate revision error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to revise repair estimate',
+      code: 'ESTIMATE_ERROR',
+    });
+  }
+});
+
+// POST /api/reports/:id/invoice — Phase 38 (Invoice Document): creates a NEW
+// Invoice report doc from an existing, already-created Repair Estimate
+// (`:id` is the ESTIMATE's own id). "Services Rendered" is the estimate's
+// own already-validated `lineItems`, reused read-only -- never re-entered,
+// re-priced, or AI-generated (Golden Rule #2). Every dollar figure
+// (services subtotal, tax, payments-received total, balance due) is
+// computed deterministically in invoiceCalculations.js from that reused
+// data plus the adjuster-entered billTo/dates/tax-rate/payment-history/
+// change-order fields in the request body -- the AI is NEVER called here.
+// Stored as its own `reports` doc (documentType: 'Invoice', relatedReportId
+// pointing at the estimate), so every existing generic endpoint (GET /:id,
+// preview, approve, export, download) works on it completely unmodified,
+// same as Phase 36/37's precedent. Owner-only, like Mold Supplement/Repair
+// Estimate creation -- a share grantee cannot spawn a new derivative
+// document off someone else's estimate.
+router.post(
+  '/:id/invoice',
+  authenticateAny,
+  reportsGenerate,
+  requireCanGenerate,
+  async (req, res) => {
+    try {
+      const db = getFirestore();
+      const userData = await checkAndResetMonthly(db, req.user.uid);
+      const tier = getTier(userData.tier || 'starter');
+      const reportsThisMonth = userData.reportsThisMonth || 0;
+      // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
+      // other generated report -- no new tier restriction for this document type.
+      if (!canGenerate(userData.tier, reportsThisMonth)) {
+        return res.status(429).json({
+          success: false,
+          error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
+          code: 'LIMIT_EXCEEDED',
+          limit: tier.reportsPerMonth,
+          used: reportsThisMonth,
+        });
+      }
+
+      const estimateDoc = await loadOwnedReport(db, req.params.id, req.user.uid);
+      if (!estimateDoc || estimateDoc.data().status === 'archived') {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Repair Estimate not found', code: 'NOT_FOUND' });
+      }
+      const estimate = estimateDoc.data();
+      if (estimate.documentType !== 'RepairEstimate') {
+        return res.status(400).json({
+          success: false,
+          error: 'An invoice can only be generated from an existing Repair Estimate',
+          code: 'SOURCE_NOT_ESTIMATE',
+        });
+      }
+
+      const computed = validateAndComputeInvoice(req.body, estimate.lineItems);
+      if (computed.error) {
+        return res
+          .status(400)
+          .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+      }
+
+      const newId = uuidv4();
+      const now = new Date().toISOString();
+      const revisionHistory = [
+        {
+          version: 0,
+          date: now.slice(0, 10),
+          changeSummary: computed.changeSummary || 'Initial invoice created',
+          balanceDue: computed.totals.balanceDue,
+        },
+      ];
+      const content = buildInvoiceContent(
+        { claimNumber: estimate.claimNumber },
+        computed,
+        0,
+        revisionHistory
+      );
+      const qualityCheck = await checkQuality(content);
+
+      const newReport = {
+        id: newId,
+        userId: req.user.uid,
+        documentType: 'Invoice',
+        relatedReportId: req.params.id,
+        claimNumber: estimate.claimNumber || '',
+        insuredName: estimate.insuredName || '',
+        insuredEmail: estimate.insuredEmail || '',
+        propertyAddress: estimate.propertyAddress || '',
+        policyNumber: estimate.policyNumber || '',
+        lossDate: estimate.lossDate || '',
+        lossType: estimate.lossType || '',
+        reportType: 'Invoice',
+        billTo: computed.billTo,
+        remitTo: computed.remitTo,
+        invoiceNumber: computed.invoiceNumber,
+        invoiceDate: computed.invoiceDate,
+        dueDate: computed.dueDate,
+        jobNumber: computed.jobNumber,
+        taxRatePercent: computed.taxRatePercent,
+        changeOrderLog: computed.changeOrderLog,
+        paymentHistory: computed.paymentHistory,
+        paymentTerms: computed.paymentTerms,
+        warrantyText: computed.warrantyText,
+        servicesRendered: computed.servicesRendered,
+        revision: 0,
+        revisionHistory,
+        totals: computed.totals,
+        content,
+        modelUsed: 'none (deterministic — no AI)',
+        photos: [],
+        imagePaths: [],
+        imageCount: 0,
+        qualityScore: qualityCheck.score,
+        status: 'draft',
+        reviewedBy: null,
+        reviewedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        createdByEmail: req.user.email || null,
+      };
+      await db.collection('reports').doc(newId).set(newReport);
+      await db
+        .collection('users')
+        .doc(req.user.uid)
+        .update({ reportsThisMonth: reportsThisMonth + 1 });
+      await recordVersion(db.collection('reports').doc(newId), {
+        action: 'generated',
+        by: req.user.email || req.user.uid,
+        content,
+        note: `Invoice created, linked to Repair Estimate ${req.params.id}.`,
+      });
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'invoice_created',
+        targetType: 'report',
+        targetId: newId,
+        meta: { estimateId: req.params.id, invoiceNumber: computed.invoiceNumber },
+        req,
+      });
+      return res.status(201).json({ success: true, report: newReport });
+    } catch (err) {
+      console.error('Invoice creation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create invoice',
+        code: 'INVOICE_ERROR',
+      });
+    }
+  }
+);
+
+// PUT /api/reports/:id/invoice — revises an EXISTING Invoice (`:id` here is
+// the invoice document's OWN id). Recomputes every dollar figure from the
+// new inputs (the linked estimate's servicesRendered snapshot is never
+// re-fetched or altered on revision -- it stays exactly what was approved at
+// creation time) and appends exactly one new revisionHistory entry -- prior
+// entries are never mutated. Uses the same owner-or-review-grantee access
+// check as the generic PUT /:id content edit and PUT /:id/estimate revise
+// (not the owner-only loadOwnedReport used by POST above), since this is an
+// edit to an already-possibly-shared document, not spawning a new one.
+router.put('/:id/invoice', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const existing = doc.data();
+    const access = getReportAccess(existing, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const isOwnerPath = access === 'owner';
+    if (isOwnerPath && !hasCapability(req.user, 'canEditReports')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your team role does not have permission to do this (canEditReports).',
+        code: 'TEAM_PERMISSION_DENIED',
+        capability: 'canEditReports',
+      });
+    }
+    if (!isOwnerPath && access !== 'review') {
+      return res.status(403).json({
+        success: false,
+        error: 'You only have view or comment access to this report.',
+        code: 'SHARE_PERMISSION_DENIED',
+      });
+    }
+    if (existing.documentType !== 'Invoice') {
+      return res.status(400).json({
+        success: false,
+        error: 'This endpoint only revises an Invoice document',
+        code: 'NOT_AN_INVOICE',
+      });
+    }
+
+    const computed = validateAndComputeInvoice(req.body, existing.servicesRendered);
+    if (computed.error) {
+      return res
+        .status(400)
+        .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+    }
+    if (!String(req.body.changeSummary || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'changeSummary is required when revising an invoice',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const nextRevision = (existing.revision || 0) + 1;
+    const now = new Date().toISOString();
+    const revisionHistory = [
+      ...(Array.isArray(existing.revisionHistory) ? existing.revisionHistory : []),
+      {
+        version: nextRevision,
+        date: now.slice(0, 10),
+        changeSummary: computed.changeSummary,
+        balanceDue: computed.totals.balanceDue,
+      },
+    ];
+    const content = buildInvoiceContent(
+      { claimNumber: existing.claimNumber },
+      computed,
+      nextRevision,
+      revisionHistory
+    );
+    const qualityCheck = await checkQuality(content);
+
+    const updates = {
+      revision: nextRevision,
+      revisionHistory,
+      billTo: computed.billTo,
+      remitTo: computed.remitTo,
+      invoiceNumber: computed.invoiceNumber,
+      invoiceDate: computed.invoiceDate,
+      dueDate: computed.dueDate,
+      jobNumber: computed.jobNumber,
+      taxRatePercent: computed.taxRatePercent,
+      changeOrderLog: computed.changeOrderLog,
+      paymentHistory: computed.paymentHistory,
+      paymentTerms: computed.paymentTerms,
+      warrantyText: computed.warrantyText,
+      totals: computed.totals,
+      content,
+      qualityScore: qualityCheck.score,
+      // Golden Rule #3: any content change reopens a finalized report as a
+      // draft, same as the generic edit path and the estimate revise path.
+      status: 'draft',
+      reviewedBy: null,
+      reviewedAt: null,
+      updatedAt: now,
+    };
+    await ref.update(updates);
+    await recordVersion(ref, {
+      action: 'edited',
+      by: req.user.email || req.user.uid,
+      content,
+      note: `Invoice revised to Rev. ${nextRevision}: ${computed.changeSummary}`,
+    });
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'invoice_revised',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { revision: nextRevision },
+      req,
+    });
+    return res.json({ success: true, report: { ...existing, ...updates, id: req.params.id } });
+  } catch (err) {
+    console.error('Invoice revision error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to revise invoice',
+      code: 'INVOICE_ERROR',
+    });
+  }
+});
+
+// POST /api/reports/:id/coverage-letter — Phase 39 (Coverage Determination
+// Letter): creates a NEW Coverage Determination Letter, linked to an
+// already-FINALIZED base report (`:id`) AND an already-APPROVED (finalized)
+// Repair Estimate (`req.body.estimateId`) that is itself linked to that same
+// report. Both eligibility checks are enforced server-side via
+// validateSourceEligibility -- neither a draft report nor a draft/un-approved
+// estimate can ever be the source (this document type's entire purpose is a
+// real coverage/payment determination, so Golden Rule #2/#3 are enforced at
+// the strictest point of any document type in the app). Every word of
+// coverage decision, policy basis, rights/next-steps, and payment figure is
+// either adjuster-entered or computed deterministically in code from the
+// linked estimate's own reused, frozen-snapshot line items/depreciation
+// schedule -- the AI is NEVER called anywhere in this route. Owner-only,
+// same as Repair Estimate/Invoice creation -- a share grantee cannot spawn a
+// new derivative document off someone else's report. Additionally requires
+// `canApprove` (not just `canGenerate`) since authoring this letter IS making
+// a coverage determination, the same authority level as approving a report.
+router.post(
+  '/:id/coverage-letter',
+  authenticateAny,
+  reportsGenerate,
+  requireCanGenerate,
+  requireCanApprove,
+  async (req, res) => {
+    try {
+      const db = getFirestore();
+      const userData = await checkAndResetMonthly(db, req.user.uid);
+      const tier = getTier(userData.tier || 'starter');
+      const reportsThisMonth = userData.reportsThisMonth || 0;
+      // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
+      // other generated report -- no new tier restriction for this document type.
+      if (!canGenerate(userData.tier, reportsThisMonth)) {
+        return res.status(429).json({
+          success: false,
+          error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
+          code: 'LIMIT_EXCEEDED',
+          limit: tier.reportsPerMonth,
+          used: reportsThisMonth,
+        });
+      }
+
+      const parentDoc = await loadOwnedReport(db, req.params.id, req.user.uid);
+      if (!parentDoc || parentDoc.data().status === 'archived') {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const parent = parentDoc.data();
+
+      const estimateId = String(req.body?.estimateId || '').trim();
+      if (!estimateId) {
+        return res.status(400).json({ success: false, error: 'estimateId is required', code: 'VALIDATION_ERROR' });
+      }
+      const estimateDoc = await loadOwnedReport(db, estimateId, req.user.uid);
+      const estimate = estimateDoc ? estimateDoc.data() : null;
+
+      const eligibility = validateSourceEligibility({
+        parentStatus: parent.status,
+        estimate,
+        expectedRelatedReportId: req.params.id,
+      });
+      if (eligibility.error) {
+        return res.status(400).json({ success: false, error: eligibility.error, code: eligibility.code });
+      }
+
+      const computed = validateAndComputeCoverageLetter(req.body, estimate.lineItems, estimate.depreciationSchedule);
+      if (computed.error) {
+        return res
+          .status(400)
+          .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+      }
+
+      const newId = uuidv4();
+      const now = new Date().toISOString();
+      const revisionHistory = [
+        {
+          version: 0,
+          date: now.slice(0, 10),
+          changeSummary: computed.changeSummary || 'Initial coverage determination letter created',
+          initialPayment: computed.totals.initialPayment,
+        },
+      ];
+      const content = buildCoverageLetterContent(
+        {
+          claimNumber: parent.claimNumber,
+          policyNumber: parent.policyNumber,
+          lossDate: parent.lossDate,
+          propertyAddress: parent.propertyAddress,
+        },
+        computed,
+        0,
+        revisionHistory
+      );
+      const qualityCheck = await checkQuality(content);
+
+      const newReport = {
+        id: newId,
+        userId: req.user.uid,
+        documentType: 'CoverageDeterminationLetter',
+        relatedReportId: req.params.id,
+        relatedEstimateId: estimateId,
+        claimNumber: parent.claimNumber || '',
+        insuredName: parent.insuredName || '',
+        insuredEmail: parent.insuredEmail || '',
+        propertyAddress: parent.propertyAddress || '',
+        policyNumber: parent.policyNumber || '',
+        lossDate: parent.lossDate || '',
+        lossType: parent.lossType || '',
+        reportType: 'Coverage Determination Letter',
+        addressee: computed.addressee,
+        adjusterOfRecord: computed.adjusterOfRecord,
+        letterDate: computed.letterDate,
+        determinationSummary: computed.determinationSummary,
+        deductible: computed.deductible,
+        coverageLimits: computed.coverageLimits,
+        perItemDetermination: computed.perItemDetermination,
+        rightsAndNextSteps: computed.rightsAndNextSteps,
+        enclosures: computed.enclosures,
+        // Frozen snapshot of the linked estimate's line items/depreciation
+        // schedule at creation time -- matches Phase 38's Invoice
+        // `servicesRendered` precedent, so a later revision of the ESTIMATE
+        // never silently changes an already-issued letter's own numbers.
+        estimateLineItemsSnapshot: estimate.lineItems,
+        estimateDepreciationScheduleSnapshot: estimate.depreciationSchedule || [],
+        revision: 0,
+        revisionHistory,
+        totals: computed.totals,
+        content,
+        modelUsed: 'none (deterministic — no AI, no AI-drafted coverage content)',
+        photos: [],
+        imagePaths: [],
+        imageCount: 0,
+        qualityScore: qualityCheck.score,
+        status: 'draft',
+        reviewedBy: null,
+        reviewedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        createdByEmail: req.user.email || null,
+      };
+      await db.collection('reports').doc(newId).set(newReport);
+      await db
+        .collection('users')
+        .doc(req.user.uid)
+        .update({ reportsThisMonth: reportsThisMonth + 1 });
+      await recordVersion(db.collection('reports').doc(newId), {
+        action: 'generated',
+        by: req.user.email || req.user.uid,
+        content,
+        note: `Coverage Determination Letter created, linked to report ${req.params.id} and Repair Estimate ${estimateId}.`,
+      });
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'coverage_letter_created',
+        targetType: 'report',
+        targetId: newId,
+        meta: { parentReportId: req.params.id, estimateId, determinationSummary: computed.determinationSummary },
+        req,
+      });
+      return res.status(201).json({ success: true, report: newReport });
+    } catch (err) {
+      console.error('Coverage determination letter creation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create coverage determination letter',
+        code: 'COVERAGE_LETTER_ERROR',
+      });
+    }
+  }
+);
+
+// PUT /api/reports/:id/coverage-letter — revises an EXISTING Coverage
+// Determination Letter (`:id` here is the letter's own id). Recomputes every
+// dollar figure from the new inputs against the FROZEN estimate snapshot
+// taken at creation time (never a live re-fetch of the estimate -- matches
+// Phase 38's Invoice revise precedent) and appends exactly one new
+// revisionHistory entry -- prior entries are never mutated. Requires
+// `canApprove` for the same reason creation does: revising a coverage
+// determination is itself making one.
+router.put('/:id/coverage-letter', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const existing = doc.data();
+    const access = getReportAccess(existing, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const isOwnerPath = access === 'owner';
+    if (isOwnerPath && !(hasCapability(req.user, 'canEditReports') && hasCapability(req.user, 'canApprove'))) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your team role does not have permission to do this (canEditReports + canApprove).',
+        code: 'TEAM_PERMISSION_DENIED',
+        capability: 'canApprove',
+      });
+    }
+    if (!isOwnerPath && access !== 'review') {
+      return res.status(403).json({
+        success: false,
+        error: 'You only have view or comment access to this report.',
+        code: 'SHARE_PERMISSION_DENIED',
+      });
+    }
+    if (existing.documentType !== 'CoverageDeterminationLetter') {
+      return res.status(400).json({
+        success: false,
+        error: 'This endpoint only revises a Coverage Determination Letter document',
+        code: 'NOT_A_COVERAGE_LETTER',
+      });
+    }
+
+    const computed = validateAndComputeCoverageLetter(
+      req.body,
+      existing.estimateLineItemsSnapshot,
+      existing.estimateDepreciationScheduleSnapshot
+    );
+    if (computed.error) {
+      return res
+        .status(400)
+        .json({ success: false, error: computed.error, code: 'VALIDATION_ERROR' });
+    }
+    if (!String(req.body.changeSummary || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'changeSummary is required when revising a coverage determination letter',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const nextRevision = (existing.revision || 0) + 1;
+    const now = new Date().toISOString();
+    const revisionHistory = [
+      ...(Array.isArray(existing.revisionHistory) ? existing.revisionHistory : []),
+      {
+        version: nextRevision,
+        date: now.slice(0, 10),
+        changeSummary: computed.changeSummary,
+        initialPayment: computed.totals.initialPayment,
+      },
+    ];
+    const content = buildCoverageLetterContent(
+      {
+        claimNumber: existing.claimNumber,
+        policyNumber: existing.policyNumber,
+        lossDate: existing.lossDate,
+        propertyAddress: existing.propertyAddress,
+      },
+      computed,
+      nextRevision,
+      revisionHistory
+    );
+    const qualityCheck = await checkQuality(content);
+
+    const updates = {
+      revision: nextRevision,
+      revisionHistory,
+      addressee: computed.addressee,
+      adjusterOfRecord: computed.adjusterOfRecord,
+      letterDate: computed.letterDate,
+      determinationSummary: computed.determinationSummary,
+      deductible: computed.deductible,
+      coverageLimits: computed.coverageLimits,
+      perItemDetermination: computed.perItemDetermination,
+      rightsAndNextSteps: computed.rightsAndNextSteps,
+      enclosures: computed.enclosures,
+      totals: computed.totals,
+      content,
+      qualityScore: qualityCheck.score,
+      // Golden Rule #3: any content change reopens a finalized letter as a
+      // draft, same as every other edit path in the app.
+      status: 'draft',
+      reviewedBy: null,
+      reviewedAt: null,
+      updatedAt: now,
+    };
+    await ref.update(updates);
+    await recordVersion(ref, {
+      action: 'edited',
+      by: req.user.email || req.user.uid,
+      content,
+      note: `Coverage Determination Letter revised to Rev. ${nextRevision}: ${computed.changeSummary}`,
+    });
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'coverage_letter_revised',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { revision: nextRevision },
+      req,
+    });
+    return res.json({ success: true, report: { ...existing, ...updates, id: req.params.id } });
+  } catch (err) {
+    console.error('Coverage determination letter revision error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to revise coverage determination letter',
+      code: 'COVERAGE_LETTER_ERROR',
+    });
   }
 });
 
@@ -3107,7 +4332,148 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     // Settings, or template) now suppresses the generic branding, not just
     // the template case.
     const resolvedCompanyName = wlConfig?.companyName || orgUserData.company || templateBranding?.companyName || null;
+    // Phase 31/32/33/34 (Liability/Commercial/Flood/Theft document types):
+    // cover title/subtitle only -- the generic "INSURANCE INSPECTION REPORT"
+    // title is unchanged for every other document type (including a future
+    // `claimType`/`lossType` this switch doesn't recognize yet). Flood and
+    // Theft are keyed off `lossType` and checked FIRST, since a lossType
+    // template takes precedence over any claimType template (approved
+    // decision, PHASES.md Phase 33, reused for Phase 34).
+    const reportTitle =
+      report.documentType === 'CoverageDeterminationLetter'
+        ? 'COVERAGE DETERMINATION LETTER'
+        : report.documentType === 'Invoice'
+        ? 'INVOICE'
+        : report.documentType === 'RepairEstimate'
+        ? 'REPAIR ESTIMATE'
+        : report.documentType === 'MoldSupplement'
+        ? 'MOLD ASSESSMENT — PRELIMINARY REPORT'
+        : report.lossType === 'Flood'
+        ? 'FLOOD (NFIP) INSPECTION REPORT'
+        : report.lossType === 'Theft'
+          ? 'THEFT / BURGLARY INSPECTION REPORT'
+          : report.claimType === 'Liability'
+            ? 'LIABILITY INVESTIGATION REPORT'
+            : report.claimType === 'Commercial'
+              ? 'COMMERCIAL PROPERTY INSPECTION REPORT'
+              : report.claimType === 'Auto'
+                ? 'VEHICLE DAMAGE INSPECTION REPORT'
+                : 'INSURANCE INSPECTION REPORT';
+    // Table of Contents labels for the PDF cover -- only overridden for
+    // Liability/Commercial/Flood/Theft (matches each's actual manifest);
+    // every other document type keeps generatePDF's own generic default.
+    const tocSections =
+      report.documentType === 'CoverageDeterminationLetter'
+        ? [
+            'Section 1: Applicable Policy Coverages',
+            'Section 2: Item-by-Item Coverage Rationale',
+            'Section 3: Items Pending Further Review',
+            'Section 4: Payment Calculation',
+            'Section 5: Understanding Depreciation',
+            'Section 6: Your Rights & Next Steps',
+            'Section 7: Enclosures',
+            'Section 8: Revision History',
+            'Section 9: Adjuster Review & Sign-Off',
+          ]
+        : report.documentType === 'Invoice'
+        ? [
+            'Section 1: Invoice Details',
+            'Section 2: Services Rendered',
+            'Section 3: Invoice Totals',
+            'Section 4: Payment History',
+            'Section 5: Change Order Log',
+            'Section 6: Revision History',
+            'Section 7: Payment Terms & Remit-To',
+            'Section 8: Adjuster Review & Sign-Off',
+          ]
+        : report.documentType === 'RepairEstimate'
+        ? [
+            'Section 1: Report Information',
+            'Section 2: Line Item Detail',
+            'Section 3: Depreciation Schedule',
+            'Section 4: Revision History',
+            'Section 5: Terms & Conditions',
+            'Section 6: Adjuster Review & Sign-Off',
+          ]
+        : report.documentType === 'MoldSupplement'
+        ? [
+            'Section 1: Report Information',
+            'Section 2: Insured Information',
+            'Section 3: Background — Related Claim',
+            'Section 4: Important Notice — Scope of This Report',
+            'Section 5: Visual Observations',
+            'Section 6: Recommended Next Steps',
+            'Section 7: Adjuster Review Checklist',
+            'Section 8: Conclusion & Adjuster Notes',
+            'Section 9: Photo Documentation',
+          ]
+        : report.lossType === 'Flood'
+        ? [
+            'Section 1: Insured & Policy Information',
+            'Section 2: Property & Flood Zone Data',
+            'Section 3: Flood Event Data',
+            'Section 4: Property Description',
+            'Section 5: Damage Assessment',
+            'Section 6: Scope of Work',
+            'Section 7: Adjuster Review Checklist',
+            'Section 8: Recommendations',
+            'Section 9: Conclusion',
+            'Section 10: Photo Documentation',
+          ]
+        : report.lossType === 'Theft'
+          ? [
+              'Section 1: Insured & Policy Information',
+              'Section 2: Property & Loss Information',
+              'Section 3: Incident Data',
+              'Section 4: Incident Summary',
+              'Section 5: Damage Assessment',
+              'Section 6: Scope of Work',
+              'Section 7: Adjuster Review Checklist',
+              'Section 8: Recommendations',
+              'Section 9: Conclusion',
+              'Section 10: Photo Documentation',
+            ]
+          : report.claimType === 'Liability'
+          ? [
+              'Section 1: Parties',
+              'Section 2: Incident Data',
+              'Section 3: Incident Summary',
+              'Section 4: Scene Observations',
+              'Section 5: Investigation Checklist',
+              'Section 6: Adjuster Review Checklist',
+              'Section 7: Recommendations',
+              'Section 8: Conclusion',
+              'Section 9: Photo Documentation',
+            ]
+          : report.claimType === 'Commercial'
+            ? [
+                'Section 1: Insured & Property Information',
+                'Section 2: Loss Description',
+                'Section 3: Damage Assessment',
+                'Section 4: Roof Moisture Scan',
+                'Section 5: Scope of Work',
+                'Section 6: Adjuster Review Checklist',
+                'Section 7: Recommendations',
+                'Section 8: Conclusion',
+                'Section 9: Photo Documentation',
+              ]
+            : report.claimType === 'Auto'
+              ? [
+                  'Section 1: Insured & Policy Information',
+                  'Section 2: Vehicle Information',
+                  'Section 3: Loss Information',
+                  'Section 4: Panel-by-Panel Damage Assessment',
+                  'Section 5: Loss Summary',
+                  'Section 5B: Repairability Assessment',
+                  'Section 6: Adjuster Review Checklist',
+                  'Section 7: Recommendations',
+                  'Section 8: Conclusion',
+                  'Section 9: Photo Documentation',
+                ]
+              : undefined;
     const pdfOptions = {
+      reportTitle,
+      ...(tocSections ? { tocSections } : {}),
       companyName: resolvedCompanyName || 'FlacronAI',
       primaryColor: wlConfig?.primaryColor ? hexToRgb(wlConfig.primaryColor) : [253, 68, 3],
       watermark: tier.watermark || draftWatermark,
@@ -3197,6 +4563,7 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
       ext = 'docx';
       contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       buffer = await generateDOCX(report, {
+        reportTitle: pdfOptions.reportTitle,
         companyName: pdfOptions.companyName,
         hideFlacronBranding: pdfOptions.hideFlacronBranding,
         watermark: pdfOptions.watermark,
@@ -3851,6 +5218,7 @@ router.post(
             reportId: req.params.id,
             uid: req.user.uid,
             claimNumber: doc.data().claimNumber || null,
+            claimType: doc.data().claimType || null,
             analyzableImages,
             existingImageAnalysis: doc.data().imageAnalysis || null,
           })

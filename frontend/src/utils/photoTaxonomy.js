@@ -23,6 +23,33 @@ export const PHOTO_LOCATIONS = [
   'Other/Unspecified',
 ];
 
+// Phase 35 (Vehicle/Auto Inspection Report): a distinct panel-selection
+// taxonomy used instead of PHOTO_LOCATIONS for a photo belonging to an Auto
+// claimType report -- mirrors backend/services/aiService.js's VEHICLE_PANELS
+// exactly.
+export const VEHICLE_PANELS = [
+  'Hood',
+  'Roof',
+  'Trunk/Tailgate',
+  'Front Bumper',
+  'Rear Bumper',
+  'Driver Front Door',
+  'Driver Rear Door',
+  'Passenger Front Door',
+  'Passenger Rear Door',
+  'Driver Front Fender',
+  'Passenger Front Fender',
+  'Driver Rear Quarter Panel',
+  'Passenger Rear Quarter Panel',
+  'Windshield',
+  'Rear Window',
+  'Side Mirror',
+  'Wheel/Rim',
+  'Undercarriage',
+  'Interior',
+  'Other/Unspecified',
+];
+
 export const PHOTO_CATEGORIES = [
   'Water Damage',
   'Fire/Smoke Damage',

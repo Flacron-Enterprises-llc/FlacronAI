@@ -58,6 +58,36 @@ const PHOTO_CATEGORIES = [
   'Other',
 ];
 
+// Phase 35 (Vehicle/Auto Inspection Report): a distinct panel-selection
+// taxonomy used in place of PHOTO_LOCATIONS whenever a photo belongs to an
+// Auto claimType report -- both for the vision model's own per-photo
+// classification (buildBatchPrompt) and for the human panel-tag override
+// (photos[].roomOrArea, same mechanism Phase 24 built for room/area tagging,
+// just a different option list + label for this claim type). Mirrored in
+// frontend/src/utils/photoTaxonomy.js.
+const VEHICLE_PANELS = [
+  'Hood',
+  'Roof',
+  'Trunk/Tailgate',
+  'Front Bumper',
+  'Rear Bumper',
+  'Driver Front Door',
+  'Driver Rear Door',
+  'Passenger Front Door',
+  'Passenger Rear Door',
+  'Driver Front Fender',
+  'Passenger Front Fender',
+  'Driver Rear Quarter Panel',
+  'Passenger Rear Quarter Panel',
+  'Windshield',
+  'Rear Window',
+  'Side Mirror',
+  'Wheel/Rim',
+  'Undercarriage',
+  'Interior',
+  'Other/Unspecified',
+];
+
 const buildReportPrompt = (reportData, imageAnalysis) => {
   const {
     claimNumber,
@@ -338,7 +368,1733 @@ const insertPhotoObservations = (content, imageAnalysis) => {
   return `${content.trimEnd()}\n\n${section}`;
 };
 
-const generateReport = async (reportData, imageAnalysis, photoCount = 0) => {
+// ── Phase 31: Liability Investigation Report ────────────────────────────────
+// Distinct architecture from the generic buildReportPrompt() above: static
+// sections (Parties, Incident Data, Adjuster Review Checklist) are built
+// directly from report fields with zero AI involvement, and every narrative
+// section is requested in ONE structured AI call (not one call per section),
+// then stitched together by a deterministic assembler. See PHASES.md Phase 31.
+const LIABILITY_NARRATIVE_KEYS = [
+  'incidentSummary',
+  'sceneObservations',
+  'investigationChecklist',
+  'recommendations',
+  'conclusion',
+];
+
+const LIABILITY_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make a final determination of liability, fault, negligence, cause of loss, coverage, or fraud -- instead, note these as items for the licensed adjuster to evaluate and confirm.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.`;
+
+const buildLiabilityNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    insuredName,
+    claimantName,
+    claimantContact,
+    propertyAddress,
+    lossDate,
+    lossType,
+    lossDescription,
+    damagesObserved,
+    recommendations,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Liability Investigation Report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations.
+
+${LIABILITY_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number: ${claimNumber}
+- Premises Owner / Insured: ${insuredName}
+- Claimant: ${claimantName || 'Not provided'}
+- Claimant Contact: ${claimantContact || 'Not provided'}
+- Premises Address: ${propertyAddress}
+- Date of Incident: ${lossDate}
+- Loss Type: ${lossType}
+- Incident Description (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages/Injuries Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Adjuster Recommendations: ${recommendations || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 5 keys, each a string, no other text/preamble/code fence:
+{
+  "incidentSummary": "A professional narrative summary of the reported incident -- what allegedly occurred, when, and where. Cautious language throughout; do not conclude fault.",
+  "sceneObservations": "A description of the premises/scene conditions and any visible damage/hazards, drawing on the image analysis if provided. Note apparent conditions the adjuster should verify.",
+  "investigationChecklist": "A markdown bullet list (lines starting with '- ') of specific investigation steps/questions the adjuster should pursue for this claim (e.g. witness statements, maintenance records, prior incident history, photos/measurements needed).",
+  "recommendations": "A markdown bullet list (lines starting with '- ') of recommended next steps for the adjuster, incorporating any adjuster-provided recommendations above.",
+  "conclusion": "A closing paragraph noting this is a preliminary draft for licensed-adjuster review, summarizing what remains to be confirmed, and explicitly stating that no liability or fault determination has been made. Leave a blank line for the reviewing adjuster's own sign-off; do not write a certification on their behalf."
+}`;
+};
+
+const parseLiabilityNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of LIABILITY_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const LIABILITY_KEY_LABELS = {
+  incidentSummary: 'Incident Summary',
+  sceneObservations: 'Scene Observations',
+  investigationChecklist: 'Investigation Checklist (markdown bullet list)',
+  recommendations: 'Recommendations (markdown bullet list)',
+  conclusion: 'Conclusion',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the
+// ensureLossSummary/ensureConclusion partial-failure repair pattern above, so
+// a single malformed key never blanks out the whole report.
+const repairLiabilityNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Liability Investigation Report draft. Generate ONLY the "${LIABILITY_KEY_LABELS[key]}" section for this claim.
+
+${LIABILITY_LANGUAGE_RULES}
+
+Claim Number: ${reportData.claimNumber}
+Premises Owner / Insured: ${reportData.insuredName}
+Claimant: ${reportData.claimantName || 'Not provided'}
+Premises Address: ${reportData.propertyAddress}
+Date of Incident: ${reportData.lossDate}
+Loss Type: ${reportData.lossType}
+${reportData.lossDescription ? `Incident Description: ${reportData.lossDescription}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (plain prose, or a markdown bullet list if this section is a list) -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 700, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Liability narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Zero-AI, deterministic -- renders exactly right every time from the report's
+// own fields.
+const buildLiabilityStaticSections = (reportData) => {
+  const { claimNumber, insuredName, claimantName, claimantContact, policyNumber, propertyAddress, lossDate, lossType, reportType } =
+    reportData;
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const parties = `## SECTION 1: PARTIES
+| Role | Details |
+|------|---------|
+| Premises Owner / Insured | ${insuredName} |
+| Claimant | ${claimantName || 'Not provided'} |
+| Claimant Contact | ${claimantContact || 'Not provided'} |
+| Policy Number | ${policyNumber || 'Not provided'} |
+| Claim Number | ${claimNumber} |`;
+
+  const incidentData = `## SECTION 2: INCIDENT DATA
+| Field | Value |
+|-------|-------|
+| Premises Address | ${propertyAddress} |
+| Date of Incident | ${lossDate} |
+| Loss Type | ${lossType} |
+| Report Type | ${reportType || 'Liability Investigation'} |
+| Report Date | ${reportDate} |`;
+
+  const checklist = `## SECTION 6: ADJUSTER REVIEW CHECKLIST
+- [ ] Confirm policy coverage and applicable exclusions
+- [ ] Review premises maintenance/inspection records
+- [ ] Confirm claimant statement and any witness statements
+- [ ] Verify photographic/documentary evidence of the condition alleged
+- [ ] Evaluate comparative/contributory fault considerations
+- [ ] Confirm any prior similar incidents at this location
+- [ ] Determine liability -- NOT determined by this draft
+- [ ] Confirm final reserve/exposure estimate`;
+
+  return { parties, incidentData, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative sections into
+// final markdown in manifest order, then hands off to the existing generic
+// PDF/DOCX renderers unchanged (same `##`/table/bullet markdown dialect).
+const assembleLiabilityReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# LIABILITY INVESTIGATION REPORT
+
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. This draft does not constitute a final determination of liability, fault, or coverage.
+
+${staticSections.parties}
+
+${staticSections.incidentData}
+
+## SECTION 3: INCIDENT SUMMARY
+${narrative.incidentSummary}
+
+## SECTION 4: SCENE OBSERVATIONS
+${narrative.sceneObservations}
+
+## SECTION 5: INVESTIGATION CHECKLIST
+${narrative.investigationChecklist}
+
+${staticSections.checklist}
+
+## SECTION 7: RECOMMENDATIONS
+${narrative.recommendations}
+
+## SECTION 8: CONCLUSION
+${narrative.conclusion}
+
+## SECTION 9: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection (mirrors analyzeImages'
+// `callVisionApi`) -- production callers never pass it, so this defaults to
+// the real Claude->watsonx fallback chain.
+const generateLiabilityReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildLiabilityNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Liability Investigation Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 4096, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Liability report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Liability narrative generated via ${modelUsed}`);
+
+  const narrative = parseLiabilityNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of LIABILITY_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Liability narrative missing "${key}" — repairing...`);
+    const repaired = await repairLiabilityNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = LIABILITY_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Liability report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildLiabilityStaticSections(reportData);
+  const content = assembleLiabilityReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+// ── Phase 32: Commercial Property Inspection Report ─────────────────────────
+// Reuses Phase 31's architecture exactly: static sections built directly from
+// report fields (zero AI), one structured AI call for every narrative
+// section, deterministic assembler. See PHASES.md Phase 32.
+const COMMERCIAL_NARRATIVE_KEYS = [
+  'lossDescription',
+  'damageAssessment',
+  'roofMoistureScan',
+  'scopeOfWork',
+  'recommendations',
+  'conclusion',
+];
+
+const COMMERCIAL_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make a final determination of cause of loss, coverage, liability, or final repair costs -- instead, note these as items for the reviewing adjuster (and, where applicable, a roof/structural consultant) to evaluate and confirm.
+- Business interruption and tenant-specific claims are OUT OF SCOPE for this structural report. Never offer a business-interruption coverage determination -- only note, if relevant, that BI should be evaluated separately if tenants are affected.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.`;
+
+const buildCommercialNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    insuredName,
+    propertyAddress,
+    lossDate,
+    lossType,
+    policyNumber,
+    propertyManagerName,
+    propertyManagerContact,
+    roofType,
+    roofAge,
+    tenantSuiteCount,
+    lossDescription,
+    damagesObserved,
+    recommendations,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Commercial Property Inspection Report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations.
+
+${COMMERCIAL_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number: ${claimNumber}
+- Insured: ${insuredName}
+- Property Address: ${propertyAddress}
+- Date of Loss: ${lossDate}
+- Loss Type: ${lossType}
+- Policy Number: ${policyNumber || 'Not provided'}
+- Property Manager Contact: ${propertyManagerName || 'Not provided'}${propertyManagerContact ? ` (${propertyManagerContact})` : ''}
+- Roof Type: ${roofType || 'Not provided'}
+- Roof Age: ${roofAge || 'Not provided'}
+- Number of Tenant Suites: ${tenantSuiteCount || 'Not provided'}
+- Loss Description (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Adjuster Recommendations: ${recommendations || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 6 keys, each a string, no other text/preamble/code fence:
+{
+  "lossDescription": "A professional narrative of the reported loss -- what was reported and by whom, when, and its visible extent. Mark this as reported/unverified where appropriate; cautious language throughout.",
+  "damageAssessment": "A markdown bullet list (lines starting with '- ') of visible-condition damage observations grouped by area (e.g. roof/membrane, rooftop HVAC/RTUs, exterior signage, interior/tenant suites), drawing on the image analysis if provided. Each item should note what a follow-up trade professional should confirm.",
+  "roofMoistureScan": "A paragraph or short markdown bullet list recommending a roof moisture scan (or explicitly noting one is not needed, if the described/observed damage doesn't involve the roof), framed as a drafting aid for scoping -- final repair-vs-replace determination rests with a licensed roof consultant.",
+  "scopeOfWork": "A markdown bullet list (lines starting with '- ') of draft scope-of-work items corresponding to the damage assessment above, explicitly marked as subject to adjuster/consultant revision. Do not include dollar figures or cost estimates.",
+  "recommendations": "A markdown bullet list (lines starting with '- ') of recommended next steps for the adjuster, incorporating any adjuster-provided recommendations above (e.g. moisture scan priority, tenant notification, consultant engagement thresholds).",
+  "conclusion": "A closing paragraph noting this is a preliminary draft for licensed-adjuster review, summarizing what remains to be confirmed, and explicitly stating that no coverage or final scope determination has been made. Leave a blank line for the reviewing adjuster's own sign-off; do not write a certification on their behalf."
+}`;
+};
+
+const parseCommercialNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of COMMERCIAL_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const COMMERCIAL_KEY_LABELS = {
+  lossDescription: 'Loss Description',
+  damageAssessment: 'Damage Assessment (markdown bullet list)',
+  roofMoistureScan: 'Roof Moisture Scan',
+  scopeOfWork: 'Scope of Work (markdown bullet list)',
+  recommendations: 'Recommendations (markdown bullet list)',
+  conclusion: 'Conclusion',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the Liability
+// pattern above, so a single malformed key never blanks out the whole report.
+const repairCommercialNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Commercial Property Inspection Report draft. Generate ONLY the "${COMMERCIAL_KEY_LABELS[key]}" section for this claim.
+
+${COMMERCIAL_LANGUAGE_RULES}
+
+Claim Number: ${reportData.claimNumber}
+Insured: ${reportData.insuredName}
+Property Address: ${reportData.propertyAddress}
+Date of Loss: ${reportData.lossDate}
+Loss Type: ${reportData.lossType}
+${reportData.roofType ? `Roof Type: ${reportData.roofType}` : ''}
+${reportData.lossDescription ? `Loss Description: ${reportData.lossDescription}` : ''}
+${reportData.damagesObserved ? `Damages Observed: ${reportData.damagesObserved}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (plain prose, or a markdown bullet list if this section is a list) -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 700, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Commercial narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Zero-AI, deterministic -- renders exactly right every time from the report's
+// own fields.
+const buildCommercialStaticSections = (reportData) => {
+  const {
+    claimNumber,
+    insuredName,
+    propertyAddress,
+    lossDate,
+    lossType,
+    policyNumber,
+    reportType,
+    propertyManagerName,
+    propertyManagerContact,
+    roofType,
+    roofAge,
+    tenantSuiteCount,
+  } = reportData;
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const propertyManager = propertyManagerName
+    ? `${propertyManagerName}${propertyManagerContact ? ` (${propertyManagerContact})` : ''}`
+    : 'Not provided';
+
+  const propertyInfo = `## SECTION 1: INSURED & PROPERTY INFORMATION
+| Field | Value |
+|-------|-------|
+| Claim Number | ${claimNumber} |
+| Named Insured | ${insuredName} |
+| Property Address | ${propertyAddress} |
+| Date of Loss | ${lossDate} |
+| Loss Type | ${lossType} |
+| Policy Number | ${policyNumber || 'Not provided'} |
+| Property Manager Contact | ${propertyManager} |
+| Number of Tenant Suites | ${tenantSuiteCount || 'Not provided'} |
+| Roof Type | ${roofType || 'Not provided'} |
+| Roof Age | ${roofAge || 'Not provided'} |
+| Report Type | ${reportType || 'Initial Inspection'} |
+| Report Date | ${reportDate} |`;
+
+  const checklist = `## SECTION 6: ADJUSTER REVIEW CHECKLIST
+- [ ] Schedule roof moisture scan or other recommended diagnostic testing, if applicable
+- [ ] Confirm rooftop HVAC/equipment evaluation with a qualified technician
+- [ ] Confirm structural evaluation of any damaged exterior signage or equipment
+- [ ] Notify all tenant suites and log any additional damage reports
+- [ ] Confirm business interruption coverage applicability if tenants are affected (outside the scope of this report)
+- [ ] Confirm scope and pricing with a qualified estimator or consultant
+- [ ] Coverage determination under the policy -- NOT determined by this draft`;
+
+  return { propertyInfo, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative sections into
+// final markdown in manifest order, then hands off to the existing generic
+// PDF/DOCX renderers unchanged.
+const assembleCommercialReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# COMMERCIAL PROPERTY INSPECTION REPORT
+
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. This draft does not constitute a final determination of cause, coverage, or scope. Business interruption and tenant-specific claims are outside the scope of this structural report.
+
+${staticSections.propertyInfo}
+
+## SECTION 2: LOSS DESCRIPTION — REPORTED (UNVERIFIED)
+${narrative.lossDescription}
+
+## SECTION 3: DAMAGE ASSESSMENT — VISIBLE CONDITIONS
+${narrative.damageAssessment}
+
+## SECTION 4: ROOF MOISTURE SCAN — RECOMMENDED SCOPE
+${narrative.roofMoistureScan}
+
+## SECTION 5: SCOPE OF WORK — DRAFT FOR REVIEW
+${narrative.scopeOfWork}
+
+${staticSections.checklist}
+
+## SECTION 7: RECOMMENDATIONS
+${narrative.recommendations}
+
+## SECTION 8: CONCLUSION
+${narrative.conclusion}
+
+## SECTION 9: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection, mirrors generateLiabilityReport.
+const generateCommercialReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildCommercialNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Commercial Property Inspection Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 4096, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Commercial report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Commercial narrative generated via ${modelUsed}`);
+
+  const narrative = parseCommercialNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of COMMERCIAL_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Commercial narrative missing "${key}" — repairing...`);
+    const repaired = await repairCommercialNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = COMMERCIAL_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Commercial report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildCommercialStaticSections(reportData);
+  const content = assembleCommercialReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+// ── Phase 33: Flood (NFIP) Inspection Report ─────────────────────────────────
+// Keyed off `lossType === 'Flood'` (not `claimType`, unlike Phases 31/32) --
+// the first document type selected by loss type instead of claim type, per
+// PHASES.md Phase 33's approved precedence rule: Flood lossType wins over any
+// claimType template, and a Commercial claim with a Flood loss keeps its
+// applicable commercial-property fields (folded into the static section
+// below rather than getting a wholly separate manifest). Reuses Phase 31's
+// static+single-structured-call architecture exactly.
+const FLOOD_NARRATIVE_KEYS = [
+  'propertyDescription',
+  'damageAssessment',
+  'scopeOfWork',
+  'recommendations',
+  'conclusion',
+];
+
+// Fixed, deterministic wording (never AI-generated) satisfying the client's
+// approved decision that this document must disclose it is a draft, does not
+// fully represent federal NFIP requirements, and is not an official coverage
+// or claim determination.
+const NFIP_FIXED_DISCLAIMER =
+  'This is an AI-drafted inspection document for a flood (NFIP) loss. It does not fully represent all National Flood Insurance Program (NFIP) federal claims-handling requirements and is not an official coverage or claim determination -- coverage and claim determinations under the NFIP policy are made by the carrier in accordance with the Standard Flood Insurance Policy and applicable federal guidance.';
+
+const FLOOD_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make a final determination of cause of loss, coverage, liability, fraud, or final repair costs -- instead, note these as items for the licensed adjuster to evaluate and confirm.
+- This is a flood (NFIP) loss. NFIP policies commonly limit or exclude basement/below-grade coverage -- flag any below-grade/crawlspace findings as coverage questions for the adjuster to confirm, never as a coverage determination.
+- Never represent this draft as satisfying all NFIP federal claims-handling requirements -- it does not, and must not claim to.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.`;
+
+const buildFloodNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    insuredName,
+    propertyAddress,
+    lossDate,
+    lossType,
+    policyNumber,
+    floodZone,
+    lowestFloorElevation,
+    baseFloodElevation,
+    floodEventSource,
+    reportedCrest,
+    claimType,
+    propertyManagerName,
+    roofType,
+    tenantSuiteCount,
+    propertyDetails,
+    lossDescription,
+    damagesObserved,
+    recommendations,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+  const commercialContext =
+    claimType === 'Commercial'
+      ? `\n- Property Manager Contact: ${propertyManagerName || 'Not provided'}\n- Roof Type: ${roofType || 'Not provided'}\n- Number of Tenant Suites: ${tenantSuiteCount || 'Not provided'}`
+      : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Flood (NFIP) Inspection Report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations.
+
+${FLOOD_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number: ${claimNumber}
+- Insured: ${insuredName}
+- Property Address: ${propertyAddress}
+- Date of Loss: ${lossDate}
+- Loss Type: ${lossType}
+- NFIP Policy Number: ${policyNumber || 'Not provided'}
+- Flood Zone: ${floodZone || 'Not provided'}
+- Lowest Floor Elevation: ${lowestFloorElevation || 'Not provided'}
+- Base Flood Elevation (BFE): ${baseFloodElevation || 'Not provided'}
+- Flood Event Data Source: ${floodEventSource || 'Not provided'}
+- Reported Crest: ${reportedCrest || 'Not provided'}${commercialContext}
+- Property Details (provided by adjuster): ${propertyDetails || 'None provided'}
+- Loss Description (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Adjuster Recommendations: ${recommendations || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 5 keys, each a string, no other text/preamble/code fence:
+{
+  "propertyDescription": "A professional description of the property (construction type, apparent age/size, and any provided flood-zone/elevation context), noting flood zone and elevation figures are as reported and should be confirmed against the elevation certificate and public records.",
+  "damageAssessment": "A markdown bullet list (lines starting with '- ') of visible-condition flood damage observations (e.g. foundation water lines, flooring/drywall, mechanical equipment, crawlspace/basement if applicable), drawing on the image analysis if provided. Each item should note what the adjuster should confirm on site.",
+  "scopeOfWork": "A markdown bullet list (lines starting with '- ') of draft mitigation/repair scope items corresponding to the damage assessment above (e.g. flood cut, structural drying, mechanical evaluation, extraction/sanitization), explicitly marked as subject to adjuster revision. Do not include dollar figures or cost estimates.",
+  "recommendations": "A markdown bullet list (lines starting with '- ') of recommended next steps for the adjuster, incorporating any adjuster-provided recommendations above (e.g. drying priority, NFIP below-grade coverage check, mechanical technician follow-up).",
+  "conclusion": "A closing paragraph noting this is a preliminary draft for licensed-adjuster review, summarizing what remains to be confirmed, and explicitly stating that no coverage or claim determination has been made under the NFIP policy. Leave a blank line for the reviewing adjuster's own sign-off; do not write a certification on their behalf."
+}`;
+};
+
+const parseFloodNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of FLOOD_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const FLOOD_KEY_LABELS = {
+  propertyDescription: 'Property Description',
+  damageAssessment: 'Damage Assessment (markdown bullet list)',
+  scopeOfWork: 'Scope of Work (markdown bullet list)',
+  recommendations: 'Recommendations (markdown bullet list)',
+  conclusion: 'Conclusion',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the
+// Liability/Commercial pattern above.
+const repairFloodNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Flood (NFIP) Inspection Report draft. Generate ONLY the "${FLOOD_KEY_LABELS[key]}" section for this claim.
+
+${FLOOD_LANGUAGE_RULES}
+
+Claim Number: ${reportData.claimNumber}
+Insured: ${reportData.insuredName}
+Property Address: ${reportData.propertyAddress}
+Date of Loss: ${reportData.lossDate}
+Loss Type: ${reportData.lossType}
+${reportData.floodZone ? `Flood Zone: ${reportData.floodZone}` : ''}
+${reportData.lossDescription ? `Loss Description: ${reportData.lossDescription}` : ''}
+${reportData.damagesObserved ? `Damages Observed: ${reportData.damagesObserved}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (plain prose, or a markdown bullet list if this section is a list) -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 700, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Flood narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Zero-AI, deterministic -- renders exactly right every time from the report's
+// own fields. When `claimType === 'Commercial'` (a Commercial claim with a
+// Flood loss type), the applicable commercial-property fields are folded
+// into the property/flood-zone table rather than producing a separate
+// manifest, per the approved Phase 33 precedence decision.
+const buildFloodStaticSections = (reportData) => {
+  const {
+    claimNumber,
+    insuredName,
+    insuredEmail,
+    propertyAddress,
+    lossDate,
+    lossType,
+    reportType,
+    policyNumber,
+    floodZone,
+    lowestFloorElevation,
+    baseFloodElevation,
+    floodEventSource,
+    reportedCrest,
+    claimType,
+    propertyManagerName,
+    propertyManagerContact,
+    roofType,
+    roofAge,
+    tenantSuiteCount,
+  } = reportData;
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const insuredInfo = `## SECTION 1: INSURED & POLICY INFORMATION
+| Field | Value |
+|-------|-------|
+| Claim Number | ${claimNumber} |
+| Named Insured | ${insuredName} |
+| Insured Contact | ${insuredEmail || 'Not provided'} |
+| NFIP Policy Number | ${policyNumber || 'Not provided'} |`;
+
+  const commercialRows =
+    claimType === 'Commercial'
+      ? `
+| Property Manager Contact | ${propertyManagerName ? `${propertyManagerName}${propertyManagerContact ? ` (${propertyManagerContact})` : ''}` : 'Not provided'} |
+| Roof Type | ${roofType || 'Not provided'} |
+| Roof Age | ${roofAge || 'Not provided'} |
+| Number of Tenant Suites | ${tenantSuiteCount || 'Not provided'} |`
+      : '';
+
+  const propertyFloodData = `## SECTION 2: PROPERTY & FLOOD ZONE DATA
+| Field | Value |
+|-------|-------|
+| Property Address | ${propertyAddress} |
+| Date of Loss | ${lossDate} |
+| Loss Type | ${lossType} |
+| Report Type | ${reportType || 'Initial Inspection'} |
+| Flood Zone | ${floodZone || 'Not provided'} |
+| Lowest Floor Elevation | ${lowestFloorElevation || 'Not provided'} |
+| Base Flood Elevation (BFE) | ${baseFloodElevation || 'Not provided'} |${commercialRows}
+| Report Date | ${reportDate} |`;
+
+  const floodEventData = `## SECTION 3: FLOOD EVENT DATA
+| Field | Value |
+|-------|-------|
+| Data Source | ${floodEventSource || 'Not provided'} |
+| Event Date | ${lossDate} |
+| Reported Crest | ${reportedCrest || 'Not provided'} |
+| Event Classification | ${lossType} |`;
+
+  const checklist = `## SECTION 7: ADJUSTER REVIEW CHECKLIST
+- [ ] Confirm elevation certificate and lowest floor elevation against public records
+- [ ] Cross-reference reported water height with flood event/crest data
+- [ ] Confirm NFIP below-grade/basement coverage limitations, if applicable
+- [ ] Mechanical equipment technician evaluation, if applicable
+- [ ] Track daily moisture readings until dry standard is met
+- [ ] Confirm final scope and pricing with a qualified estimator or contractor
+- [ ] Coverage determination under the NFIP policy -- NOT determined by this draft`;
+
+  return { insuredInfo, propertyFloodData, floodEventData, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative sections into
+// final markdown in manifest order, then hands off to the existing generic
+// PDF/DOCX renderers unchanged.
+const assembleFloodReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# FLOOD (NFIP) INSPECTION REPORT
+
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. ${NFIP_FIXED_DISCLAIMER}
+
+${staticSections.insuredInfo}
+
+${staticSections.propertyFloodData}
+
+_Elevation and flood-zone figures above are as reported and have not been independently verified. Confirm against the elevation certificate and public records before this report is finalized._
+
+${staticSections.floodEventData}
+
+_Flood event data, where provided, is intended to support -- not establish -- the reported cause of loss. It does not, by itself, establish the height of water inside the structure or the extent of damage._
+
+## SECTION 4: PROPERTY DESCRIPTION
+${narrative.propertyDescription}
+
+## SECTION 5: DAMAGE ASSESSMENT — VISIBLE CONDITIONS
+${narrative.damageAssessment}
+
+## SECTION 6: SCOPE OF WORK — DRAFT FOR REVIEW
+${narrative.scopeOfWork}
+
+${staticSections.checklist}
+
+## SECTION 8: RECOMMENDATIONS
+${narrative.recommendations}
+
+## SECTION 9: CONCLUSION
+${narrative.conclusion}
+
+## SECTION 10: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection, mirrors generateLiabilityReport.
+const generateFloodReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildFloodNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Flood (NFIP) Inspection Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 4096, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Flood report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Flood narrative generated via ${modelUsed}`);
+
+  const narrative = parseFloodNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of FLOOD_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Flood narrative missing "${key}" — repairing...`);
+    const repaired = await repairFloodNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = FLOOD_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Flood report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildFloodStaticSections(reportData);
+  const content = assembleFloodReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+// ── Phase 34: Theft/Burglary Inspection Report ────────────────────────────────
+// Keyed off `lossType === 'Theft'`, same precedence pattern as Phase 33's
+// Flood manifest -- lossType wins over any claimType template. Scoped to
+// visible structural entry-point damage only: contents/valuation/theft
+// determination are explicitly out of scope, backstopped by a fixed,
+// deterministic (never AI-generated) disclaimer. Reuses Phase 31's
+// static+single-structured-call architecture exactly.
+const THEFT_NARRATIVE_KEYS = [
+  'incidentSummary',
+  'damageAssessment',
+  'scopeOfWork',
+  'recommendations',
+  'conclusion',
+];
+
+// Fixed, deterministic wording (never AI-generated): the AI must never claim
+// what items existed, were stolen, or their value -- that is established
+// solely by the insured's contents inventory and the police report.
+const THEFT_FIXED_DISCLAIMER =
+  "This is an AI-drafted inspection document for a theft/burglary loss. It documents visible structural entry-point damage only. Whether specific items existed prior to the loss, were stolen, and their value are not determined by this draft -- those are established solely by the insured's itemized contents inventory and the police incident report, as confirmed by the reviewing adjuster.";
+
+const THEFT_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- Do NOT make a final determination of cause of loss, coverage, liability, fraud, or final repair costs -- instead, note these as items for the licensed adjuster to evaluate and confirm.
+- This is a theft/burglary loss. NEVER state or imply which items were present before the loss, were stolen, or their value -- that is established only by the insured's itemized contents inventory and the police incident report, never by this draft.
+- Scope is limited to visible structural entry-point damage (doors, windows, locks, frames) and general visible disturbance. Contents/inventory loss and valuation are explicitly out of scope and handled under a separate personal property claim process.
+- Only describe what is reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.`;
+
+const buildTheftNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    insuredName,
+    propertyAddress,
+    lossDate,
+    lossType,
+    policyNumber,
+    policeIncidentNumber,
+    pointsOfEntry,
+    propertyDetails,
+    lossDescription,
+    damagesObserved,
+    recommendations,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Theft/Burglary Inspection Report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations.
+
+${THEFT_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number: ${claimNumber}
+- Insured: ${insuredName}
+- Property Address: ${propertyAddress}
+- Date of Loss: ${lossDate}
+- Loss Type: ${lossType}
+- Policy Number: ${policyNumber || 'Not provided'}
+- Police Incident Number: ${policeIncidentNumber || 'Not provided'}
+- Points of Entry Reported: ${pointsOfEntry || 'Not provided'}
+- Property Details (provided by adjuster): ${propertyDetails || 'None provided'}
+- Loss Description (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Adjuster Recommendations: ${recommendations || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 5 keys, each a string, no other text/preamble/code fence:
+{
+  "incidentSummary": "A paragraph summarizing the reported incident as relayed by the insured/adjuster (e.g. reported points of entry, police report filing status), explicitly framed as reported and unverified -- note that item-level inventory, police findings, and coverage determinations are outside the scope of this report.",
+  "damageAssessment": "A markdown bullet list (lines starting with '- ') of visible-condition STRUCTURAL entry-point damage observations only (e.g. door/window/lock/frame damage, general visible disturbance), drawing on the image analysis if provided. Never mention specific missing/stolen items or their value.",
+  "scopeOfWork": "A markdown bullet list (lines starting with '- ') of draft structural repair scope items corresponding to the damage assessment above (e.g. glass replacement, door frame repair, re-keying), explicitly marked as subject to adjuster revision. Do not include dollar figures or cost estimates, and do not include contents replacement.",
+  "recommendations": "A markdown bullet list (lines starting with '- ') of recommended next steps for the adjuster (e.g. confirm police report on file, request itemized contents inventory, consider a follow-up site visit), incorporating any adjuster-provided recommendations above.",
+  "conclusion": "A closing paragraph noting this is a preliminary draft for licensed-adjuster review, summarizing what remains to be confirmed, and explicitly stating that contents valuation and any theft/coverage determination are outside the scope of this report. Leave a blank line for the reviewing adjuster's own sign-off; do not write a certification on their behalf."
+}`;
+};
+
+const parseTheftNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of THEFT_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const THEFT_KEY_LABELS = {
+  incidentSummary: 'Incident Summary — Reported (Unverified)',
+  damageAssessment: 'Damage Assessment (markdown bullet list)',
+  scopeOfWork: 'Scope of Work (markdown bullet list)',
+  recommendations: 'Recommendations (markdown bullet list)',
+  conclusion: 'Conclusion',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the
+// Liability/Commercial/Flood pattern above.
+const repairTheftNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Theft/Burglary Inspection Report draft. Generate ONLY the "${THEFT_KEY_LABELS[key]}" section for this claim.
+
+${THEFT_LANGUAGE_RULES}
+
+Claim Number: ${reportData.claimNumber}
+Insured: ${reportData.insuredName}
+Property Address: ${reportData.propertyAddress}
+Date of Loss: ${reportData.lossDate}
+Loss Type: ${reportData.lossType}
+${reportData.pointsOfEntry ? `Points of Entry Reported: ${reportData.pointsOfEntry}` : ''}
+${reportData.lossDescription ? `Loss Description: ${reportData.lossDescription}` : ''}
+${reportData.damagesObserved ? `Damages Observed: ${reportData.damagesObserved}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (plain prose, or a markdown bullet list if this section is a list) -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 700, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Theft narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Zero-AI, deterministic -- renders exactly right every time from the report's
+// own fields.
+const buildTheftStaticSections = (reportData) => {
+  const {
+    claimNumber,
+    insuredName,
+    insuredEmail,
+    propertyAddress,
+    lossDate,
+    lossType,
+    reportType,
+    policyNumber,
+    policeIncidentNumber,
+    pointsOfEntry,
+  } = reportData;
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const insuredInfo = `## SECTION 1: INSURED & POLICY INFORMATION
+| Field | Value |
+|-------|-------|
+| Claim Number | ${claimNumber} |
+| Named Insured | ${insuredName} |
+| Insured Contact | ${insuredEmail || 'Not provided'} |
+| Policy Number | ${policyNumber || 'Not provided'} |`;
+
+  const propertyLossInfo = `## SECTION 2: PROPERTY & LOSS INFORMATION
+| Field | Value |
+|-------|-------|
+| Property Address | ${propertyAddress} |
+| Date of Loss | ${lossDate} |
+| Loss Type | ${lossType} |
+| Report Type | ${reportType || 'Initial Inspection'} |
+| Report Date | ${reportDate} |`;
+
+  const incidentData = `## SECTION 3: INCIDENT DATA — POLICE REPORT (REPORTED, UNVERIFIED)
+| Field | Value |
+|-------|-------|
+| Police Incident Number | ${policeIncidentNumber || 'Not provided'} |
+| Points of Entry Reported | ${pointsOfEntry || 'Not provided'} |
+| Date of Loss | ${lossDate} |`;
+
+  const checklist = `## SECTION 7: ADJUSTER REVIEW CHECKLIST
+- [ ] Confirm police incident report is on file
+- [ ] Request itemized contents inventory from the insured
+- [ ] Confirm all reported entry points are documented and addressed in scope
+- [ ] Confirm current local pricing before finalizing any repair scope
+- [ ] Coverage and theft determination under the policy -- NOT determined by this draft`;
+
+  return { insuredInfo, propertyLossInfo, incidentData, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative sections into
+// final markdown in manifest order, then hands off to the existing generic
+// PDF/DOCX renderers unchanged.
+const assembleTheftReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# THEFT / BURGLARY INSPECTION REPORT
+
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. ${THEFT_FIXED_DISCLAIMER}
+
+${staticSections.insuredInfo}
+
+${staticSections.propertyLossInfo}
+
+${staticSections.incidentData}
+
+_Incident data above is as reported by the insured and/or a third-party police report and has not been independently verified by FlacronAI. It does not, by itself, establish the value or existence of any items reported missing._
+
+## SECTION 4: INCIDENT SUMMARY — REPORTED (UNVERIFIED)
+${narrative.incidentSummary}
+
+## SECTION 5: DAMAGE ASSESSMENT — VISIBLE CONDITIONS
+${narrative.damageAssessment}
+
+This draft documents structural entry-point damage only. Contents loss and valuation are tracked separately in the insured's contents inventory, not in this report.
+
+## SECTION 6: SCOPE OF WORK — DRAFT FOR REVIEW
+${narrative.scopeOfWork}
+
+${staticSections.checklist}
+
+## SECTION 8: RECOMMENDATIONS
+${narrative.recommendations}
+
+## SECTION 9: CONCLUSION
+${narrative.conclusion}
+
+## SECTION 10: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection, mirrors generateFloodReport.
+const generateTheftReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildTheftNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Theft/Burglary Inspection Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 4096, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Theft report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Theft narrative generated via ${modelUsed}`);
+
+  const narrative = parseTheftNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of THEFT_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Theft narrative missing "${key}" — repairing...`);
+    const repaired = await repairTheftNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = THEFT_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Theft report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildTheftStaticSections(reportData);
+  const content = assembleTheftReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+// ── Phase 35: Vehicle/Auto Inspection Report ────────────────────────────────
+// Keyed off `claimType === 'Auto'`, checked after the Flood/Theft lossType
+// precedence rules below (same precedence position as Liability/Commercial).
+// The panel-by-panel damage assessment (Section 4) is DETERMINISTIC, not
+// AI-authored -- it's assembled directly from each photo's own reviewed
+// panel tag + observation (imageAnalysis.damages, see
+// buildEffectiveImageAnalysis's roomOrArea-priority change above), the same
+// "quote the human-reviewed data, don't ask the model to restate it"
+// reasoning as buildPhotoObservationsSection. Only the narrative sections
+// (loss summary, repairability notes, recommendations, conclusion) go
+// through the single structured AI call, mirroring Phase 31's architecture.
+// Final repair costs are explicitly out of scope for this document (Golden
+// Rule #2) -- no cost estimate section is generated; that is deferred to a
+// dedicated, deterministic estimate feature (see PHASES.md Phase 37).
+const VEHICLE_NARRATIVE_KEYS = ['lossSummary', 'repairabilityNotes', 'recommendations', 'conclusion'];
+
+const VEHICLE_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "subject to confirmation", "pending in-person assessment". Never state conclusions as established fact.
+- NEVER make a final determination of repairability, total-loss status, cause of loss, coverage, liability, or final repair costs -- these are determined only by a licensed auto damage appraiser and the carrier's total-loss evaluation process. Frame PDR/repair/replacement language as preliminary and subject to confirmation (e.g. "may be a PDR candidate, subject to in-person confirmation" rather than "is repairable").
+- Do NOT include any dollar figures, cost ranges, or cost estimates anywhere in this document -- cost estimation is explicitly out of scope and is handled by a separate repair-estimate process.
+- Only describe panels/conditions actually reported or visible in the provided details/photos. Do not invent damage, parts, or panels not supported by the inputs.`;
+
+const buildVehicleNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    insuredName,
+    propertyAddress,
+    lossDate,
+    lossType,
+    policyNumber,
+    vin,
+    vehicleMakeModelYear,
+    odometer,
+    licensePlate,
+    vehicleColor,
+    propertyDetails,
+    lossDescription,
+    damagesObserved,
+    recommendations,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS (per-photo, reviewed):\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Vehicle Damage Inspection Report for their review, editing, and approval. You are NOT the adjuster and you do NOT make final determinations.
+
+${VEHICLE_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number: ${claimNumber}
+- Insured: ${insuredName}
+- Inspection Location: ${propertyAddress}
+- Date of Loss: ${lossDate}
+- Loss Type: ${lossType}
+- Policy Number: ${policyNumber || 'Not provided'}
+- Vehicle (Year/Make/Model): ${vehicleMakeModelYear || 'Not provided'}
+- VIN: ${vin || 'Not provided'}
+- License Plate: ${licensePlate || 'Not provided'}
+- Vehicle Color: ${vehicleColor || 'Not provided'}
+- Odometer at Inspection: ${odometer || 'Not provided'}
+- Vehicle Condition Notes (provided by adjuster): ${propertyDetails || 'None provided'}
+- Loss Description (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Adjuster Recommendations: ${recommendations || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 4 keys, each a string, no other text/preamble/code fence:
+{
+  "lossSummary": "A paragraph summarizing the reported loss (date, loss type, how/where it reportedly occurred per the adjuster's description), explicitly framed as reported and unverified where it relies on the insured's/adjuster's account rather than the photos.",
+  "repairabilityNotes": "A markdown bullet list (lines starting with '- ') of preliminary, panel-referenced repairability notes drawn from the per-photo observations above (e.g. noting a panel may be a PDR candidate, or that a component's damage typically requires replacement) -- every note must be qualified as preliminary/subject to confirmation by a licensed auto damage appraiser or applicable technician, and must NOT include dollar figures.",
+  "recommendations": "A markdown bullet list (lines starting with '- ') of recommended next steps for the adjuster (e.g. obtain a complete photo set of undocumented panels, route specific panels to a PDR-certified shop or glass technician for confirmation, confirm ADAS recalibration needs if applicable), incorporating any adjuster-provided recommendations above.",
+  "conclusion": "A closing paragraph noting this is a preliminary draft for licensed-adjuster review, summarizing what remains to be confirmed, and explicitly stating that repairability, total-loss status, coverage, and final repair costs are outside the scope of this draft. Leave the sign-off to the reviewing adjuster; do not write a certification on their behalf."
+}`;
+};
+
+const parseVehicleNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of VEHICLE_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const VEHICLE_KEY_LABELS = {
+  lossSummary: 'Loss Summary — Reported (Unverified)',
+  repairabilityNotes: 'Repairability Assessment — Preliminary (markdown bullet list)',
+  recommendations: 'Recommendations (markdown bullet list)',
+  conclusion: 'Conclusion',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the
+// Liability/Commercial/Flood/Theft pattern above.
+const repairVehicleNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Vehicle Damage Inspection Report draft. Generate ONLY the "${VEHICLE_KEY_LABELS[key]}" section for this claim.
+
+${VEHICLE_LANGUAGE_RULES}
+
+Claim Number: ${reportData.claimNumber}
+Insured: ${reportData.insuredName}
+Vehicle (Year/Make/Model): ${reportData.vehicleMakeModelYear || 'Not provided'}
+Date of Loss: ${reportData.lossDate}
+Loss Type: ${reportData.lossType}
+${reportData.lossDescription ? `Loss Description: ${reportData.lossDescription}` : ''}
+${reportData.damagesObserved ? `Damages Observed: ${reportData.damagesObserved}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (plain prose, or a markdown bullet list if this section is a list) -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 700, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Vehicle narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Deterministic -- groups each reviewed photo's panel tag + observation into
+// a per-panel bullet list, and lists any VEHICLE_PANELS entries no photo was
+// tagged with, exactly mirroring the sample report's Section 4 structure.
+// Never AI-authored, so it can never drift into stating a repairability/
+// total-loss conclusion (that risk is confined to repairabilityNotes above,
+// which is explicitly qualified language).
+const buildVehiclePanelSection = (imageAnalysis) => {
+  const damages = imageAnalysis?.damages || [];
+  if (!damages.length) return '_No panel-tagged photo observations are available for this draft._';
+
+  const byPanel = new Map();
+  for (const d of damages) {
+    const panel = (d.area || 'Other/Unspecified').trim() || 'Other/Unspecified';
+    if (!byPanel.has(panel)) byPanel.set(panel, []);
+    if (d.description) byPanel.get(panel).push(d.description);
+  }
+  const lines = [...byPanel.entries()].map(
+    ([panel, observations]) => `- **${panel}:** ${observations.join(' ') || 'Visible condition noted; see photo documentation.'}`
+  );
+  const documented = new Set(byPanel.keys());
+  const undocumented = VEHICLE_PANELS.filter((p) => p !== 'Other/Unspecified' && !documented.has(p));
+  if (undocumented.length) {
+    lines.push(
+      `- **Not yet documented:** ${undocumented.join(', ')} — not included in this draft's photo set; additional photos are recommended before finalizing scope.`
+    );
+  }
+  return lines.join('\n');
+};
+
+const buildVehicleStaticSections = (reportData) => {
+  const {
+    claimNumber,
+    insuredName,
+    insuredEmail,
+    policyNumber,
+    insuranceCompany,
+    propertyAddress,
+    lossDate,
+    lossType,
+    reportType,
+    vin,
+    vehicleMakeModelYear,
+    odometer,
+    licensePlate,
+    vehicleColor,
+  } = reportData;
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const insuredInfo = `## SECTION 1: INSURED & POLICY INFORMATION
+| Field | Value |
+|-------|-------|
+| Claim Number | ${claimNumber} |
+| Named Insured | ${insuredName} |
+| Insured Contact | ${insuredEmail || 'Not provided'} |
+| Insurance Company | ${insuranceCompany || 'Not provided'} |
+| Policy Number | ${policyNumber || 'Not provided'} |`;
+
+  const vehicleInfo = `## SECTION 2: VEHICLE INFORMATION
+| Field | Value |
+|-------|-------|
+| Vehicle (Year/Make/Model) | ${vehicleMakeModelYear || 'Not provided'} |
+| VIN | ${vin || 'Not provided'} |
+| License Plate | ${licensePlate || 'Not provided'} |
+| Color | ${vehicleColor || 'Not provided'} |
+| Odometer at Inspection | ${odometer || 'Not provided'} |
+| Inspection Location | ${propertyAddress || 'Not provided'} |`;
+
+  const lossInfo = `## SECTION 3: LOSS INFORMATION
+| Field | Value |
+|-------|-------|
+| Date of Loss | ${lossDate} |
+| Loss Type | ${lossType} |
+| Report Type | ${reportType || 'Initial Inspection'} |
+| Report Date | ${reportDate} |`;
+
+  const checklist = `## SECTION 6: ADJUSTER REVIEW CHECKLIST
+- [ ] Obtain a complete photo set of any panels listed as "not yet documented" in Section 4
+- [ ] Route panels noted as possible PDR/replacement candidates to a certified body shop or auto glass technician for confirmation
+- [ ] Confirm ADAS (driver-assistance camera/sensor) recalibration requirements where applicable
+- [ ] Obtain a licensed appraiser's repair estimate using current local labor/parts pricing -- NOT provided by this draft
+- [ ] Evaluate total-loss threshold once a full estimate is complete -- NOT determined by this draft
+- [ ] Coverage determination under the policy -- NOT determined by this draft`;
+
+  return { insuredInfo, vehicleInfo, lossInfo, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative + the
+// deterministic panel-damage section into final markdown in manifest order,
+// then hands off to the existing generic PDF/DOCX renderers unchanged.
+const assembleVehicleReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# VEHICLE DAMAGE INSPECTION REPORT
+
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. This is an AI-drafted inspection document for a vehicle damage claim. It documents visible panel conditions only, based on the photos provided. This draft does not determine repairability, total-loss status, coverage, or final repair costs -- those determinations are made by a licensed auto damage appraiser and the carrier's total-loss evaluation process.
+
+${staticSections.insuredInfo}
+
+${staticSections.vehicleInfo}
+
+${staticSections.lossInfo}
+
+## SECTION 4: PANEL-BY-PANEL DAMAGE ASSESSMENT
+${buildVehiclePanelSection(imageAnalysis)}
+
+This is a partial panel assessment based on the photos provided and their reviewed panel tags. A complete vehicle inspection typically covers all exterior panels, the roof, and glass.
+
+## SECTION 5: LOSS SUMMARY — REPORTED (UNVERIFIED)
+${narrative.lossSummary}
+
+## SECTION 5B: REPAIRABILITY ASSESSMENT — PRELIMINARY
+${narrative.repairabilityNotes}
+
+Repairability determinations require an in-person or high-resolution photo appraisal by a licensed auto damage appraiser. This section is a drafting aid, not a final determination.
+
+${staticSections.checklist}
+
+## SECTION 7: RECOMMENDATIONS
+${narrative.recommendations}
+
+## SECTION 8: CONCLUSION
+${narrative.conclusion}
+
+## SECTION 9: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection, mirrors generateTheftReport.
+const generateVehicleReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildVehicleNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Vehicle Damage Inspection Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 4096, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Vehicle report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Vehicle narrative generated via ${modelUsed}`);
+
+  const narrative = parseVehicleNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of VEHICLE_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Vehicle narrative missing "${key}" — repairing...`);
+    const repaired = await repairVehicleNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = VEHICLE_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Vehicle report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildVehicleStaticSections(reportData);
+  const content = assembleVehicleReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+// ── Phase 36: Mold Assessment (Supplemental) Report ─────────────────────────
+// Keyed off `documentType === 'MoldSupplement'`, checked BEFORE the
+// lossType/claimType checks below since it is an orthogonal document-type
+// flag, not a loss-type/claim-type template -- a supplement is generated
+// from an ALREADY-EXISTING report (see reports.js POST /:id/mold-supplement),
+// reusing that report's claim/insured/property/reviewed-photo data rather
+// than being entered fresh. Smallest AI narrative surface of any document
+// type: exactly 2 slots (Visual Observations, Recommended Next Steps). The
+// "NOT a certified mold assessment" scope notice is fixed, deterministic
+// code -- never AI-generated -- and forbids species identification, air
+// quality/health-risk conclusions, remediation protocols, coverage,
+// liability, and cost determinations (Golden Rule #2).
+const MOLD_NARRATIVE_KEYS = ['visualObservations', 'recommendedNextSteps'];
+
+// Fixed, deterministic wording (never AI-generated, never paraphrased) --
+// exported so its exact-match test can assert it appears verbatim in every
+// generated Mold supplement regardless of what the AI narrative says.
+const MOLD_SCOPE_NOTICE = `## SECTION 4: IMPORTANT NOTICE — SCOPE OF THIS REPORT
+
+**This is a preliminary AI-drafted visual observation. It is NOT a certified mold assessment.** It is intended to flag the need for professional evaluation and to help the adjuster route the claim appropriately. It does NOT include:
+
+- Species identification (e.g., Stachybotrys, Aspergillus, Penicillium) — visual appearance alone cannot determine mold species.
+- Air quality or surface sampling results, or any determination of health risk or habitability.
+- A certified remediation protocol or clearance testing plan.
+- Any determination of coverage, liability, or repair/remediation cost.
+
+These determinations require a certified mold assessor licensed in the applicable jurisdiction, and/or the reviewing adjuster and carrier. This report's role is limited to flagging visible conditions for professional follow-up.`;
+
+const MOLD_AI_DISCLOSURE =
+  "AI DISCLOSURE: This report was generated by the Flacron Engine, FlacronAI's automated drafting engine. It is a preliminary visual observation, not a certified mold assessment. Every AI-drafted observation in this document is subject to review by a licensed adjuster and a certified mold assessor before any remediation is authorized.";
+
+const MOLD_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
+- Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
+- NEVER identify or suggest a mold species (e.g. Stachybotrys, Aspergillus, Penicillium) -- visual appearance alone cannot determine species; that requires a certified mold assessor.
+- NEVER state or imply a health risk, habitability determination, or air quality/surface sampling result.
+- NEVER propose a certified remediation protocol or clearance testing plan -- only flag the need for a certified mold assessor's involvement.
+- Do NOT make a determination of coverage, liability, or any repair/remediation cost -- these are outside the scope of this draft.
+- Scope is limited to visible surface conditions (e.g. discoloration, staining, visible growth pattern) and general observations (e.g. moisture readings, HVAC involvement) reported or visible in the provided details/photos. Do not invent facts not supported by the inputs.`;
+
+const buildMoldNarrativePrompt = (reportData, imageAnalysis) => {
+  const {
+    claimNumber,
+    relatedClaimId,
+    insuredName,
+    propertyAddress,
+    dateOfDiscovery,
+    lossDescription,
+    damagesObserved,
+    additionalNotes,
+  } = reportData;
+  const imageSection = imageAnalysis
+    ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
+    : '';
+
+  return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Mold Assessment — Preliminary Report for their review, editing, and approval. You are NOT the adjuster and you are NOT a certified mold assessor. You do NOT make final determinations.
+
+${MOLD_LANGUAGE_RULES}
+
+CLAIM DETAILS:
+- Claim Number (this supplement): ${claimNumber}
+- Related Claim: ${relatedClaimId || 'Not provided'}
+- Insured: ${insuredName}
+- Property Address: ${propertyAddress}
+- Date of Discovery: ${dateOfDiscovery}
+- Related Claim Context (provided by adjuster): ${lossDescription || 'None provided'}
+- Damages Previously Observed (provided by adjuster): ${damagesObserved || 'None provided'}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+
+Return ONLY a JSON object with exactly these 2 keys, each a string, no other text/preamble/code fence:
+{
+  "visualObservations": "A markdown bullet list (lines starting with '- ') of visible-condition observations only (e.g. discoloration/staining/growth pattern on a surface, elevated moisture reading, HVAC involvement), drawing on the image analysis if provided. Each item must use cautious language and end with an explicit note that species identification and air quality testing require a certified mold assessor, not this report. Never identify a species, never state a health risk, never state a certified finding.",
+  "recommendedNextSteps": "A markdown bullet list (lines starting with '- ') of recommended precautionary next steps for the adjuster (e.g. engage a certified mold assessor, precautionary HVAC shutdown pending technician confirmation, do not disturb the area pending sampling, coordinate with the related claim). These are precautionary AI-drafted suggestions, not a certified remediation protocol -- never include a remediation scope, cost figure, or coverage/liability statement."
+}`;
+};
+
+const parseMoldNarrative = (text) => {
+  try {
+    const jsonMatch = String(text || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]);
+    const out = {};
+    for (const key of MOLD_NARRATIVE_KEYS) {
+      if (typeof parsed[key] === 'string' && parsed[key].trim()) out[key] = parsed[key].trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const MOLD_KEY_LABELS = {
+  visualObservations: 'Visual Observations (markdown bullet list)',
+  recommendedNextSteps: 'Recommended Next Steps (markdown bullet list)',
+};
+
+// One repair retry, scoped to just the missing key -- mirrors the
+// Liability/Commercial/Flood/Theft/Vehicle pattern above.
+const repairMoldNarrativeKey = async (key, reportData, imageAnalysis, generateFn) => {
+  const prompt = `You are assisting a licensed adjuster with a Mold Assessment — Preliminary Report draft. Generate ONLY the "${MOLD_KEY_LABELS[key]}" section for this claim.
+
+${MOLD_LANGUAGE_RULES}
+
+Claim Number (this supplement): ${reportData.claimNumber}
+Related Claim: ${reportData.relatedClaimId || 'Not provided'}
+Insured: ${reportData.insuredName}
+Property Address: ${reportData.propertyAddress}
+Date of Discovery: ${reportData.dateOfDiscovery}
+${reportData.damagesObserved ? `Damages Previously Observed: ${reportData.damagesObserved}` : ''}
+${imageAnalysis ? `Image Analysis: ${JSON.stringify(imageAnalysis)}` : ''}
+
+Return ONLY the section text (a markdown bullet list, lines starting with '- ') -- no heading, no preamble, no JSON, no code fence.`;
+  try {
+    const { text } = await generateFn(prompt, { maxTokens: 500, temperature: 0.3 });
+    const stripped = stripCodeFence(text);
+    return stripped || null;
+  } catch (err) {
+    console.warn(`Mold narrative repair failed for "${key}":`, err.message);
+    return null;
+  }
+};
+
+// Zero-AI, deterministic -- renders exactly right every time from the
+// supplement's own fields (which are themselves copied from the linked
+// report at creation time, see reports.js).
+const buildMoldStaticSections = (reportData) => {
+  const {
+    claimNumber,
+    relatedClaimId,
+    insuredName,
+    insuredEmail,
+    propertyAddress,
+    dateOfDiscovery,
+    policyNumber,
+  } = reportData;
+  const relatedClaim = relatedClaimId || 'Not provided';
+  const reportDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const reportInfo = `## SECTION 1: REPORT INFORMATION
+| Field | Value |
+|-------|-------|
+| Claim Number | ${claimNumber} |
+| Related Claim | ${relatedClaim} |
+| Named Insured | ${insuredName} |
+| Property Address | ${propertyAddress} |
+| Date of Discovery | ${dateOfDiscovery} |
+| Report Type | Preliminary Visual Assessment — AI-assisted draft |
+| Report Date | ${reportDate} |`;
+
+  const insuredInfo = `## SECTION 2: INSURED INFORMATION
+| Field | Value |
+|-------|-------|
+| Named Insured | ${insuredName} |
+| Insured Contact | ${insuredEmail || 'Not provided'} |
+| Policy Number | ${policyNumber || 'Not provided'} |`;
+
+  const background = `## SECTION 3: BACKGROUND — RELATED CLAIM
+This preliminary mold observation was filed as a supplement to claim ${relatedClaim}. During a follow-up visit on ${dateOfDiscovery}, visible conditions consistent with mold were reported at the property.
+
+_This report should be read alongside the related claim's original inspection report. It does not repeat that report's findings._`;
+
+  const checklist = `## SECTION 7: ADJUSTER REVIEW CHECKLIST
+- [ ] Engage a certified mold assessor
+- [ ] Confirm HVAC technician evaluation before system operation resumes, if applicable
+- [ ] Confirm applicable mold coverage / exclusions under the policy
+- [ ] Coordinate remediation timing with the related claim (${relatedClaim})
+- [ ] Coverage determination under the policy -- NOT determined by this draft`;
+
+  return { reportInfo, insuredInfo, background, checklist };
+};
+
+// Deterministic assembler -- stitches static + parsed narrative sections into
+// final markdown in manifest order, then hands off to the existing generic
+// PDF/DOCX renderers unchanged. The scope-notice section is inserted here as
+// the fixed MOLD_SCOPE_NOTICE constant, never passed through the AI.
+const assembleMoldReport = (staticSections, narrative, imageAnalysis, photoCount) => {
+  const photoSection =
+    photoCount === 0
+      ? `**${NO_PHOTO_DISCLAIMER}**`
+      : buildPhotoObservationsSection(imageAnalysis) ||
+        'Photos were provided; see per-photo observations in the report photo library.';
+
+  return `# MOLD ASSESSMENT — PRELIMINARY REPORT
+
+> DRAFT — PENDING ADJUSTER & ASSESSOR REVIEW. Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. AI-drafted observations only — not a certified mold assessment.
+
+${staticSections.reportInfo}
+
+${staticSections.insuredInfo}
+
+${staticSections.background}
+
+${MOLD_SCOPE_NOTICE}
+
+## SECTION 5: VISUAL OBSERVATIONS
+${narrative.visualObservations}
+
+## SECTION 6: RECOMMENDED NEXT STEPS
+${narrative.recommendedNextSteps}
+
+${staticSections.checklist}
+
+## SECTION 8: CONCLUSION & ADJUSTER NOTES
+This preliminary draft flags visible conditions consistent with mold for professional follow-up. It is not a certified assessment and makes no determination of species, health risk, or remediation scope. A certified mold assessor's findings should supersede this draft before any remediation is authorized.
+
+${MOLD_AI_DISCLOSURE}
+
+## SECTION 9: PHOTO DOCUMENTATION
+${photoSection}
+
+---
+*Automated draft prepared by FlacronAI for licensed-adjuster review | ${new Date().toISOString()}*`;
+};
+
+// `generateFn` is test-only dependency injection, mirrors generateTheftReport.
+const generateMoldReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn = generateWithFallback } = {}
+) => {
+  const prompt = buildMoldNarrativePrompt(reportData, imageAnalysis);
+
+  console.log('🤖 Generating Mold Assessment Supplemental Report narrative (single structured call)...');
+  let text, modelUsed;
+  try {
+    ({ text, modelUsed } = await generateFn(prompt, { maxTokens: 2048, temperature: 0.4 }));
+  } catch (err) {
+    console.error(
+      'Mold report generation providers unavailable (Claude + watsonx both failed):',
+      err.message
+    );
+    throw new Error('Report generation is temporarily unavailable. Please try again shortly.', {
+      cause: err,
+    });
+  }
+  console.log(`✅ Mold narrative generated via ${modelUsed}`);
+
+  const narrative = parseMoldNarrative(text);
+
+  // One repair retry per missing/malformed key -- never ship a blank section.
+  for (const key of MOLD_NARRATIVE_KEYS) {
+    if (narrative[key]) continue;
+    console.log(`⚠️  Mold narrative missing "${key}" — repairing...`);
+    const repaired = await repairMoldNarrativeKey(key, reportData, imageAnalysis, generateFn);
+    if (repaired) narrative[key] = repaired;
+  }
+  const stillMissing = MOLD_NARRATIVE_KEYS.filter((k) => !narrative[k]);
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `Mold report generation failed to produce: ${stillMissing.join(', ')}. Please try again.`
+    );
+  }
+
+  const staticSections = buildMoldStaticSections(reportData);
+  const content = assembleMoldReport(staticSections, narrative, imageAnalysis, photoCount);
+
+  return { content, modelUsed };
+};
+
+const generateReport = async (
+  reportData,
+  imageAnalysis,
+  photoCount = 0,
+  { generateFn } = {}
+) => {
+  // Phase 36: a Mold supplement is keyed off `documentType`, not
+  // lossType/claimType -- it's generated from an already-existing report,
+  // not a primary wizard entry point, so it's checked first and takes
+  // precedence over every claimType/lossType template below.
+  if (reportData.documentType === 'MoldSupplement') {
+    return generateMoldReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+  // Phase 33: a Flood lossType takes precedence over any claimType template
+  // (approved client decision, PHASES.md Phase 33) -- e.g. a Commercial claim
+  // with a Flood loss type still gets the NFIP-specific structure, with
+  // applicable commercial-property fields folded into its static section.
+  // Checked BEFORE the claimType checks below for that reason.
+  if (reportData.lossType === 'Flood') {
+    return generateFloodReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+  // Phase 34: a Theft lossType takes precedence over any claimType template,
+  // same precedence rule as Phase 33's Flood manifest above.
+  if (reportData.lossType === 'Theft') {
+    return generateTheftReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+  // Phase 31: Liability claims get a distinct, sample-matched document
+  // structure instead of the generic freeform template below. Auto-selected
+  // by `claimType`, not a manual document-type picker.
+  if (reportData.claimType === 'Liability') {
+    return generateLiabilityReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+  // Phase 32: Commercial claims get the same treatment, reusing Phase 31's
+  // static+single-structured-call architecture.
+  if (reportData.claimType === 'Commercial') {
+    return generateCommercialReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+  // Phase 35: Auto claims get a distinct Vehicle Damage Inspection Report
+  // structure, same precedence position as Liability/Commercial above (only
+  // reached when lossType isn't Flood/Theft).
+  if (reportData.claimType === 'Auto') {
+    return generateVehicleReport(reportData, imageAnalysis, photoCount, { generateFn });
+  }
+
   const prompt = buildReportPrompt(reportData, imageAnalysis);
 
   console.log('🤖 Generating report (Claude primary, watsonx fallback)...');
@@ -424,11 +2180,12 @@ const buildBatchPrompt = (
   count,
   batchIndex,
   batchCount,
-  total
+  total,
+  locationOptions = PHOTO_LOCATIONS
 ) => `You are an expert insurance damage assessor reviewing photos for a draft report that a licensed adjuster will review. Describe only what is visible; use cautious language ("appears", "may indicate") and defer final determinations to the adjuster. These ${count} photo(s) are batch ${batchIndex + 1} of ${batchCount} from a ${total}-photo inspection set.
 
 Analyze EACH of the ${count} photo(s) in this batch INDIVIDUALLY, in the exact order they were provided, and classify each with:
-- location: the apparent area/room shown -- choose the closest match from: ${PHOTO_LOCATIONS.join(', ')} (use "Other/Unspecified" if unclear)
+- location: the apparent area/panel shown -- choose the closest match from: ${locationOptions.join(', ')} (use "Other/Unspecified" if unclear)
 - category: the apparent primary observation category -- choose the closest match from: ${PHOTO_CATEGORIES.join(', ')}
 - severity: apparent severity of what's visible in THIS photo (Minor/Moderate/Severe/Unknown)
 - observation: a 1-3 sentence cautious, observational description of what appears visible in THIS photo only (e.g. "Water staining appears present on...") -- never state a conclusion
@@ -525,8 +2282,8 @@ const defaultCallVisionApi = (promptText, imageBlocks) =>
 // failure marker, so the rest of the photo set can still be analyzed and the
 // failure is reported accurately instead of being silently dropped, counted
 // as analyzed, or given up on after a single transient blip.
-const analyzeBatch = async (imageBlocks, { batchIndex, batchCount, total, callVisionApi }) => {
-  const prompt = buildBatchPrompt(imageBlocks.length, batchIndex, batchCount, total);
+const analyzeBatch = async (imageBlocks, { batchIndex, batchCount, total, callVisionApi, locationOptions }) => {
+  const prompt = buildBatchPrompt(imageBlocks.length, batchIndex, batchCount, total, locationOptions);
   let lastError;
   for (let attempt = 1; attempt <= MAX_BATCH_ATTEMPTS; attempt++) {
     try {
@@ -570,6 +2327,7 @@ const runBatchesLimited = async (batches, concurrency, callVisionApi, onBatchDon
         batchCount: batches.length,
         total: batches[i].total,
         callVisionApi,
+        locationOptions: batches[i].locationOptions,
       });
       results[i] = result;
       if (onBatchDone) {
@@ -684,8 +2442,14 @@ const buildEffectiveImageAnalysis = (baseImageAnalysis, photos = []) => {
       typeof p.review.observation === 'string' &&
       p.review.observation.trim();
     const observation = hasEdit ? p.review.observation.trim() : p.analysis.observation;
+    // Phase 35: a human-assigned panel/area tag (photos[].roomOrArea, set via
+    // the PhotoReview "Room / Area"/"Vehicle Panel" control) takes precedence
+    // over the AI's own guess -- this is what makes a reviewer's panel
+    // correction actually reach report generation/regeneration and exports,
+    // not just the photo library display it was originally scoped to.
+    const area = (typeof p.roomOrArea === 'string' && p.roomOrArea.trim()) || p.analysis.location;
     return {
-      area: p.analysis.location,
+      area,
       type: p.analysis.category,
       severity: p.analysis.severity,
       description: observation,
@@ -719,7 +2483,11 @@ const buildEffectiveImageAnalysis = (baseImageAnalysis, photos = []) => {
 // once per batch as it completes -- `photoIds` is the list of photoIds (or
 // blocks' array indices, if IDs weren't supplied) covered by that batch, and
 // `result` is that batch's own `{ok, count, result|error, attempts}`.
-const analyzeImages = async (images, { callVisionApi, onBatchComplete } = {}) => {
+// `claimType` (Phase 35), if 'Auto', switches the vision model's per-photo
+// `location` classification from the property PHOTO_LOCATIONS taxonomy to
+// VEHICLE_PANELS -- every other claimType/lossType is unaffected.
+const analyzeImages = async (images, { callVisionApi, onBatchComplete, claimType } = {}) => {
+  const locationOptions = claimType === 'Auto' ? VEHICLE_PANELS : PHOTO_LOCATIONS;
   const usingRealClient = !callVisionApi;
   if (usingRealClient && !anthropic.getClient()) {
     // watsonx (granite) has no vision capability, so there is no image-analysis
@@ -758,7 +2526,7 @@ const analyzeImages = async (images, { callVisionApi, onBatchComplete } = {}) =>
   const batches = [];
   const batchPhotoIdGroups = [];
   for (let offset = 0; offset < blocks.length; offset += VISION_BATCH_SIZE) {
-    batches.push({ blocks: blocks.slice(offset, offset + VISION_BATCH_SIZE), total });
+    batches.push({ blocks: blocks.slice(offset, offset + VISION_BATCH_SIZE), total, locationOptions });
     batchPhotoIdGroups.push(blockPhotoIds.slice(offset, offset + VISION_BATCH_SIZE));
   }
 
@@ -990,4 +2758,64 @@ module.exports = {
   buildEffectiveImageAnalysis,
   normalizePhotoEntries,
   insertPhotoObservations,
+  // Phase 31 (Liability Investigation Report): exported for direct unit
+  // testing of the static-section builder, the single-structured-call
+  // narrative generator, and its manifest assembler.
+  generateLiabilityReport,
+  buildLiabilityStaticSections,
+  buildLiabilityNarrativePrompt,
+  parseLiabilityNarrative,
+  assembleLiabilityReport,
+  LIABILITY_NARRATIVE_KEYS,
+  // Phase 32 (Commercial Property Inspection Report): same reasoning as
+  // Phase 31's exports above, for the Commercial manifest.
+  generateCommercialReport,
+  buildCommercialStaticSections,
+  buildCommercialNarrativePrompt,
+  parseCommercialNarrative,
+  assembleCommercialReport,
+  COMMERCIAL_NARRATIVE_KEYS,
+  // Phase 33 (Flood (NFIP) Inspection Report): same reasoning as Phase 31/32's
+  // exports above, for the Flood manifest (keyed off `lossType`, not
+  // `claimType`).
+  generateFloodReport,
+  buildFloodStaticSections,
+  buildFloodNarrativePrompt,
+  parseFloodNarrative,
+  assembleFloodReport,
+  FLOOD_NARRATIVE_KEYS,
+  // Phase 34 (Theft/Burglary Inspection Report): same reasoning as Phase
+  // 31/32/33's exports above, for the Theft manifest (keyed off `lossType`,
+  // same precedence pattern as Flood).
+  generateTheftReport,
+  buildTheftStaticSections,
+  buildTheftNarrativePrompt,
+  parseTheftNarrative,
+  assembleTheftReport,
+  THEFT_NARRATIVE_KEYS,
+  // Phase 35 (Vehicle/Auto Inspection Report): same reasoning as Phase
+  // 31-34's exports above, for the Vehicle manifest (keyed off `claimType
+  // === 'Auto'`), plus the vehicle panel-selection taxonomy and the
+  // deterministic panel-grouping section builder.
+  VEHICLE_PANELS,
+  generateVehicleReport,
+  buildVehicleStaticSections,
+  buildVehicleNarrativePrompt,
+  parseVehicleNarrative,
+  assembleVehicleReport,
+  buildVehiclePanelSection,
+  VEHICLE_NARRATIVE_KEYS,
+  // Phase 36 (Mold Assessment Supplemental Report): same reasoning as Phase
+  // 31-35's exports above, for the Mold manifest (keyed off `documentType
+  // === 'MoldSupplement'`, generated from an already-existing report rather
+  // than the primary wizard). MOLD_SCOPE_NOTICE is exported for the
+  // exact-match test asserting the fixed "not a certified mold assessment"
+  // notice is never paraphrased away.
+  generateMoldReport,
+  buildMoldStaticSections,
+  buildMoldNarrativePrompt,
+  parseMoldNarrative,
+  assembleMoldReport,
+  MOLD_NARRATIVE_KEYS,
+  MOLD_SCOPE_NOTICE,
 };
