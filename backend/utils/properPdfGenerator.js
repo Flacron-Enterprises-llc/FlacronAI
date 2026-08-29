@@ -185,7 +185,11 @@ const generatePDF = async (report, options = {}) => {
           try {
             doc.image(logoBuffer, cx - 50, coverY, { width: 100, fit: [100, 50] });
             coverY += 62;
-          } catch {}
+          } catch (err) {
+            console.warn(
+              `[PDF Export] cover logo embed failed for report ${report?.id || 'unknown'} (${err?.constructor?.name || 'Error'}) -- omitted`
+            );
+          }
         }
 
         // Title block — centered, matching the client's reference sample
@@ -379,7 +383,10 @@ const generatePDF = async (report, options = {}) => {
               align: 'center',
               valign: 'center',
             });
-          } catch {
+          } catch (err) {
+            console.warn(
+              `[PDF Export] photo ${photoId} embed failed for report ${report?.id || 'unknown'} (${err?.constructor?.name || 'Error'}) -- using placeholder`
+            );
             doc
               .fontSize(8)
               .fillColor('#94a3b8')
@@ -435,8 +442,11 @@ const generatePDF = async (report, options = {}) => {
                 align: 'center',
                 valign: 'center',
               });
-            } catch {
-              /* placeholder box remains visible */
+            } catch (err) {
+              // placeholder box remains visible
+              console.warn(
+                `[PDF Export] grid photo ${it.photoId} embed failed for report ${report?.id || 'unknown'} (${err?.constructor?.name || 'Error'}) -- using placeholder`
+              );
             }
           } else {
             doc
@@ -715,7 +725,10 @@ const generatePDF = async (report, options = {}) => {
                 align: 'center',
                 valign: 'center',
               });
-            } catch {
+            } catch (err) {
+              console.warn(
+                `[PDF Export] appendix photo ${item.number} embed failed for report ${report?.id || 'unknown'} (${err?.constructor?.name || 'Error'}) -- using placeholder`
+              );
               doc
                 .fontSize(7)
                 .fillColor('#94a3b8')

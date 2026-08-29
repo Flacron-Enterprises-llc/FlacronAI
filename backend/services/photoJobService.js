@@ -26,6 +26,7 @@ const { sendAnalysisCompletedEmail, sendReportCompletedEmail } = require('./emai
 const { isNotificationEnabled } = require('../utils/notificationPrefs');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
 const { getReportAccess } = require('../utils/reportAccess');
+const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
 
 const MAX_GENERATION_ATTEMPTS = 2;
 // Phase 8: an edited/added observation or note length cap, enforced
@@ -491,6 +492,23 @@ const retryFailedAnalysis = async (reportId, uid) => {
   if (!reportDoc.exists || reportDoc.data().userId !== uid) return { success: false, code: 'NOT_FOUND' };
   const report = reportDoc.data();
 
+  // Idempotency fix (production incident: generation "takes excessively
+  // long", partly driven by duplicate/overlapping pipeline runs for the same
+  // report): a report already mid-pipeline (the initial run, or an earlier
+  // retry) is still 'processing' -- a repeated "Retry Analysis" click, or the
+  // frontend's status-poll racing a manual retry, must not fire a SECOND
+  // concurrent runReportPipeline that re-downloads and re-analyzes whatever
+  // photos happen to be 'needs_attention' at that instant while the first
+  // run is still working. Checked before NOTHING_TO_RETRY below so it wins
+  // even when the in-flight run hasn't flagged any photo needs_attention yet.
+  if (report.status === 'processing') {
+    return {
+      success: false,
+      code: 'ALREADY_PROCESSING',
+      error: 'This report is already being processed. Please wait for it to finish before retrying.',
+    };
+  }
+
   const stuckPhotos = (report.photos || []).filter((p) => p.analysisStatus === 'needs_attention');
   const generationFailed = report.status === 'failed';
 
@@ -500,18 +518,15 @@ const retryFailedAnalysis = async (reportId, uid) => {
 
   await reportRef.update({ status: 'processing', pipelineError: null, updatedAt: nowIso() });
 
-  // Re-download each stuck photo's already-stored display-tier bytes (no
-  // re-upload -- the objects are already in Storage from the original run).
-  const retryImages = [];
-  for (const p of stuckPhotos) {
-    try {
-      const buffer = await downloadBuffer(p.objectPath);
-      retryImages.push({ buffer, mimetype: p.mimeType, photoId: p.id });
-    } catch {
-      // Object genuinely missing/unreadable -- leave it needs_attention rather
-      // than silently pretending the retry covered it.
-    }
-  }
+  // Perf fix: re-download each stuck photo's already-stored display-tier
+  // bytes (no re-upload -- the objects are already in Storage from the
+  // original run) with bounded concurrency instead of one at a time -- this
+  // used to be a sequential `for..of` loop, so a retry with many stuck
+  // photos spent seconds just re-fetching bytes before a single Claude call
+  // could even start. A photo whose object is genuinely missing/unreadable
+  // is still left 'needs_attention' rather than the retry silently
+  // pretending it covered it.
+  const retryImages = await downloadPhotosForAnalysis(stuckPhotos, downloadBuffer);
 
   const reportData = {
     claimNumber: report.claimNumber, insuredName: report.insuredName, propertyAddress: report.propertyAddress,

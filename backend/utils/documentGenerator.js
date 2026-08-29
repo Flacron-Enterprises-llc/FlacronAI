@@ -37,8 +37,15 @@ const resolveImageAssets = async (content, photoMap) => {
         widthPx = meta.width;
         heightPx = meta.height;
       }
-    } catch {
-      /* keep the default box if metadata can't be read */
+    } catch (err) {
+      // Corrupt/unsupported image bytes -- never let one bad photo crash (or
+      // silently corrupt) the export. Skip embedding it so the XML builder's
+      // existing "[Photo unavailable]" placeholder renders instead of raw
+      // undecodable bytes inside the .docx.
+      console.warn(
+        `[DOCX Export] photo ${id} failed to decode (${err?.constructor?.name || 'Error'}) -- using placeholder`
+      );
+      continue;
     }
     counter += 1;
     const { ext, contentType } = extFromMime(entry.mimeType);
@@ -122,17 +129,29 @@ const buildPhotoGridXml = (imageAssets, items) => {
 const resolveAppendixAssets = async (appendixPhotos) => {
   const resolved = [];
   let counter = 0;
-  for (const item of appendixPhotos || []) {
+  for (const [index, item] of (appendixPhotos || []).entries()) {
     let widthPx = 320;
     let heightPx = 220;
+    let decodable = true;
     try {
       const meta = await sharp(item.buffer).metadata();
       if (meta.width && meta.height) {
         widthPx = meta.width;
         heightPx = meta.height;
       }
-    } catch {
-      /* keep the default box if metadata can't be read */
+    } catch (err) {
+      // Corrupt/unsupported image bytes -- isolate to this one photo (a
+      // null `asset` renders buildAppendixXml's existing "[Photo
+      // unavailable]" placeholder) instead of embedding undecodable bytes
+      // into the .docx with no indication anything went wrong.
+      decodable = false;
+      console.warn(
+        `[DOCX Export] appendix photo #${index + 1} failed to decode (${err?.constructor?.name || 'Error'}) -- using placeholder`
+      );
+    }
+    if (!decodable) {
+      resolved.push({ ...item, asset: null });
+      continue;
     }
     counter += 1;
     const { ext, contentType } = extFromMime(item.mimeType);
@@ -566,9 +585,12 @@ const generateDOCX = async (report, options = {}) => {
   // adds the appendix's own resolved image assets to the same registration
   // pass -- they're a separate list from the inline photoMap assets above
   // (rIdAppendix* vs rIdImg*) but need identical Content-Types/rels/media wiring.
+  // `.asset` is null for an appendix photo that failed to decode (rendered
+  // as a placeholder instead) -- filter those out before Content-Types/rels/
+  // media registration, which assumes every entry is a real embeddable asset.
   const imageAssetList = [
     ...Object.values(imageAssets),
-    ...appendixResolved.map((a) => a.asset),
+    ...appendixResolved.map((a) => a.asset).filter(Boolean),
   ];
   const imageExts = [...new Set(imageAssetList.map((a) => a.fileName.split('.').pop()))];
   const imageContentTypeDefaults = imageExts
