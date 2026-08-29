@@ -25,6 +25,20 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # --- SLACK NOTIFICATION: DEPLOYMENT STARTED ---
+      # for a mid-run "started" ping. A plain webhook POST does the job.
+      - name: Send Slack Notification - Deployment Started
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "$(cat <<EOF
+          {
+            "text": "🚀 *FlacronAI Backend Deploy — STARTED*\n*App / Repo:* <https://github.com/${{ github.repository }}|${{ github.repository }}>\n*Status:* 🟡 Deployment In Progress...\n*Branch:* \`${{ github.ref_name }}\`\n*Triggered by:* @${{ github.actor }}\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Live Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>"
+          }
+          EOF
+          )" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"
+            
+      # --- BUILD & DEPLOYMENT STEPS ---
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -77,3 +91,24 @@ jobs:
             --services flacronai-backend-service \
             --query "services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}" \
             --output table
+
+      # --- SLACK NOTIFICATION: DEPLOYMENT FINISHED (SUCCESS / FAILURE) ---
+      - name: Send Slack Notification - Deployment Finished
+        if: always()
+        uses: ravsamhq/notify-slack-action@v2
+        with:
+          status: ${{ job.status }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          notification_title: "FlacronAI Backend Deploy — ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
+          message_format: |
+            *App / Repo:* <{repo_url}|{repo}>
+            *Status:* ${{ job.status == 'success' && '🟢 SUCCESS' || '🔴 FAILED' }}
+            *Branch:* `${{ github.ref_name }}`
+            *Triggered by:* @${{ github.actor }}
+            *Commit:* <{commit_url}|${{ github.sha }}>
+            *Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>
+          footer: "Flacron Applications Deployment System | #app-deployment-notifications"
+          notify_when: "success,failure"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
