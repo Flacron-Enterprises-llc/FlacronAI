@@ -5,6 +5,7 @@ import { Code, Key, Webhook, ArrowRight, Copy, Check, Terminal, BookOpen, Shield
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
+import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
 
 const CURL_EXAMPLE = `curl -X POST https://YOUR_API_BASE_URL/api/reports/generate \\
   -H "X-API-Key: flac_live_xxxxxxxxxxxxxxxxxxxx" \\
@@ -120,7 +121,7 @@ export default function Developers() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="Developer API — FlacronAI" description="Integrate automated insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" />
+      <Seo title="Developer API — FlacronAI" description="Integrate automated insurance report generation into your tools: REST API with API-key auth, JSON responses, and PDF, DOCX and HTML export." path="/developers" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar />
 
       {/* Hero */}

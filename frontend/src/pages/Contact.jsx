@@ -7,6 +7,7 @@ import Footer from '../components/Footer';
 import { salesAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import Seo from '../components/Seo.jsx';
+import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
 import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
 
 const SUBJECTS = [
@@ -52,7 +53,7 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="Contact FlacronAI — Sales and Support" description="Contact FlacronAI about product support, billing, plans, or Enterprise white-label options." path="/contact" />
+      <Seo title="Contact FlacronAI — Sales and Support" description="Contact FlacronAI about product support, billing, plans, or Enterprise white-label options." path="/contact" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar />
       <div className="pt-24 pb-20 px-4 max-w-6xl mx-auto">
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
