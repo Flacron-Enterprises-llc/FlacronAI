@@ -84,7 +84,8 @@ const {
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { isValidDocumentBuffer } = require('../utils/documentValidation');
 const { processPhotoBatch } = require('../utils/photoBatchProcessor');
-const { appendStagedPhoto } = require('../utils/photoDraftStaging');
+const { appendStagedPhoto, claimDraftPhotos } = require('../utils/photoDraftStaging');
+const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
 const photoJobService = require('../services/photoJobService');
 const { aiLimiter } = require('../middleware/rateLimiters');
 const { getTier, canGenerate } = require('../config/tiers');
@@ -994,21 +995,34 @@ router.post(
       // Fold them in by re-downloading each one's already-stored bytes for
       // vision analysis -- same pattern as retryFailedAnalysis's "already-
       // uploaded, nothing re-sent" retry.
+      //
+      // Perf fix (production incident: generation "takes excessively long"):
+      // claimDraftPhotos atomically marks the draft consumed in the SAME
+      // Firestore transaction that reads its photos (see photoDraftStaging.js)
+      // -- a genuine duplicate submission for this draftId (page refresh
+      // mid-request, two tabs, a double click that raced past the frontend's
+      // own in-flight guard) is rejected outright below instead of silently
+      // re-downloading and re-analyzing the same photos into a second report.
+      // The actual Storage downloads then run with bounded concurrency
+      // (downloadPhotosForAnalysis) instead of one-at-a-time -- this loop used
+      // to run sequentially BEFORE the response was sent, so N staged photos
+      // meant N sequential Storage round-trips added directly to the
+      // "Generate" button's spinner time, defeating Phase 7's "the client
+      // never waits" design.
       const draftId = (req.body.draftId || '').trim() || null;
       if (draftId) {
-        const draftDoc = await db.collection('reportDrafts').doc(draftId).get();
-        if (draftDoc.exists && draftDoc.data().userId === req.user.uid) {
-          photoRecords = draftDoc.data().photos || [];
-          for (const p of photoRecords) {
-            if (p.status !== 'uploaded' || !p.objectPath) continue;
-            try {
-              const buffer = await downloadBuffer(p.objectPath);
-              analyzableImages.push({ buffer, mimetype: p.mimeType, photoId: p.id });
-            } catch {
-              // Object genuinely missing -- that one photo just has no analysis.
-            }
-          }
+        const claim = await claimDraftPhotos(db, { draftId, uid: req.user.uid });
+        if (claim.alreadyClaimed) {
+          return res.status(409).json({
+            success: false,
+            error:
+              'This photo upload session was already used to generate a report. Refresh the page and start a new report if you need to submit again.',
+            code: 'DUPLICATE_GENERATE_REQUEST',
+          });
         }
+        photoRecords = claim.photos;
+        const stagedCandidates = photoRecords.filter((p) => p.status === 'uploaded' && p.objectPath);
+        analyzableImages = await downloadPhotosForAnalysis(stagedCandidates, downloadBuffer);
         db.collection('reportDrafts').doc(draftId).delete().catch(() => {});
       }
 
@@ -1301,7 +1315,12 @@ router.post(
     try {
       const result = await photoJobService.retryFailedAnalysis(req.params.id, req.user.uid);
       if (!result.success) {
-        const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+        // ALREADY_PROCESSING (idempotency guard) is a conflict with an
+        // in-flight run, not a bad request -- 409, matching the export
+        // in-progress lock's status code for the same "try again shortly"
+        // semantics.
+        const statusCode =
+          result.code === 'NOT_FOUND' ? 404 : result.code === 'ALREADY_PROCESSING' ? 409 : 400;
         return res
           .status(statusCode)
           .json({ success: false, error: result.error || 'Report not found', code: result.code });
@@ -4156,6 +4175,39 @@ const PHOTO_LAYOUTS = new Set([1, 2, 4]);
 // unchanged behavior, per the phase's backward-compatibility requirement.
 const parseExportBoolOption = (value) => (typeof value === 'boolean' ? value : true);
 
+// Incident fix (repeated export failures): a cheap server-side guard against
+// duplicate/concurrent export jobs for the same report+format. A double-click
+// (or two open tabs) on "Export"/"Download" used to fire overlapping
+// generate-PDF/DOCX requests for the same report, each independently
+// downloading every photo from Storage and holding all of them in memory at
+// once -- on a resource-constrained single instance that's a direct path to
+// slow/failed exports for both concurrent requests. In-memory only (courtesy
+// guard against accidental double-submits, not a cross-instance lock); always
+// released in `finally` so a crashed/hung request can never permanently block
+// a retry, and any entry older than the TTL is treated as stale and reusable.
+const activeExports = new Map(); // `${reportId}:${format}` -> startedAt (ms)
+const EXPORT_LOCK_TTL_MS = 5 * 60 * 1000;
+const acquireExportLock = (key) => {
+  const startedAt = activeExports.get(key);
+  if (startedAt && Date.now() - startedAt < EXPORT_LOCK_TTL_MS) return false;
+  activeExports.set(key, Date.now());
+  return true;
+};
+const releaseExportLock = (key) => activeExports.delete(key);
+
+// Structured, safe diagnostic logging for export failures -- report id,
+// format, stage, and error class/elapsed time only. Never logs err.message,
+// err.stack, Storage URLs, or report/claim content (Golden Rule #6).
+const logExportFailure = ({ reportId, format, stage, err, startedAt }) => {
+  console.error('[Export] failed', {
+    reportId,
+    format,
+    stage,
+    errorClass: err?.name || err?.constructor?.name || 'Error',
+    elapsedMs: Date.now() - startedAt,
+  });
+};
+
 // Builds the ordered list of photos for the export's "Photo Documentation"
 // appendix. Excludes anything Phase 8 marked 'excluded' and anything that
 // never finished uploading -- only ever real, reviewer-approved/edited data
@@ -4172,15 +4224,28 @@ const buildAppendixPhotoList = async (report) => {
       .map((p, i) => ({ p, sortKey: Number.isFinite(p.position) ? p.position : i }))
       .sort((a, b) => a.sortKey - b.sortKey)
       .map(({ p }) => p);
-    for (const p of orderedPhotos) {
-      if (p.status !== 'uploaded' || !p.objectPath) continue;
-      if (p.review?.status === 'excluded') continue;
-      let buffer;
-      try {
-        buffer = await downloadBuffer(p.objectPath);
-      } catch {
-        continue; // photo unavailable in Storage -- silently skip, not fabricate
-      }
+    // Perf/timeout fix: these used to download sequentially (await inside a
+    // for..of loop), so a 12-20 photo report multiplied Storage round-trip
+    // latency roughly linearly -- a real contributor to exports hitting the
+    // client's fixed request timeout. Downloading in parallel (order
+    // preserved via the index-matched `buffers` array) is a straight win with
+    // no behavior change; a failed download is still skipped, not fabricated.
+    const candidates = orderedPhotos.filter(
+      (p) => p.status === 'uploaded' && p.objectPath && p.review?.status !== 'excluded'
+    );
+    const buffers = await Promise.all(
+      candidates.map((p) =>
+        downloadBuffer(p.objectPath).catch((err) => {
+          console.warn(
+            `[Export] appendix photo ${p.id || 'unknown'} unavailable in Storage (${err?.constructor?.name || 'Error'}) -- skipped`
+          );
+          return null;
+        })
+      )
+    );
+    candidates.forEach((p, i) => {
+      const buffer = buffers[i];
+      if (!buffer) return; // photo unavailable in Storage -- silently skip, not fabricate
       const observation =
         p.review?.status === 'edited' && p.review?.observation
           ? p.review.observation
@@ -4192,10 +4257,17 @@ const buildAppendixPhotoList = async (report) => {
         location: p.analysis?.location || null,
         observation,
       });
-    }
+    });
   } else if ((report.imagePaths || []).length) {
     const buffers = await Promise.all(
-      report.imagePaths.map((p) => downloadBuffer(p).catch(() => null))
+      report.imagePaths.map((p, i) =>
+        downloadBuffer(p).catch((err) => {
+          console.warn(
+            `[Export] legacy photo #${i + 1} unavailable in Storage (${err?.constructor?.name || 'Error'}) -- skipped`
+          );
+          return null;
+        })
+      )
     );
     buffers.forEach((buffer, i) => {
       if (!buffer) return;
@@ -4213,6 +4285,9 @@ const buildAppendixPhotoList = async (report) => {
 
 // POST /api/reports/:id/export
 router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, async (req, res) => {
+  const startedAt = Date.now();
+  let stage = 'lookup';
+  let exportLockKey = null;
   try {
     const db = getFirestore();
     const doc = await db.collection('reports').doc(req.params.id).get();
@@ -4268,6 +4343,21 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
         success: false,
         error: `Your plan does not include ${format.toUpperCase()} export. Upgrade to unlock it.`,
         code: 'EXPORT_FORMAT_NOT_ALLOWED',
+      });
+    }
+
+    // Incident fix: reject a duplicate/overlapping export for the same
+    // report+format instead of letting a double-click (or two tabs) spin up
+    // two independent PDF/DOCX generations at once. Always released in the
+    // `finally` below so a retry is never blocked by this guard.
+    exportLockKey = `${req.params.id}:${format}`;
+    if (!acquireExportLock(exportLockKey)) {
+      exportLockKey = null; // not ours to release
+      return res.status(409).json({
+        success: false,
+        error:
+          'An export for this report in this format is already in progress. Please wait for it to finish, then retry.',
+        code: 'EXPORT_IN_PROGRESS',
       });
     }
 
@@ -4494,6 +4584,7 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     };
 
     // Pull branding logo + report photos from Storage as buffers (best-effort).
+    stage = 'photo-resolution';
     if (logoObjectPath) {
       try {
         pdfOptions.logoBuffer = await downloadBuffer(logoObjectPath);
@@ -4535,8 +4626,12 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
           try {
             const buf = await downloadBuffer(objectPath);
             photoMap[id] = { buffer: buf, mimeType };
-          } catch {
-            /* referenced photo unavailable -- generator renders a placeholder */
+          } catch (err) {
+            // referenced photo unavailable -- generator renders a placeholder,
+            // not a crash. Logged (id only, never the object path) for ops visibility.
+            console.warn(
+              `[Export] inline photo ${id} unavailable in Storage (${err?.constructor?.name || 'Error'}) -- placeholder will render`
+            );
           }
         })
       );
@@ -4547,52 +4642,91 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     let ext;
     let contentType;
 
-    if (format === 'pdf') {
-      ext = 'pdf';
-      contentType = 'application/pdf';
-      // The final overlay below is the single authoritative PDF watermark.
-      // Disable PDFKit's built-in layer here to avoid doubled/illegible marks.
-      buffer = await generatePDF(report, { ...pdfOptions, watermark: false });
-      // Apply watermark overlay for starter tier and/or un-reviewed drafts
-      if (tier.watermark || draftWatermark) {
-        // Fail closed: a draft must never be returned as a clean-looking final
-        // document just because watermark post-processing failed.
-        buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
-      }
-    } else if (format === 'docx') {
-      ext = 'docx';
-      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      buffer = await generateDOCX(report, {
-        reportTitle: pdfOptions.reportTitle,
-        companyName: pdfOptions.companyName,
-        hideFlacronBranding: pdfOptions.hideFlacronBranding,
-        watermark: pdfOptions.watermark,
-        watermarkText: pdfOptions.watermarkText,
-        photoMap,
-        includeCoverPage,
-        includePhotoCaptions,
-        includePageNumbers,
-        includeCompanyBranding,
-        photoLayout,
-        appendixPhotos: pdfOptions.appendixPhotos,
-        confidentialityStatement: CONFIDENTIALITY_STATEMENT,
-      });
-    } else if (format === 'html') {
-      ext = 'html';
-      contentType = 'text/html';
-      buffer = Buffer.from(generateHTML(report, { ...pdfOptions, photoMap }), 'utf8');
-    } else {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: 'Invalid format. Use pdf, docx, or html',
-          code: 'INVALID_FORMAT',
+    // Each generation stage gets its own try/catch and error code -- a
+    // failure in the PDF library, the DOCX/OOXML builder, or the watermark
+    // post-process is diagnostically distinct from a generic "export
+    // failed", and from each other (an incident triaging "repeated export
+    // failures" needs to be able to tell them apart).
+    try {
+      if (format === 'pdf') {
+        ext = 'pdf';
+        contentType = 'application/pdf';
+        stage = 'pdf-generation';
+        // The final overlay below is the single authoritative PDF watermark.
+        // Disable PDFKit's built-in layer here to avoid doubled/illegible marks.
+        buffer = await generatePDF(report, { ...pdfOptions, watermark: false });
+      } else if (format === 'docx') {
+        ext = 'docx';
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        stage = 'docx-generation';
+        buffer = await generateDOCX(report, {
+          reportTitle: pdfOptions.reportTitle,
+          companyName: pdfOptions.companyName,
+          hideFlacronBranding: pdfOptions.hideFlacronBranding,
+          watermark: pdfOptions.watermark,
+          watermarkText: pdfOptions.watermarkText,
+          photoMap,
+          includeCoverPage,
+          includePhotoCaptions,
+          includePageNumbers,
+          includeCompanyBranding,
+          photoLayout,
+          appendixPhotos: pdfOptions.appendixPhotos,
+          confidentialityStatement: CONFIDENTIALITY_STATEMENT,
         });
+      } else if (format === 'html') {
+        ext = 'html';
+        contentType = 'text/html';
+        stage = 'html-generation';
+        buffer = Buffer.from(generateHTML(report, { ...pdfOptions, photoMap }), 'utf8');
+      } else {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: 'Invalid format. Use pdf, docx, or html',
+            code: 'INVALID_FORMAT',
+          });
+      }
+    } catch (genErr) {
+      logExportFailure({ reportId: req.params.id, format, stage, err: genErr, startedAt });
+      return res.status(500).json({
+        success: false,
+        error: `Failed to generate the ${format.toUpperCase()} document. Please retry -- if this keeps happening, contact support.`,
+        code: `${format.toUpperCase()}_GENERATION_ERROR`,
+      });
+    }
+
+    // Apply watermark overlay for starter tier and/or un-reviewed drafts.
+    // Fail closed: a draft must never be returned as a clean-looking final
+    // document just because watermark post-processing failed -- so this is
+    // its own stage/error code rather than folded into pdf-generation above.
+    if (format === 'pdf' && (tier.watermark || draftWatermark)) {
+      try {
+        stage = 'watermark';
+        buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
+      } catch (wmErr) {
+        logExportFailure({ reportId: req.params.id, format, stage, err: wmErr, startedAt });
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to finalize the PDF (watermark step). Please retry.',
+          code: 'WATERMARK_ERROR',
+        });
+      }
     }
 
     const filename = `${filenameBase}.${ext}`;
-    await uploadBuffer(exportObject(req.user.uid, filename), buffer, contentType);
+    try {
+      stage = 'storage-upload';
+      await uploadBuffer(exportObject(req.user.uid, filename), buffer, contentType);
+    } catch (upErr) {
+      logExportFailure({ reportId: req.params.id, format, stage, err: upErr, startedAt });
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to save the exported file. Please retry.',
+        code: 'EXPORT_UPLOAD_ERROR',
+      });
+    }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const downloadUrl = `/api/reports/${req.params.id}/download?file=${filename}`;
@@ -4619,14 +4753,22 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     }).catch((err) => console.warn('[Notifications] export-completed notification failed:', err.message));
     return res.json({ success: true, downloadUrl, expiresAt, format, filename });
   } catch (err) {
-    console.error('Export error:', err.stack || err.message || err);
-    // Do not leak stack traces / internals to the client (Rule #6).
+    // Do not leak stack traces / internals / raw report data to the client or
+    // the logs (Rule #6) -- structured diagnostics only.
+    logExportFailure({
+      reportId: req.params.id,
+      format: req.body?.format || 'pdf',
+      stage,
+      err,
+      startedAt,
+    });
     return res.status(500).json({
       success: false,
-      error:
-        process.env.NODE_ENV === 'production' ? 'Export failed' : err.message || 'Export failed',
+      error: 'Export failed. Please retry -- if this keeps happening, contact support.',
       code: 'EXPORT_ERROR',
     });
+  } finally {
+    if (exportLockKey) releaseExportLock(exportLockKey);
   }
 });
 
@@ -5614,5 +5756,15 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-router._test = { generateHTML, escapeHtml };
+router._test = {
+  generateHTML,
+  escapeHtml,
+  // Exposed for the export concurrency-guard tests (backend/test/
+  // export-failure-handling.test.js) -- there's no HTTP-level test harness
+  // in this codebase (every export/report test calls exported functions
+  // directly), so the lock primitives themselves are the testable unit.
+  acquireExportLock,
+  releaseExportLock,
+  activeExports,
+};
 module.exports = router;

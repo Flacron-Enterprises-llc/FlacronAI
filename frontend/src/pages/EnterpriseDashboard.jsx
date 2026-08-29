@@ -145,6 +145,10 @@ export default function EnterpriseDashboard() {
   const [genStep, setGenStep] = useState(0);
   const [genSteps, setGenSteps] = useState(GEN_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
+  // Incident fix: these "Download {format}" buttons had no in-flight guard,
+  // so a double-click fired two overlapping export requests for the same
+  // report+format. Key is `${reportId}:${format}`.
+  const [exportingKey, setExportingKey] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [editableContent, setEditableContent] = useState('');
@@ -416,6 +420,11 @@ export default function EnterpriseDashboard() {
   };
 
   const handleExport = async (reportId, format) => {
+    const key = `${reportId}:${format}`;
+    // Incident fix: reject a double-click firing two overlapping export
+    // requests for the same report+format (these buttons had no such guard).
+    if (exportingKey) return;
+    setExportingKey(key);
     try {
       const expRes = await reportsAPI.export(reportId, { format });
       const { filename } = expRes.data;
@@ -425,7 +434,14 @@ export default function EnterpriseDashboard() {
       const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
       window.URL.revokeObjectURL(url);
       toast.success(`Downloaded ${format.toUpperCase()}`);
-    } catch { toast.error('Export failed'); }
+    } catch (err) {
+      // Surface the backend's specific error/code instead of a generic
+      // message (still processing, export-in-progress, entitlement,
+      // generation failure, etc.).
+      toast.error(err?.response?.data?.error || 'Export failed');
+    } finally {
+      setExportingKey(null);
+    }
   };
 
   // ── White-label ───────────────────────────────────────────────────────────
@@ -768,8 +784,9 @@ export default function EnterpriseDashboard() {
                               <div className="flex gap-1">
                                 {['pdf','docx'].map(f => (
                                   <button key={f} onClick={() => handleExport(r.id, f)}
-                                    className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-brand-500 hover:text-white text-gray-600 transition-colors uppercase font-bold">
-                                    {f}
+                                    disabled={!!exportingKey}
+                                    className="text-[10px] px-2 py-1 rounded-md bg-gray-100 hover:bg-brand-500 hover:text-white text-gray-600 transition-colors uppercase font-bold disabled:opacity-50">
+                                    {exportingKey === `${r.id}:${f}` ? '…' : f}
                                   </button>
                                 ))}
                               </div>
@@ -1055,8 +1072,12 @@ export default function EnterpriseDashboard() {
                         <p className="text-sm font-bold text-gray-900 mb-3">Export</p>
                         {['pdf', 'docx', 'html'].map(f => (
                           <button key={f} onClick={() => handleExport(generatedReport.id, f)}
-                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-gray-200 bg-bg hover:bg-brand-50 hover:border-brand-300 text-sm text-gray-700 hover:text-brand-600 transition-all">
-                            <Download className="w-4 h-4" /> Download {f.toUpperCase()}
+                            disabled={!!exportingKey}
+                            className="w-full flex items-center gap-2 justify-center px-4 py-2.5 rounded-xl border border-gray-200 bg-bg hover:bg-brand-50 hover:border-brand-300 text-sm text-gray-700 hover:text-brand-600 transition-all disabled:opacity-50">
+                            {exportingKey === `${generatedReport.id}:${f}`
+                              ? <RefreshCw className="w-4 h-4 animate-spin" />
+                              : <Download className="w-4 h-4" />}
+                            {exportingKey === `${generatedReport.id}:${f}` ? 'Exporting…' : `Download ${f.toUpperCase()}`}
                           </button>
                         ))}
                       </div>

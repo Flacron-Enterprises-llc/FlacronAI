@@ -26,6 +26,7 @@ import { VEHICLE_PANELS } from '../utils/photoTaxonomy.js';
 import PhotoAnnotator from '../components/PhotoAnnotator.jsx';
 import useDragReorder from '../hooks/useDragReorder.js';
 import { formatStatus } from '../utils/formatStatus';
+import { selectPhotosToUpload } from '../utils/uploadQueue';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI, crmAPI } from '../services/api';
@@ -676,6 +677,12 @@ function ReportPhotoGallery({ reportId, interactive = false, onRegenerated, onPh
 function ReportDetailModal({ report, onClose, onReportUpdated }) {
   useEscapeToClose(onClose, !!report);
   const navigate = useNavigate();
+  // Incident fix: this "Direct Download" button had no in-flight guard at
+  // all, so a double-click fired two overlapping POST /export requests for
+  // the same report -- each independently regenerating the full PDF (with
+  // every photo re-downloaded from Storage), which is exactly the kind of
+  // duplicate load that made exports "repeatedly fail" under normal use.
+  const [exportingPdf, setExportingPdf] = useState(false);
   if (!report) return null;
   return (
     <AnimatePresence>
@@ -771,8 +778,11 @@ function ReportDetailModal({ report, onClose, onReportUpdated }) {
             </div>
           )}
           <div className="flex gap-3 mt-6">
-            <button className="btn-primary text-sm py-2 px-4 flex items-center gap-2"
+            <button className="btn-primary text-sm py-2 px-4 flex items-center gap-2 disabled:opacity-50"
+              disabled={exportingPdf}
               onClick={async () => {
+                if (exportingPdf) return;
+                setExportingPdf(true);
                 try {
                   const exportRes = await reportsAPI.export(report.id, { format: 'pdf' });
                   const { filename } = exportRes.data;
@@ -784,9 +794,17 @@ function ReportDetailModal({ report, onClose, onReportUpdated }) {
                   const a = document.createElement('a');
                   a.href = url; a.download = filename; a.click();
                   window.URL.revokeObjectURL(url);
-                } catch { toast.error('Export failed'); }
+                } catch (err) {
+                  // Surface the backend's specific error (e.g. "still being
+                  // analyzed", "already exporting", entitlement, generation
+                  // failure) instead of a one-size-fits-all message.
+                  toast.error(err?.response?.data?.error || 'Export failed');
+                } finally {
+                  setExportingPdf(false);
+                }
               }}>
-              <Download className="w-4 h-4" /> PDF
+              {exportingPdf ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exportingPdf ? 'Exporting…' : 'PDF'}
             </button>
             <button className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
               onClick={() => navigate(`/reports/${report.id}/preview`)}>
@@ -1244,6 +1262,11 @@ export default function Dashboard() {
   const [uploadPercent, setUploadPercent] = useState(0); // Phase 6 addendum: real byte-progress of the upload request
   const [genSteps, setGenSteps] = useState(GENERATION_STEPS_WITH_PHOTOS);
   const [generatedReport, setGeneratedReport] = useState(null);
+  // Incident fix: guards the "Download {format}" quick buttons (and
+  // handleExport itself) against a double-click firing two overlapping
+  // export requests for the same report+format -- holds the in-flight
+  // format string (e.g. 'pdf') or null.
+  const [exportingFormat, setExportingFormat] = useState(null);
   // Phase 7 (Async Photo Analysis Pipeline) -- the report currently being
   // watched on the analysis-progress view, and its last-polled status.
   const [analysisReportId, setAnalysisReportId] = useState(null);
@@ -1585,12 +1608,12 @@ export default function Dashboard() {
   // Fires uploads for any staged photo that's client-validated ('ready') but
   // hasn't been sent to the server yet -- covers a fresh capture, a rotated
   // photo (re-staged with its new bytes), and a retried upload failure alike.
+  // Bounded to MAX_CONCURRENT_UPLOADS at a time (see uploadQueue.js) -- a
+  // multi-file selection used to fire one request per photo simultaneously,
+  // which put all of them in contention for the same draft document and
+  // exhausted the server's transaction retry budget for most of them.
   useEffect(() => {
-    photos.forEach(p => {
-      if (p.status === 'ready' && p.file && !p.uploaded && !p.uploading && !p.uploadError) {
-        uploadStagedPhoto(p.id, p.file);
-      }
-    });
+    selectPhotosToUpload(photos).forEach(p => uploadStagedPhoto(p.id, p.file));
   }, [photos, uploadStagedPhoto]);
 
   // Runs the async duplicate/corrupt checks for one staged photo and updates
@@ -1893,6 +1916,13 @@ export default function Dashboard() {
   // existing (unchanged) default export output straight from the backend.
   const handleExport = async (format, options = {}) => {
     if (!generatedReport) return;
+    // Re-entrancy guard: the "Customize -> Export" modal already disables
+    // its own button while in flight, but the quick "Download {format}"
+    // buttons below call this directly with no such protection -- a
+    // double-click there used to fire two overlapping export requests for
+    // the same report+format.
+    if (exportingFormat) return;
+    setExportingFormat(format);
     try {
       const exportRes = await reportsAPI.export(generatedReport.id, { format, ...options });
       const { filename } = exportRes.data;
@@ -1907,8 +1937,13 @@ export default function Dashboard() {
       window.URL.revokeObjectURL(url);
       toast.success(`Exported as ${format.toUpperCase()}`);
     } catch (err) {
+      // Surface the backend's specific error/code (still processing,
+      // export-in-progress, entitlement, generation failure, etc.) instead
+      // of collapsing everything into one generic message.
       toast.error(err?.response?.data?.error || 'Export failed');
       throw err;
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -3684,8 +3719,12 @@ export default function Dashboard() {
                             const allowed = allowedExports.includes(fmt);
                             return allowed ? (
                               <button key={fmt} onClick={() => handleExport(fmt)}
-                                className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center">
-                                <Download className="w-4 h-4" /> Download {fmt.toUpperCase()}
+                                disabled={!!exportingFormat}
+                                className="w-full btn-secondary text-sm py-2 flex items-center gap-2 justify-center disabled:opacity-50">
+                                {exportingFormat === fmt
+                                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                  : <Download className="w-4 h-4" />}
+                                {exportingFormat === fmt ? 'Exporting…' : `Download ${fmt.toUpperCase()}`}
                               </button>
                             ) : (
                               <button key={fmt} onClick={() => navigate('/pricing')}
