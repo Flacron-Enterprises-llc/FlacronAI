@@ -17,17 +17,25 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <CookieConsent />
           <Toaster
             position="top-right"
+            containerStyle={{ top: 84, zIndex: 9999 }}
             toastOptions={{
               duration: 4000,
               style: {
-                background: 'var(--color-surface)',
-                color: 'var(--color-ink)',
-                border: '1px solid var(--color-border)',
+                background: 'rgb(var(--color-surface))',
+                color: 'rgb(var(--color-ink))',
+                border: '1px solid rgb(var(--color-border))',
                 borderRadius: '10px',
                 fontSize: '14px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
               },
-              success: { iconTheme: { primary: '#22c55e', secondary: 'var(--color-surface)' } },
-              error: { iconTheme: { primary: '#ef4444', secondary: 'var(--color-surface)' } },
+              success: {
+                iconTheme: { primary: '#22c55e', secondary: 'rgb(var(--color-surface))' },
+                style: { border: '1px solid #22c55e55' },
+              },
+              error: {
+                iconTheme: { primary: '#ef4444', secondary: 'rgb(var(--color-surface))' },
+                style: { border: '1px solid #ef444455' },
+              },
             }}
           />
         </AuthProvider>

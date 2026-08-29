@@ -4,6 +4,7 @@ import { Zap, Target, Shield, Smile, Building2, Heart } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
+import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
 
 const VALUES = [
   {
@@ -35,7 +36,7 @@ const VALUES = [
 export default function About() {
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="About FlacronAI — Give Adjusters Their Time Back" description="FlacronAI, a Flacron Enterprises LLC product, removes the documentation bottleneck in insurance claims: the FLACRON ENGINE drafts the report, a licensed adjuster reviews and approves." path="/about" />
+      <Seo title="About FlacronAI — Give Adjusters Their Time Back" description="FlacronAI, a Flacron Enterprises LLC product, removes the documentation bottleneck in insurance claims: the FLACRON ENGINE drafts the report, a licensed adjuster reviews and approves." path="/about" jsonLd={ORGANIZATION_JSONLD} />
       <Navbar />
 
       {/* Hero */}
