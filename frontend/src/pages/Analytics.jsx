@@ -5,6 +5,7 @@ import {
   Clock, TrendingUp, Users, BarChart3, Calendar,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import DashboardSidebar from '../components/DashboardSidebar';
 import { analyticsAPI } from '../services/api';
 import { formatStatus } from '../utils/formatStatus';
 
@@ -184,8 +185,11 @@ export default function Analytics() {
   const isEmpty = !!data && (metrics?.reportsGenerated ?? 0) === 0;
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
+      <div className="flex flex-1 pt-16 min-h-0">
+        <DashboardSidebar activeId="analytics" />
+        <main className="min-w-0 flex-1">
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div className="flex items-center gap-3 min-w-0">
@@ -285,6 +289,8 @@ export default function Analytics() {
             )}
           </div>
         )}
+      </div>
+        </main>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ const requireCanExport = requireTeamCapability('canExport');
 const { hasCapability, resolveOrganizationId } = require('../utils/orgRoles');
 const { isNotificationEnabled } = require('../utils/notificationPrefs');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
+const { truncateContentForListView } = require('../utils/reportSummary');
 const {
   sendReportApprovedEmail,
   sendReportSharedEmail,
@@ -1362,11 +1363,13 @@ router.get('/', authenticateAny, reportsRead, async (req, res) => {
     const snapshot = await db.collection('reports').where('userId', '==', req.user.uid).get();
     let reports = snapshot.docs.map((d) => {
       const data = d.data();
-      // Don't return full content in list view
+      // Don't return full content in list view -- the Review & Edit Report
+      // editor and PDF/DOCX exports must always fetch the full report via
+      // GET /:id instead of using this preview snippet (see reportSummary.js).
       return {
         id: d.id,
         ...data,
-        content: data.content ? data.content.substring(0, 300) + '...' : '',
+        content: truncateContentForListView(data.content),
       };
     });
 

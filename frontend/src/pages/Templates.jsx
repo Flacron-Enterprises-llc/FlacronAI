@@ -7,6 +7,7 @@ import {
   ArchiveRestore, Trash2, AlertCircle, ArrowLeft, Lock, Image as ImageIcon,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import DashboardSidebar from '../components/DashboardSidebar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { templatesAPI } from '../services/api';
 
@@ -93,8 +94,11 @@ export default function Templates() {
   };
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
+      <div className="flex flex-1 pt-16 min-h-0">
+        <DashboardSidebar activeId="templates" />
+        <main className="min-w-0 flex-1">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div className="flex items-center gap-3 min-w-0">
@@ -237,6 +241,8 @@ export default function Templates() {
             ))}
           </div>
         )}
+      </div>
+        </main>
       </div>
 
       <AnimatePresence>

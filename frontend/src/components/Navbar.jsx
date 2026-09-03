@@ -34,10 +34,26 @@ const Navbar = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const userMenuRef = useRef(null);
-  const { isAuthenticated, user, userProfile, logout, tier } = useAuth();
+  const { isAuthenticated, user, userProfile, logout, tier, emailVerified } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const isGoogleUser = user?.providerData?.some(p => p.providerId === 'google.com');
+  // Navbar only ever mounts on public pages, or on a protected page after
+  // ProtectedRoute has already let an unverified user through (i.e. never —
+  // ProtectedRoute blocks rendering its children until verified/Google). So
+  // reaching here with a live, unverified email/password session means the
+  // user has left the dedicated verification screen (Auth.jsx / ProtectedRoute's
+  // own gate) for a public page — force a real sign-out rather than just
+  // hiding the account UI, so no page shows/keeps them signed in.
+  const showAsSignedIn = isAuthenticated && (emailVerified || isGoogleUser);
+  useEffect(() => {
+    if (isAuthenticated && !emailVerified && !isGoogleUser) {
+      logout();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, emailVerified, isGoogleUser]);
 
   const handleHashClick = (e, href) => {
     const hash = href.replace('/#', '');
@@ -106,8 +122,8 @@ const Navbar = ({
     { label: 'Features', href: '/features' },
     { label: 'Solutions', href: '/solutions' },
     { label: 'Pricing', href: '/pricing' },
-    ...(isAuthenticated ? [{ label: 'Dashboard', href: '/dashboard' }] : []),
-    ...(isAuthenticated && (tier === 'agency' || tier === 'enterprise')
+    ...(showAsSignedIn ? [{ label: 'Dashboard', href: '/dashboard' }] : []),
+    ...(showAsSignedIn && (tier === 'agency' || tier === 'enterprise')
       ? [{ label: 'CRM', href: '/crm' }]
       : []),
   ];
@@ -162,7 +178,7 @@ const Navbar = ({
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
             <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
-            {isAuthenticated ? (
+            {showAsSignedIn ? (
               <>
                 <button
                   onClick={openGlobalSearch}
@@ -178,7 +194,7 @@ const Navbar = ({
                 <NotificationBell />
               </>
             ) : null}
-            {isAuthenticated ? (
+            {showAsSignedIn ? (
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(p => !p)}
@@ -247,7 +263,7 @@ const Navbar = ({
           {/* Mobile: search + notifications stay reachable without opening the menu */}
           <div className="flex md:hidden items-center gap-1">
             <ThemeToggle theme={theme} toggleTheme={toggleTheme} className="p-2" />
-            {isAuthenticated && (
+            {showAsSignedIn && (
               <>
                 <button
                   onClick={openGlobalSearch}
@@ -339,7 +355,7 @@ const Navbar = ({
                 </div>
               )}
               <div className="pt-3 border-t border-gray-200 space-y-1">
-                {isAuthenticated ? (
+                {showAsSignedIn ? (
                   <>
                     <div className="px-3 py-2 mb-1">
                       <p className="text-xs font-semibold text-gray-900 truncate">{userProfile?.displayName || 'My Account'}</p>

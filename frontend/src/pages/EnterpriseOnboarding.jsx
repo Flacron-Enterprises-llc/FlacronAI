@@ -6,6 +6,7 @@ import { Eye, EyeOff, ArrowRight, Building2, CheckCircle, AlertCircle, Zap } fro
 import { useAuth } from '../context/AuthContext';
 import { whiteLabelAPI, usersAPI } from '../services/api';
 import Seo from '../components/Seo.jsx';
+import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
 
 const DEFAULT_BRAND = {
   companyName: 'FlacronAI',
@@ -67,13 +68,16 @@ export default function EnterpriseOnboarding() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
-    if (mode === 'register' && form.password !== form.confirmPassword) {
-      setAuthError('Passwords do not match');
-      return;
-    }
-    if (form.password.length < 8) {
-      setAuthError('Password must be at least 8 characters');
-      return;
+    if (mode === 'register') {
+      if (form.password !== form.confirmPassword) {
+        setAuthError('Passwords do not match');
+        return;
+      }
+      const { valid, message } = validatePassword(form.password);
+      if (!valid) {
+        setAuthError(message);
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -190,7 +194,8 @@ export default function EnterpriseOnboarding() {
               <div>
                 <label className="label">Password</label>
                 <div className="relative">
-                  <input type={showPw ? 'text' : 'password'} className="input pr-10" required placeholder="Minimum 8 characters"
+                  <input type={showPw ? 'text' : 'password'} className="input pr-10" required
+                    placeholder={mode === 'register' ? 'Min. 12 characters' : '••••••••'}
                     value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} />
                   <button type="button" onClick={() => setShowPw(p => !p)}
                     aria-label={showPw ? 'Hide password' : 'Show password'} title={showPw ? 'Hide password' : 'Show password'}
@@ -198,6 +203,7 @@ export default function EnterpriseOnboarding() {
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {mode === 'register' && <p className="text-gray-500 text-xs mt-1">{PASSWORD_REQUIREMENTS_HINT}</p>}
               </div>
 
               <AnimatePresence mode="wait">

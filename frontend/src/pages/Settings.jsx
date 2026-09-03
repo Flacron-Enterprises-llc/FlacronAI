@@ -21,6 +21,7 @@ import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI, reportsAPI } from '../services/api';
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
+import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
 
 // Phase 18 (Settings Completion): the spec's 7-tab structure (Profile/
 // Organization/Branding/Notifications/Security/Data/API), plus the
@@ -361,7 +362,8 @@ export default function Settings() {
     e.preventDefault();
     if (!pwForm.currentPassword) { toast.error('Enter your current password'); return; }
     if (!pwForm.newPassword) { toast.error('Enter a new password'); return; }
-    if (pwForm.newPassword.length < 12) { toast.error('New password must be at least 12 characters'); return; }
+    const { valid, message } = validatePassword(pwForm.newPassword);
+    if (!valid) { toast.error(message); return; }
     if (pwForm.newPassword !== pwForm.confirmPassword) { toast.error('New passwords do not match'); return; }
     if (pwForm.currentPassword === pwForm.newPassword) { toast.error('New password must be different from current password'); return; }
 
@@ -386,7 +388,7 @@ export default function Settings() {
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         toast.error('Current password is incorrect');
       } else if (err.code === 'auth/weak-password') {
-        toast.error('New password is too weak — use at least 12 characters');
+        toast.error(`New password is too weak — ${PASSWORD_REQUIREMENTS_HINT}`);
       } else if (err.code === 'auth/too-many-requests') {
         toast.error('Too many attempts. Please try again later.');
       } else if (err.code === 'auth/requires-recent-login') {
@@ -694,7 +696,7 @@ export default function Settings() {
                 <motion.div key="security" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                   <div className="card p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h2>
-                    <p className="text-gray-500 text-sm mb-6">Must be at least 12 characters and different from your current password.</p>
+                    <p className="text-gray-500 text-sm mb-6">{PASSWORD_REQUIREMENTS_HINT} Must be different from your current password.</p>
                     <form onSubmit={handlePasswordChange} className="space-y-4 max-w-sm">
                       {[
                         { key: 'currentPassword', label: 'Current Password', show: 'current' },
