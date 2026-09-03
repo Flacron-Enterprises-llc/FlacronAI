@@ -296,7 +296,7 @@ export default function PhotoLibrary() {
   return (
     <div className="min-h-screen bg-bg">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 pt-24 pb-6">
         <div className="mb-5">
           <h1 className="text-xl font-bold text-gray-900">Photo Library</h1>
           <p className="text-xs text-gray-500 mt-0.5">Search and review every photo across your reports, including reports shared with you.</p>

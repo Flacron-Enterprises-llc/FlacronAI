@@ -11,6 +11,7 @@ import { auth } from '../config/firebase.js';
 import Seo from '../components/Seo.jsx';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { getAdminEmail } from '../utils/adminEmail.js';
+import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
 
 // Version of the Terms + Privacy Policy a user agrees to at sign-up. Matches the
 // "Last updated" date shown on both /terms-of-service and /privacy-policy. Bump
@@ -65,7 +66,8 @@ const Auth = () => {
   const switchMode = (nextMode) => {
     setErrors({});
     setAgreedToTerms(false);
-    navigate(nextMode === 'signup' ? '/signup' : '/login', { state: location.state });
+    const qs = searchParams.toString();
+    navigate(`${nextMode === 'signup' ? '/signup' : '/login'}${qs ? `?${qs}` : ''}`, { state: location.state });
   };
 
   // Save pending plan to sessionStorage on mount so it survives auth redirects
@@ -119,10 +121,13 @@ const Auth = () => {
     if (!form.email) errs.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Invalid email';
     if (!form.password) errs.password = 'Password is required';
-    else if (form.password.length < 12) errs.password = 'Password must be at least 12 characters';
     if (mode === 'signup') {
       if (!form.firstName.trim()) errs.firstName = 'First name is required';
       if (!form.lastName.trim()) errs.lastName = 'Last name is required';
+      if (form.password) {
+        const { valid, message } = validatePassword(form.password);
+        if (!valid) errs.password = message;
+      }
       if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
       if (!agreedToTerms) errs.agreedToTerms = 'You must agree to the Terms of Service and Privacy Policy to create an account';
     }
@@ -506,7 +511,11 @@ const Auth = () => {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+                  {errors.password ? (
+                    <p className="text-red-400 text-xs mt-1">{errors.password}</p>
+                  ) : mode === 'signup' ? (
+                    <p className="text-gray-500 text-xs mt-1">{PASSWORD_REQUIREMENTS_HINT}</p>
+                  ) : null}
                 </div>
 
                 {mode === 'signup' && (
@@ -568,7 +577,11 @@ const Auth = () => {
                     <div className="w-5 h-5 border-2 border-gray-300 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      {mode === 'login' ? 'Sign In' : 'Create Free Account'}
+                      {mode === 'login'
+                        ? 'Sign In'
+                        : pendingPlan && pendingPlan !== 'starter'
+                        ? 'Continue to Payment'
+                        : 'Create Free Account'}
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

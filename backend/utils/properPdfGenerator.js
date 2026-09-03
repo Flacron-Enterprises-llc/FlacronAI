@@ -183,7 +183,15 @@ const generatePDF = async (report, options = {}) => {
 
         if (includeCompanyBranding && logoBuffer) {
           try {
-            doc.image(logoBuffer, cx - 50, coverY, { width: 100, fit: [100, 50] });
+            // `width` and `fit` are mutually exclusive in pdfkit -- passing both
+            // silently ignores `fit` and scales purely by width, so a logo
+            // taller than the intended 100x50 box (e.g. a square or stacked
+            // mark+wordmark lockup) rendered far taller than assumed, running
+            // into the title text below it. `fit` alone bounds both dimensions
+            // (preserving aspect ratio, never stretched/cropped); `align:
+            // 'center'` keeps it centered even when its fitted width is less
+            // than the full 100pt box.
+            doc.image(logoBuffer, cx - 50, coverY, { fit: [100, 50], align: 'center' });
             coverY += 62;
           } catch (err) {
             console.warn(
@@ -904,7 +912,11 @@ const generatePDF = async (report, options = {}) => {
         if (includeCompanyBranding) {
           if (logoBuffer) {
             try {
-              doc.image(logoBuffer, margin, 7, { height: 26, fit: [110, 26] });
+              // Same pdfkit `width`/`height` + `fit` conflict as the cover logo
+              // above -- `fit` alone bounds the running-header logo to 110x26
+              // without stretching it, instead of scaling purely by height and
+              // risking it overrunning into the claim-number text on the right.
+              doc.image(logoBuffer, margin, 7, { fit: [110, 26] });
             } catch {
               doc
                 .fontSize(13)

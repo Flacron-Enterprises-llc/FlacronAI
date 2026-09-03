@@ -13,6 +13,7 @@ const { recordAuditLog } = require('../services/auditLogService');
 const { body, validationResult } = require('express-validator');
 const { resolveOrganizationId, resolveRole, hasCapability } = require('../utils/orgRoles');
 const { sanitizeNotifications } = require('../utils/notificationPrefs');
+const { PASSWORD_REQUIREMENTS_MESSAGE, isStrongPassword } = require('../utils/passwordPolicy');
 const { listEndpoints } = require('../services/webhookService');
 const {
   isValidOnboardingUserType,
@@ -593,7 +594,9 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 });
 
 // PUT /api/users/change-password
-router.put('/change-password', authenticateToken, [body('newPassword').isLength({ min: 12 })], async (req, res) => {
+router.put('/change-password', authenticateToken, [
+  body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
+], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {

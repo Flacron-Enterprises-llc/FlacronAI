@@ -12,6 +12,7 @@ const qrcode = require('qrcode');
 const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
 const { sendNewDeviceLoginAlert } = require('../services/emailService');
+const { PASSWORD_REQUIREMENTS_MESSAGE, isStrongPassword } = require('../utils/passwordPolicy');
 
 const RECOVERY_CODE_COUNT = 8;
 const normalizeRecoveryCode = code => String(code || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
@@ -104,7 +105,7 @@ const authLimiter = rateLimit({
 // POST /api/auth/register
 router.post('/register', authLimiter, [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 12 }),
+  body('password').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
   body('displayName').trim().notEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -526,7 +527,7 @@ router.post('/send-verification', authLimiter, authenticateToken, async (req, re
 
 // POST /api/auth/change-password
 router.post('/change-password', authenticateToken, [
-  body('newPassword').isLength({ min: 12 }),
+  body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

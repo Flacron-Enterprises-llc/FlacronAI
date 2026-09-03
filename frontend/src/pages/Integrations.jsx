@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronUp, Lock,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import DashboardSidebar from '../components/DashboardSidebar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { webhooksAPI } from '../services/api';
@@ -217,8 +218,11 @@ export default function Integrations() {
   const genuineError = errorCode && !apiAccessDenied;
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg flex flex-col">
       <Navbar />
+      <div className="flex flex-1 pt-16 min-h-0">
+        <DashboardSidebar activeId="integrations" />
+        <main className="min-w-0 flex-1">
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-5">
           <Link to="/dashboard" aria-label="Back to Dashboard" className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0">
@@ -353,6 +357,8 @@ export default function Integrations() {
             </>
           )}
         </div>
+      </div>
+        </main>
       </div>
 
       <AnimatePresence>
