@@ -1,60 +1,34 @@
-import { StyleSheet, View } from 'react-native';
+import { Redirect } from 'expo-router';
 
-import { BrandMark } from '@/components/BrandMark';
-import { ScreenContainer } from '@/components/ScreenContainer';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/theme';
+import { useAuth } from '@/features/auth/context/AuthProvider';
 
-export default function HomeScreen() {
-  const theme = useTheme();
+/**
+ * The single always-reachable anchor route ("/") — computes where to send the user based
+ * on AuthProvider's derived `status` and issues a declarative `<Redirect>`. Kept
+ * deliberately outside every Stack.Protected group (see app/_layout.tsx) so there is
+ * always exactly one unambiguous entry point, instead of relying on Expo Router's
+ * "redirect to the anchor route" default when a guarded route is denied.
+ *
+ * Renders nothing while `status === 'loading'` — the root layout keeps the splash screen
+ * up for that entire window, so this is never visibly reached mid-decision (prevents any
+ * flash of the wrong destination).
+ */
+export default function RootIndex() {
+  const { status } = useAuth();
 
-  return (
-    <ScreenContainer centered>
-      <View style={styles.hero}>
-        <BrandMark size={112} />
-
-        <ThemedText variant="heading" style={styles.title}>
-          FlacronAI
-        </ThemedText>
-
-        <ThemedText variant="subtitle" color="muted" style={styles.tagline}>
-          AI-assisted insurance inspection reports
-        </ThemedText>
-      </View>
-
-      <View
-        style={[
-          styles.badge,
-          { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-        ]}
-      >
-        <ThemedText variant="caption" color="muted">
-          Foundation build — mobile app in development
-        </ThemedText>
-      </View>
-    </ScreenContainer>
-  );
+  switch (status) {
+    case 'signed-out':
+      return <Redirect href="/login" />;
+    case 'needs-email-verification':
+      return <Redirect href="/verify-email" />;
+    case 'needs-mfa':
+      return <Redirect href="/mfa" />;
+    case 'profile-unavailable':
+      return <Redirect href="/account-unavailable" />;
+    case 'authenticated':
+      return <Redirect href="/home" />;
+    case 'loading':
+    default:
+      return null;
+  }
 }
-
-const styles = StyleSheet.create({
-  hero: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  title: {
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  tagline: {
-    textAlign: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-});

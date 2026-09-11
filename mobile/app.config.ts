@@ -25,6 +25,14 @@ const config: ExpoConfig = {
     // it yet. The classic universal `icon` field above is used for iOS as well as
     // Android/web. Revisit as an optional visual-polish item in the Store Preparation
     // phase, not before.
+
+    // Sign in with Apple (Phase 3 — Authentication). Safe to enable now: this is a plain
+    // capability flag, not a secret/credential — it requires no OAuth client ID, no
+    // GoogleService-Info.plist-equivalent file, and no console access to add. It does
+    // still require the matching "Sign In with Apple" capability to be enabled on the
+    // App ID in the Apple Developer portal before a real (non-Expo-Go) build can use it —
+    // see AUTHENTICATION_ARCHITECTURE.md §7 for that remaining manual step.
+    usesAppleSignIn: true,
   },
 
   android: {
@@ -52,6 +60,32 @@ const config: ExpoConfig = {
         backgroundColor: '#FFFFFF',
       },
     ],
+    // Sign in with Apple (Phase 3) — safe to enable now, see the ios.usesAppleSignIn
+    // comment above.
+    'expo-apple-authentication',
+    // Google Sign-In (Phase 3, 2026-09-09) — the "without Firebase" plugin variant
+    // (options object present): only sets the iOS URL scheme Google's native SDK needs to
+    // receive the OAuth redirect, derived from the iOS Firebase app's own
+    // GoogleService-Info.plist REVERSED_CLIENT_ID (a public identifier, not a secret —
+    // same status as the bundle ID). Deliberately NOT the plain `'@react-native-google-signin/google-signin'`
+    // string form: that variant reads `ios.googleServicesFile`/`android.googleServicesFile`
+    // instead and requires committing both native config files into the repo, which this
+    // app's architecture avoids (see AUTHENTICATION_ARCHITECTURE.md §11.8a/§14 — plain
+    // `firebase` JS SDK, no `@react-native-firebase`, no native Google config files needed).
+    // Android needs no config-plugin entry at all for this variant: its native SDK verifies
+    // the calling app against Google Cloud's registered SHA-1/package at sign-in time, not
+    // from a bundled file.
+    [
+      '@react-native-google-signin/google-signin',
+      {
+        iosUrlScheme: 'com.googleusercontent.apps.773892679617-12lrqave8s8l37gt87irhj8kaura2g64',
+      },
+    ],
+    // MFA server-side enforcement (2026-09-08 fix, AUTHENTICATION_ARCHITECTURE.md §12) —
+    // Keychain/Keystore-backed storage for the short-lived MFA session assertion. No
+    // plugin options set: this app never uses SecureStore's optional Face ID-gated
+    // `requireAuthentication` mode, so the default (no extra Info.plist entry) is correct.
+    'expo-secure-store',
   ],
 
   experiments: {
