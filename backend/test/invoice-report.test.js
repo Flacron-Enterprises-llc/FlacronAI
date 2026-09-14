@@ -131,9 +131,10 @@ test('validatePercent defaults to 0 when omitted, rejects out-of-range values', 
 
 // ── computeInvoiceTotals: hand-verified against the client's sample PDF ─
 
-test('computeInvoiceTotals reproduces the client sample invoice exactly', () => {
-  const totals = computeInvoiceTotals(SAMPLE_SERVICES, 8.25, 1_000_000 /* $10,000.00 in cents */);
+test('computeInvoiceTotals reproduces the client sample invoice exactly (0% O&P -- the sample has none)', () => {
+  const totals = computeInvoiceTotals(SAMPLE_SERVICES, 0, 8.25, 1_000_000 /* $10,000.00 in cents */);
   assert.equal(totals.servicesSubtotal, 27973); // Exterior 25373 + Interior 2600
+  assert.equal(totals.overheadProfit, 0);
   assert.equal(totals.combinedSubtotal, 27973);
   assert.equal(totals.taxableAmount, 27973); // all sample items taxable
   assert.equal(totals.tax, 2307.77); // 27973 * 0.0825 = 2307.7725 -> rounds to 2307.77
@@ -146,7 +147,7 @@ test('computeInvoiceTotals excludes non-taxable services from the taxable base',
     { lineTotal: 1000, taxable: true },
     { lineTotal: 500, taxable: false },
   ];
-  const totals = computeInvoiceTotals(services, 10, 0);
+  const totals = computeInvoiceTotals(services, 0, 10, 0);
   assert.equal(totals.servicesSubtotal, 1500);
   assert.equal(totals.taxableAmount, 1000);
   assert.equal(totals.tax, 100); // 10% of 1000, not 1500
@@ -155,8 +156,46 @@ test('computeInvoiceTotals excludes non-taxable services from the taxable base',
 
 test('computeInvoiceTotals avoids float drift on repeated fractional-cent inputs', () => {
   const services = Array.from({ length: 7 }, () => ({ lineTotal: 0.1, taxable: true }));
-  const totals = computeInvoiceTotals(services, 0, 0);
+  const totals = computeInvoiceTotals(services, 0, 0, 0);
   assert.equal(totals.servicesSubtotal, 0.7); // not 0.7000000000000001
+});
+
+// ── QA fix: Overhead & Profit carried forward from the linked Repair
+// Estimate (confirmed reproduction: $550 subtotal, 10% O&P, 8% tax) ────────
+
+test('computeInvoiceTotals: confirmed case -- 550 + 55 (10% O&P) + 44 (8% tax on the $550 services base) = 649, tax not expanded to O&P', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const totals = computeInvoiceTotals(services, 10, 8, 0);
+  assert.equal(totals.servicesSubtotal, 550);
+  assert.equal(totals.overheadProfitPercent, 10);
+  assert.equal(totals.overheadProfit, 55);
+  assert.equal(totals.combinedSubtotal, 605); // 550 + 55, O&P counted toward the subtotal exactly once
+  assert.equal(totals.taxableAmount, 550); // tax base is services only, never O&P
+  assert.equal(totals.tax, 44); // 8% of 550, NOT 8% of 605
+  assert.equal(totals.balanceDue, 649); // 550 + 55 + 44 - 0, matches the confirmed correct total
+});
+
+test('computeInvoiceTotals: a payment reduces the O&P-inclusive total, not just the services+tax portion', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const totals = computeInvoiceTotals(services, 10, 8, 20000 /* $200.00 paid */);
+  assert.equal(totals.balanceDue, 449); // 649 - 200
+});
+
+test('computeInvoiceTotals: 0% O&P adds nothing and is not mistaken for a missing/legacy value', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const totals = computeInvoiceTotals(services, 0, 8, 0);
+  assert.equal(totals.overheadProfitPercent, 0);
+  assert.equal(totals.overheadProfit, 0);
+  assert.equal(totals.combinedSubtotal, 550);
+  assert.equal(totals.balanceDue, 594); // matches the (buggy, pre-fix) reproduction exactly WHEN O&P is genuinely 0%
+});
+
+test('computeInvoiceTotals: a missing/undefined overheadProfitPercent (legacy pre-fix data) defaults to 0, never NaN/misleading', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const totals = computeInvoiceTotals(services, undefined, 8, 0);
+  assert.equal(totals.overheadProfitPercent, 0);
+  assert.equal(totals.overheadProfit, 0);
+  assert.equal(totals.combinedSubtotal, 550);
 });
 
 // ── validateAndComputeInvoice: top-level entry point ────────────────────
@@ -198,11 +237,11 @@ test('validateAndComputeInvoice ignores a client-supplied fake totals object and
   assert.equal(result.totals.balanceDue, 20280.77); // not the injected 1
 });
 
-test('validateAndComputeInvoice rejects a missing invoiceNumber/billTo/remitTo/date', () => {
+test('validateAndComputeInvoice rejects a missing invoiceNumber/billTo/remitTo/invoiceDate', () => {
   assert.match(validateAndComputeInvoice({ ...baseInvoiceBody(), invoiceNumber: '' }, SAMPLE_SERVICES).error, /invoiceNumber is required/);
   assert.match(validateAndComputeInvoice({ ...baseInvoiceBody(), billTo: {} }, SAMPLE_SERVICES).error, /billTo.name is required/);
   assert.match(validateAndComputeInvoice({ ...baseInvoiceBody(), remitTo: {} }, SAMPLE_SERVICES).error, /remitTo.name is required/);
-  assert.match(validateAndComputeInvoice({ ...baseInvoiceBody(), dueDate: 'not-a-date' }, SAMPLE_SERVICES).error, /dueDate must be a valid date/);
+  assert.match(validateAndComputeInvoice({ ...baseInvoiceBody(), invoiceDate: 'not-a-date' }, SAMPLE_SERVICES).error, /invoiceDate must be a valid date/);
 });
 
 test('validateAndComputeInvoice defaults paymentTerms when omitted', () => {
@@ -210,6 +249,128 @@ test('validateAndComputeInvoice defaults paymentTerms when omitted', () => {
   delete body.paymentTerms;
   const result = validateAndComputeInvoice(body, SAMPLE_SERVICES);
   assert.equal(result.paymentTerms, 'Net 30 days from invoice date.');
+});
+
+// ── QA fix: validateAndComputeInvoice's 3rd param is the ONLY source of
+// O&P -- the route passes the linked Repair Estimate's own authoritative
+// percent here; nothing in `body` (the request payload) can ever influence
+// it, which is what makes it tamper-proof against a manipulated client. ──
+
+test('validateAndComputeInvoice: confirmed case reproduced end to end -- 550 + 55 + 44 = 649', () => {
+  const services = [{ code: 'REP-001', description: 'Floor covering replacement', qty: 22, unit: 'EA', unitPrice: 25, lineTotal: 550, taxable: true }];
+  const result = validateAndComputeInvoice({ ...baseInvoiceBody(), taxRatePercent: 8, changeOrderLog: [], paymentHistory: [] }, services, 10);
+  assert.equal(result.error, undefined);
+  assert.equal(result.overheadProfitPercent, 10);
+  assert.equal(result.totals.overheadProfit, 55);
+  assert.equal(result.totals.combinedSubtotal, 605);
+  assert.equal(result.totals.tax, 44);
+  assert.equal(result.totals.balanceDue, 649);
+});
+
+test('validateAndComputeInvoice: a client-supplied overheadProfitPercent/overheadProfit inside the request body is completely ignored -- only the 3rd argument (the server-loaded estimate value) is ever used', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const body = {
+    ...baseInvoiceBody(),
+    taxRatePercent: 8,
+    changeOrderLog: [],
+    paymentHistory: [],
+    // A manipulated/naive client payload trying to inject its own O&P --
+    // validateAndComputeInvoice doesn't even read `body.overheadProfitPercent`.
+    overheadProfitPercent: 99,
+    overheadProfit: 99999,
+  };
+  const result = validateAndComputeInvoice(body, services, 10); // 10 is the real, authoritative value
+  assert.equal(result.overheadProfitPercent, 10);
+  assert.equal(result.totals.overheadProfit, 55);
+  assert.equal(result.totals.balanceDue, 649); // not inflated by the injected 99999
+});
+
+test('validateAndComputeInvoice: 0% O&P on the linked estimate produces no O&P line amount, not an error or omission', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const result = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), taxRatePercent: 8, changeOrderLog: [], paymentHistory: [] },
+    services,
+    0
+  );
+  assert.equal(result.overheadProfitPercent, 0);
+  assert.equal(result.totals.overheadProfit, 0);
+  assert.equal(result.totals.balanceDue, 594);
+});
+
+test('validateAndComputeInvoice: a missing overheadProfitPercent argument (invoice revision reusing a pre-fix invoice\'s own snapshot) defaults to 0 rather than erroring', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  const result = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), taxRatePercent: 8, changeOrderLog: [], paymentHistory: [] },
+    services
+    // overheadProfitPercent omitted entirely
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.overheadProfitPercent, 0);
+  assert.equal(result.totals.balanceDue, 594);
+});
+
+test('validateAndComputeInvoice: an out-of-range/garbage overheadProfitPercent (corrupt data, never user input) is clamped to 0 rather than propagating NaN/negative totals', () => {
+  const services = [{ lineTotal: 550, taxable: true }];
+  for (const bad of [-5, 150, NaN, 'not-a-number', null]) {
+    const result = validateAndComputeInvoice(
+      { ...baseInvoiceBody(), taxRatePercent: 8, changeOrderLog: [], paymentHistory: [] },
+      services,
+      bad
+    );
+    assert.equal(result.overheadProfitPercent, 0, `expected ${bad} to default to 0`);
+  }
+});
+
+// ── QA fix: Due Date is always Invoice Date + 30 calendar days, computed
+// server-side -- never a separate user-entered/client-supplied field. The
+// Payment Terms wording ("Net 30 days from invoice date.") is unchanged;
+// this just makes the actual Due Date match it. ─────────────────────────
+
+test('validateAndComputeInvoice: confirmed reproduction -- 09/13/2026 invoice date computes a 10/13/2026 due date, not the manipulated 09/16/2026 the client sent', () => {
+  const result = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), invoiceDate: '2026-09-13', dueDate: '2026-09-16' },
+    SAMPLE_SERVICES
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.dueDate, '2026-10-13');
+});
+
+test('validateAndComputeInvoice: 09/09/2026 -> 10/09/2026', () => {
+  const result = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), invoiceDate: '2026-09-09' },
+    SAMPLE_SERVICES
+  );
+  assert.equal(result.dueDate, '2026-10-09');
+});
+
+test('validateAndComputeInvoice: a garbage/malformed client-supplied dueDate is ignored entirely, not a validation error', () => {
+  const result = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), invoiceDate: '2026-09-13', dueDate: 'not-a-date' },
+    SAMPLE_SERVICES
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.dueDate, '2026-10-13');
+});
+
+test('validateAndComputeInvoice: omitting dueDate from the request body entirely still computes it correctly', () => {
+  const body = { ...baseInvoiceBody(), invoiceDate: '2026-09-13' };
+  delete body.dueDate;
+  const result = validateAndComputeInvoice(body, SAMPLE_SERVICES);
+  assert.equal(result.error, undefined);
+  assert.equal(result.dueDate, '2026-10-13');
+});
+
+test('validateAndComputeInvoice: month-end, year-end, and leap-year Invoice Date boundaries all compute the correct Due Date', () => {
+  const cases = [
+    ['2026-01-31', '2026-03-02'], // Jan 31 + 30 = Mar 2 (Feb has 28 days in 2026)
+    ['2026-12-15', '2027-01-14'], // crosses a year boundary
+    ['2024-01-31', '2024-03-01'], // 2024 is a leap year -- Feb has 29 days
+    ['2024-02-01', '2024-03-02'], // starts inside the leap-year February itself
+  ];
+  for (const [invoiceDate, expectedDueDate] of cases) {
+    const result = validateAndComputeInvoice({ ...baseInvoiceBody(), invoiceDate }, SAMPLE_SERVICES);
+    assert.equal(result.dueDate, expectedDueDate, `${invoiceDate} + 30 days`);
+  }
 });
 
 // ── buildInvoiceContent: deterministic markdown assembly ────────────────
@@ -240,4 +401,38 @@ test('buildInvoiceContent falls back to explicit empty-state notices with no pay
   ]);
   assert.match(content, /No payments have been recorded against this invoice yet\./);
   assert.match(content, /No change orders have been logged for this invoice\./);
+});
+
+// ── QA fix: the Overhead & Profit row -- confirmed reproduction rendered
+// through the full create-time pipeline (validateAndComputeInvoice ->
+// buildInvoiceContent), exactly as it would appear in the saved Invoice's
+// desktop view, PDF, and DOCX export (all three parse this same markdown). ─
+
+test('buildInvoiceContent renders a distinct, clearly labelled Overhead & Profit row exactly once, and the confirmed $649 total', () => {
+  const services = [{ code: 'REP-001', description: 'Floor covering replacement', qty: 22, unit: 'EA', unitPrice: 25, lineTotal: 550, taxable: true }];
+  const computed = validateAndComputeInvoice(
+    { ...baseInvoiceBody(), taxRatePercent: 8, changeOrderLog: [], paymentHistory: [] },
+    services,
+    10 // the linked estimate's authoritative O&P percent
+  );
+  const content = buildInvoiceContent({ claimNumber: 'CLM-2024-WH-118' }, computed, 0, [
+    { version: 0, date: '2026-09-13', changeSummary: 'Initial invoice created', balanceDue: computed.totals.balanceDue },
+  ]);
+  assert.match(content, /\| Overhead & Profit \(10%\) \| \$55\.00 \|/);
+  assert.match(content, /\| Services Subtotal \| \$550\.00 \|/);
+  assert.match(content, /\| Combined Subtotal \| \$605\.00 \|/);
+  assert.match(content, /\| Sales Tax \(8%\) \| \$44\.00 \|/);
+  assert.match(content, /\*\*TOTAL DUE\*\* \| \*\*\$649\.00\*\*/);
+  // Exactly one O&P row -- not counted a second time anywhere else in the document.
+  assert.equal((content.match(/Overhead & Profit/g) || []).length, 1);
+});
+
+test('buildInvoiceContent still shows an explicit "(0%)" Overhead & Profit row -- $0.00, never hidden -- for a 0%/legacy invoice', () => {
+  const computed = validateAndComputeInvoice(baseInvoiceBody(), SAMPLE_SERVICES); // overheadProfitPercent omitted -> 0
+  const content = buildInvoiceContent({ claimNumber: 'CLM-2024-WH-118' }, computed, 0, [
+    { version: 0, date: '2024-04-30', changeSummary: 'Initial invoice created', balanceDue: computed.totals.balanceDue },
+  ]);
+  assert.match(content, /\| Overhead & Profit \(0%\) \| \$0\.00 \|/);
+  // Unaffected total -- the $20,280.77 sample figure is unchanged by adding a $0 O&P row.
+  assert.match(content, /\$20,280\.77/);
 });

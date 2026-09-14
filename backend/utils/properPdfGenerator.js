@@ -71,9 +71,15 @@ const generatePDF = async (report, options = {}) => {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // Ensure every auto-flow page starts content below the header band
+      // Ensure every auto-flow page starts content below the header band.
+      // QA fix (TOC page-numbering): `pageCounter` tracks the current
+      // 1-based physical page number as pages are actually added, so the
+      // Table of Contents can later be built from where sections truly
+      // landed instead of a hardcoded/sequential guess.
+      let pageCounter = 0;
       doc.on('pageAdded', () => {
         doc.y = 62;
+        pageCounter += 1;
       });
 
       const pageWidth = 612;
@@ -304,32 +310,69 @@ const generatePDF = async (report, options = {}) => {
 
       // ══════════════════════════════════════════════════════════════════════
       // PAGE 2 — TABLE OF CONTENTS
+      //
+      // QA fix (TOC page-numbering): this page is only RESERVED here -- its
+      // title/rows are drawn later, once every section's real starting page
+      // is known (see "DRAW TABLE OF CONTENTS" below). Previously the page
+      // numbers were a hardcoded sequential guess (`i + 3`, i.e. "section 1
+      // is on page 3, section 2 is on page 4, ..."), which silently assumed
+      // every section occupies exactly one page -- wrong as soon as any
+      // section's content (line items, payment history, wrapped text, etc.)
+      // pushed later sections onto shared or later pages.
       // ══════════════════════════════════════════════════════════════════════
       doc.addPage();
-      doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
+      const tocPageIndex = pageCounter - 1; // 0-based, for doc.switchToPage()
 
-      doc.fontSize(20).fillColor(NAVY).font('Helvetica-Bold').text('Table of Contents', margin, 72);
-      doc.rect(margin, 97, contentWidth, 2).fill(accentHex);
-
-      tocSections.forEach((sec, i) => {
-        const y = 108 + i * 34;
-        doc.rect(margin, y, contentWidth, 30).fill(i % 2 === 0 ? '#f8fafc' : 'white');
-        doc
-          .fontSize(10)
-          .fillColor('#1e293b')
-          .font('Helvetica')
-          .text(sec, margin + 12, y + 9, { width: contentWidth - 60 });
-        doc
-          .fontSize(9)
-          .fillColor('#94a3b8')
-          .text(`${i + 3}`, margin + contentWidth - 40, y + 9, { width: 30, align: 'right' });
+      // tocSections entries may be a plain "Section N: Title" string (the
+      // numbered heading convention used by every AI-narrative document type
+      // -- default/Liability/Commercial/Flood/Theft/Auto/MoldSupplement,
+      // whose body content literally contains "## SECTION N: ..." headings),
+      // or a `{ label, heading }` object supplying the literal (bare, no
+      // "SECTION N" prefix) heading text to match -- used by the
+      // deterministic Invoice/RepairEstimate/CoverageDeterminationLetter
+      // content builders, whose headings are plain titles like "## INVOICE
+      // TOTALS" with no numeric prefix at all.
+      const SECTION_TOKEN_RE = /^SECTION\s+([0-9A-Z]+)\b/i;
+      const tocEntries = tocSections.map((sec) => {
+        if (sec && typeof sec === 'object') {
+          return { label: sec.label, matchType: 'text', text: String(sec.heading || '').trim().toUpperCase() };
+        }
+        const m = SECTION_TOKEN_RE.exec(String(sec).trim());
+        return { label: sec, matchType: 'token', token: m ? m[1].toUpperCase() : null };
       });
+      // Parallel array: the physical page each entry's heading was actually
+      // found on (first occurrence only -- a multi-page section still
+      // reports its first page, per spec). Filled in as headings are
+      // encountered below; `null` until then.
+      const tocPageNumbers = tocEntries.map(() => null);
+      const recordTocHeadingPage = (headingTitle, currentPage) => {
+        const upperTitle = headingTitle.toUpperCase();
+        const tokenMatch = SECTION_TOKEN_RE.exec(upperTitle);
+        const headingToken = tokenMatch ? tokenMatch[1].toUpperCase() : null;
+        for (let idx = 0; idx < tocEntries.length; idx++) {
+          if (tocPageNumbers[idx] != null) continue; // first occurrence wins
+          const entry = tocEntries[idx];
+          if (entry.matchType === 'token' && headingToken && entry.token === headingToken) {
+            tocPageNumbers[idx] = currentPage;
+            return;
+          }
+          if (entry.matchType === 'text' && entry.text && upperTitle.startsWith(entry.text)) {
+            tocPageNumbers[idx] = currentPage;
+            return;
+          }
+        }
+      };
 
       // ══════════════════════════════════════════════════════════════════════
       // PAGE 3+ — REPORT CONTENT
       // ══════════════════════════════════════════════════════════════════════
       addPage();
       doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
+      // Fallback for any tocSections entry whose heading never actually shows
+      // up in the content (e.g. hand-edited/deleted by a reviewer) -- the
+      // first content page is a reasonable, non-exceeding guess, and is
+      // still clamped against the final page count once rendering finishes.
+      const contentStartPage = pageCounter;
 
       const content = report.content || '';
       const lines = content.split('\n');
@@ -542,6 +585,9 @@ const generatePDF = async (report, options = {}) => {
           ensureSpace(40);
           const title = stripMd(trimmedLine.replace(/^#+\s*/, ''));
           currentSectionTitle = title;
+          // QA fix: record the actual physical page this section heading
+          // lands on (after ensureSpace's possible page break), for the TOC.
+          recordTocHeadingPage(title, pageCounter);
           doc
             .fontSize(13)
             .fillColor(NAVY)
@@ -873,6 +919,34 @@ const generatePDF = async (report, options = {}) => {
         fieldY += 62;
       });
       doc.y = fieldY;
+
+      // ══════════════════════════════════════════════════════════════════════
+      // DRAW TABLE OF CONTENTS (QA fix) — now that every page has been added,
+      // `pageCounter` holds the final physical page count and `tocPageNumbers`
+      // holds each section's real first-page. Draw the reserved TOC page's
+      // content now, using real numbers instead of the old `i + 3` guess.
+      // Clamped so a TOC entry can never point past the final page.
+      // ══════════════════════════════════════════════════════════════════════
+      const finalPageCount = pageCounter;
+      doc.switchToPage(tocPageIndex);
+      doc.y = 0; // avoid triggering an auto page-add via text()
+      doc.rect(0, 42, pageWidth, pageHeight - 74).fill('white');
+      doc.fontSize(20).fillColor(NAVY).font('Helvetica-Bold').text('Table of Contents', margin, 72);
+      doc.rect(margin, 97, contentWidth, 2).fill(accentHex);
+      tocEntries.forEach((entry, i) => {
+        const y = 108 + i * 34;
+        const pageNum = Math.min(tocPageNumbers[i] ?? contentStartPage, finalPageCount);
+        doc.rect(margin, y, contentWidth, 30).fill(i % 2 === 0 ? '#f8fafc' : 'white');
+        doc
+          .fontSize(10)
+          .fillColor('#1e293b')
+          .font('Helvetica')
+          .text(entry.label, margin + 12, y + 9, { width: contentWidth - 60 });
+        doc
+          .fontSize(9)
+          .fillColor('#94a3b8')
+          .text(`${pageNum}`, margin + contentWidth - 40, y + 9, { width: 30, align: 'right' });
+      });
 
       // ══════════════════════════════════════════════════════════════════════
       // POST-PROCESS: add header/footer to every page except the cover

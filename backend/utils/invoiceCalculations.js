@@ -23,9 +23,15 @@
 // only converted back to a decimal dollar amount at the point it's returned,
 // avoiding floating-point drift when summing independently-rounded values.
 
+const { addDaysToIsoDate } = require('./dateMath');
+
 const MAX_CHANGE_ORDERS = 50;
 const MAX_PAYMENTS = 100;
 const MAX_MONEY = 100_000_000;
+// QA fix: the Due Date is not a separate user-entered field -- it is always
+// exactly Invoice Date + this many calendar days, matching the fixed,
+// unchanged Payment Terms wording ("Net 30 days from invoice date.").
+const DUE_DATE_TERM_DAYS = 30;
 
 const isFiniteNumber = (n) => typeof n === 'number' && Number.isFinite(n);
 const toCents = (amount) => Math.round(amount * 100);
@@ -126,19 +132,41 @@ const validatePercent = (value, label) => {
 // passed in by the route, never accepted from the invoice request body, so
 // an invoice can never claim services/pricing an approved estimate doesn't
 // actually contain.
-const computeInvoiceTotals = (servicesRendered, taxRatePercent, paymentHistoryTotalCents) => {
+//
+// QA fix: `overheadProfitPercent` is likewise supplied by the route from the
+// linked Repair Estimate's own authoritative, already-persisted value (its
+// `overheadProfitPercent` field for a new invoice, or this invoice's own
+// already-stored snapshot of it for a revision) -- never accepted from the
+// invoice request body. It used to be silently dropped entirely, so an
+// invoice's total never included the estimate's O&P. Applied to the
+// SERVICES subtotal only (mirrors estimateCalculations.js's own
+// `computeTotals`, which applies O&P to its subtotal before tax) and, like
+// the estimate's own calculation, is never itself taxed -- `taxableCents`
+// below is computed purely from the services line items, unchanged.
+const computeInvoiceTotals = (
+  servicesRendered,
+  overheadProfitPercent,
+  taxRatePercent,
+  paymentHistoryTotalCents
+) => {
   const servicesSubtotalCents = servicesRendered.reduce(
     (s, li) => s + toCents(li.lineTotal),
     0
+  );
+  const overheadProfitCents = Math.round(
+    servicesSubtotalCents * ((overheadProfitPercent || 0) / 100)
   );
   const taxableCents = servicesRendered
     .filter((li) => li.taxable !== false)
     .reduce((s, li) => s + toCents(li.lineTotal), 0);
   const taxCents = Math.round(taxableCents * (taxRatePercent / 100));
-  const combinedSubtotalCents = servicesSubtotalCents;
+  // "Combined" = services + O&P, the subtotal tax is applied on top of.
+  const combinedSubtotalCents = servicesSubtotalCents + overheadProfitCents;
   const balanceDueCents = combinedSubtotalCents + taxCents - paymentHistoryTotalCents;
   return {
     servicesSubtotal: centsToAmount(servicesSubtotalCents),
+    overheadProfitPercent: overheadProfitPercent || 0,
+    overheadProfit: centsToAmount(overheadProfitCents),
     combinedSubtotal: centsToAmount(combinedSubtotalCents),
     taxableAmount: centsToAmount(taxableCents),
     tax: centsToAmount(taxCents),
@@ -148,13 +176,30 @@ const computeInvoiceTotals = (servicesRendered, taxRatePercent, paymentHistoryTo
 };
 
 // Top-level entry point the route handler calls with the raw request body
-// (create or revise) plus the linked Repair Estimate's own validated
-// `lineItems`. Returns { error } on any invalid input, otherwise the fully
-// computed, storage-ready invoice fields.
-const validateAndComputeInvoice = (body = {}, servicesRendered = []) => {
+// (create or revise), the linked Repair Estimate's own validated
+// `lineItems`, and its authoritative `overheadProfitPercent`. Returns
+// { error } on any invalid input, otherwise the fully computed,
+// storage-ready invoice fields.
+//
+// QA fix: `overheadProfitPercent` is the estimate's own already-validated
+// (0-100) percent -- unlike every other field here, it is NOT re-validated
+// against `body` because it never comes from the request body at all (see
+// the route handlers in reports.js: creation reads `estimate
+// .overheadProfitPercent`, revision reads the invoice's OWN already-stored
+// snapshot of it). A missing/non-finite value (an invoice created before
+// this fix existed, or an estimate that itself predates the O&P field)
+// defaults to 0 rather than erroring -- matches how a Repair Estimate with
+// no/0% O&P must keep working, never a thrown validation error.
+const validateAndComputeInvoice = (body = {}, servicesRendered = [], overheadProfitPercent = 0) => {
   if (!Array.isArray(servicesRendered) || servicesRendered.length === 0) {
     return { error: 'The linked Repair Estimate has no line items to bill' };
   }
+  const safeOverheadProfitPercent =
+    isFiniteNumber(Number(overheadProfitPercent)) &&
+    Number(overheadProfitPercent) >= 0 &&
+    Number(overheadProfitPercent) <= 100
+      ? Number(overheadProfitPercent)
+      : 0;
 
   const { value: billTo, error: billToError } = validateBillTo(body.billTo);
   if (billToError) return { error: billToError };
@@ -171,8 +216,11 @@ const validateAndComputeInvoice = (body = {}, servicesRendered = []) => {
   );
   if (invoiceDateError) return { error: invoiceDateError };
 
-  const { value: dueDate, error: dueDateError } = validateInvoiceDate(body.dueDate, 'dueDate');
-  if (dueDateError) return { error: dueDateError };
+  // QA fix: Due Date is never accepted from the client -- it is always
+  // derived, authoritatively, from the just-validated invoiceDate. Any
+  // `body.dueDate` the caller sends (a stale value, a manual edit, or a
+  // deliberately manipulated one) is ignored entirely.
+  const dueDate = addDaysToIsoDate(invoiceDate, DUE_DATE_TERM_DAYS);
 
   const { value: taxRatePercent, error: taxError } = validatePercent(
     body.taxRatePercent,
@@ -195,7 +243,12 @@ const validateAndComputeInvoice = (body = {}, servicesRendered = []) => {
   const paymentTerms = cleanString(body.paymentTerms, 500) || 'Net 30 days from invoice date.';
   const warrantyText = cleanString(body.warrantyText, 1000);
 
-  const totals = computeInvoiceTotals(servicesRendered, taxRatePercent, paymentHistoryTotalCents);
+  const totals = computeInvoiceTotals(
+    servicesRendered,
+    safeOverheadProfitPercent,
+    taxRatePercent,
+    paymentHistoryTotalCents
+  );
 
   return {
     billTo,
@@ -204,6 +257,7 @@ const validateAndComputeInvoice = (body = {}, servicesRendered = []) => {
     invoiceDate,
     dueDate,
     jobNumber,
+    overheadProfitPercent: safeOverheadProfitPercent,
     taxRatePercent,
     changeOrderLog,
     paymentHistory,

@@ -43,7 +43,13 @@ const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 // Statuses generateFromPhotoReview/regenerate may run against -- a report
 // still 'processing' has no stable photos[]/content to build from yet, and
 // 'failed' should be recovered via Retry Analysis, not this endpoint.
-const REGENERATABLE_STATUSES = new Set(['draft', 'finalized']);
+// QA fix: 'finalized' removed -- it used to be allowed here (silently
+// reopening the report as a draft, same as PUT /:id's old behavior), but a
+// finalized report's content must now be immutable through every mutation
+// path, this one included. See the dedicated 'finalized' check below, which
+// returns the same clear rejection PUT /:id uses instead of falling through
+// to the generic INVALID_STATE message.
+const REGENERATABLE_STATUSES = new Set(['draft']);
 // Mirrors reports.js's own isReviewed() -- duplicated (not imported) to avoid
 // a circular require (reports.js already requires this module).
 const isReviewedStatus = (status) => status === 'finalized' || status === 'approved' || status === 'completed';
@@ -533,6 +539,10 @@ const retryFailedAnalysis = async (reportId, uid) => {
     lossDate: report.lossDate, lossType: report.lossType, reportType: report.reportType,
     additionalNotes: report.additionalNotes, propertyDetails: report.propertyDetails,
     lossDescription: report.lossDescription, damagesObserved: report.damagesObserved, recommendations: report.recommendations,
+    // QA regression fix: preserved so a retry keeps showing the original
+    // adjuster-selected inspection date instead of buildReportPrompt()
+    // falling back to the (new, retry-time) generation date.
+    inspectionDate: report.inspectionDate || '',
     // Phase 13: preserved from the original generation so a retry re-applies
     // the same template guidance/sections instead of silently losing them.
     templateGuidance: report.templateGuidance || null,
@@ -839,6 +849,12 @@ const regenerateFromPhotoReview = async (reportId, uid, userEmail) => {
     if (data.status === 'processing') {
       return { ok: false, code: 'REPORT_PROCESSING', error: 'This report is still being analyzed.' };
     }
+    // QA fix: checked before the generic REGENERATABLE_STATUSES gate below,
+    // so a finalized report gets the same specific rejection message as
+    // PUT /:id, not the generic "cannot be regenerated" one.
+    if (data.status === 'finalized') {
+      return { ok: false, code: 'REPORT_FINALIZED', error: 'Finalized reports cannot be edited.' };
+    }
     if (!REGENERATABLE_STATUSES.has(data.status)) {
       return { ok: false, code: 'INVALID_STATE', error: 'This report cannot be regenerated in its current state.' };
     }
@@ -862,6 +878,10 @@ const regenerateFromPhotoReview = async (reportId, uid, userEmail) => {
       lossDate: data.lossDate, lossType: data.lossType, reportType: data.reportType,
       additionalNotes: data.additionalNotes, propertyDetails: data.propertyDetails,
       lossDescription: data.lossDescription, damagesObserved: data.damagesObserved, recommendations: data.recommendations,
+      // QA regression fix: preserved so a manual regenerate-from-photo-review
+      // keeps the original adjuster-selected inspection date instead of
+      // buildReportPrompt() falling back to the regenerate-time date.
+      inspectionDate: data.inspectionDate || '',
       // Phase 13: preserved so a manual regenerate-from-photo-review re-applies
       // the same template guidance/sections as the original generation.
       templateGuidance: data.templateGuidance || null,
@@ -957,4 +977,7 @@ module.exports = {
   // Exported for direct unit testing of the merge logic (Phase 7, PHASES.md)
   // without needing a real Firestore connection.
   mergeImageAnalysis,
+  // Exported for direct unit testing of the report-immutability QA fix
+  // (backend/test/report-immutability.test.js).
+  REGENERATABLE_STATUSES,
 };

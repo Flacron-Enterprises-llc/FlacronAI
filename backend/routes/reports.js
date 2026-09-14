@@ -11,6 +11,7 @@ const requireCanApprove = requireTeamCapability('canApprove');
 const requireCanExport = requireTeamCapability('canExport');
 const { hasCapability, resolveOrganizationId } = require('../utils/orgRoles');
 const { isNotificationEnabled } = require('../utils/notificationPrefs');
+const { isIsoDateAfter, getLocalTodayIso } = require('../utils/inspectionDate');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
 const { truncateContentForListView } = require('../utils/reportSummary');
 const {
@@ -918,6 +919,19 @@ router.post(
             code: 'VALIDATION_ERROR',
           });
       }
+      // The report date is effectively "now" (see aiService's Report Date /
+      // properPdfGenerator's Report Date field) -- an inspection/discovery
+      // date after that is not yet possible and indicates a bad client
+      // value. Equal to today is allowed (same-day inspection + report).
+      if (inspectionDate && isIsoDateAfter(inspectionDate, getLocalTodayIso())) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: 'Inspection date cannot be later than the report date',
+            code: 'VALIDATION_ERROR',
+          });
+      }
       if (inspectionTime && !/^\d{2}:\d{2}$/.test(inspectionTime)) {
         return res
           .status(400)
@@ -1070,6 +1084,10 @@ router.post(
         lossDate,
         lossType,
         reportType: reportType || 'Initial',
+        // QA regression fix: this was previously omitted here, so
+        // buildReportPrompt() never saw the adjuster-selected inspection
+        // date and always fell back to the generation-time date instead.
+        inspectionDate: inspectionDate || '',
         additionalNotes,
         propertyDetails,
         lossDescription,
@@ -1719,6 +1737,23 @@ router.put('/:id', authenticateAny, reportsWrite, async (req, res) => {
             'This report is being regenerated from photo review. Please wait for it to finish before editing.',
           code: 'REPORT_REGENERATING',
         });
+    }
+    // QA fix: a FINALIZED report's content is immutable through this
+    // endpoint. This replaces the old behavior of silently reopening it as
+    // a draft on edit -- that reopen-on-edit path still applies below for
+    // the legacy 'approved'/'completed' review states (which /approve
+    // itself no longer writes; only 'finalized' does), so it's untouched
+    // for any historical report still carrying one of those. Always checked
+    // against the CURRENT persisted status (`doc.data()`, just re-read
+    // above), never anything the client sent, so a manipulated payload
+    // can't bypass this -- see isFinalizedContentEdit (exported via
+    // router._test for direct unit testing, no HTTP harness needed).
+    if (isFinalizedContentEdit(doc.data(), req.body)) {
+      return res.status(409).json({
+        success: false,
+        error: 'Finalized reports cannot be edited.',
+        code: 'REPORT_FINALIZED',
+      });
     }
 
     // 'status' is intentionally excluded: it is system-controlled (set by
@@ -2700,6 +2735,22 @@ router.post('/:id/comments/:commentId/reopen', authenticateAny, reportsWrite, se
 const isReviewed = (status) =>
   status === 'finalized' || status === 'approved' || status === 'completed';
 
+// QA fix (report immutability): true only when the CURRENT persisted status
+// is the canonical 'finalized' state (the only value /approve itself ever
+// writes -- legacy 'approved'/'completed' reports are intentionally left on
+// their existing reopen-on-edit behavior, not newly locked) AND the request
+// would actually change `content` or `additionalNotes`. Takes the current
+// report doc, not the request's own `status` field (already never
+// client-settable, see PUT /:id above) -- a manipulated payload has no way
+// to influence this check.
+const isFinalizedContentEdit = (currentReport, body) => {
+  const wouldChange =
+    (body.content !== undefined && body.content !== currentReport.content) ||
+    (body.additionalNotes !== undefined &&
+      body.additionalNotes !== currentReport.additionalNotes);
+  return currentReport.status === 'finalized' && wouldChange;
+};
+
 // Resolves a public share token to its report + effective permission/expiry
 // state (Phase 19). Checks the new `reportShares` collection first, then
 // falls back to the legacy single-token flat fields on the report doc
@@ -3177,6 +3228,17 @@ router.post(
           code: 'VALIDATION_ERROR',
         });
       }
+      // The supplement's own Report Date (buildMoldStaticSections, aiService.js)
+      // is "now" -- a discovery date after that isn't possible yet. Equal to
+      // today is allowed. Deliberately NOT compared against the linked
+      // parent report's date: the parent may legitimately predate discovery.
+      if (isIsoDateAfter(dateOfDiscovery, getLocalTodayIso())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Date of discovery cannot be later than the report date',
+          code: 'VALIDATION_ERROR',
+        });
+      }
       let relatedClaimId = String(
         req.body.relatedClaimId || req.body.relatedClaimNumber || ''
       ).trim();
@@ -3629,8 +3691,33 @@ router.post(
           code: 'SOURCE_NOT_ESTIMATE',
         });
       }
+      // QA fix: an Invoice may only be generated from a Repair Estimate that
+      // has actually been approved/finalized -- re-checked here, against the
+      // just-freshly-read Firestore doc, every single time (never trusted
+      // from a client payload, and never skipped for a stale/cached client
+      // view of the estimate). `isReviewed` is the same canonical
+      // finalized/approved/completed check every other "is this document
+      // approved" gate in this file already uses (see e.g. the Coverage
+      // Determination Letter's own estimate-eligibility check) -- the
+      // generic /approve route is the ONLY place that ever writes a
+      // RepairEstimate's status, and it only ever writes 'finalized'.
+      if (!isReviewed(estimate.status)) {
+        return res.status(409).json({
+          success: false,
+          error: 'Approve and finalize the Repair Estimate before generating an Invoice.',
+          code: 'ESTIMATE_NOT_FINALIZED',
+        });
+      }
 
-      const computed = validateAndComputeInvoice(req.body, estimate.lineItems);
+      // QA fix: the estimate's own authoritative Overhead & Profit percent --
+      // never accepted from req.body (there is no O&P field on the Invoice
+      // form at all) -- so it carries forward exactly once into the
+      // invoice's totals, from the persisted, already-approved estimate.
+      const computed = validateAndComputeInvoice(
+        req.body,
+        estimate.lineItems,
+        estimate.overheadProfitPercent
+      );
       if (computed.error) {
         return res
           .status(400)
@@ -3674,6 +3761,7 @@ router.post(
         invoiceDate: computed.invoiceDate,
         dueDate: computed.dueDate,
         jobNumber: computed.jobNumber,
+        overheadProfitPercent: computed.overheadProfitPercent,
         taxRatePercent: computed.taxRatePercent,
         changeOrderLog: computed.changeOrderLog,
         paymentHistory: computed.paymentHistory,
@@ -3774,7 +3862,17 @@ router.put('/:id/invoice', authenticateAny, reportsWrite, async (req, res) => {
       });
     }
 
-    const computed = validateAndComputeInvoice(req.body, existing.servicesRendered);
+    // QA fix: like `existing.servicesRendered` just above, the O&P percent
+    // is this invoice's OWN already-persisted snapshot (captured from the
+    // linked estimate at creation time) -- never re-fetched from the
+    // estimate on revision (which may since have changed) and never
+    // accepted from req.body. Defaults to 0 for an invoice created before
+    // this fix existed (no `overheadProfitPercent` field yet).
+    const computed = validateAndComputeInvoice(
+      req.body,
+      existing.servicesRendered,
+      existing.overheadProfitPercent
+    );
     if (computed.error) {
       return res
         .status(400)
@@ -3816,6 +3914,7 @@ router.put('/:id/invoice', authenticateAny, reportsWrite, async (req, res) => {
       invoiceDate: computed.invoiceDate,
       dueDate: computed.dueDate,
       jobNumber: computed.jobNumber,
+      overheadProfitPercent: computed.overheadProfitPercent,
       taxRatePercent: computed.taxRatePercent,
       changeOrderLog: computed.changeOrderLog,
       paymentHistory: computed.paymentHistory,
@@ -4455,38 +4554,48 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     // Table of Contents labels for the PDF cover -- only overridden for
     // Liability/Commercial/Flood/Theft (matches each's actual manifest);
     // every other document type keeps generatePDF's own generic default.
+    // QA fix (TOC page-numbering): Invoice/RepairEstimate/CoverageDeterminationLetter
+    // are built by deterministic content assemblers (invoiceContent.js /
+    // estimateContent.js / coverageLetterContent.js) whose `##` headings are
+    // bare titles ("## INVOICE TOTALS") with no "SECTION N" numeric prefix --
+    // unlike every AI-narrative document type below, which literally emits
+    // "## SECTION N: ..." headings that properPdfGenerator.js can match by
+    // number alone. These three therefore supply an explicit `heading` (the
+    // literal, bare heading text to find in the rendered content) alongside
+    // the friendly `label` shown in the TOC, so the generator can locate each
+    // section's real starting page instead of guessing.
     const tocSections =
       report.documentType === 'CoverageDeterminationLetter'
         ? [
-            'Section 1: Applicable Policy Coverages',
-            'Section 2: Item-by-Item Coverage Rationale',
-            'Section 3: Items Pending Further Review',
-            'Section 4: Payment Calculation',
-            'Section 5: Understanding Depreciation',
-            'Section 6: Your Rights & Next Steps',
-            'Section 7: Enclosures',
-            'Section 8: Revision History',
-            'Section 9: Adjuster Review & Sign-Off',
+            { label: 'Section 1: Applicable Policy Coverages', heading: 'APPLICABLE POLICY COVERAGES' },
+            { label: 'Section 2: Item-by-Item Coverage Rationale', heading: 'ITEM-BY-ITEM COVERAGE RATIONALE' },
+            { label: 'Section 3: Items Pending Further Review', heading: 'ITEMS PENDING FURTHER REVIEW' },
+            { label: 'Section 4: Payment Calculation', heading: 'PAYMENT CALCULATION' },
+            { label: 'Section 5: Understanding Depreciation', heading: 'UNDERSTANDING DEPRECIATION' },
+            { label: 'Section 6: Your Rights & Next Steps', heading: 'YOUR RIGHTS & NEXT STEPS' },
+            { label: 'Section 7: Enclosures', heading: 'ENCLOSURES' },
+            { label: 'Section 8: Revision History', heading: 'REVISION HISTORY' },
+            { label: 'Section 9: Adjuster Review & Sign-Off', heading: 'ADJUSTER REVIEW & SIGN-OFF' },
           ]
         : report.documentType === 'Invoice'
         ? [
-            'Section 1: Invoice Details',
-            'Section 2: Services Rendered',
-            'Section 3: Invoice Totals',
-            'Section 4: Payment History',
-            'Section 5: Change Order Log',
-            'Section 6: Revision History',
-            'Section 7: Payment Terms & Remit-To',
-            'Section 8: Adjuster Review & Sign-Off',
+            { label: 'Section 1: Invoice Details', heading: 'INVOICE' },
+            { label: 'Section 2: Services Rendered', heading: 'SERVICES RENDERED' },
+            { label: 'Section 3: Invoice Totals', heading: 'INVOICE TOTALS' },
+            { label: 'Section 4: Payment History', heading: 'PAYMENT HISTORY' },
+            { label: 'Section 5: Change Order Log', heading: 'CHANGE ORDER LOG' },
+            { label: 'Section 6: Revision History', heading: 'REVISION HISTORY' },
+            { label: 'Section 7: Payment Terms & Remit-To', heading: 'PAYMENT TERMS' },
+            { label: 'Section 8: Adjuster Review & Sign-Off', heading: 'ADJUSTER REVIEW & SIGN-OFF' },
           ]
         : report.documentType === 'RepairEstimate'
         ? [
-            'Section 1: Report Information',
-            'Section 2: Line Item Detail',
-            'Section 3: Depreciation Schedule',
-            'Section 4: Revision History',
-            'Section 5: Terms & Conditions',
-            'Section 6: Adjuster Review & Sign-Off',
+            { label: 'Section 1: Report Information', heading: 'REPAIR ESTIMATE' },
+            { label: 'Section 2: Line Item Detail', heading: 'LINE ITEM DETAIL' },
+            { label: 'Section 3: Depreciation Schedule', heading: 'DEPRECIATION SCHEDULE' },
+            { label: 'Section 4: Revision History', heading: 'REVISION HISTORY' },
+            { label: 'Section 5: Terms & Conditions', heading: 'TERMS & CONDITIONS' },
+            { label: 'Section 6: Adjuster Review & Sign-Off', heading: 'ADJUSTER REVIEW & SIGN-OFF' },
           ]
         : report.documentType === 'MoldSupplement'
         ? [
@@ -5188,6 +5297,7 @@ router.post(
           REPORT_PROCESSING: 409,
           ALREADY_REGENERATING: 409,
           INVALID_STATE: 409,
+          REPORT_FINALIZED: 409,
           NO_PHOTOS: 400,
         };
         return res
@@ -5769,5 +5879,9 @@ router._test = {
   acquireExportLock,
   releaseExportLock,
   activeExports,
+  // Exposed for direct unit testing of the report-immutability QA fix
+  // (backend/test/report-immutability.test.js).
+  isFinalizedContentEdit,
+  isReviewed,
 };
 module.exports = router;

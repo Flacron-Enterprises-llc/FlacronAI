@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
 import { formatStatus } from '../utils/formatStatus';
+import { isFinalizedReportStatus } from '../utils/reportImmutability';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
 import SectionedReportEditor from '../components/SectionedReportEditor';
@@ -360,9 +361,17 @@ export default function EnterpriseDashboard() {
   }, [generatedReport?.id]);
 
   const reportReviewed = ['finalized', 'approved', 'completed'].includes(generatedReport?.status);
+  // QA fix: the canonical immutable state (the only status /approve itself
+  // ever writes) -- gates the report editor read-only, independent of the
+  // broader `reportReviewed` badge above.
+  const isFinalizedReport = isFinalizedReportStatus(generatedReport?.status);
 
   const handleSaveContent = async () => {
     if (!generatedReport) return;
+    if (isFinalizedReportStatus(generatedReport.status)) {
+      toast.error('Finalized reports cannot be edited.');
+      return;
+    }
     setSavingContent(true);
     try {
       const res = await reportsAPI.update(generatedReport.id, { content: editableContent });
@@ -375,7 +384,7 @@ export default function EnterpriseDashboard() {
         toast.success('Changes saved');
       }
       autoPreviewPdf({ ...generatedReport, ...updates });
-    } catch { toast.error('Save failed'); }
+    } catch (err) { toast.error(err?.response?.data?.error || 'Save failed'); }
     finally { setSavingContent(false); }
   };
 
@@ -987,19 +996,27 @@ export default function EnterpriseDashboard() {
                           </div>
                         )}
                       </div>
-                      {/* Editable draft — mandatory human review (Golden Rule #3) */}
+                      {/* Editable draft — mandatory human review (Golden Rule #3).
+                          QA fix: read-only once finalized -- the finalized version is
+                          immutable (server-enforced independently of this UI gate). */}
                       <div className={`${cardCls} p-4`}>
                         <div className="flex items-center justify-between mb-3 gap-3">
                           <div>
-                            <p className="text-sm font-bold text-gray-900">Review &amp; Edit Report</p>
-                            <p className="text-xs text-gray-500 mt-0.5">Automatically generated draft — review and edit, then approve to finalize.</p>
+                            <p className="text-sm font-bold text-gray-900">{isFinalizedReport ? 'Report Content' : 'Review & Edit Report'}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {isFinalizedReport
+                                ? 'Finalized reports cannot be edited.'
+                                : 'Automatically generated draft — review and edit, then approve to finalize.'}
+                            </p>
                           </div>
-                          <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
-                            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
-                            {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
-                          </button>
+                          {!isFinalizedReport && (
+                            <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
+                              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0">
+                              {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
+                            </button>
+                          )}
                         </div>
-                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent || isFinalizedReport} />
                       </div>
                     </div>
                     <div className="space-y-4">
