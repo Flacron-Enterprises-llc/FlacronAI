@@ -32,6 +32,8 @@ import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI, crmAPI } from '../services/api';
 import api from '../services/api';
+import { getLocalTodayIso, isInspectionDateAfterReportDate } from '../utils/inspectionDate';
+import { isFinalizedReportStatus } from '../utils/reportImmutability';
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
@@ -1783,6 +1785,10 @@ export default function Dashboard() {
 
   const handleGenerate = async () => {
     if (!canGenerate) { toast.error('You have reached your monthly report limit'); return; }
+    if (isInspectionDateAfterReportDate(form.inspectionDate)) {
+      toast.error('Inspection date cannot be later than the report date');
+      return;
+    }
     if (photos.some(p => p.uploading)) { toast.error('Please wait for photo uploads to finish'); return; }
     // Only successfully-validated photos are submitted -- corrupt/duplicate
     // ones stay visible in the wizard for the user to remove or retry, but
@@ -2018,9 +2024,17 @@ export default function Dashboard() {
   }, [generatedReport?.id]);
 
   const reportReviewed = ['finalized', 'approved', 'completed'].includes(generatedReport?.status);
+  // QA fix: the canonical immutable state (the only status /approve itself
+  // ever writes) -- gates the report editor read-only, independent of the
+  // broader `reportReviewed` badge above.
+  const isFinalizedReport = isFinalizedReportStatus(generatedReport?.status);
 
   const handleSaveContent = async () => {
     if (!generatedReport) return;
+    if (isFinalizedReportStatus(generatedReport.status)) {
+      toast.error('Finalized reports cannot be edited.');
+      return;
+    }
     setSavingContent(true);
     try {
       const res = await reportsAPI.update(generatedReport.id, { content: editableContent });
@@ -2033,7 +2047,7 @@ export default function Dashboard() {
         toast.success('Changes saved');
       }
       handlePreviewPDF();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { toast.error(err?.response?.data?.error || 'Save failed'); }
     finally { setSavingContent(false); }
   };
 
@@ -2898,8 +2912,9 @@ export default function Dashboard() {
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                   <label className="label">Inspection Date</label>
-                                  <input type="date" className="input" value={form.inspectionDate || ''}
+                                  <input type="date" className="input" value={form.inspectionDate || ''} max={getLocalTodayIso()}
                                     onChange={e => setForm(p => ({ ...p, inspectionDate: e.target.value }))} />
+                                  <p className="text-xs text-gray-400 mt-1">Cannot be later than today's report date</p>
                                 </div>
                                 <div>
                                   <label className="label">Inspection Time</label>
@@ -3454,19 +3469,27 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      {/* Editable draft content — mandatory human review (Golden Rule #3) */}
+                      {/* Editable draft content — mandatory human review (Golden Rule #3).
+                          QA fix: read-only once finalized -- the finalized version is
+                          immutable (server-enforced independently of this UI gate). */}
                       <div className="card p-4">
                         <div className="flex items-center justify-between mb-3 gap-3">
                           <div>
-                            <h2 className="text-sm font-semibold text-gray-900">Review &amp; Edit Report</h2>
-                            <p className="text-xs text-gray-500 mt-0.5">Automatically generated draft — review and edit any section, then approve to finalize.</p>
+                            <h2 className="text-sm font-semibold text-gray-900">{isFinalizedReport ? 'Report Content' : 'Review & Edit Report'}</h2>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {isFinalizedReport
+                                ? 'Finalized reports cannot be edited.'
+                                : 'Automatically generated draft — review and edit any section, then approve to finalize.'}
+                            </p>
                           </div>
-                          <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
-                            className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50 shrink-0">
-                            {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
-                          </button>
+                          {!isFinalizedReport && (
+                            <button onClick={handleSaveContent} disabled={savingContent || editableContent === generatedReport.content}
+                              className="text-xs btn-secondary py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50 shrink-0">
+                              {savingContent ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save Changes
+                            </button>
+                          )}
                         </div>
-                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent} />
+                        <SectionedReportEditor reportId={generatedReport.id} value={editableContent} onChange={setEditableContent} disabled={savingContent || isFinalizedReport} />
                       </div>
 
                       {/* Phase 8 (Per-Photo Analysis Review UI) -- edit/approve/exclude/note

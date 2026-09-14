@@ -1,5 +1,6 @@
 const anthropic = require('../config/anthropic');
 const { generateText: watsonxGenerate, checkHealth: checkWatsonx } = require('../config/watsonx');
+const { formatIsoDateForDisplay } = require('../utils/inspectionDate');
 
 // Provider strategy (client directive 2026-07-18): Claude (Anthropic) is primary,
 // IBM watsonx is the text-only fallback. OpenAI has been removed entirely.
@@ -96,6 +97,7 @@ const buildReportPrompt = (reportData, imageAnalysis) => {
     lossDate,
     lossType,
     reportType,
+    inspectionDate,
     additionalNotes,
     propertyDetails,
     lossDescription,
@@ -143,7 +145,10 @@ Generate a thorough, professional DRAFT report following this EXACT structure wi
 ## SECTION 1: REPORT INFO
 - Report Type: ${reportType} Inspection Report
 - Claim Number: ${claimNumber}
-- Date of Inspection: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Date of Inspection: ${
+    formatIsoDateForDisplay(inspectionDate) ||
+    new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  }
 - Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 - Prepared By: FlacronAI (FLACRON ENGINE — for licensed adjuster review)
 
@@ -2730,6 +2735,10 @@ const checkAIHealth = async () => {
 
 module.exports = {
   generateReport,
+  // Exported for direct unit testing of the Date of Inspection mapping fix
+  // (QA regression: the generic report path hardcoded the generation date
+  // here instead of the adjuster-selected inspection date).
+  buildReportPrompt,
   analyzeImages,
   generateSummary,
   generateScopeOfWork,

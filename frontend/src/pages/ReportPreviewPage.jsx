@@ -17,6 +17,14 @@ import { useAuth } from '../context/AuthContext';
 import { reportsAPI, teamsAPI } from '../services/api';
 import api from '../services/api';
 import { parseReportSections } from '../utils/reportSections';
+import { getLocalTodayIso } from '../utils/inspectionDate';
+import { isFinalizedReportStatus } from '../utils/reportImmutability';
+import { computeInvoicePreviewTotals } from '../utils/invoiceTotals';
+import { addDaysToIsoDate } from '../utils/dateMath';
+import {
+  isRepairEstimateFinalized,
+  INVOICE_BLOCKED_ON_DRAFT_ESTIMATE_MESSAGE,
+} from '../utils/estimateInvoiceEligibility';
 
 // Kept in sync with Dashboard.jsx's TIER_EXPORTS -- purely a UX convenience
 // (which buttons look enabled). The server enforces `tier.exportFormats` on
@@ -30,6 +38,12 @@ const TIER_EXPORTS = {
 };
 
 const REVIEWED_STATUSES = ['finalized', 'approved', 'completed'];
+
+// QA fix: Due Date is not a separate user-entered field on the Invoice --
+// it is always exactly Invoice Date + this many calendar days, matching the
+// fixed, unchanged Payment Terms wording ("Net 30 days from invoice date.").
+// Mirrors backend/utils/invoiceCalculations.js's DUE_DATE_TERM_DAYS exactly.
+const DUE_DATE_TERM_DAYS = 30;
 
 function ApproveModal({ report, onClose, onApproved }) {
   useEscapeToClose(onClose, true, true);
@@ -138,6 +152,14 @@ function MoldSupplementModal({ report, onClose, onGenerated }) {
       toast.error('Date of discovery is required.');
       return;
     }
+    // The supplement's own Report Date is "now" (generation time) -- a
+    // discovery date after that isn't possible yet. Deliberately NOT
+    // compared against the linked/parent report's date: the parent may
+    // predate when the mold was actually discovered.
+    if (dateOfDiscovery > getLocalTodayIso()) {
+      toast.error('Date of discovery cannot be later than the report date.');
+      return;
+    }
     setGenerating(true);
     try {
       const res = await reportsAPI.generateMoldSupplement(report.id, {
@@ -176,7 +198,9 @@ function MoldSupplementModal({ report, onClose, onGenerated }) {
           className="w-full mb-3 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
         <label className="block text-xs font-medium text-gray-600 mb-1">Date of discovery *</label>
         <input type="date" value={dateOfDiscovery} onChange={(e) => setDateOfDiscovery(e.target.value)} disabled={generating}
-          className="w-full mb-4 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+          max={getLocalTodayIso()}
+          className="w-full mb-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+        <p className="text-xs text-gray-400 mb-4">Cannot be later than today's report date</p>
         <div className="flex gap-3">
           <button onClick={onClose} disabled={generating} className="btn-secondary flex-1 text-sm py-2 disabled:opacity-50">Cancel</button>
           <button onClick={submit} disabled={generating} className="btn-primary flex-1 text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-50">
@@ -486,7 +510,10 @@ function InvoiceModal({ report, mode, onClose, onSaved }) {
   const [billToAddress, setBillToAddress] = useState(report.billTo?.address || report.propertyAddress || '');
   const [invoiceNumber, setInvoiceNumber] = useState(report.invoiceNumber || `INV-${report.claimNumber || 'CLAIM'}-01`);
   const [invoiceDate, setInvoiceDate] = useState(report.invoiceDate || new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState(report.dueDate || new Date().toISOString().slice(0, 10));
+  // QA fix: Due Date is never independently entered -- it is always
+  // recalculated from Invoice Date, the same way the server derives its own
+  // authoritative value (see invoiceCalculations.js). Not client-settable.
+  const dueDate = addDaysToIsoDate(invoiceDate, DUE_DATE_TERM_DAYS);
   const [jobNumber, setJobNumber] = useState(report.jobNumber || '');
   const [taxRatePercent, setTaxRatePercent] = useState(String(report.taxRatePercent ?? '0'));
   const [paymentTerms, setPaymentTerms] = useState(report.paymentTerms || 'Net 30 days from invoice date.');
@@ -502,15 +529,20 @@ function InvoiceModal({ report, mode, onClose, onSaved }) {
   const [changeSummary, setChangeSummary] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const preview = useMemo(() => {
-    const subtotal = servicesRendered.reduce((s, li) => s + (Number(li.lineTotal) || 0), 0);
-    const taxable = servicesRendered
-      .filter((li) => li.taxable !== false)
-      .reduce((s, li) => s + (Number(li.lineTotal) || 0), 0);
-    const tax = taxable * ((Number(taxRatePercent) || 0) / 100);
-    const paymentsTotal = paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    return { subtotal, tax, paymentsTotal, balanceDue: subtotal + tax - paymentsTotal };
-  }, [servicesRendered, taxRatePercent, paymentHistory]);
+  // QA fix: Overhead & Profit is carried forward from the linked Repair
+  // Estimate's own authoritative percent -- `report` here is that estimate
+  // itself in 'create' mode, or (in 'revise' mode) this invoice's own
+  // already-persisted snapshot of it, captured from the estimate at
+  // creation time (mirrors how `servicesRendered` above is sourced). There
+  // is no O&P field on this form -- it is never client-entered. This is a
+  // preview-only mirror; the server independently derives and stores the
+  // authoritative amount the same way.
+  const overheadProfitPercent = Number(report.overheadProfitPercent) || 0;
+
+  const preview = useMemo(
+    () => computeInvoicePreviewTotals(servicesRendered, overheadProfitPercent, taxRatePercent, paymentHistory),
+    [servicesRendered, overheadProfitPercent, taxRatePercent, paymentHistory]
+  );
 
   const updateCO = (i, field, value) =>
     setChangeOrderLog((prev) => prev.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)));
@@ -620,7 +652,8 @@ function InvoiceModal({ report, mode, onClose, onSaved }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Due date</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+            <input type="date" value={dueDate} disabled readOnly title="Automatically calculated: Invoice Date + 30 days"
+              className={`${inputCls} bg-gray-100 text-gray-500 cursor-not-allowed`} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Job number</label>
@@ -667,7 +700,9 @@ function InvoiceModal({ report, mode, onClose, onSaved }) {
         </div>
 
         <div className="card p-3 mb-5 bg-gray-50 border border-gray-200 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Combined Subtotal</span><span className="font-medium">{money(preview.subtotal)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Services Subtotal</span><span className="font-medium">{money(preview.subtotal)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Overhead &amp; Profit ({overheadProfitPercent}%)</span><span className="font-medium">{money(preview.overheadProfit)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Combined Subtotal</span><span className="font-medium">{money(preview.combinedSubtotal)}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Sales Tax</span><span className="font-medium">{money(preview.tax)}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Payments Received</span><span className="font-medium">({money(preview.paymentsTotal)})</span></div>
           <div className="flex justify-between border-t border-gray-200 mt-1 pt-1"><span className="font-bold text-gray-800">Total Due</span><span className="font-bold text-brand-600">{money(preview.balanceDue)}</span></div>
@@ -1373,6 +1408,9 @@ export default function ReportPreviewPage() {
   const processing = report.status === 'processing';
   const regenerating = !!report.regenerating;
   const reviewed = REVIEWED_STATUSES.includes(report.status);
+  // QA fix: the canonical immutable state (the only status /approve itself
+  // ever writes) -- hides the Edit action; enforced independently server-side.
+  const isFinalized = isFinalizedReportStatus(report.status);
   const canActOn = !processing && !regenerating;
   const allowedExports = TIER_EXPORTS[tier] || ['pdf'];
 
@@ -1534,7 +1572,7 @@ export default function ReportPreviewPage() {
                 <UserCheck className="w-4 h-4" /> Request Review
               </button>
             )}
-            {canEdit && (
+            {canEdit && !isFinalized && (
               <button onClick={() => navigate(`/dashboard?openReport=${report.id}`)}
                 className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
                 <Pencil className="w-4 h-4" /> Edit
@@ -1564,11 +1602,22 @@ export default function ReportPreviewPage() {
             )}
             {/* Phase 38: an Invoice can only be generated from an existing
                 Repair Estimate (reuses its line items/totals), or revised in
-                place when this report IS an Invoice. */}
+                place when this report IS an Invoice.
+                QA fix: only once the Repair Estimate is itself
+                approved/finalized -- a draft/pending/failed estimate shows a
+                disabled button with the same explanation the server would
+                reject with, so this is never trusted client-side, only
+                mirrored for UX (see estimateInvoiceEligibility.js). */}
             {isOwner && canActOn && report.documentType === 'RepairEstimate' && (
-              <button onClick={() => setShowInvoiceModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
-                <FileText className="w-4 h-4" /> Invoice
-              </button>
+              isRepairEstimateFinalized(report.status) ? (
+                <button onClick={() => setShowInvoiceModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4" /> Invoice
+                </button>
+              ) : (
+                <button disabled title={INVOICE_BLOCKED_ON_DRAFT_ESTIMATE_MESSAGE} className="text-sm py-2 px-3 flex items-center gap-1.5 rounded-btn border border-dashed border-gray-200 text-gray-400 cursor-not-allowed">
+                  <Lock className="w-3.5 h-3.5" /> Invoice
+                </button>
+              )
             )}
             {canEdit && canActOn && report.documentType === 'Invoice' && (
               <button onClick={() => setShowInvoiceModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">

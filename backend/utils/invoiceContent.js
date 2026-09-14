@@ -51,9 +51,19 @@ ${rows}
 |  |  |  |  | Services Subtotal | ${formatMoney(totals.servicesSubtotal)} |`;
 };
 
+// QA fix: Overhead & Profit -- carried forward from the linked Repair
+// Estimate's own authoritative percent/amount (never client-entered here,
+// there is no O&P field on the Invoice form) -- now shown as its own row
+// between Services Subtotal and Sales Tax, and folded into Combined
+// Subtotal (services + O&P, the base tax is applied on top of) so it's
+// counted in TOTAL DUE exactly once. A 0% (or legacy, pre-fix) O&P still
+// renders its own "(0%)" row rather than being hidden -- never a misleading
+// omission.
 const totalsSection = ({ totals, taxRatePercent }) => `## INVOICE TOTALS
 | Description | Amount |
 |-------------|--------|
+| Services Subtotal | ${formatMoney(totals.servicesSubtotal)} |
+| Overhead & Profit (${totals.overheadProfitPercent}%) | ${formatMoney(totals.overheadProfit)} |
 | Combined Subtotal | ${formatMoney(totals.combinedSubtotal)} |
 | Sales Tax (${taxRatePercent}%) | ${formatMoney(totals.tax)} |
 | Payments Received (see history below) | (${formatMoney(totals.paymentsReceivedTotal)}) |
