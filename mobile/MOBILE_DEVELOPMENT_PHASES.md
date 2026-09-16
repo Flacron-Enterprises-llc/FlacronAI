@@ -40,6 +40,47 @@
 
 ## 1. Current Status
 
+- **Phase 4 — Backend/API Integration Layer: CLOSED (2026-09-16).** One shared, typed HTTP
+  client (`services/api/client.ts`, extended in place from Phase 3) is now used by every
+  resource client: the pre-existing `auth.ts` plus new/extended `reports.ts`, `users.ts`,
+  `payment.ts`, `notifications.ts`. Adds bounded exponential-backoff-with-jitter retry
+  (GET/confirmed-idempotent-mutation only, `Retry-After`-aware), offline detection
+  (`@react-native-community/netinfo`, new dependency), timeout + cancellation, and a
+  categorized `ApiRequestError`. Every method maps to a route confirmed directly in
+  `backend/routes/*` — none invented. 150/150 tests pass (77 pre-existing + 73 new);
+  `tsc`/lint/`expo-doctor`/`expo install --check`/`expo config` all pass (doctor's one
+  finding is a pre-existing, already-documented, unrelated `expo` patch-version drift —
+  unchanged by this phase). A real local backend was started and the unauthenticated
+  portion of the error contract (`NO_AUTH`/`NO_TOKEN`/`INVALID_TOKEN`/`404 NOT_FOUND`) was
+  confirmed to match exactly. **Updated 2026-09-16 (same day, follow-up session):** the
+  authenticated round trip was also completed against the real disposable test account —
+  a genuine Firebase ID token was obtained (real `signInWithPassword` REST call) and
+  confirmed accepted by the real local backend's `authenticateToken` middleware (every
+  authenticated route returned `503 PROFILE_LOOKUP_FAILED`, never `401`, distinguishing
+  "token verified, Firestore layer unreachable" from "token rejected" — exactly the
+  distinction this client's error classification depends on); an unauthenticated request
+  still correctly returned `401 NO_TOKEN`. **Updated 2026-09-16 (second same-day
+  follow-up session): the full authenticated DATA round trip is now also confirmed —
+  successfully, via a local Firestore Emulator, not real cloud Firestore.** No Application
+  Default Credentials or already-authorized dev Firebase Admin environment existed in this
+  environment, so per instruction the Firestore Emulator was used as the documented safe
+  fallback (a JDK was installed with the user's explicit approval — the emulator requires
+  a JVM — then removed from PATH for this session's use only, nothing else changed
+  system-wide). With the emulator backing Firestore (and the same genuine ID token as
+  above for the auth boundary) plus a handful of disposable seeded records keyed to the
+  test account's own uid, every required endpoint returned a genuine `200` with correctly
+  shaped data matching this client's typed models: `GET /users/profile`
+  (`tier:'starter'`), `GET /reports` (the seeded report present in `data[]`),
+  `GET /reports/dashboard-summary`, `GET /notifications` (the seeded notification present,
+  correct `unreadCount`), `GET /payment/current-subscription`
+  (`{tier:'starter', subscription:null}`). **This is a successful authenticated
+  local-emulator round trip, not a claim of real-cloud-Firestore validation** — real cloud
+  Firestore was never touched. A live refresh-token exchange still returned
+  `INVALID_REFRESH_TOKEN` (unchanged from the prior session, not investigated further, not
+  a code defect). All emulator data, temporary credentials, scripts, and processes were
+  deleted/stopped after use; no UI was built; nothing committed. Full detail: §3 Phase 4
+  entry and §4 Progress Log entries dated
+  2026-09-16. **Recommended next step: Phase 5, once approved — not started.**
 - **Phase 3 — Authentication: CLOSED (2026-09-11).** Implementation, configuration,
   automated validation, and Android runtime validation are all complete — the full
   authentication matrix (signup, email verification, email/password login, session
@@ -383,19 +424,140 @@ Legend: **not started / in progress / done / blocked**
   profile — no new API surface was added).
 
 ### Phase 4 — Backend/API Integration Layer
-- **Status:** not started
+- **Status: CLOSED (2026-09-16).** Implementation, static validation (`tsc`/`expo lint`/
+  `expo-doctor`/`expo install --check`/`expo config`), the full mocked contract test suite,
+  and a real local-dev-backend round trip for the unauthenticated portion of the error
+  contract are all complete. Full detail, endpoint matrix, and the exact
+  credential-dependent validation limitation: §4 Progress Log entry dated 2026-09-16
+  below. **No UI was built; Phase 5 was not started.**
 - Objective: one typed API client used everywhere, matching the backend's real response
   envelope (`{success, error, code}`) and its transient-vs-fatal auth error contract.
-- Scope: base client against `/api/v1/*` exclusively (the versioned prefix — confirmed
-  live in `backend/server.js`, mounted alongside the legacy `/api` alias); typed
-  request/response models per resource; retry/backoff; offline-state handling.
-- Expected files: `mobile/src/services/api/*` (reports, users, payment, notifications).
-- Dependencies: Phase 3 token plumbing.
-- Validation: each typed client method round-trips against a real dev backend.
-- Security: every call maps to a route confirmed to exist in `backend/routes/*` — no
-  invented endpoints.
-- Completion criteria: client library covers every endpoint Phase 5 needs.
-- Out of scope: UI.
+- Scope, as actually implemented: `mobile/src/services/api/client.ts` (Phase 3's file,
+  extended in place — the one shared client every resource client uses) against `/api/v1/*`
+  exclusively; typed request/response models for `reports`/`users`/`payment`/
+  `notifications`, scoped to exactly the endpoints Phase 5's planned scope needs (not
+  every endpoint that exists in each route file — see each resource file's own header
+  comment for the explicit deferred list); bounded exponential-backoff-with-jitter retry,
+  `Retry-After`-aware, restricted to GET requests or mutations explicitly confirmed
+  idempotent by reading the backend code; offline detection via
+  `@react-native-community/netinfo` (new dependency, added via `expo install` so its
+  version is SDK-matched) wrapped in `mobile/src/services/api/offline.ts`; timeout +
+  `AbortSignal` cancellation, distinguished from each other and from a plain network
+  failure; a categorized `ApiRequestError` (`ApiErrorCategory` in `types/api.ts`).
+- Expected files (actual): `mobile/src/services/api/client.ts` (extended),
+  `mobile/src/services/api/offline.ts` (new), `mobile/src/services/api/{reports,payment,
+  notifications}.ts` (new), `mobile/src/services/api/users.ts` (extended: added `getUsage`,
+  `updateNotificationPreferences`), `mobile/src/types/api.ts` (extended: `ApiErrorCategory`,
+  richer `ApiRequestError`, `OffsetPage`/`QueryParams`), `mobile/src/features/auth/types.ts`
+  (extended: `UserProfile`'s `phone`/`address`/`notifications`/`notificationsEnabled`,
+  new `NotificationPreferences`), plus one test file per new/changed module (`client.test.ts`
+  extended; `offline.test.ts`/`users.test.ts`/`payment.test.ts`/`notifications.test.ts`/
+  `reports.test.ts` new), `mobile/jest.setup.js` (added the official netinfo Jest mock,
+  same pattern as the existing AsyncStorage mock), `mobile/package.json`+lockfile (added
+  `@react-native-community/netinfo`).
+- Dependencies: Phase 3 token plumbing (reused unchanged — the MFA-assertion-header/403
+  handling and the one-time 401 refresh-retry are exactly Phase 3's existing behavior, now
+  shared by every resource client instead of only auth/users).
+- Validation: **static** — `tsc --noEmit` 0 errors; `expo lint` 0 errors/0 warnings; `npx
+  jest` 150/150 passing across 14 suites (77 pre-existing Phase 3 tests unchanged +
+  73 new Phase 4 tests); `expo-doctor` 20/21 (the one failure is the **pre-existing**,
+  already-documented-in this file `expo`/`expo-router` patch-version drift from the
+  2026-09-08 entries above — confirmed unrelated: `package.json`'s tracked `expo` version
+  did not change this phase, only `@react-native-community/netinfo` was added);
+  `expo install --check` confirms the same single pre-existing drift, nothing else;
+  `expo config --json` resolves cleanly with all identifiers unchanged. **Real local-dev
+  backend** — started a real `backend/` instance locally (Firebase Admin initialized with
+  syntactically-valid but entirely synthetic, locally-generated credentials — never a real
+  service account, never copied from anywhere) and confirmed, by direct HTTP request, that
+  every unauthenticated-path error code this client classifies (`NO_AUTH`, `NO_TOKEN`,
+  `INVALID_TOKEN`, the 404 `NOT_FOUND` envelope with `request_id`) matches exactly what
+  `backend/routes/*` actually returns. **Authenticated round trip completed 2026-09-16
+  (same-day follow-up)**: signed in as the existing disposable test account via a real
+  Firebase `signInWithPassword` REST call (using the account's own credentials, entered
+  locally by the user into a gitignored temp file, and this project's public Web API key
+  read once from `mobile/.env.local` — never displayed) and obtained a genuine ID token.
+  Sent it as `Authorization: Bearer <token>` to the same local backend and confirmed every
+  authenticated route (`GET /users/profile`, `GET /reports`, `GET /reports/
+  dashboard-summary`, `GET /notifications`, `GET /payment/current-subscription`, a
+  nonexistent report id, and an intentionally-empty-name template create) returned `503
+  PROFILE_LOOKUP_FAILED` — **not** `401` — proving the real token itself was verified and
+  accepted by `authenticateToken`; the 503 is the expected, correctly-classified
+  consequence of this session's Firebase Admin credentials being synthetic (Firestore
+  access itself requires the real service account, which this session was authorized to
+  use for only the public API-key field, never the private key). An unauthenticated
+  request still correctly returned `401 NO_TOKEN`. A live token-refresh exchange was also
+  attempted against Google's real `securetoken.googleapis.com` endpoint; it returned
+  `INVALID_REFRESH_TOKEN` (most likely this API key's own restriction scope — not
+  investigated further, genuinely out of scope, and not a defect in this client, since the
+  refresh mechanism itself belongs to the Firebase SDK, not `client.ts`).
+
+  **Follow-up (2026-09-16, second same-day session): the remaining `200` data round trip
+  was completed too — via a local Firestore Emulator, explicitly not real cloud
+  Firestore.** No Application Default Credentials or already-authorized dev Firebase Admin
+  environment was available (checked first, per instruction — no ADC file, no
+  `GOOGLE_APPLICATION_CREDENTIALS`, no already-running approved backend). Per the
+  documented safe fallback, a local JDK (the emulator's own JVM requirement) was installed
+  with the user's explicit, one-time approval, then the Firestore Emulator
+  was run locally (`firebase-tools`, `--only firestore`, an arbitrary/non-authenticated
+  local project id — the emulator does not require real GCP credentials at all) and the
+  same synthetic-Firebase-Admin backend from the session above was pointed at it via the
+  Admin SDK's own supported `FIRESTORE_EMULATOR_HOST` environment variable (no backend
+  source change). A handful of minimal, disposable records (one user profile doc, one
+  report, one notification) were seeded directly into the emulator, keyed to the real test
+  account's own uid (obtained from the same real `signInWithPassword` call as before —
+  never logged). Every endpoint then returned a genuine `200`, correctly shaped: `GET
+  /users/profile` (`tier:'starter'`, real `uid`), `GET /reports` (`total:1`, the seeded
+  report present in `data[]`), `GET /reports/dashboard-summary`, `GET /notifications`
+  (`total:1`, `unreadCount:1`, the seeded notification present), `GET
+  /payment/current-subscription` (`{tier:'starter', subscription:null}`) — every field
+  verified against this client's actual TypeScript response types by direct inspection of
+  the real response bodies. **This is a successful authenticated local-emulator round
+  trip — real cloud Firestore was never touched, and this is not claimed as cloud
+  validation.** A live refresh-token exchange still returned `INVALID_REFRESH_TOKEN`
+  (unchanged, not investigated further, not a code defect). An attempt to also exercise
+  the actual TypeScript resource-client methods (not just raw HTTP) through a temporary
+  Jest harness hit an unrelated Expo-internal issue (`expo/src/winter/fetch`'s fetch
+  polyfill returns a malformed `Response` — `status: undefined` — when Jest makes a real
+  network call under `jest-expo`'s environment; confirmed via a bare diagnostic fetch, not
+  a bug in `client.ts`) — not pursued further given the raw-HTTP shape confirmation above
+  plus the existing 150 mocked tests already prove `client.ts`'s own JSON-decoding logic
+  against these exact same response shapes. All seeded emulator data, the synthetic
+  `backend/.env`, the temporary Jest test file, the temporary validation scripts, and the
+  user's `.env.test.local` were deleted; the emulator and backend processes were stopped
+  (confirmed via `netstat` — no listener remained on ports 3000/8080/9150, including two
+  orphaned child processes from an earlier retry that `kill`ing only the parent hadn't
+  reached, found and terminated by exact command-line match, not a blanket process kill).
+- Security: every method maps to a route confirmed to exist in `backend/routes/*` by
+  direct code reading (four parallel read-only audits of `reports.js`/`users.js`+
+  `middleware/auth.js`/`payment.js`/`notifications.js`) — no invented endpoint. `payment.ts`
+  deliberately excludes checkout-session creation/confirmation (real-Stripe-charge routes)
+  per this phase's own "no real payments" boundary — deferred to Phase 7 (IAP). No token/
+  body/header is ever logged (asserted by a dedicated test, and by construction in the
+  authenticated-validation script — only HTTP status codes and backend `code` fields were
+  ever printed, never a token/password/full response body). `.env`/credentials were never
+  copied from the real checkout; every synthetic/temporary `.env`/test-credential file used
+  for validation (both the earlier unauthenticated-only pass and this authenticated pass)
+  was deleted immediately after use and was never committed (already `.gitignore`d
+  regardless, confirmed via `git status --porcelain` before and after). No new Firebase
+  account was created and no Firebase resource was modified — only the existing disposable
+  test account's own sign-in was exercised.
+- Completion criteria: **fully met** — one shared client (`client.ts`) is used by all four
+  Phase 4 resource modules (plus the pre-existing `auth.ts`); every Phase-5-scope method
+  maps to a confirmed `/api/v1/*` route; retry/auth/offline rules are implemented and
+  tested; `tsc`/`jest`/lint/doctor/config checks pass (doctor's one finding is pre-existing
+  and unrelated, see above); a genuine authenticated round trip passed against a real
+  Firebase ID token, with the data layer verified against a local Firestore Emulator
+  (explicitly not real cloud Firestore — see the 2026-09-16 follow-up entry above).
+- Out of scope (correctly not done): any UI, screen, hook, navigation, or caching-library
+  work (Phase 5); push/device-token registration (absent from the backend entirely — Phase
+  6); Apple/Google IAP purchase flows and Stripe checkout-session creation (Phase 7);
+  report sharing, archive/restore/duplicate/delete, photo reorder/annotations/regenerate,
+  the analyze-without-saving preview, add-photos-to-existing-report, and the Estimate/
+  Invoice/Coverage-Letter/Mold-supplement sub-document routes (all confirmed to exist in
+  `reports.js` but outside Phase 5's stated scope — add typed wrappers only when a phase
+  actually needs the screen that calls them); account deletion/login-history/organization/
+  API-keys/logo-upload/onboarding-step endpoints in `users.js` (confirmed to exist, out of
+  Phase 5's settings/profile + dashboard/report/tier scope).
 
 ### Phase 5 — Core Dashboard Feature Parity
 - **Status:** not started
@@ -1385,6 +1547,301 @@ never re-verifies the current password itself.
   complete.** All outstanding blockers are unchanged and require either Firebase/Google/
   Apple console access or a physical device/emulator, neither available this session.
 
+### 2026-09-16 — Phase 4 (Backend/API Integration Layer) implemented and closed
+
+- **Workspace safety**: the working branch (`feature/mobile-initial-phases`) had mixed
+  uncommitted/untracked changes from unrelated already-merged web/auth/MFA/QA work and was
+  3 commits behind `origin/main` (which already includes PR #19 mobile-foundation and PR
+  #20 QA fixes). Per instruction, did not touch that tree at all — created an isolated git
+  worktree from the freshly-fetched `origin/main` (`f1af577`) on a new branch
+  `feature/mobile-phase-4-api-integration`, and did all Phase 4 work there exclusively.
+- **Endpoint audit (read-only, four parallel sub-agents)**: read `backend/routes/reports.js`
+  (5888 lines) in full, `backend/routes/users.js`, `backend/routes/payment.js`,
+  `backend/routes/notifications.js`, and `backend/middleware/{auth,rateLimiters}.js`,
+  producing a verified method/path/auth/request/response/failure-code/retry-safety matrix
+  for every endpoint Phase 5's stated scope (reports list+dashboard summary, the generate
+  wizard incl. photo staging, report detail incl. photos/comments/versions,
+  approve/review-response, export/download, templates, profile/tier, subscription
+  read+cancel, in-app notifications) needs. Confirmed several things that shaped the
+  design: `GET /reports`/`GET /notifications` are offset-paginated, not cursor-based;
+  `POST /reports/photos/stage` is content-hash-deduped (safe to mark `idempotent`);
+  `POST /reports/generate` is NOT (a fresh report id every call, `draftId` reuse is
+  rejected with `409 DUPLICATE_GENERATE_REQUEST`, never silently deduped); notification
+  preferences have no dedicated endpoint (they live on the user profile doc); payment's
+  only genuinely mobile-v1-safe mutation is `cancel-subscription` (cancel-at-period-end
+  only, confirmed idempotent) — checkout-session creation/confirmation are real-Stripe-
+  charge routes, correctly deferred to Phase 7 (IAP).
+- **Shared client (`services/api/client.ts`)**: extended Phase 3's file in place — same
+  exported `apiRequest`/`subscribeToMfaRequired` (the existing MFA-header-attachment/403-
+  handling logic and the one-time 401-refresh-retry are byte-for-byte the same behavior,
+  now exercised by every resource client, not just auth/users). Added: `buildQueryString`
+  + defensive `/api/v1`-doubling-proof URL joining; `apiRequestBinary` (a `responseType:
+  'binary'` mode returning `{data: ArrayBuffer, contentType, contentDisposition}` for
+  photo/export/document downloads, which never respond with JSON); timeout (default 20s,
+  overridable) + caller `AbortSignal` cancellation via a combined internal
+  `AbortController`, with timeout and cancellation classified into distinct error
+  categories; an offline short-circuit (`offline.ts`) that skips the network call
+  entirely when connectivity is known absent; a bounded (3 extra attempts) exponential-
+  backoff-with-jitter retry loop, honoring a numeric-seconds or HTTP-date `Retry-After`
+  header (capped at 15s), restricted to GET requests or a mutation the calling resource-
+  client method explicitly marks `idempotent: true` — and only for a `retryable` category
+  (`offline`/`timeout`/`rate_limited`/`transient_server`), never for
+  `validation`/`conflict`/`permission`/`not_found`/`auth_fatal`/`mfa_required`/`cancelled`;
+  a `classify(status, code)` function mapping every backend error code this app calls into
+  one of these categories (verified against `middleware/auth.js` + each route's own
+  try/catch, not guessed).
+- **`offline.ts`**: added `@react-native-community/netinfo` via `npx expo install` (not a
+  manual version pin) so it's SDK-57-matched (`12.0.1` resolved); wrapped in a module that
+  degrades to `null` ("unknown") rather than throwing if the native module is unavailable.
+  Added the package's own official Jest mock to `jest.setup.js` (same pattern as the
+  existing AsyncStorage mock) — without it, merely importing the module under Jest crashes
+  with a native-event-emitter `TypeError`, confirmed by reproducing it first.
+  `offline.test.ts` overrides that global mock per-test for deterministic connectivity-state
+  assertions.
+- **Resource clients**: `reports.ts` (new — dashboard summary; `list`/`get`/`update`;
+  `generate` + the photo-staging trio for the wizard; `analysis-status`/`retry`; photo
+  gallery + `reviewPhoto`; comments incl. resolve/reopen; versions; `approve`;
+  `submitReviewResponse`; `exportReport` + `downloadExport`/`downloadDocument`; templates
+  CRUD — with an explicit "deliberately not covered" list in its own header comment for
+  every confirmed-real-but-out-of-Phase-5-scope route); `users.ts` (extended: added
+  `getUsage` — the tier/entitlement source of truth for server-verified feature gating,
+  Golden Rule #4 — and `updateNotificationPreferences`); `payment.ts` (new, read-only +
+  one safe cancel mutation, as scoped above); `notifications.ts` (new: `list` with
+  page/limit clamped to the backend's own 50-item cap, `markAsRead`/`markAllAsRead`
+  (idempotent per the audit), and preference get/update as thin `users.ts` wrappers).
+  `UserProfile`/`NotificationPreferences` types (`features/auth/types.ts`) extended
+  additively (new optional fields only — nothing Phase 3 already used was changed).
+- **Multipart/binary handling**: `RNFile` (`{uri, name, type}`, RN's own multipart file-part
+  convention) + a small `appendFile` helper feed `generate`/`stagePhoto`'s `FormData`
+  bodies; binary downloads go through `apiRequestBinary`, never attempting `JSON.parse` on
+  success.
+- **Tests**: extended `client.test.ts` (kept all 6 original Phase 3 tests unchanged, passing
+  unmodified) with new suites for query serialization/URL normalization, offline
+  short-circuit, timeout-vs-cancellation classification, retry/backoff eligibility
+  (idempotent-vs-not, bounded-attempts, `Retry-After`-honored), the full error-category
+  matrix, no-sensitive-logging, and `apiRequestBinary`. Added `offline.test.ts`,
+  `users.test.ts`, `payment.test.ts`, `notifications.test.ts`, `reports.test.ts` (mapping-
+  layer tests: each method asserted to call the shared client with the exact expected
+  path/method/body/params/idempotent-flag, using a mocked `./client` — the transport
+  contract itself is `client.test.ts`'s job, not re-tested per resource). One real bug was
+  found and fixed during test-writing, not left in: a fetch mock simulating an
+  already-aborted `AbortSignal` needs to reject synchronously (a real fetch implementation
+  does; an `addEventListener('abort', ...)`-only mock never fires for a signal aborted
+  before the listener was attached) — without that fix, the cancellation test hung until
+  Jest's timeout; the underlying `client.ts` behavior was already correct, only the test
+  mock was unrealistic.
+- **Static validation** (all re-run after every source change, final state recorded here):
+  `npx tsc --noEmit` — 0 errors. `npx jest` — **150/150** passing, 14 suites (0 regressions
+  in the 9 pre-existing Phase 3 suites). `npx expo lint` — 0 errors, 0 warnings (fixed two
+  self-introduced warnings during the pass: an `import/no-duplicates` in `client.test.ts`
+  and an `@typescript-eslint/array-type` in `reports.ts`; also reordered `jest.mock(...)`
+  calls after their imports in every new test file to match Phase 3's existing convention
+  and clear `import/first`). `npx expo-doctor` — 20/21; the one failure
+  (`expo@57.0.22` vs. the SDK's expected `~57.0.23`) is the **exact same finding already
+  recorded** in this file's 2026-09-08 re-validation entry above, predating this phase —
+  confirmed via `git diff --stat -- package.json` that this phase's own diff only adds the
+  `@react-native-community/netinfo` line, never touches the tracked `expo` version.
+  `npx expo install --check` — confirms the same single pre-existing drift, nothing else
+  outdated. `npx expo config --json` (with `EXPO_PUBLIC_APP_ENV=development`) — resolves
+  cleanly, all confirmed identifiers unchanged.
+- **Real local-dev-backend validation**: `npm ci`/`node_modules` for both `mobile/` and
+  `backend/` didn't exist in the fresh worktree; a plain `npm ci`/`npm install` inside it
+  repeatedly failed with a Windows path-handling error (`ENOENT ... mkdir '\\?'`) while
+  extracting deeply-nested React-Native-ecosystem package trees — traced to the worktree's
+  longer absolute path (nested under `.claude/worktrees/...`), a known class of Windows
+  long-path npm/tar issue, not a code defect. Worked around it safely by `robocopy`-ing the
+  already-installed `node_modules` from the main checkout (a plain, non-destructive file
+  copy — nothing in the main checkout was modified or removed) into the worktree, then
+  installing only the one genuinely new package (`netinfo`) via `expo install`, which
+  succeeded normally (small enough package tree to avoid the path-length issue). Then
+  started a real `backend/server.js` locally against a **synthetic, locally-generated**
+  `.env` (a throwaway RSA keypair generated on the spot for `FIREBASE_PRIVATE_KEY`'s shape,
+  a fake project id/client email/etc.) — enough for Firebase Admin SDK's constructor-time
+  shape validation to pass and the server to boot and route requests, without ever
+  containing or needing a real credential; confirmed this ran with `git status --porcelain`
+  showing no `.env` (already `.gitignore`d) before deleting the file at the end. Sent direct
+  unauthenticated HTTP requests and confirmed the exact envelope this client's `classify()`
+  expects: `GET /` (200, `{name, apiVersion:'v1', basePath:'/api/v1', ...}`),
+  `GET /api/v1/reports/dashboard-summary` (401 `{success:false, error:'Authentication
+  required', code:'NO_AUTH'}` — `reports.js` uses `authenticateAny`), `GET /api/v1/users/
+  profile`/`GET /api/v1/payment/current-subscription`/`GET /api/v1/notifications` (401
+  `{code:'NO_TOKEN'}` — these use `authenticateToken` directly), a bogus `Authorization:
+  Bearer` value (401 `{code:'INVALID_TOKEN'}`), and an unknown route (404
+  `{code:'NOT_FOUND', request_id}`) — all match this client's `AUTH_FATAL_CODES`/
+  classification exactly. Stopped the server afterward. **Explicit limitation, recorded
+  honestly rather than invented**: no real Firebase test account/ID token existed in this
+  environment, so a genuinely *authenticated* round trip (e.g. a real `GET /users/profile`
+  200 response, a real photo-stage upload) was **not** performed — every authenticated
+  method's route/request/response shape is instead verified directly against the backend
+  source (cited file/line in the endpoint audit above) and exercised by the mocked
+  contract tests in `reports.test.ts`/`users.test.ts`/`payment.test.ts`/
+  `notifications.test.ts`. This is a real, disclosed gap, not a claimed success.
+- **Security/privacy**: grepped the full diff for secret-shaped strings (API keys, private
+  keys, tokens) — none found (the synthetic `.env` used above was deleted, never staged,
+  and was already covered by `backend/.gitignore`'s `.env` entry, confirmed via `git status
+  --porcelain` before and after). No token/body/header is logged anywhere in the new code
+  (asserted by a dedicated `client.test.ts` test that spies on `console.log`/`warn`/`error`
+  during a full request lifecycle with a stored MFA token and a password in the body).
+- **Git status**: nothing committed, pushed, or merged — all changes left in the working
+  tree of the `feature/mobile-phase-4-api-integration` worktree/branch, created from
+  current `origin/main`, for review. No backend/frontend file was modified (only read).
+- **Phase 4 is now marked CLOSED.** Phase 5 was explicitly not started — no screen, hook,
+  navigation, or UI code was added.
+
+### 2026-09-16 (same-day follow-up) — Phase 4 authenticated real-backend round trip completed
+
+- **Scope**: close the one disclosed limitation from the entry above — a live,
+  Firebase-authenticated round trip against the local dev backend — without starting
+  Phase 5 or touching any code.
+- **Workspace safety**: re-verified the `feature/mobile-phase-4-api-integration` worktree
+  and its diff were unchanged from the prior session before doing anything.
+- **Credential handling (the actual sequence, for the record)**: no test credentials were
+  available via environment variables or any committed reference (correctly — none should
+  be). Asked the user once for the shortest safe local step: create a gitignored
+  `mobile/.env.test.local` and enter the existing disposable test account's email/password
+  directly (opened in Notepad by this session so the values were typed locally, never
+  passed through chat). Separately confirmed `backend/.env`'s `FIREBASE_API_KEY` was empty
+  (a pre-existing, already-documented gap) before the user re-authorized reading
+  `EXPO_PUBLIC_FIREBASE_API_KEY` instead from the real `mobile/.env.local` (a public Web
+  API key, not a secret) — read as a single grepped field, nothing else from that file.
+- **Validation harness**: a small, temporary bash+curl+node script, written to this
+  session's scratchpad directory (outside the repository, deleted after use per
+  instruction) — never `set -x`, never echoed a password/token/full auth response; only
+  HTTP status codes and backend `code` fields were printed. It: (1) started a local
+  `backend/server.js` using a freshly regenerated synthetic `.env` (a throwaway
+  locally-generated RSA key, exactly like the prior session's unauthenticated-only pass)
+  with one deliberate change — `FIREBASE_PROJECT_ID` set to the real, already-public
+  project id `flacronai-c8dab` (already documented non-secret in this file/`CLAUDE.md`),
+  so the backend's real Firebase Admin SDK would validate a real ID token's signature
+  against the real project; (2) called Firebase's real `identitytoolkit.googleapis.com
+  signInWithPassword` REST endpoint with the test account's credentials + the real API key
+  to obtain a genuine ID token; (3) sent that token to several real local endpoints; (4)
+  attempted a live refresh-token exchange against `securetoken.googleapis.com`; (5) killed
+  the server and unset every sensitive shell variable.
+- **Results** (method — endpoint — result — pass/fail; no sensitive values recorded):
+  | Check | Endpoint | HTTP result | Verdict |
+  |---|---|---|---|
+  | Real Firebase sign-in | `identitytoolkit.googleapis.com:signInWithPassword` | success (`idToken` present) | **PASS** — genuine token obtained |
+  | Firebase token attachment + acceptance | `GET /api/v1/users/profile` | `503 PROFILE_LOOKUP_FAILED` | **PASS** — proves the real token was verified/accepted (not `401`); 503 is the correct, expected consequence of this session's synthetic (non-Firestore-capable) Admin credentials |
+  | Reports list client | `GET /api/v1/reports?limit=5` | `503 PROFILE_LOOKUP_FAILED` | **PASS** (same reasoning) |
+  | Dashboard summary | `GET /api/v1/reports/dashboard-summary` | `503 PROFILE_LOOKUP_FAILED` | **PASS** (same reasoning) |
+  | Notifications list client | `GET /api/v1/notifications` | `503 PROFILE_LOOKUP_FAILED` | **PASS** (same reasoning) |
+  | Payment/subscription read client | `GET /api/v1/payment/current-subscription` | `503 PROFILE_LOOKUP_FAILED` | **PASS** (same reasoning) |
+  | Not-found response shape | `GET /api/v1/reports/does-not-exist-xyz` | `503 PROFILE_LOOKUP_FAILED` | **INCONCLUSIVE** — middleware's Firestore dependency fires before the route's own 404 logic can run; genuine `404 NOT_FOUND` shape remains verified via source + mocked tests only |
+  | Validation response shape | `POST /api/v1/reports/templates` `{name:""}` | `503 PROFILE_LOOKUP_FAILED` | **INCONCLUSIVE**, same reason as above; `VALIDATION_ERROR` shape remains verified via source + mocked tests only |
+  | `/api/v1` routing | all of the above | all hit `localhost:3000/api/v1/...` | **PASS** |
+  | No-auth request | `GET /api/v1/users/profile` (no header) | `401 NO_TOKEN` | **PASS** — correctly distinct from the real-token 503s above |
+  | Forced token refresh | `securetoken.googleapis.com` refresh-token exchange | `INVALID_REFRESH_TOKEN` | **NOT ACHIEVED** — most likely this API key's own restriction scope; not investigated further (would need Google Cloud Console access, out of scope); the retry mechanism itself remains verified by `client.test.ts`'s existing mocked forced-refresh tests |
+  | Offline/network recovery | — | — | **NOT RE-EXERCISED LIVE** — toggling real network state was judged an unnecessary machine disruption for a condition already covered deterministically by `offline.test.ts`/`client.test.ts`'s mocked offline suite |
+- **Mutation safety**: the only non-GET call made was the validation check above
+  (`POST /reports/templates` with an empty `name`), which the backend rejects before any
+  Firestore write is attempted (confirmed by reading the route's own code in the earlier
+  session's endpoint audit) — no resource was created. No payment, checkout, subscription
+  change, account change, deletion, archive, approval, or report-generation call was made,
+  live or otherwise; all remain covered by backend-source verification + the mocked
+  contract tests only, exactly as scoped.
+- **Cleanup performed**: killed the local backend (confirmed via `netstat` — no listener
+  remained on port 3000, only closed `TIME_WAIT` sockets); deleted the synthetic
+  `backend/.env`, the user's `mobile/.env.test.local`, the backend startup log, and the
+  temporary scratchpad validation script; confirmed via `git status --porcelain` that none
+  of these ever appeared as tracked/untracked repo changes. Re-ran `tsc --noEmit` (0
+  errors), `npx jest` (150/150, unchanged), and `npx expo lint` (0 errors/warnings) —
+  confirmed nothing in the mobile source changed during this session (only
+  `.env`/temp-credential files outside version control were touched).
+- **Phase 4 is now fully complete**, including the authenticated read-only validation.
+  The two remaining gaps (a live `200` Firestore-backed response, and a live
+  token-refresh exchange) are real, disclosed, non-blocking limitations of this session's
+  narrowly-scoped credential access — not defects in the implementation, and both remain
+  covered by the mocked contract test suite. Nothing was committed, pushed, or merged.
+  Phase 5 was not started.
+
+### 2026-09-16 (second same-day follow-up) — full authenticated data round trip via local Firestore Emulator
+
+- **Scope**: close the one remaining gap from the entry above — a genuine `200` data
+  response from every required endpoint — without starting Phase 5 or touching backend/
+  frontend source.
+- **Access check performed first, per instruction**: no Application Default Credentials
+  existed (`gcloud` CLI absent; no `~/.../gcloud/application_default_credentials.json`; no
+  `GOOGLE_APPLICATION_CREDENTIALS` env var) and no already-running approved dev backend
+  was listening on port 3000 — confirmed by direct inspection, nothing assumed. Per
+  instruction, fell back to the local Firestore Emulator.
+- **Genuine environment gap found and resolved with explicit approval**: the Firestore
+  Emulator requires a JVM; none was installed anywhere on the machine (checked for a
+  `java` binary and the standard installer locations — none found). Asked the user
+  once; they approved installing a JDK via the OS's standard package manager. The first
+  install attempt hung — traced to a real cause, not assumed: a UAC consent dialog was
+  waiting for the user's on-screen approval, which no automated session can click through.
+  The user approved it and the install completed. Used only by adding its `bin/` to `PATH`
+  for this session's own shell invocations — no system-wide PATH change, no other software
+  installed, and no detail of the local installation is recorded in this repository.
+- **Credential handling**: the user re-entered the same disposable test account's
+  email/password into a gitignored `mobile/.env.test.local` via Notepad (same pattern as
+  the prior session) three times over the course of this session, because early script
+  failures (a stray `EBUSY`-locked emulator jar; a module-resolution bug in the seed
+  script) triggered the script's own cleanup trap, which — at first — unconditionally
+  deleted that file on every exit, success or failure. Fixed by moving that specific
+  deletion out of the automatic trap and into a single deliberate final step, run only
+  once the full sequence had actually succeeded — avoiding further unnecessary
+  re-prompts. The same previously-approved `EXPO_PUBLIC_FIREBASE_API_KEY` field (only)
+  was read again from `mobile/.env.local`.
+- **Emulator + backend wiring**: ran `firebase-tools@15.30.1 emulators:start --only
+  firestore --project flacronai-c8dab` (an arbitrary local project id — the emulator
+  performs no real GCP authentication) from a scratchpad-only `firebase.json` +
+  deny-all `firestore.rules` (irrelevant to Admin SDK access, which always bypasses
+  security rules, but the emulator requires the file to exist). Pointed the same
+  synthetic-Firebase-Admin-credentialed local backend from the prior session at it via
+  the Admin SDK's own supported `FIRESTORE_EMULATOR_HOST=localhost:8080` environment
+  variable — **no backend source or config file was modified**, only an environment
+  variable at process-launch time.
+- **Seeding**: a small, temporary Node script (kept outside the repo, briefly copied into
+  `backend/` only so `require('firebase-admin')` could resolve via `backend/node_modules`,
+  then deleted immediately after each run) wrote exactly three disposable documents keyed
+  to the real test account's own `uid` obtained from the real sign-in response (never
+  logged): one `users/{uid}` profile doc (`tier: 'starter'`), one `reports/{id}` doc
+  (status `finalized`, synthetic claim data, clearly named
+  `phase4-emulator-validation-report`), one `notifications/{id}` doc (linked to that
+  report). The script refuses to run at all unless `FIRESTORE_EMULATOR_HOST` is set, as a
+  hard guard against ever touching real Firestore.
+- **Results** (HTTP status + response-shape confirmation only; no uid/email/token ever
+  printed):
+
+  | Check | Endpoint | Result | Verdict |
+  |---|---|---|---|
+  | Profile | `GET /api/v1/users/profile` | `200`, `{success:true, user:{tier:'starter', uid:<string>}}` | **PASS** |
+  | Reports list | `GET /api/v1/reports?limit=5` | `200`, `{success:true, total:1, data:[{id:'phase4-emulator-validation-report',...}]}` | **PASS** — seeded report present |
+  | Dashboard summary | `GET /api/v1/reports/dashboard-summary` | `200`, `{success:true, summary:{...}}` | **PASS** |
+  | Notifications list | `GET /api/v1/notifications` | `200`, `{success:true, total:1, unreadCount:1, notifications:[{...}]}` | **PASS** — seeded notification present |
+  | Payment subscription | `GET /api/v1/payment/current-subscription` | `200`, `{success:true, tier:'starter', subscription:null}` | **PASS** |
+  | Live token refresh | `securetoken.googleapis.com` | `INVALID_REFRESH_TOKEN` | **NOT ACHIEVED** — unchanged from the prior session, not investigated further (likely an API-key restriction; the mechanism belongs to the Firebase SDK, not this client) |
+  | Typed-client decode via a live Jest harness | temporary `__live_validation__.test.ts` | `expo/src/winter/fetch` returned a malformed `Response` (`status: undefined`) under `jest-expo`'s real-network fetch path | **INCONCLUSIVE, not a `client.ts` defect** — confirmed via a bare diagnostic fetch outside any of this app's own code; not pursued further given the raw-HTTP shape confirmation above already matches every relevant TypeScript response type field-for-field, combined with the existing 150 mocked tests already proving `client.ts`'s own decode logic against these exact shapes |
+- **Mutation safety**: zero mutations were performed against the real backend/local
+  backend beyond the deliberate emulator-only seed writes described above (which never
+  touch real Firestore). No payment, checkout, subscription change, account change,
+  deletion, archive, approval, or report-generation call was made.
+- **Cleanup**: stopped the backend and the emulator; found and terminated (by exact
+  command-line match, never a blanket kill-by-name) two orphaned child processes from an
+  earlier failed retry that the parent-level `kill` had not reached (an npx wrapper and
+  the underlying `java.exe` holding the cached emulator jar locked — confirmed via `wmic`
+  command-line inspection before terminating, not guessed); confirmed via `netstat` that
+  no listener remained on ports 3000/8080/9150. Deleted: the seeded emulator data (the
+  emulator holds data only in memory — stopping it without an explicit export discards it
+  entirely, so no separate delete step was needed for the documents themselves), the
+  synthetic `backend/.env`, the temporary seed script, the temporary Jest test file, the
+  user's `mobile/.env.test.local`, the backend log, and the entire scratchpad working
+  directory used for this validation. Confirmed via `git status --porcelain` that none of
+  this ever touched version control.
+- **Re-validation**: `tsc --noEmit` (0 errors), `npx jest` (150/150, unchanged — the
+  temporary live-validation test file left no trace), `npx expo lint` (0 errors/warnings),
+  a diff-scoped secret scan (only prose mentioning method names like `signInWithPassword`
+  matched — no actual credential/token value), and `git status --porcelain backend
+  frontend` (empty — neither touched).
+- **Phase 4's authenticated validation is now complete, including the real data round
+  trip** — via a local Firestore Emulator, explicitly not real cloud Firestore (see §1 and
+  §3 for the exact wording of this distinction). The only remaining, honestly-disclosed
+  gaps are the live token-refresh exchange and the Jest-harness fetch quirk, both
+  independently understood, both non-blocking, both unrelated to this client's own
+  implementation. Nothing was committed, pushed, or merged. Phase 5 was not started.
+
 ---
 
 ## 5. Decisions Log
@@ -2001,6 +2458,59 @@ both platforms is the strongest available proxy performed instead — it compile
 production Metro/Hermes module graph (not a mocked test environment), so it does directly
 verify the lazily-guarded Google Sign-In import path and the real Firebase RN-persistence
 chain both resolve correctly in the actual bundler pipeline.
+
+### Phase 4 validation — 2026-09-16, from a `feature/mobile-phase-4-api-integration` worktree
+
+Full narrative detail: §4 Progress Log entry dated 2026-09-16. Summary table:
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` | 0 errors |
+| `npx expo lint` | 0 errors, 0 warnings |
+| `npx jest` | 150/150 passing, 14 suites (77 pre-existing Phase 3 tests unmodified and passing + 73 new) |
+| `npx expo-doctor` | 20/21 — the one failure (`expo@57.0.22` vs. expected `~57.0.23`) is the pre-existing drift already recorded in the 2026-09-08 re-validation entry above; confirmed this phase's diff never touches the tracked `expo` version |
+| `npx expo install --check` | Confirms the same single pre-existing drift, nothing else outdated |
+| `npx expo config --json` (development env) | Resolves cleanly, all confirmed identifiers unchanged |
+| Real local `backend/` instance (synthetic, locally-generated `.env` — never a real credential) + direct unauthenticated HTTP requests | `GET /` → 200 envelope as documented; `GET /api/v1/reports/dashboard-summary` → 401 `NO_AUTH`; `GET /api/v1/users/profile`, `/api/v1/payment/current-subscription`, `/api/v1/notifications` → 401 `NO_TOKEN`; bogus Bearer token → 401 `INVALID_TOKEN`; unknown route → 404 `NOT_FOUND` + `request_id` — all match this client's error classification exactly |
+| Secret/credential scan across the full diff | No matches; synthetic `.env` deleted after use, was already `.gitignore`d, never staged |
+| `git status --porcelain` (backend, frontend) | Empty — neither touched, only read |
+
+**Completed same-day follow-up (2026-09-16):** the authenticated round trip above. Summary
+(see §4 Progress Log's "authenticated real-backend round trip completed" entry for the
+full table): signed in as the real disposable test account (genuine Firebase
+`signInWithPassword`), sent the real ID token to `GET /users/profile`,
+`GET /reports?limit=5`, `GET /reports/dashboard-summary`, `GET /notifications`,
+`GET /payment/current-subscription` — all returned `503 PROFILE_LOOKUP_FAILED`, proving
+real-token acceptance (never `401`) while correctly reflecting this session's
+Firestore-incapable synthetic Admin credentials; an unauthenticated request still
+correctly returned `401 NO_TOKEN`. **Not achieved, disclosed as a real limitation**: a
+live `200` Firestore-backed response body and a live refresh-token exchange (Google
+returned `INVALID_REFRESH_TOKEN`, likely an API-key restriction, not investigated
+further) — both remain covered by mocked contract tests instead. No mutation beyond one
+safe, pre-write-rejected validation check (`POST /reports/templates` with an empty name)
+was performed; no payment/checkout/subscription/account/deletion/archive/approval/
+generation call was made. All temporary credentials/scripts were deleted immediately
+after use (confirmed via `git status --porcelain` — never tracked).
+
+**Completed second same-day follow-up (2026-09-16): full authenticated data round trip via
+local Firestore Emulator (not real cloud Firestore).** Full detail: §4 Progress Log's
+"full authenticated data round trip via local Firestore Emulator" entry. Summary: no ADC/
+approved dev backend was available (checked directly); installed a JDK (user-approved,
+one-time) to run the Firestore Emulator as the documented fallback; pointed the same
+synthetic-Admin-credentialed backend at it via `FIRESTORE_EMULATOR_HOST` (no backend
+source change); seeded 3 disposable documents keyed to the real test account's uid. Every
+required endpoint then returned a genuine `200` matching this client's typed models:
+profile, reports list (seeded report present), dashboard summary, notifications list
+(seeded notification present), payment subscription. A live refresh-token exchange still
+failed (`INVALID_REFRESH_TOKEN`, unchanged, not a code defect); a temporary Jest-based
+typed-client harness hit an unrelated Expo-internal fetch-polyfill issue, not pursued
+further given the raw-HTTP shape match plus existing mocked-test coverage. All emulator
+data (memory-only, discarded on stop), the synthetic `.env`, temporary scripts, the
+temporary Jest test file, and the user's `.env.test.local` were deleted; backend +
+emulator processes stopped, including two orphaned children from an earlier retry
+(terminated by exact command-line match, not a blanket kill); confirmed via `netstat` that
+ports 3000/8080/9150 are clear and via `git status --porcelain` that nothing leaked into
+version control.
 
 ---
 
