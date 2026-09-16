@@ -7,3 +7,8 @@
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
+
+// Same problem, same fix, for @react-native-community/netinfo (Phase 4 — services/api/
+// offline.ts): its native event-emitter setup throws under Jest's Node environment without
+// this official mock, even for a test that only imports the module transitively.
+jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock'));
