@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const sharp = require('sharp');
 const { getAuth, getFirestore } = require('../config/firebase');
-const { authenticateToken, optionalAuth, requireApiAccess } = require('../middleware/auth');
+const { authenticateToken, optionalAuth, requireApiAccess, requireRecentAuth } = require('../middleware/auth');
 const { profileLimiter } = require('../middleware/rateLimiters');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { API_KEY_SCOPES, normalizeApiKeyScopes } = require('../config/apiScopes');
@@ -594,17 +594,28 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 });
 
 // PUT /api/users/change-password
-router.put('/change-password', authenticateToken, [
+// requireRecentAuth (2026-09-08): server-side enforcement that this
+// request's verified Firebase ID token reflects a sign-in/reauthentication
+// within the last few minutes -- see that middleware's own comment in
+// middleware/auth.js for exactly what it checks and why. Runs AFTER
+// authenticateToken (needs req.mfaContext, which only that middleware sets)
+// and BEFORE the request body is ever touched.
+router.put('/change-password', authenticateToken, requireRecentAuth, [
   body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
-    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    // A password change IS the explicit "revoke everywhere" security event
+    // (deliberately distinct from ordinary /auth/logout, which is NOT --
+    // see that route's own header comment) -- so this bumps `tokenValidAfter`,
+    // immediately invalidating every already-issued Firebase ID token,
+    // everywhere, not just future refreshes; mirrors /auth/change-password.
     await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
     await getFirestore().collection('users').doc(req.user.uid).update({
       tokenVersion: (req.user.tokenVersion || 0) + 1,
+      tokenValidAfter: Math.floor(Date.now() / 1000),
     }).catch(() => {});
     recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password changed' });

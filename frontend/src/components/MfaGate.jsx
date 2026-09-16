@@ -18,8 +18,8 @@ const MfaGate = ({ onVerified }) => {
     if (code.replace(/[^a-z0-9]/gi, '').length < 6) return;
     setLoading(true);
     try {
-      await authAPI.mfaVerify(code);
-      onVerified();
+      const res = await authAPI.mfaVerify(code);
+      onVerified(res.data?.mfaAssertion);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
     } finally {

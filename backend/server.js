@@ -8,6 +8,7 @@ const morgan = require('morgan');
 // Initialize Firebase on startup
 const { initFirebase } = require('./config/firebase');
 initFirebase();
+const { CORS_ALLOWED_HEADERS, CORS_ALLOWED_METHODS } = require('./config/corsOptions');
 
 const app = express();
 
@@ -35,8 +36,8 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  methods: CORS_ALLOWED_METHODS,
+  allowedHeaders: CORS_ALLOWED_HEADERS,
 }));
 
 // ── RATE LIMITING ─────────────────────────────────────────────────────────────
