@@ -4,7 +4,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const axios = require('axios');
 const { getAuth, getFirestore } = require('../config/firebase');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRecentAuth } = require('../middleware/auth');
 
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
@@ -13,6 +13,7 @@ const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
 const { sendNewDeviceLoginAlert } = require('../services/emailService');
 const { PASSWORD_REQUIREMENTS_MESSAGE, isStrongPassword } = require('../utils/passwordPolicy');
+const { issueMfaAssertion } = require('../utils/mfaAssertion');
 
 const RECOVERY_CODE_COUNT = 8;
 const normalizeRecoveryCode = code => String(code || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
@@ -306,7 +307,14 @@ router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
       mfaEnabledAt: new Date().toISOString(),
     });
     recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_enabled', req });
-    return res.json({ success: true, message: 'Two-factor authentication enabled', recoveryCodes });
+    // Additive field: completing enrollment also satisfies MFA for this same
+    // sign-in, so hand back an assertion immediately -- without it, the
+    // account would be locked out of every protected route the instant
+    // mfaEnabled flips true, having never had a chance to verify anything.
+    const mfaAssertion = req.mfaContext
+      ? issueMfaAssertion({ uid: req.user.uid, authTime: req.mfaContext.authTime, tokenVersion: req.mfaContext.tokenVersion })
+      : undefined;
+    return res.json({ success: true, message: 'Two-factor authentication enabled', recoveryCodes, mfaAssertion });
   } catch (err) {
     console.error('MFA verify-setup error:', err);
     return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
@@ -390,7 +398,16 @@ router.post('/mfa/verify', authenticateToken, mfaLimiter, [
       recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'mfa_verify_failed', req });
       return res.status(401).json({ success: false, error: 'Invalid authentication code', code: 'INVALID_MFA_CODE' });
     }
-    return res.json({ success: true, method: verification.method });
+    // Additive field (2026-09-08 fix): this is the server-side proof of MFA
+    // completion that authenticateToken now requires (as X-MFA-Token) on
+    // protected routes for this account -- see AUTHENTICATION_ARCHITECTURE.md
+    // §12. Bound to this exact sign-in (req.mfaContext.authTime, from the
+    // Firebase ID token authenticateToken already verified) and to the
+    // user's current tokenVersion, so logout/password-change revoke it too.
+    const mfaAssertion = req.mfaContext
+      ? issueMfaAssertion({ uid: req.user.uid, authTime: req.mfaContext.authTime, tokenVersion: req.mfaContext.tokenVersion })
+      : undefined;
+    return res.json({ success: true, method: verification.method, mfaAssertion });
   } catch (err) {
     console.error('MFA verify error:', err);
     return res.status(500).json({ success: false, error: 'Failed to verify code', code: 'MFA_VERIFY_ERROR' });
@@ -429,6 +446,28 @@ router.post('/verify', authenticateToken, async (req, res) => {
 });
 
 // POST /api/auth/logout
+//
+// EXACT SEMANTICS (read before adding a new caller of this endpoint, per the
+// 2026-09-08 rollout-safety correction -- an earlier version of this fix
+// briefly also bumped `tokenValidAfter` here, which would have silently
+// turned every ordinary Sign Out into an immediate all-devices session kill;
+// that was deliberately reverted):
+//   - `revokeRefreshTokens(uid)` blocks any *future* silent token refresh
+//     for this account, on every device -- this has always been the case
+//     (Firebase has no per-device revocation primitive) and is NOT new or
+//     changed by this fix.
+//   - The `tokenVersion` bump invalidates any outstanding custom JWT
+//     (register/mfa-login-verify path) AND any outstanding MFA session
+//     assertion for this account (`utils/mfaAssertion.js`'s
+//     `verifyMfaAssertion` checks `tokenVersion`) -- also pre-existing.
+//   - This endpoint does **not** invalidate an already-issued, still-valid
+//     Firebase ID token sitting in another tab/device/session -- that stays
+//     usable until its own natural ~1h expiry. This is a deliberate,
+//     accepted limitation of ordinary Sign Out, not a bug: instantly killing
+//     every other active session is an explicit, stronger "sign out
+//     everywhere" security operation (see `/change-password` below, which
+//     performs exactly that on the genuinely security-sensitive event of a
+//     password change), not something ordinary Sign Out should do silently.
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     await getAuth().revokeRefreshTokens(req.user.uid);
@@ -436,9 +475,6 @@ router.post('/logout', authenticateToken, async (req, res) => {
     console.error('Logout revokeRefreshTokens error:', err);
   }
   try {
-    // Bumping tokenVersion invalidates any outstanding custom JWT (Firebase
-    // idTokens are covered by revokeRefreshTokens above, but that call doesn't
-    // touch already-issued custom JWTs, which are otherwise stateless for 7 days).
     await getFirestore().collection('users').doc(req.user.uid).update({
       tokenVersion: (req.user.tokenVersion || 0) + 1,
     });
@@ -526,7 +562,15 @@ router.post('/send-verification', authLimiter, authenticateToken, async (req, re
 });
 
 // POST /api/auth/change-password
-router.post('/change-password', authenticateToken, [
+// Same verified-contract shape as PUT /users/change-password (no
+// currentPassword field, no server-side re-verification of it -- it trusts
+// the authenticated session and mutates directly via the Admin SDK), so it
+// gets the identical requireRecentAuth enforcement for the identical
+// reason. Not currently called by the web or mobile UI (usersAPI.changePassword
+// / PUT /users/change-password is what Settings.jsx uses), but it is a live,
+// reachable route on the same authenticateToken contract, so leaving it
+// unprotected would be a real bypass of the exact gap this fix closes.
+router.post('/change-password', authenticateToken, requireRecentAuth, [
   body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -535,10 +579,16 @@ router.post('/change-password', authenticateToken, [
   }
   try {
     await getAuth().updateUser(req.user.uid, { password: req.body.newPassword });
-    // Revoke all other outstanding sessions (Firebase refresh tokens + custom JWTs).
+    // A password change IS the explicit, security-sensitive "revoke
+    // everywhere" event ordinary /logout deliberately is not (see that
+    // route's own header comment) -- so, unlike /logout, this also bumps
+    // `tokenValidAfter`, immediately invalidating every already-issued
+    // Firebase ID token, everywhere, not just future refreshes. A stolen
+    // password can't keep an existing session alive past a password change.
     await getAuth().revokeRefreshTokens(req.user.uid).catch(() => {});
     await getFirestore().collection('users').doc(req.user.uid).update({
       tokenVersion: (req.user.tokenVersion || 0) + 1,
+      tokenValidAfter: Math.floor(Date.now() / 1000),
     }).catch(() => {});
     recordAuditLog({ actorUid: req.user.uid, actorEmail: req.user.email, action: 'password_change', req });
     return res.json({ success: true, message: 'Password updated successfully' });

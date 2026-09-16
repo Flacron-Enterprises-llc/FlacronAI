@@ -11,7 +11,6 @@ import {
 import {
   reauthenticateWithCredential,
   EmailAuthProvider,
-  updatePassword,
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
 import Navbar from '../components/Navbar';
@@ -19,7 +18,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { formatStatus } from '../utils/formatStatus';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { usersAPI, paymentAPI, authAPI, reportsAPI } from '../services/api';
+import { usersAPI, paymentAPI, authAPI, reportsAPI, clearMfaAssertion } from '../services/api';
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
 
@@ -143,7 +142,7 @@ function DeleteAccountModal({ onConfirm, onClose, loading }) {
 }
 
 export default function Settings() {
-  const { userProfile, tier, refreshProfile, logout } = useAuth();
+  const { userProfile, tier, refreshProfile, logout, markMfaVerified } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Phase 16: allows a deep link (e.g. from /integrations' "Manage API Keys")
@@ -378,12 +377,62 @@ export default function Settings() {
         return;
       }
 
+      // Firebase recent-login protection: reauthentication proves the caller knows the
+      // current password. The backend endpoint below trusts the already-authenticated
+      // session and does not re-check the current password itself (confirmed by reading
+      // backend/routes/users.js's PUT /users/change-password: it takes only `newPassword`,
+      // no `currentPassword` field, no server-side verifyPassword() call) -- but it now DOES
+      // independently verify, server-side, that a reauthentication like this one happened
+      // recently (middleware/auth.js's requireRecentAuth, checked against the ID token's own
+      // auth_time claim -- see AUTHENTICATION_ARCHITECTURE.md §12.3). This must happen, and
+      // succeed, before any password mutation is attempted, and the current password is
+      // still the live one at this point -- nothing below has changed it yet.
       const credential = EmailAuthProvider.credential(currentUser.email, pwForm.currentPassword);
       await reauthenticateWithCredential(currentUser, credential);
-      await updatePassword(currentUser, pwForm.newPassword);
 
+      // Force a fresh Firebase ID token so its auth_time claim actually reflects the
+      // reauthentication that just happened -- the backend's requireRecentAuth middleware
+      // checks that claim server-side and would otherwise see whatever auth_time was on a
+      // previously cached token (possibly from well before this form was even opened).
+      // getIdToken(true) updates the SDK's cached token synchronously, so the very next
+      // (non-forced) getIdToken() call inside api.js's request interceptor -- the one that
+      // actually attaches the Authorization header below -- returns this same fresh token
+      // rather than an older cached one.
+      await currentUser.getIdToken(true);
+
+      // The backend is the SINGLE authority for the actual password mutation (Admin SDK
+      // getAuth().updateUser, confirmed by reading that route) and the session-revocation
+      // side effect (tokenVersion + tokenValidAfter bump) -- see
+      // AUTHENTICATION_ARCHITECTURE.md §12.3. There is deliberately no client-side
+      // updatePassword() call here: calling both would change the password twice for one
+      // user action. A failure here must NOT be swallowed and must NOT show success -- the
+      // password has not actually changed if this rejects, so the user stays on the form
+      // with a real, actionable error.
+      try {
+        await usersAPI.changePassword(pwForm.newPassword);
+      } catch (err) {
+        if (err.response?.data?.code === 'RECENT_LOGIN_REQUIRED') {
+          toast.error('Your sign-in needs to be freshly verified for this. Please try again.');
+        } else {
+          toast.error(err.response?.data?.error || 'Failed to update your password on the server. Please try again.');
+        }
+        return;
+      }
+
+      // Reached only after the backend has confirmed the password was actually changed.
       setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      toast.success('Password changed successfully');
+      // Drop the local MFA assertion too -- client-side hygiene to match the server-side
+      // tokenVersion/tokenValidAfter revocation the backend call above already performed.
+      clearMfaAssertion();
+      toast.success('Password changed. Please sign in again with your new password.');
+      // The backend call above already revoked this session's Firebase ID token
+      // server-side (tokenValidAfter bump) -- the token still cached in this tab would
+      // start failing TOKEN_REVOKED on its very next authenticated request anyway, so
+      // sign out locally now and send the user to a clean sign-in rather than leaving
+      // them on a page whose session is already dead from the server's point of view.
+      await logout();
+      navigate('/login');
+      return;
     } catch (err) {
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         toast.error('Current password is incorrect');
@@ -506,6 +555,14 @@ export default function Settings() {
       setMfaSetupData(null);
       setMfaCode('');
       setMfaRecoveryCodes(res.data.recoveryCodes || []);
+      // mfaEnabled just flipped true server-side -- authenticateToken will now require
+      // an assertion on every protected route for this account, so store the one
+      // verify-setup issues additively (via the same markMfaVerified path MfaGate uses,
+      // so AuthContext's mfaVerified also becomes true -- otherwise userProfile's next
+      // refresh would show mfaEnabled: true with mfaVerified still false and immediately
+      // re-prompt for a code the user just finished entering).
+      markMfaVerified(res.data.mfaAssertion);
+      refreshProfile();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
     } finally {
@@ -523,6 +580,9 @@ export default function Settings() {
       setMfaCode('');
       setMfaDisablePassword('');
       setMfaRecoveryCodes([]);
+      // mfaEnabled is now false, so authenticateToken no longer requires an assertion --
+      // clear the now-pointless one rather than hold onto it.
+      clearMfaAssertion();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
     } finally {

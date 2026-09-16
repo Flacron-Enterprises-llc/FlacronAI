@@ -9,7 +9,7 @@ import {
   updateProfile as firebaseUpdateProfile,
 } from 'firebase/auth';
 import { auth } from '../config/firebase.js';
-import { usersAPI, authAPI } from '../services/api.js';
+import { usersAPI, authAPI, setMfaAssertion, clearMfaAssertion, MFA_REQUIRED_EVENT } from '../services/api.js';
 
 const AuthContext = createContext(null);
 
@@ -86,9 +86,15 @@ export const AuthProvider = ({ children }) => {
           setUserProfile(null);
           await fetchUserProfile({ block: true, retries: 2 });
         } else {
+          // Signed out (or no session restored): drop any stale MFA state --
+          // a fresh sign-in always needs its own fresh assertion (see api.js
+          // header comment; a stale one would fail its auth_time check
+          // anyway, this just avoids holding onto it pointlessly).
           setUserProfile(null);
           setProfileError(null);
           setEmailVerified(false);
+          setMfaVerified(false);
+          clearMfaAssertion();
         }
         setLoading(false);
       });
@@ -177,14 +183,38 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Deliberately does NOT call the backend POST /auth/logout endpoint —
+    // matches web's original, unmodified behavior (rollout-safety correction,
+    // 2026-09-08). An earlier version of this fix added that call so
+    // logout's server-side revocation would actually reach web too, but
+    // that revocation was itself corrected to be an explicit, security-event-
+    // triggered operation (password change), not something ordinary Sign
+    // Out should silently invoke — see /auth/logout's own header comment in
+    // routes/auth.js for its exact, current semantics, and
+    // AUTHENTICATION_ARCHITECTURE.md §12 for the full reasoning. Everything
+    // below is purely local state cleanup: clearing the MFA assertion here
+    // is client-side hygiene only (this device no longer needs it), not a
+    // server-side revocation request.
     await signOut(auth);
     setUser(null);
     setUserProfile(null);
     setProfileError(null);
     setMfaVerified(false);
+    clearMfaAssertion();
   };
 
-  const markMfaVerified = () => setMfaVerified(true);
+  const markMfaVerified = (mfaAssertion) => {
+    if (mfaAssertion) setMfaAssertion(mfaAssertion);
+    setMfaVerified(true);
+  };
+
+  // Drops back to the MFA gate the instant a protected request comes back
+  // MFA_REQUIRED (assertion missing/expired/revoked) -- see api.js's own comment.
+  useEffect(() => {
+    const handler = () => setMfaVerified(false);
+    window.addEventListener(MFA_REQUIRED_EVENT, handler);
+    return () => window.removeEventListener(MFA_REQUIRED_EVENT, handler);
+  }, []);
 
   const updateProfile = async (data) => {
     if (!user) throw new Error('Not authenticated');

@@ -1,5 +1,11 @@
 import axios from 'axios';
 import { auth } from '../config/firebase.js';
+import { clearMfaAssertion, getMfaAssertion, notifyMfaRequired } from './mfaAssertion.js';
+
+// Re-exported for existing call sites (AuthContext.jsx, MfaGate.jsx, Settings.jsx) --
+// the actual implementation lives in ./mfaAssertion.js (dependency-free, so it can be
+// unit-tested without triggering Firebase app initialization).
+export { getMfaAssertion, setMfaAssertion, clearMfaAssertion, MFA_REQUIRED_EVENT } from './mfaAssertion.js';
 
 // Prefer the versioned API. The backend serves every route under BOTH /api
 // (legacy) and /api/v1 (versioned) from the same handlers. VITE_API_URL may be
@@ -19,7 +25,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor — attach Firebase token
+// Request interceptor — attach Firebase token (+ the MFA assertion, if any)
 api.interceptors.request.use(
   async (config) => {
     try {
@@ -32,6 +38,8 @@ api.interceptors.request.use(
         const token = localStorage.getItem('flac_token');
         if (token) config.headers.Authorization = `Bearer ${token}`;
       }
+      const mfaToken = getMfaAssertion();
+      if (mfaToken) config.headers['X-MFA-Token'] = mfaToken;
     } catch (err) {
       console.warn('Token fetch failed:', err.message);
     }
@@ -46,6 +54,17 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { response, config } = error;
+
+    // 403 MFA_REQUIRED — the assertion is missing, expired, or was revoked
+    // (logout/password-change/a fresh sign-in elsewhere). Clear the stale
+    // assertion and notify AuthContext so it drops mfaVerified back to
+    // false, which makes ProtectedRoute re-render MfaGate immediately
+    // instead of leaving stale protected content on screen.
+    if (response?.status === 403 && response?.data?.code === 'MFA_REQUIRED') {
+      clearMfaAssertion();
+      notifyMfaRequired();
+      return Promise.reject(error);
+    }
 
     // 401 — try a Firebase token force-refresh once before giving up
     if (response?.status === 401 && !config._authRetry) {

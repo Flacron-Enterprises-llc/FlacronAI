@@ -4,6 +4,7 @@ const { getAuth, getFirestore, FieldValue } = require('../config/firebase');
 const { isAtLeastTier, getTier } = require('../config/tiers');
 const { normalizeApiKeyScopes } = require('../config/apiScopes');
 const { hasCapability } = require('../utils/orgRoles');
+const { MFA_ASSERTION_HEADER, verifyMfaAssertion, isMfaEnforcementEnabled } = require('../utils/mfaAssertion');
 
 // Distinguishes "this token is genuinely bad" (expired/malformed/wrong
 // audience) from "we couldn't even check it because of a network/infra
@@ -70,6 +71,104 @@ const isAuthVerificationWedged = () => consecutiveTransientAuthFailures >= WEDGE
 // suspend time) forces any already-issued token to fail before it would even
 // reach this check on its own.
 const isTeamMembershipSuspended = (userData) => userData?.teamMembershipStatus === 'suspended';
+
+// Exact METHOD + path bootstrap exemptions an MFA-enabled account must still
+// be able to reach BEFORE it has a valid X-MFA-Token assertion -- otherwise
+// enabling MFA would lock accounts out of the exact endpoints that let them
+// check status, complete the challenge, recover, or disable MFA, and logout
+// must always work. Method is included (not just path) so a hypothetical
+// future non-GET/POST route reusing one of these paths is never accidentally
+// exempted by name alone. Deliberately minimal: everything else behind
+// authenticateToken for an MFA-enabled account requires the assertion.
+//   - 'POST /verify' is exempt because AuthContext.jsx/AuthProvider.tsx call
+//     it immediately after Firebase sign-in, before the client has any
+//     chance to show the MFA gate or obtain an assertion (see its own
+//     comment in routes/auth.js).
+//   - 'POST /send-verification' is exempt so an MFA-enabled account whose
+//     email verification lapsed isn't deadlocked between the
+//     email-verification screen (shown before the MFA gate) and a
+//     since-unreachable MFA gate.
+//   - 'POST /mfa/disable' is exempt from needing an X-MFA-Token specifically
+//     because its own request body already requires equivalent, arguably
+//     stronger, proof: the current password OR a freshly-verified TOTP/
+//     recovery code (`verifySecondFactor`, checked inside the route
+//     handler itself) -- an assertion would only prove a *past* MFA
+//     completion up to 12h ago, not a *fresh* one, so requiring the
+//     endpoint's own recent-verification check instead is the more
+//     conservative choice here, not a weaker one.
+const MFA_ASSERTION_EXEMPT_ROUTES = new Set([
+  'GET /mfa/status',
+  'POST /mfa/verify',
+  'POST /mfa/verify-setup',
+  'POST /mfa/disable',
+  'POST /logout',
+  'POST /verify',
+  'POST /send-verification',
+]);
+// Scoped to the auth router specifically (by baseUrl, which is
+// prefix-agnostic across /api and /api/v1) so this never accidentally
+// exempts a same-named method+path in an unrelated router.
+const isMfaAssertionExempt = (req) =>
+  Boolean(req.baseUrl) && req.baseUrl.endsWith('/auth') && MFA_ASSERTION_EXEMPT_ROUTES.has(`${req.method} ${req.path}`);
+
+// Recent-authentication window for credential-mutating endpoints (password
+// change). 2026-09-08 fix: the client-side Firebase reauthenticateWithCredential()
+// call in Settings.jsx proves the caller knows the current password, but
+// nothing server-side previously checked that this had actually just
+// happened -- a stolen-but-still-valid Firebase ID token (e.g. from an
+// old, otherwise-idle browser tab/session) could call PUT
+// /users/change-password directly and succeed with no proof of recent
+// reauthentication at all, since that route never re-verifies the current
+// password itself (see password-change-contract.test.js).
+const RECENT_AUTH_WINDOW_SECONDS = 5 * 60;
+// Small, deliberately conservative allowance for ordinary clock drift
+// between this server and the value Firebase itself stamped into the
+// token's `auth_time` claim at sign-in -- NOT a grace period for staleness,
+// only for measurement noise around the boundary in both directions
+// (guards the "future auth_time" check as much as the "stale" one).
+const RECENT_AUTH_CLOCK_SKEW_SECONDS = 30;
+
+// Requires the verified Firebase ID token behind this request to carry an
+// `auth_time` (the token's own claim of when the underlying sign-in/
+// reauthentication actually happened, set by Firebase itself, not the
+// client) within the last RECENT_AUTH_WINDOW_SECONDS. Must run AFTER
+// authenticateToken, and reads ONLY req.mfaContext.authTime -- the value
+// authenticateToken already decoded from the verified token and attached
+// for its own genuine-Firebase-ID-token branch (no extra Firestore read,
+// no re-verifying the token, no trusting anything the client sent in the
+// request body/headers/query).
+//
+// req.mfaContext is deliberately left unset by authenticateToken's
+// custom-JWT fallback branch (that token type has no `auth_time` claim at
+// all -- it's a bespoke 7-day bearer token, not a Firebase sign-in event),
+// so a custom-JWT-authenticated request always fails this check. That is
+// intentional, not a compatibility gap: web and mobile both send a
+// Firebase ID token for every authenticated request once signed in (the
+// custom JWT is register's brief bootstrap fallback -- see
+// AUTHENTICATION_ARCHITECTURE.md §12), and Settings.jsx's password-change
+// flow reauthenticates via the Firebase client SDK immediately before
+// calling this endpoint, which always yields a genuine Firebase ID token
+// with a fresh auth_time. A caller that genuinely only holds a custom JWT
+// has an existing secure path available -- sign in through Firebase (as
+// the UI already requires to reach Settings) to obtain a real ID token --
+// rather than this middleware trusting an unverifiable claim of recency.
+const requireRecentAuth = (req, res, next) => {
+  const authTime = req.mfaContext?.authTime;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const isMissingOrMalformed = typeof authTime !== 'number' || !Number.isFinite(authTime);
+  const isInTheFuture = !isMissingOrMalformed && authTime > nowSeconds + RECENT_AUTH_CLOCK_SKEW_SECONDS;
+  const isStale = !isMissingOrMalformed && nowSeconds - authTime > RECENT_AUTH_WINDOW_SECONDS + RECENT_AUTH_CLOCK_SKEW_SECONDS;
+
+  if (isMissingOrMalformed || isInTheFuture || isStale) {
+    return res.status(403).json({
+      success: false,
+      error: 'Please sign in again to confirm it\'s you before changing your password',
+      code: 'RECENT_LOGIN_REQUIRED',
+    });
+  }
+  return next();
+};
 
 // Verify Firebase ID token or custom JWT
 const authenticateToken = async (req, res, next) => {
@@ -157,6 +256,63 @@ const authenticateToken = async (req, res, next) => {
         return res.status(403).json({ success: false, error: 'Your team access has been suspended', code: 'TEAM_ACCESS_SUSPENDED' });
       }
 
+      // Password-change session revocation for already-issued Firebase ID
+      // tokens (2026-09-08 fix, rollout-safety-corrected): getAuth().
+      // revokeRefreshTokens() alone only blocks *future* silent refreshes,
+      // not a token minted before the revocation event that hasn't
+      // naturally expired yet (up to ~1h). tokenValidAfter (Unix seconds) is
+      // bumped to "now" ONLY by /auth/change-password and
+      // /users/change-password (an explicit, deliberate all-sessions
+      // security operation) -- NOT by /auth/logout, which stays a normal,
+      // single-session-scoped sign-out (see that route's own header comment
+      // for exact, current semantics). Checked against the SAME user
+      // document this request already loaded above -- reusing it, rather
+      // than Firebase Admin's own `checkRevoked` verifyIdToken() option,
+      // avoids adding a network round-trip to every authenticated request
+      // (checkRevoked's documented latency cost). `decoded.iat` is the
+      // standard Firebase ID token "issued at" claim (Unix seconds) -- this
+      // is the same iat-vs-validSince comparison Firebase's own checkRevoked
+      // performs internally, just evaluated against a timestamp this app
+      // already controls instead of a second network call. Strict `<` (not
+      // `<=`) is deliberate: a legitimate fresh login in the SAME second as
+      // the revoking password change gets `iat === tokenValidAfter`, which
+      // must NOT be rejected (see `mfa-enforcement.test.js`'s same-second
+      // case) -- the tiny reverse edge case this accepts (a token minted in
+      // that exact same second, before the change, surviving one extra
+      // second) is judged negligible next to the cost of falsely locking out
+      // a real concurrent login. Absent for any account that has never
+      // changed its password through these endpoints -- fully backward
+      // compatible, no migration needed.
+      if (userData.tokenValidAfter && decoded.iat < userData.tokenValidAfter) {
+        return res.status(401).json({ success: false, error: 'Session revoked, please log in again', code: 'TOKEN_REVOKED' });
+      }
+
+      // Server-side MFA enforcement (2026-09-08 follow-up audit fix; rollout
+      // gated by MFA_ENFORCEMENT_ENABLED, see utils/mfaAssertion.js). A
+      // valid Firebase ID token alone used to be sufficient for every
+      // protected route regardless of whether the account's MFA challenge
+      // was ever completed. Kept scoped to genuine Firebase ID tokens only
+      // -- the custom-JWT fallback branch below is not used by the web or
+      // mobile clients (confirmed) and, for the flows that do mint one
+      // (`/register`, `/mfa/login-verify`), MFA (when already enabled at
+      // that moment) is already required before the JWT is issued; see
+      // AUTHENTICATION_ARCHITECTURE.md §12 for the one narrow, documented
+      // residual case this does not cover. Gated behind isMfaEnforcementEnabled()
+      // so assertion issuance and both clients' support can deploy and run
+      // in production before this check is ever allowed to reject a
+      // request -- while disabled, this block is a no-op and existing
+      // MFA-enabled users see zero behavior change.
+      if (userData.mfaEnabled && isMfaEnforcementEnabled() && !isMfaAssertionExempt(req)) {
+        const assertion = verifyMfaAssertion(req.headers[MFA_ASSERTION_HEADER], {
+          uid: decoded.uid,
+          authTime: decoded.auth_time,
+          tokenVersion: userData.tokenVersion,
+        });
+        if (!assertion) {
+          return res.status(403).json({ success: false, error: 'Multi-factor verification required', code: 'MFA_REQUIRED' });
+        }
+      }
+
       req.user = {
         uid: decoded.uid,
         email: decoded.email,
@@ -164,6 +320,10 @@ const authenticateToken = async (req, res, next) => {
         displayName: userData.displayName || decoded.name || '',
         ...userData,
       };
+      // Kept off req.user deliberately -- req.user is spread into many API
+      // response bodies verbatim, and this is request-scoped MFA-assertion
+      // context, not profile data.
+      req.mfaContext = { authTime: decoded.auth_time, tokenVersion: userData.tokenVersion || 0 };
       return next();
     } catch (lookupErr) {
       console.error('Auth middleware profile lookup error:', lookupErr);
@@ -389,10 +549,17 @@ module.exports = {
   requireTeamCapability,
   requireApiAccess,
   requireApiScope,
+  requireRecentAuth,
   trackApiUsage,
   // Exported for direct unit testing of the transient-vs-invalid classification.
   isTransientAuthError,
   isTeamMembershipSuspended,
+  // Exported for direct unit testing of the MFA-assertion bootstrap exemption list.
+  isMfaAssertionExempt,
+  MFA_ASSERTION_EXEMPT_ROUTES,
+  // Exported for direct unit testing of the recent-auth window/skew constants.
+  RECENT_AUTH_WINDOW_SECONDS,
+  RECENT_AUTH_CLOCK_SKEW_SECONDS,
   // Exported so server.js's /health check can detect a wedged token-verifier
   // and let Render's healthCheckPath-based auto-restart recover it.
   isAuthVerificationWedged,
