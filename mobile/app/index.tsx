@@ -26,7 +26,7 @@ export default function RootIndex() {
     case 'profile-unavailable':
       return <Redirect href="/account-unavailable" />;
     case 'authenticated':
-      return <Redirect href="/home" />;
+      return <Redirect href="/dashboard" />;
     case 'loading':
     default:
       return null;

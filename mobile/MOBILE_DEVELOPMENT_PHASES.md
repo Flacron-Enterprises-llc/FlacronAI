@@ -40,6 +40,89 @@
 
 ## 1. Current Status
 
+- **Phase 5 — Core Dashboard Feature Parity: implemented, static validation complete;
+  Android/iOS runtime validation NOT performed this session (environment had no ADB,
+  emulator, physical device, or browser-automation tool available — honestly recorded
+  as a blocker, not skipped silently).** Built on branch `feature/mobile-phase-5-core-dashboard`
+  in an isolated worktree, from a fresh `origin/main` confirmed to include Phase 4 (PR #21)
+  and the later MFA-hardening PR #22 — `backend/`/`frontend/` and the original
+  `feature/mobile-initial-phases` working tree were never touched (confirmed via
+  `git status --porcelain` scoped to each). Delivers, in priority order: dashboard summary +
+  reports list (pagination, pull-to-refresh, offline state, status filter); a 5-step native
+  generate-report wizard (claim → property/vehicle → loss details → photos → review) with
+  per-photo immediate upload via the existing staging endpoints, resumable across an app
+  relaunch (fields/step persisted to AsyncStorage, photos re-derived from the server's own
+  staged list — never trusted from local cache), and duplicate-submission-proof; report
+  detail (overview/photos/comments/versions tabs, photo review actions, approve-and-finalize
+  attestation matching the backend's own signature requirements, review-response scaffold);
+  export via the authenticated download endpoint + `expo-file-system`/`expo-sharing`
+  (save-then-share, never an unauthenticated link); and a minimal profile/settings screen
+  (server-verified usage/tier, profile edit, sign out). Every method call maps to a Phase 4
+  resource-client method already confirmed against `backend/routes/*` — no new endpoint was
+  invented, and no entitlement/approval/review rule was reimplemented client-side (the
+  approve-eligibility check and the wizard's duplicate-submit guard both mirror, not
+  replace, the server's own rejections). New dependencies: `expo-image-picker`,
+  `expo-file-system`, `expo-sharing` — all installed via `expo install` (SDK-matched
+  versions), all three genuinely required by this phase's scope (camera/library capture,
+  local file writes for photo thumbnails and export downloads, native share sheet), nothing
+  speculative added. `expo-image-picker`'s Android microphone permission (its plugin's
+  default, needed only for video capture) was explicitly turned off
+  (`microphonePermission: false` in `app.config.ts`) since this app only ever captures still
+  photos — confirmed via `expo config --json` that no `RECORD_AUDIO` permission is declared.
+  Navigation: `app/(app)/(tabs)/{dashboard,reports,settings}.tsx` (a `Tabs` group nested
+  inside the existing `(app)` `Stack.Protected` guard, so Phase 3's auth gate covers every
+  new screen automatically) plus stack-pushed `app/(app)/report/{new,[id]/index}.tsx` for the
+  wizard and detail screen (kept under a singular `report/` segment, distinct from the
+  plural `reports` tab route, specifically to avoid an Expo Router path collision between a
+  tab screen and a sibling stack directory). The tab bar is text-only (no icon library is
+  installed anywhere in this app, and Phase 5's scope explicitly excludes adding unrelated
+  dependencies) — matches every other screen in the app. Phase 3's placeholder
+  `app/(app)/home.tsx` was removed (`/home` → `/dashboard`; `app/index.tsx`'s authenticated
+  redirect updated to match) since Phase 5's dashboard supersedes it.
+  **Validation performed:** `tsc --noEmit` 0 errors; `expo lint` 0 errors/0 warnings; `npx
+  jest` 200/200 passing (150 pre-existing unchanged + 50 new, across 8 new suites) covering
+  the wizard reducer's field-edit recoverability and duplicate-submit guard (pure, no
+  mocking needed), draft-resume persistence, photo-picker permission/cancellation/error
+  handling, upload retry and partial-failure independence, approval eligibility (mirrors the
+  backend's `REPORT_PROCESSING`/`REPORT_REGENERATING` rejections exactly) and duplicate-tap
+  prevention, export/download/save/share (happy path, unavailable share capability, a
+  cancelled/failed share not losing the already-downloaded file, and offline/expired-auth
+  error mapping through the existing `ApiRequestError` categories), and reports-list
+  pagination/offline/error-mapping; `expo-doctor` 20/21 (the one failure is the
+  **pre-existing, already-documented** `expo` patch-version drift from Phase 1/4 — confirmed
+  unchanged by this phase, since `expo` itself was never touched, only the three new
+  packages above were added); `expo install --check` shows the same single pre-existing
+  drift, nothing else; `expo config --json` resolves cleanly for both platforms; `npx expo
+  export --platform android` and `--platform ios` both bundled successfully (1454 modules,
+  no resolution/runtime-import errors) as a bundler-level smoke test given the absence of a
+  device/emulator, then the temp export output was deleted. A real duplicate-submission race
+  was found and fixed during test-writing (not merely tested around): two synchronous
+  `submit()` calls fired back-to-back both read the same pre-dispatch React-state snapshot
+  (the reducer's own no-op guard only protects the *state shape*, not the API call itself),
+  so `useReportWizard.ts`'s `submit()` now also gates on a synchronous `useRef` lock checked
+  and set before either the dispatch or the `reportsApi.generate()` call — this is a real
+  fix to an actual double-report/double-credit risk, not a test-only workaround, verified by
+  a test asserting `mockGenerate` is called exactly once.
+  **Not performed / explicitly out of scope this session:** Android or iOS runtime
+  execution (no ADB/emulator/physical device or browser-automation tool was available in
+  this environment); a real-backend end-to-end round trip (create → upload → approve →
+  export) against a disposable dev account (same reason — no device to run the app on, and
+  this session was not authorized to attempt a browser/web-platform substitute without a
+  visual-verification tool); CRM/teams/enterprise/white-label/admin/analytics screens; push
+  notifications; billing/IAP; template authoring; richer settings (MFA/account-deletion/login
+  history) deferred to Phase 8 per this phase's own stated scope. **Phase 5 is therefore
+  implementation-complete but not cross-platform-QA-approved** — the create→upload→
+  review→approve→export loop is wired end-to-end against the real typed API contract and
+  passes its automated/mocked-contract tests, but has not been exercised on a real device
+  against a real backend this session. Recommended next step: run this branch through Expo
+  Go (or a dev client) on a real Android device against the local backend with a disposable
+  test account, exactly as Phase 3/4's own sessions did, before Phase 5 is marked fully QA'd.
+  **Mobile development is paused after Phase 5**: the client has since shared new
+  requirements that need to be scoped before any further mobile work (Phase 6+) begins. The
+  device-validation flow above (Expo Go/dev client on a real Android device against the
+  local backend, disposable test account, full create → upload → review → approve →
+  export/share loop, then the same for iOS) is the exact remaining gap to close **when
+  mobile work resumes** — it is not a new task, just the one already described here.
 - **Phase 4 — Backend/API Integration Layer: CLOSED (2026-09-16).** One shared, typed HTTP
   client (`services/api/client.ts`, extended in place from Phase 3) is now used by every
   resource client: the pre-existing `auth.ts` plus new/extended `reports.ts`, `users.ts`,
@@ -560,7 +643,9 @@ Legend: **not started / in progress / done / blocked**
   Phase 5's settings/profile + dashboard/report/tier scope).
 
 ### Phase 5 — Core Dashboard Feature Parity
-- **Status:** not started
+- **Status: implemented, statically validated; Android/iOS runtime validation not yet
+  performed (2026-09-16).** See §1 Current Status for the full implementation summary,
+  file list, dependency justification, and exact validation results/gaps.
 - Objective: the major flows from `Dashboard.jsx`, native-appropriate, not copied JSX.
 - Scope, priority order: reports list + dashboard summary; the generate wizard (claim
   info → property → loss details → camera/photo-library capture and upload → review);
@@ -568,15 +653,29 @@ Legend: **not started / in progress / done / blocked**
   (save-to-device or share-sheet, since `GET /:id/download` proxies bytes rather than
   redirecting to a public URL); settings/profile. CRM/teams/white-label screens only if
   explicitly confirmed in scope for mobile v1.
-- Expected files: `mobile/app/(tabs)/*`, `mobile/src/features/reports/*`,
-  `mobile/src/features/photos/*`.
-- Dependencies: `expo-image-picker`/`expo-camera`, `expo-file-system`/`expo-sharing`,
-  Phase 4 client.
-- Validation: full wizard run against a real dev account produces a report visible on web
-  too (shared backend, single source of truth).
-- Security: photo uploads go through the same authenticated endpoints as web.
-- Completion criteria: create → review → approve → export runs entirely from the phone.
-- Out of scope: CRM/enterprise/white-label admin features unless explicitly requested.
+- Expected files (actual): `mobile/app/(app)/(tabs)/{dashboard,reports,settings}.tsx` +
+  `_layout.tsx` (nested inside the existing `(app)` `Stack.Protected` guard, not a top-level
+  `(tabs)` group — see §1 for why), `mobile/app/(app)/report/{new,[id]/index}.tsx`,
+  `mobile/src/features/reports/*` (hooks, components, `wizard/*`, `detail/*`, screens),
+  `mobile/src/features/photos/*` (capture hook, authenticated-image hook, file helpers),
+  `mobile/src/features/settings/*`. `mobile/app/(app)/home.tsx` removed (superseded).
+- Dependencies: `expo-image-picker`, `expo-file-system`, `expo-sharing` (added this phase,
+  SDK-matched via `expo install`; `expo-camera` was not needed — `expo-image-picker`'s own
+  camera launch covers still-photo capture without a second package), Phase 4 client (reused
+  unchanged, no second HTTP client).
+- Validation: static validation (tsc/lint/jest/doctor/config/export) complete and passing —
+  see §1 for exact results. Full wizard run against a real dev account producing a report
+  visible on web too is **not yet performed** (no device/emulator available this session).
+- Security: photo uploads and exports go through the same authenticated endpoints as web;
+  no client-side reimplementation of entitlement/approval rules (server remains
+  authoritative — see §1).
+- Completion criteria: create → review → approve → export runs entirely from the phone —
+  **implemented and unit/contract-tested, not yet confirmed on a real device.**
+- Out of scope: CRM/enterprise/white-label admin features (correctly not built).
+- **Mobile development is paused after this phase** pending scoping of new requirements the
+  client has since shared; Phase 6+ has not started. The one remaining item for Phase 5
+  itself is the real-device flow (Android physical device, then iOS): create → upload →
+  review → approve → export/share, against a local backend with a disposable test account.
 
 ### Phase 6 — Push Notifications
 - **Status:** not started
@@ -1842,6 +1941,35 @@ never re-verifies the current password itself.
   independently understood, both non-blocking, both unrelated to this client's own
   implementation. Nothing was committed, pushed, or merged. Phase 5 was not started.
 
+### 2026-09-16 — Phase 5 (Core Dashboard Feature Parity) implemented
+- Started from `origin/main` at `ccf405e` (confirmed to include PR #21 Phase 4 and PR #22
+  MFA hardening), in a new isolated worktree/branch
+  `feature/mobile-phase-5-core-dashboard` — the pre-existing `feature/mobile-initial-phases`
+  working tree and its other 52 uncommitted entries were never touched or cleaned.
+- Full implementation summary, file list, dependency list, and exact validation results are
+  recorded in §1 Current Status (kept there rather than duplicated here, per this file's own
+  "read §1 first" convention) and in §3's Phase 5 entry.
+- Headline results: `tsc`/`expo lint` both 0 errors (lint 0 warnings too, after fixing a
+  handful of the newer `react-hooks/set-state-in-effect` and `react-hooks/refs` violations
+  this phase's own new hooks introduced — direct `setState`/ref-write calls at the top level
+  of an effect body had to be nested inside the effect's async closure instead); `npx jest`
+  200/200 (150 pre-existing + 50 new); `expo-doctor`/`expo install --check` show only the
+  pre-existing, unrelated `expo` patch-version drift already documented since Phase 1;
+  `expo config --json` and `expo export` (both platforms) all succeed.
+- A real bug — not a test artifact — was found and fixed while writing the duplicate-submit
+  test: two synchronous `submit()` calls read the same pre-dispatch state snapshot, so the
+  reducer's own no-op guard alone could not stop `reportsApi.generate()` from firing twice.
+  Fixed with a synchronous `useRef` lock in `useReportWizard.ts`.
+- **Not performed this session, honestly recorded rather than skipped silently:** any
+  Android/iOS runtime execution or a real-backend end-to-end round trip — this environment
+  had no ADB, Android emulator, physical device, or browser-automation tool available.
+  Phase 5 is implementation-complete and statically/contract-test validated, but **not
+  cross-platform-QA-approved** until it is run once on a real device against a real/dev
+  backend with a disposable account, matching how Phase 3 and Phase 4's own sessions closed
+  out their remaining validation gaps.
+- Nothing was committed, pushed, or merged; `backend/`/`frontend/` diffs remain empty
+  (confirmed via `git status --porcelain`).
+
 ---
 
 ## 5. Decisions Log
@@ -2198,18 +2326,43 @@ never re-verifies the current password itself.
   - Either way, once on Node 22 LTS, `cd mobile && npm ci` should be re-run once and the
     result (package count, 0/nonzero errors) added to §8 by whoever runs it.
 
+- **2026-09-16 — OPEN, blocks Phase 5's remaining runtime/end-to-end validation only (does
+  NOT block Phase 5's implementation, which is complete) — no Android/iOS device, emulator,
+  or browser-automation tool available in this environment.** Checked for `adb`, an
+  `emulator` binary, and `$ANDROID_HOME`/`$ANDROID_SDK_ROOT` — none present; no physical
+  device was connected; no browser-automation tool (for a web-platform substitute smoke
+  test) was available to this session either. Phase 3 and Phase 4's own remaining runtime
+  gaps were each closed by a follow-up session with either a real physical Android phone
+  (Phase 3, via Expo Go/tunnel) or a locally-run backend/emulator (Phase 4). Phase 5 needs
+  the same: run this branch via Expo Go (or a dev client) on a real Android device against a
+  local backend, using the existing disposable test account, and exercise the full
+  create → upload → review → approve → export loop. **What you need to do:** either connect
+  a physical Android device (USB or the same Wi-Fi network as this machine, via Expo Go) or
+  make an Android emulator available (Android Studio + an AVD, or a cloud device), then ask
+  for this phase's runtime validation to be completed.
+
 ---
 
 ## 7. Folder Structure
 
-See the final report for the full rationale. Summary (updated Phase 3, 2026-09-08):
+See the final report for the full rationale. Summary (updated Phase 5, 2026-09-16):
 
 ```
 mobile/
   app/                    Expo Router routes only (thin — no business logic)
     login.tsx, signup.tsx, forgot-password.tsx, verify-email.tsx, mfa.tsx,
     account-unavailable.tsx    Auth screens (each just renders a features/auth/screens/*)
-    (app)/                     Protected group — _layout.tsx + home.tsx (placeholder)
+    (app)/                     Protected group (Stack.Protected-gated, see app/_layout.tsx)
+      _layout.tsx              Bare Stack — hosts (tabs) plus the stack-pushed report/* below
+      (tabs)/                  Phase 5 — Tabs navigator nested INSIDE (app), not top-level
+                               (see §1: avoids an index-route path collision with app/index.tsx)
+        _layout.tsx, dashboard.tsx, reports.tsx, settings.tsx
+      report/                  Phase 5 — stack-pushed over the tabs, singular (not plural
+                               "reports") specifically to avoid a route-path collision with
+                               the (tabs)/reports.tsx list screen
+        new.tsx                Generate-report wizard entry
+        [id]/index.tsx         Report detail entry
+      home.tsx removed Phase 5 — superseded by (tabs)/dashboard.tsx
   assets/images/          Brand-derived app icon, splash, adaptive-icon, favicon
   src/
     components/           Shared, reusable, presentational UI primitives
@@ -2219,11 +2372,23 @@ mobile/
       auth/                Phase 3 — context (AuthProvider, authStatus), screens,
                            components, services (googleSignIn, appleSignIn), utils
                            (validation, errorMessages), types.ts, constants.ts
+      reports/             Phase 5 — hooks/ (dashboard/list/detail/comments/versions/
+                           photos/approval/export), components/ (ReportCard, StatusBadge,
+                           StateMessage, SegmentedControl, ConfirmCheckbox), detail/
+                           (Overview/Photos/Comments/Versions tabs, ApprovalSheet,
+                           ExportSheet), wizard/ (pure reducer + types + storage +
+                           useReportWizard + steps/ + components/), screens/ (Dashboard,
+                           ReportsList, ReportDetail, GenerateWizard)
+      photos/              Phase 5 — hooks/ (useImageCapture, useAuthenticatedPhoto),
+                           utils/ (fileHelpers — PickedAsset → RNFile)
+      settings/            Phase 5 — hooks/useProfile.ts, screens/SettingsScreen.tsx
     services/
       api/                 client.ts (auth header attach, retry contract), auth.ts,
-                           users.ts — scoped to Phase 3's needs; Phase 4 extends this
+                           users.ts, reports.ts, payment.ts, notifications.ts (Phase 4;
+                           Phase 5 consumes these unchanged — no second HTTP client)
       firebase/             client.ts — Firebase app/auth initialization, RN persistence
-    hooks/                 Shared custom hooks — still empty (no cross-feature hook yet)
+    hooks/                 Shared custom hooks — still empty (no cross-feature hook yet;
+                           Phase 5's hooks are feature-local, see features/*/hooks above)
     store/                 App-wide state — still not needed; AuthProvider (React Context)
                            covers session state, per the Phase 3 decision recorded in §5
     theme/                 Design tokens ported from frontend/tailwind.config.js
@@ -2511,6 +2676,31 @@ emulator processes stopped, including two orphaned children from an earlier retr
 (terminated by exact command-line match, not a blanket kill); confirmed via `netstat` that
 ports 3000/8080/9150 are clear and via `git status --porcelain` that nothing leaked into
 version control.
+
+### Phase 5 validation — 2026-09-16, from a `feature/mobile-phase-5-core-dashboard` worktree
+- `npx tsc --noEmit` → 0 errors.
+- `npx expo lint` → 0 errors, 0 warnings (a handful of `react-hooks/set-state-in-effect` and
+  `react-hooks/refs` violations from this phase's own new hooks were found and fixed —
+  direct `setState`/ref-write calls at the top level of an effect body moved inside the
+  effect's async closure instead).
+- `npx jest` → 200/200 passing across 22 suites (150 pre-existing unchanged + 50 new across
+  8 new suites: `wizardReducer`, `wizardStorage`, `useReportWizard`, `useImageCapture`,
+  `fileHelpers`, `useReportsList`, `useReportApproval`, `useReportExport`).
+- `npx expo-doctor` → 20/21 (the one failure is the pre-existing `expo` patch-version drift
+  documented since Phase 1/4, confirmed unrelated — this phase never touched `expo`'s own
+  version).
+- `npx expo install --check` → same single pre-existing drift, nothing else.
+- `npx expo config --json` → resolves cleanly; confirmed no `android.permissions` array is
+  emitted (i.e. no `RECORD_AUDIO`) after setting `microphonePermission: false` in the
+  `expo-image-picker` plugin config, since this app only ever captures still photos.
+- `npx expo export --platform android` and `--platform ios` → both bundled successfully
+  (1454 modules, no resolution/runtime-import errors); the temp export output was deleted
+  immediately after.
+- `git status --porcelain` scoped to `backend`/`frontend` → empty (neither touched); scoped
+  to `mobile` → only the files this phase's own summary (§1) lists.
+- **Not run this session:** any Android/iOS device or emulator command (`adb`, `emulator`,
+  a dev-client/Expo Go install) — none was available; see the Blockers Log (§6) entry dated
+  2026-09-16 for the exact tooling checked and what's needed to complete this validation.
 
 ---
 
