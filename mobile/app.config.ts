@@ -86,6 +86,25 @@ const config: ExpoConfig = {
     // plugin options set: this app never uses SecureStore's optional Face ID-gated
     // `requireAuthentication` mode, so the default (no extra Info.plist entry) is correct.
     'expo-secure-store',
+    // Phase 5 — Core Dashboard Feature Parity: the generate-report wizard's Photos step
+    // needs both camera capture and photo-library selection. Custom, specific permission
+    // strings (not the generic template defaults) so the OS prompt tells the person why
+    // FlacronAI needs each permission.
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'FlacronAI needs access to your photos so you can attach inspection photos to a report.',
+        cameraPermission: 'FlacronAI needs access to your camera so you can photograph damage directly into a report.',
+        // The wizard only ever captures still photos (mediaTypes: ['images'] in
+        // useImageCapture.ts) — never video/live photos — so the plugin's default
+        // microphone permission (needed only for video capture) is explicitly declined
+        // rather than requesting more than this app actually uses.
+        microphonePermission: false,
+      },
+    ],
+    // Phase 5 — lets a finalized report export (PDF/DOCX) be saved and shared via the
+    // native share sheet after an authenticated download. No extra options needed.
+    'expo-sharing',
   ],
 
   experiments: {
