@@ -7,6 +7,7 @@ import {
   shouldRotateSessionToken,
   isInputLongEnough,
   nextHighlightedIndex,
+  resolveAddressLookupCapabilities,
 } from '../utils/addressAutocomplete';
 
 // Phase 46. Pure logic backing the autocomplete widget -- debounce,
@@ -103,5 +104,50 @@ describe('nextHighlightedIndex (keyboard navigation)', () => {
 
   it('returns -1 with no suggestions to navigate', () => {
     expect(nextHighlightedIndex(-1, 0, 'ArrowDown')).toBe(-1);
+  });
+});
+
+describe('resolveAddressLookupCapabilities', () => {
+  it('production case: browser key set, backend has no server key -> autocomplete ON, server normalization OFF', () => {
+    expect(
+      resolveAddressLookupCapabilities({
+        browserKeyConfigured: true,
+        publicConfig: { enabled: true, browserAutocompleteConfigured: false, serverNormalizationConfigured: false },
+      })
+    ).toEqual({ autocompleteEnabled: true, serverNormalization: false });
+  });
+
+  it('config still loading or unavailable -> autocomplete ON (the browser key alone is enough), no normalization', () => {
+    expect(resolveAddressLookupCapabilities({ browserKeyConfigured: true, publicConfig: null })).toEqual({
+      autocompleteEnabled: true,
+      serverNormalization: false,
+    });
+  });
+
+  it('server key configured too -> both ON', () => {
+    expect(
+      resolveAddressLookupCapabilities({
+        browserKeyConfigured: true,
+        publicConfig: { enabled: true, serverNormalizationConfigured: true },
+      })
+    ).toEqual({ autocompleteEnabled: true, serverNormalization: true });
+  });
+
+  it('backend kill switch (enabled:false) turns everything OFF -> manual entry only', () => {
+    expect(
+      resolveAddressLookupCapabilities({
+        browserKeyConfigured: true,
+        publicConfig: { enabled: false, serverNormalizationConfigured: true },
+      })
+    ).toEqual({ autocompleteEnabled: false, serverNormalization: false });
+  });
+
+  it('no browser key -> everything OFF regardless of backend config', () => {
+    expect(
+      resolveAddressLookupCapabilities({
+        browserKeyConfigured: false,
+        publicConfig: { enabled: true, serverNormalizationConfigured: true },
+      })
+    ).toEqual({ autocompleteEnabled: false, serverNormalization: false });
   });
 });

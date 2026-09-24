@@ -38,6 +38,7 @@ import { isFinalizedReportStatus } from '../utils/reportImmutability';
 import AddressAutocompleteField from '../components/AddressAutocompleteField';
 import PropertyProfileReview from '../components/PropertyProfileReview';
 import { isBrowserAutocompleteConfigured } from '../config/googleMaps';
+import { resolveAddressLookupCapabilities } from '../utils/addressAutocomplete';
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
@@ -1233,12 +1234,25 @@ export default function Dashboard() {
   // (if any) is saved via reportsAPI.savePropertyProfile. Manual entry
   // (form.propertyAddress/Street/City/State/Zip above) always keeps working
   // unchanged, whether or not Google is configured/available.
-  const [propertyLookup, setPropertyLookup] = useState({
-    enabled: false, // sanitized public config says a server-side lookup is possible
-    pending: null, // { profile, ambiguous } awaiting user confirm/reject
-    confirmedProfile: null, // accepted PropertyProfile, saved to the report right after creation
-    loading: false,
-    error: null,
+  // `enabled` = show Google Places autocomplete on the Property Address
+  // field. It depends only on the browser key (plus the backend kill
+  // switch) -- NOT on server normalization, which previously gated the
+  // widget and meant the Maps script never loaded on deployments without a
+  // backend GOOGLE_MAPS_SERVER_KEY. `serverNormalization` separately enables
+  // the optional server-verified profile step after a suggestion is picked.
+  const [propertyLookup, setPropertyLookup] = useState(() => {
+    const caps = resolveAddressLookupCapabilities({
+      browserKeyConfigured: isBrowserAutocompleteConfigured(),
+      publicConfig: null,
+    });
+    return {
+      enabled: caps.autocompleteEnabled,
+      serverNormalization: caps.serverNormalization,
+      pending: null, // { profile, ambiguous } awaiting user confirm/reject
+      confirmedProfile: null, // accepted PropertyProfile, saved to the report right after creation
+      loading: false,
+      error: null,
+    };
   });
   useEffect(() => {
     if (!isBrowserAutocompleteConfigured()) return;
@@ -1246,10 +1260,12 @@ export default function Dashboard() {
     reportsAPI
       .getPropertyLookupConfig()
       .then((res) => {
-        if (!cancelled && res.data?.enabled && res.data?.serverNormalizationConfigured) {
-          setPropertyLookup((p) => ({ ...p, enabled: true }));
-        }
+        if (cancelled) return;
+        const caps = resolveAddressLookupCapabilities({ browserKeyConfigured: true, publicConfig: res.data });
+        setPropertyLookup((p) => ({ ...p, enabled: caps.autocompleteEnabled, serverNormalization: caps.serverNormalization }));
       })
+      // Config unavailable: keep browser autocomplete (the key alone is
+      // enough), just without the optional server normalization step.
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -1257,6 +1273,10 @@ export default function Dashboard() {
   }, []);
 
   const handleAddressPlaceSelected = async (placeId, description) => {
+    // Without server normalization the selected suggestion text (already
+    // written into the address field by the widget) is simply used as the
+    // manually-editable address -- no API call, no error.
+    if (!propertyLookup.serverNormalization) return;
     setPropertyLookup((p) => ({ ...p, loading: true, error: null }));
     try {
       const res = await reportsAPI.normalizePropertyAddress({ placeId, original: description });
@@ -1946,7 +1966,7 @@ export default function Dashboard() {
           .savePropertyProfile(report.id, { mode: 'provider_confirmed', normalizationToken, original: form.propertyAddress, overrides })
           .catch(() => toast.error('Report created, but the confirmed address could not be saved. You can re-confirm it from the report.'));
       }
-      setPropertyLookup({ enabled: propertyLookup.enabled, pending: null, confirmedProfile: null, loading: false, error: null });
+      setPropertyLookup((p) => ({ enabled: p.enabled, serverNormalization: p.serverNormalization, pending: null, confirmedProfile: null, loading: false, error: null }));
       setForm(FORM_INITIAL);
       setActiveTemplate(null);
       photos.forEach(p => URL.revokeObjectURL(p.url));

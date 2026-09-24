@@ -83,3 +83,23 @@ export const nextHighlightedIndex = (currentIndex, count, key) => {
       return currentIndex;
   }
 };
+
+// Decides what the Property Address field can do, from two independent
+// signals:
+//   - browserKeyConfigured: VITE_GOOGLE_MAPS_BROWSER_KEY was present at build
+//     time. This alone is enough for Places suggestions in the browser.
+//   - publicConfig: GET /reports/property-lookup/config (null while loading
+//     or if the request failed).
+// Autocomplete is shown whenever the browser key exists, unless the backend
+// explicitly switches address lookup off (`enabled: false`, the
+// ADDRESS_LOOKUP_ENABLED kill switch). Server-side normalization (which needs
+// the backend's own GOOGLE_MAPS_SERVER_KEY) is a separate, optional step: it
+// must never gate the browser widget itself.
+export const resolveAddressLookupCapabilities = ({ browserKeyConfigured, publicConfig }) => {
+  const killSwitchOff = publicConfig?.enabled === false;
+  return {
+    autocompleteEnabled: !!browserKeyConfigured && !killSwitchOff,
+    serverNormalization:
+      !!browserKeyConfigured && !killSwitchOff && publicConfig?.serverNormalizationConfigured === true,
+  };
+};

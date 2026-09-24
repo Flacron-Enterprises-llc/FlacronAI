@@ -5,7 +5,7 @@
 // only ever SUGGESTS a placeId selection on top of that, never blocks typing.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, MapPin, WifiOff, AlertCircle } from 'lucide-react';
-import { loadPlacesLibrary, isBrowserAutocompleteConfigured } from '../config/googleMaps';
+import { loadPlacesLibrary, isBrowserAutocompleteConfigured, onMapsAuthFailure } from '../config/googleMaps';
 import {
   debounce,
   createRequestSequencer,
@@ -32,19 +32,39 @@ const AddressAutocompleteField = ({ value, onChange, onSelectPlace, placeholder,
   const listboxId = `${inputId || 'address'}-listbox`;
 
   useEffect(() => {
-    if (!configured) return;
+    if (!configured) return undefined;
     if (!navigator.onLine) {
       setStatus('offline');
-      return;
+      return undefined;
     }
+    let active = true;
+    // Any failure -- script blocked/offline, key rejected by Google, or a
+    // Places library without the (New) AutocompleteSuggestion API -- drops
+    // the widget back to a plain manual-entry text field. Nothing is logged:
+    // the key must never end up in console output or error reports.
+    const fallBackToManual = () => {
+      if (!active) return;
+      placesRef.current = null;
+      setConfigured(false);
+      setStatus('error');
+      setOpen(false);
+      setSuggestions([]);
+    };
+    const unsubscribeAuthFailure = onMapsAuthFailure(fallBackToManual);
     loadPlacesLibrary()
       .then((places) => {
+        if (!active) return;
+        if (!places?.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+          fallBackToManual();
+          return;
+        }
         placesRef.current = places;
       })
-      .catch(() => {
-        setConfigured(false);
-        setStatus('error');
-      });
+      .catch(fallBackToManual);
+    return () => {
+      active = false;
+      unsubscribeAuthFailure();
+    };
   }, [configured]);
 
   const ensureSessionToken = () => {
