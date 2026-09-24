@@ -25,7 +25,7 @@
 // BLUR_VARIANCE_THRESHOLD=50 sits well inside that ~30-to-thousands gap.
 // This is a heuristic, not a certainty -- re-tune here if real-world use
 // shows too many false positives/negatives.
-const sharp = require('sharp');
+const { sharp } = require('./safeImage');
 
 const MIN_WIDTH = 800;
 const MIN_HEIGHT = 600;

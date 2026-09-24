@@ -8,7 +8,7 @@
 // (properPdfGenerator.js / documentGenerator.js) embed the raw image bytes and
 // do not read EXIF orientation -- without this, a phone photo taken in
 // portrait/upside-down orientation renders sideways in an exported report.
-const sharp = require('sharp');
+const { sharp } = require('./safeImage');
 
 const THUMBNAIL_MAX_DIMENSION = 320;
 

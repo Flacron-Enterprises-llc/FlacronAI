@@ -50,6 +50,11 @@ const makeDeps = (overrides = {}) => {
       { qualityWarning: false, qualityReasons: [], qualityMetrics: { width: 4000, height: 3000, laplacianVariance: 500 } }
     )),
     resolveCapturedAtFn: overrides.resolveCapturedAtFn || (async (_buf, uploadedAtIso) => ({ value: uploadedAtIso, source: 'upload' })),
+    // The real byte-level inspector (utils/safeImage.js) decodes headers with
+    // sharp; these fixtures aren't real images, so it is faked like every
+    // other sharp call here. Real-image inspection is covered in
+    // image-security.test.js.
+    inspectImageFn: overrides.inspectImageFn || (async () => ({ type: 'jpeg', meta: null })),
     _uploaded: uploaded,
   };
 };

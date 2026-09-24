@@ -1,0 +1,160 @@
+name: Backend PR validation
+
+# Validation only: runs on pull requests, never deploys, and uses no
+# repository secrets or cloud credentials. The production deploy workflow
+# (deploy-backend.yml) is separate and unchanged.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-pr-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Install, audit, lint, test (Node 24, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js (matches the Dockerfile base image)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-fund
+
+      # Reports every runtime advisory. Pre-existing advisories on main are
+      # surfaced as a warning rather than failing this job; the image-pipeline
+      # advisories this PR fixes are enforced by the next step.
+      - name: npm audit (runtime dependencies)
+        run: |
+          if ! npm audit --omit=dev; then
+            echo "::warning title=npm audit::Runtime advisories reported (see log above)."
+          fi
+
+      - name: Fail if sharp has any runtime advisory
+        run: |
+          npm audit --omit=dev --json > "$RUNNER_TEMP/audit.json" || true
+          node -e '
+            const a = require(process.argv[1]);
+            if (a.vulnerabilities && a.vulnerabilities.sharp) {
+              console.error("sharp still has runtime advisories");
+              process.exit(1);
+            }
+            console.log("sharp: no runtime advisories");
+          ' "$RUNNER_TEMP/audit.json"
+
+      - name: Lint
+        run: npm run lint
+
+      # Real HEVC HEIC files from the official libheif repository, pinned to a
+      # commit and verified by SHA-256 (not committed to this repo; see
+      # backend/test/heic-upstream-fixtures.test.js for sources and licences).
+      - name: Download pinned upstream HEIC fixtures (libheif)
+        env:
+          LIBHEIF_COMMIT: 5c7b41f3cc097447dd3c700cc9ec7d94fbb59eec
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/heic-fixtures"
+          mkdir -p "$dir"
+          while read -r path sha; do
+            file="$(basename "$path")"
+            curl -fsSL --retry 3 -o "$dir/$file" "https://raw.githubusercontent.com/strukturag/libheif/$LIBHEIF_COMMIT/$path"
+            echo "$sha  $dir/$file" | sha256sum -c -
+          done <<'FIXTURES'
+          tests/data/rainbow-451x461.heic 4b2ce727f093944975f143ba2b39c4c64511b766d94552f8d51a755916e7f983
+          tests/data/with-alpha-512x512.heic dac399d3bf1019baaf5f88eef8b277087d0643e735db947c42355237bb9d0221
+          examples/example.heic 7f8b363e4936c0666a25f64f3a92fda10bd8e5453be4592530b65a55dd98f3f2
+          FIXTURES
+          echo "HEIC_FIXTURE_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Tests (full backend suite, including upstream HEIC fixtures)
+        run: npm test
+
+  docker:
+    name: Docker build (linux/amd64) + container /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build --platform linux/amd64 -t flacronai-backend:pr-validation ./backend
+
+      # Runs the real app modules inside the built image: reports the bundled
+      # sharp/libvips/libheif versions and pushes a generated image through the
+      # hardened pipeline (validation, orientation, thumbnail, TIFF refusal).
+      - name: Image-pipeline smoke test inside the container
+        run: |
+          docker run --rm --platform linux/amd64 flacronai-backend:pr-validation node -e '
+            const { sharp, inspectImage } = require("./utils/safeImage");
+            const { generateThumbnail } = require("./utils/thumbnailService");
+            (async () => {
+              const pkg = JSON.parse(require("fs").readFileSync(require.resolve("sharp").replace(/dist[\\/].*$/, "package.json"), "utf8"));
+              console.log("node", process.version, "| sharp", pkg.version, "| libvips", sharp.versions.vips, "| libheif", sharp.versions.heif);
+              const jpeg = await sharp({ create: { width: 640, height: 480, channels: 3, background: "#336699" } }).jpeg().toBuffer();
+              await inspectImage(jpeg, {});
+              const thumb = await sharp(await generateThumbnail(jpeg)).metadata();
+              if (thumb.width !== 320) throw new Error("unexpected thumbnail width " + thumb.width);
+              const tiff = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#000" } }).tiff().toBuffer();
+              let refused = false;
+              try { await sharp(tiff).metadata(); } catch { refused = true; }
+              if (!refused) throw new Error("TIFF decoder is not blocked");
+              console.log("image pipeline OK");
+            })().catch((e) => { console.error(e.message); process.exit(1); });
+          '
+
+      # Fake, throwaway values only: a Firebase service-account shape with a
+      # key generated in this runner (never a real credential, never printed).
+      # /health does not contact Firebase.
+      - name: Start container with fake configuration and check /health
+        run: |
+          set -euo pipefail
+          FAKE_KEY="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)"
+          docker run -d --name backend-health --platform linux/amd64 -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e FIREBASE_PROJECT_ID=ci-fake-project \
+            -e FIREBASE_CLIENT_EMAIL=ci-fake@ci-fake-project.iam.gserviceaccount.com \
+            -e FIREBASE_PRIVATE_KEY_ID=ci-fake \
+            -e FIREBASE_CLIENT_ID=ci-fake \
+            -e FIREBASE_PRIVATE_KEY="$FAKE_KEY" \
+            flacronai-backend:pr-validation > /dev/null
+          unset FAKE_KEY
+          for i in $(seq 1 30); do
+            if body="$(curl -fsS http://127.0.0.1:3000/health 2>/dev/null)"; then
+              echo "GET /health -> $body"
+              echo "$body" | grep -q '"status":"healthy"'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::/health did not become healthy"
+          docker logs --tail 50 backend-health
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f backend-health > /dev/null 2>&1 || true

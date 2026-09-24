@@ -6,7 +6,7 @@
 // `normalizeOrientation()` (thumbnailService.js) re-encodes through sharp
 // without `.withMetadata()`, which strips EXIF entirely from its output, so
 // the display/thumbnail buffers never carry capture-time data.
-const sharp = require('sharp');
+const { sharp } = require('./safeImage');
 const exifReader = require('exif-reader');
 
 // Cameras with an unset/reset clock commonly default to one of these exact

@@ -102,6 +102,7 @@ const {
   parseBlockToken,
 } = require('../utils/richContent');
 const { isValidImageBuffer } = require('../utils/imageValidation');
+const { isAllowedStoredImage, PHOTO_TYPES, PDF_EMBEDDABLE_TYPES } = require('../utils/safeImage');
 const { isValidDocumentBuffer } = require('../utils/documentValidation');
 const { processPhotoBatch } = require('../utils/photoBatchProcessor');
 const { appendStagedPhoto, claimDraftPhotos, removeStagedPhoto } = require('../utils/photoDraftStaging');
@@ -5187,6 +5188,7 @@ const buildAppendixPhotoList = async (report) => {
     candidates.forEach((p, i) => {
       const buffer = buffers[i];
       if (!buffer) return; // photo unavailable in Storage -- silently skip, not fabricate
+      if (!isAllowedStoredImage(buffer, PHOTO_TYPES)) return; // not an allowed image type -- never decode it
       const observation =
         p.review?.status === 'edited' && p.review?.observation
           ? p.review.observation
@@ -5212,6 +5214,7 @@ const buildAppendixPhotoList = async (report) => {
     );
     buffers.forEach((buffer, i) => {
       if (!buffer) return;
+      if (!isAllowedStoredImage(buffer, PHOTO_TYPES)) return; // not an allowed image type -- never decode it
       items.push({
         buffer,
         mimeType: 'image/jpeg',
@@ -5542,7 +5545,10 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     stage = 'photo-resolution';
     if (logoObjectPath) {
       try {
-        pdfOptions.logoBuffer = await downloadBuffer(logoObjectPath);
+        const logoBuf = await downloadBuffer(logoObjectPath);
+        // pdfkit can only embed JPEG/PNG; SVG or unexpected bytes are
+        // omitted (the export already treats the logo as optional).
+        if (isAllowedStoredImage(logoBuf, PDF_EMBEDDABLE_TYPES)) pdfOptions.logoBuffer = logoBuf;
       } catch {
         /* logo optional */
       }
@@ -5580,6 +5586,13 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
           if (!objectPath) return;
           try {
             const buf = await downloadBuffer(objectPath);
+            // Only bytes with an allowed image signature ever reach a
+            // decoder/embedder at export time; anything else renders the
+            // generator's existing "photo unavailable" placeholder.
+            if (!isAllowedStoredImage(buf, PHOTO_TYPES)) {
+              console.warn(`[Export] inline photo ${id} is not an allowed image type -- placeholder will render`);
+              return;
+            }
             photoMap[id] = { buffer: buf, mimeType };
           } catch (err) {
             // referenced photo unavailable -- generator renders a placeholder,
