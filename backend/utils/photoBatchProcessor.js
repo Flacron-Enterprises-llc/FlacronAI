@@ -12,6 +12,7 @@ const { normalizeOrientation, generateThumbnail } = require('./thumbnailService'
 const { reportImageObject, reportOriginalObject, reportThumbnailObject, uploadBuffer } = require('../config/storage');
 const { assessPhotoQuality } = require('./photoQuality');
 const { resolveCapturedAt } = require('./photoCaptureTime');
+const { inspectImage, ImageValidationError, PHOTO_TYPES } = require('./safeImage');
 
 // Photo uploads run with a concurrency cap (Phase 7 finding, 2026-08-16 live
 // verification): each photo needs 2 Storage writes (original + display) plus
@@ -66,6 +67,7 @@ const processPhotoBatch = async (uid, reportId, files = [], existingHashes = [],
   const doNormalize = deps.normalizeOrientationFn || normalizeOrientation;
   const doAssessQuality = deps.assessPhotoQualityFn || assessPhotoQuality;
   const doResolveCapturedAt = deps.resolveCapturedAtFn || resolveCapturedAt;
+  const doInspect = deps.inspectImageFn || ((buffer) => inspectImage(buffer, { allowed: PHOTO_TYPES }));
 
   // Seed with already-attached photos' hashes first, so a duplicate of an
   // EXISTING photo is caught just as reliably as a duplicate within this
@@ -141,6 +143,18 @@ const processPhotoBatch = async (uid, reportId, files = [], existingHashes = [],
   const uploadOne = async ({ file: f, record }) => {
     const ext = path.extname(record.fileName).toLowerCase() || '.jpg';
     const baseName = `${Date.now()}-${record.id.slice(0, 8)}-${Math.random().toString(36).slice(2, 9)}`;
+
+    // 0. Byte-level inspection beyond Pass 1's signature check: the header
+    // must parse as the sniffed format (allow-listed decoders only), HEIF
+    // must be real HEIC (not AVIF on a generic brand), and the pixel count
+    // must be within limits. Failing here stores nothing for this photo.
+    try {
+      await doInspect(f.buffer);
+    } catch (err) {
+      record.status = 'failed';
+      record.error = err instanceof ImageValidationError ? err.message : 'File is not a valid image.';
+      return;
+    }
 
     // 1. Original, untouched bytes -- stored first and never re-derived from
     // anything else, so a later failure in normalization/thumbnailing can

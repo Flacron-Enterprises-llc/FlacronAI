@@ -2,7 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const sharp = require('sharp');
+const {
+  sharp,
+  ImageValidationError,
+  mimeFileFilter,
+  validateLogoUpload,
+  imageErrorResponse,
+} = require('../utils/safeImage');
 const { getFirestore } = require('../config/firebase');
 const { authenticateToken, requireTier, optionalAuth } = require('../middleware/auth');
 const { generatePDF } = require('../utils/properPdfGenerator');
@@ -13,11 +19,7 @@ const enterpriseOnly = requireTier('enterprise');
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPG, PNG, SVG, WebP allowed'));
-  },
+  fileFilter: mimeFileFilter(['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'], 'Only JPG, PNG, SVG, WebP allowed'),
 });
 
 // GET /api/white-label/config
@@ -94,8 +96,11 @@ router.post('/logo', authenticateToken, enterpriseOnly, logoUpload.single('logo'
     const snap = await db.collection('enterpriseClients').where('userId', '==', req.user.uid).limit(1).get();
     const prevPath = !snap.empty ? snap.docs[0].data().logoPath : null;
 
+    // Validate the actual bytes before anything is stored or decoded.
+    const logoType = await validateLogoUpload(req.file, { allowSvg: true });
+
     // SVG: store as-is
-    if (req.file.mimetype === 'image/svg+xml') {
+    if (logoType === 'svg') {
       const objectPath = whiteLabelObject(req.user.uid, `wl_logo_${Date.now()}.svg`);
       if (prevPath) await deleteObject(prevPath);
       const { url: svgUrl } = await uploadBuffer(objectPath, req.file.buffer, 'image/svg+xml', { publicToken: true });
@@ -117,7 +122,10 @@ router.post('/logo', authenticateToken, enterpriseOnly, logoUpload.single('logo'
 
     return res.json({ success: true, logoUrl });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message, code: 'LOGO_ERROR' });
+    if (err instanceof ImageValidationError) return imageErrorResponse(res, err);
+    // Never echo internal (e.g. image-decoder) error text to the client.
+    console.error('[white-label] logo upload error:', err.message);
+    return res.status(500).json({ success: false, error: 'Logo upload failed', code: 'LOGO_ERROR' });
   }
 });
 

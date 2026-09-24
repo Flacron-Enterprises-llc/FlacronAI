@@ -1,7 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const sharp = require('sharp');
+const {
+  sharp,
+  ImageValidationError,
+  mimeFileFilter,
+  validateLogoUpload,
+  imageErrorResponse,
+} = require('../utils/safeImage');
 const { getAuth, getFirestore } = require('../config/firebase');
 const { authenticateToken, optionalAuth, requireApiAccess, requireRecentAuth } = require('../middleware/auth');
 const { profileLimiter } = require('../middleware/rateLimiters');
@@ -25,11 +31,7 @@ const {
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPG, PNG, WebP images allowed'));
-  },
+  fileFilter: mimeFileFilter(['image/jpeg', 'image/png', 'image/webp'], 'Only JPG, PNG, WebP images allowed'),
 });
 
 // GET /api/users/profile
@@ -262,6 +264,10 @@ router.post('/profile/logo', authenticateToken, logoUpload.single('logo'), async
   if (!req.file) return res.status(400).json({ success: false, error: 'No logo file provided' });
 
   try {
+    // Validate the actual bytes (not the client-declared type) before sharp
+    // decodes anything; a mislabelled/unsupported/corrupt file is a 400.
+    await validateLogoUpload(req.file);
+
     const filename = `logo_${Date.now()}.png`;
     const objectPath = logoObject(req.user.uid, filename);
 
@@ -281,6 +287,7 @@ router.post('/profile/logo', authenticateToken, logoUpload.single('logo'), async
 
     return res.json({ success: true, logoUrl });
   } catch (err) {
+    if (err instanceof ImageValidationError) return imageErrorResponse(res, err);
     console.error('Logo upload error:', err);
     return res.status(500).json({ success: false, error: 'Logo upload failed', code: 'LOGO_ERROR' });
   }
