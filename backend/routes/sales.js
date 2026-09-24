@@ -515,4 +515,170 @@ router.post('/admin/email', authenticateToken, requireAdmin, [
   }
 });
 
+// ── Phase 48: PlanConfig admin UI (extends Phase 44's PlanConfig, Phase
+// 45's photo-pack catalogue) ────────────────────────────────────────────
+const { planConfigWriteLimiter } = require('../middleware/rateLimiters');
+const {
+  getAdminPlanConfigView,
+  updatePlanConfigFields,
+  rollbackToLegacyPlanConfig,
+  getPlanConfigHistory,
+  PlanConfigConflictError,
+  PlanConfigPatchInvalidError,
+} = require('../config/planConfigAdmin');
+const { getAdminCatalogue } = require('../config/photoAddOnPacks');
+const { getIntegrationStatus } = require('../services/integrationStatusService');
+
+// GET /api/sales/admin/plan-config — current config + revision/source/audit
+// metadata. Admin only; no secrets ever lived in PlanConfig.
+router.get('/admin/plan-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const view = await getAdminPlanConfigView(db);
+    return res.json({ success: true, ...view });
+  } catch (err) {
+    console.error('Admin plan-config read error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to load plan configuration', code: 'PLAN_CONFIG_READ_ERROR' });
+  }
+});
+
+// GET /api/sales/admin/plan-config/history — recent revisions (audit trail).
+router.get('/admin/plan-config/history', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const history = await getPlanConfigHistory(db, { limit });
+    return res.json({ success: true, history });
+  } catch (err) {
+    console.error('Admin plan-config history read error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to load plan configuration history', code: 'PLAN_CONFIG_HISTORY_ERROR' });
+  }
+});
+
+// PUT /api/sales/admin/plan-config — allowlisted patch (basePhotoLimit per
+// tier, addOnsEnabled, displayLabels -- see planConfigAdmin ADMIN_EDITABLE_KEYS) with
+// optimistic concurrency (`expectedRevision`) and a required
+// `changeSummary`. Never accepts reportsPerMonth or any other field --
+// unknown fields are rejected outright, not silently ignored.
+router.put(
+  '/admin/plan-config',
+  authenticateToken,
+  requireAdmin,
+  planConfigWriteLimiter,
+  [
+    body('changeSummary').isString().trim().isLength({ min: 1, max: 500 }),
+    body('expectedRevision').optional({ nullable: true }).isInt({ min: 0 }),
+    body('patch').isObject(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, error: 'Invalid request', code: 'VALIDATION_ERROR', errors: errors.mapped() });
+
+    try {
+      const db = getFirestore();
+      const { patch, changeSummary, expectedRevision } = req.body;
+      const result = await updatePlanConfigFields(db, patch, {
+        updatedBy: req.user.email,
+        changeSummary,
+        expectedRevision: expectedRevision === undefined || expectedRevision === null ? undefined : Number(expectedRevision),
+      });
+
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'admin_plan_config_update',
+        targetType: 'planConfig',
+        targetId: 'active',
+        meta: { changeSummary: result.changeSummary, newRevision: result.config.revision },
+        req,
+      });
+
+      return res.json({ success: true, config: result.config });
+    } catch (err) {
+      if (err instanceof PlanConfigConflictError) {
+        return res.status(409).json({ success: false, error: err.message, code: err.code, currentRevision: err.currentRevision });
+      }
+      if (err instanceof PlanConfigPatchInvalidError) {
+        return res.status(400).json({ success: false, error: err.message, code: err.code, errors: err.errors });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to update plan configuration', code: 'PLAN_CONFIG_WRITE_ERROR' });
+    }
+  }
+);
+
+// POST /api/sales/admin/plan-config/legacy-rollback — the ONLY admin action
+// that can apply the flat-100 emergency profile. Requires an explicit
+// `confirm: true` in addition to a changeSummary, so it can never be
+// triggered by an accidental double-submit of the normal patch form.
+router.post(
+  '/admin/plan-config/legacy-rollback',
+  authenticateToken,
+  requireAdmin,
+  planConfigWriteLimiter,
+  [
+    body('changeSummary').isString().trim().isLength({ min: 1, max: 500 }),
+    body('confirm').equals('true').withMessage('confirm must be true to roll back to the legacy profile'),
+    body('expectedRevision').optional({ nullable: true }).isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, error: 'Invalid request', code: 'VALIDATION_ERROR', errors: errors.mapped() });
+
+    try {
+      const db = getFirestore();
+      const { changeSummary, expectedRevision } = req.body;
+      const result = await rollbackToLegacyPlanConfig(db, {
+        updatedBy: req.user.email,
+        changeSummary,
+        expectedRevision: expectedRevision === undefined || expectedRevision === null ? undefined : Number(expectedRevision),
+      });
+
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'admin_plan_config_legacy_rollback',
+        targetType: 'planConfig',
+        targetId: 'active',
+        meta: { changeSummary: result.changeSummary, newRevision: result.config.revision },
+        req,
+      });
+
+      return res.json({ success: true, config: result.config });
+    } catch (err) {
+      if (err instanceof PlanConfigConflictError) {
+        return res.status(409).json({ success: false, error: err.message, code: err.code, currentRevision: err.currentRevision });
+      }
+      if (err instanceof PlanConfigPatchInvalidError) {
+        return res.status(400).json({ success: false, error: err.message, code: err.code, errors: err.errors });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to roll back plan configuration', code: 'PLAN_CONFIG_ROLLBACK_ERROR' });
+    }
+  }
+);
+
+// GET /api/sales/admin/photo-packs — read-only pack catalogue detail
+// (capacity/amount/currency/active/order/Price-ID-configured-status).
+// Never editable here -- see photoAddOnPacks.js's getAdminCatalogue comment
+// for why pack economics stay a single, non-duplicated source of truth.
+router.get('/admin/photo-packs', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    return res.json({ success: true, packs: getAdminCatalogue() });
+  } catch (err) {
+    console.error('Admin photo-pack catalogue read error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to load photo pack catalogue', code: 'PHOTO_PACK_READ_ERROR' });
+  }
+});
+
+// GET /api/sales/admin/integration-status — safe configured/verified/
+// pending status for OpenAI/Stripe add-ons/Google/RealtyAPI. Never a
+// secret/key/Price-ID value.
+router.get('/admin/integration-status', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    return res.json({ success: true, integrations: getIntegrationStatus() });
+  } catch (err) {
+    console.error('Admin integration-status read error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to load integration status', code: 'INTEGRATION_STATUS_ERROR' });
+  }
+});
+
 module.exports = router;

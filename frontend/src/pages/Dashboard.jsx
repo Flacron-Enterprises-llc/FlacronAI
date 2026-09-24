@@ -28,12 +28,16 @@ import PhotoAnnotator from '../components/PhotoAnnotator.jsx';
 import useDragReorder from '../hooks/useDragReorder.js';
 import { formatStatus } from '../utils/formatStatus';
 import { selectPhotosToUpload } from '../utils/uploadQueue';
+import { derivePhotoCapacityDisplay } from '../utils/photoCapacityDisplay';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
 import { reportsAPI, paymentAPI, crmAPI } from '../services/api';
 import api from '../services/api';
 import { getLocalTodayIso, isInspectionDateAfterReportDate } from '../utils/inspectionDate';
 import { isFinalizedReportStatus } from '../utils/reportImmutability';
+import AddressAutocompleteField from '../components/AddressAutocompleteField';
+import PropertyProfileReview from '../components/PropertyProfileReview';
+import { isBrowserAutocompleteConfigured } from '../config/googleMaps';
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value || '').trim());
 
@@ -51,12 +55,6 @@ const OCCUPANCY_STATUSES = ['Occupied', 'Vacant', 'Under Renovation', 'Unknown']
 const ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt'];
 const MAX_DOCUMENTS = 10;
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10MB -- matches the existing per-photo limit
-
-// Phase 6 (Photo Upload & Per-Photo UX Hardening) -- exact spec'd copy for the
-// 100-photo cap, shown both as a toast on overflow and as a persistent notice
-// once the limit is reached.
-const MAX_PHOTOS = 100;
-const MAX_PHOTOS_MESSAGE = 'Maximum of 100 photos reached. Remove a photo to upload another.';
 
 const formatFileSize = (bytes) => {
   if (bytes == null) return '';
@@ -1229,6 +1227,70 @@ export default function Dashboard() {
   const [assignedReports, setAssignedReports] = useState([]);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(FORM_INITIAL);
+  // Phase 46 (Property Intelligence: Address Normalization & Google
+  // Integration). Local wizard-only state -- nothing here is persisted
+  // until after the report is created, when `propertyLookup.confirmedProfile`
+  // (if any) is saved via reportsAPI.savePropertyProfile. Manual entry
+  // (form.propertyAddress/Street/City/State/Zip above) always keeps working
+  // unchanged, whether or not Google is configured/available.
+  const [propertyLookup, setPropertyLookup] = useState({
+    enabled: false, // sanitized public config says a server-side lookup is possible
+    pending: null, // { profile, ambiguous } awaiting user confirm/reject
+    confirmedProfile: null, // accepted PropertyProfile, saved to the report right after creation
+    loading: false,
+    error: null,
+  });
+  useEffect(() => {
+    if (!isBrowserAutocompleteConfigured()) return;
+    let cancelled = false;
+    reportsAPI
+      .getPropertyLookupConfig()
+      .then((res) => {
+        if (!cancelled && res.data?.enabled && res.data?.serverNormalizationConfigured) {
+          setPropertyLookup((p) => ({ ...p, enabled: true }));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleAddressPlaceSelected = async (placeId, description) => {
+    setPropertyLookup((p) => ({ ...p, loading: true, error: null }));
+    try {
+      const res = await reportsAPI.normalizePropertyAddress({ placeId, original: description });
+      setPropertyLookup((p) => ({
+        ...p,
+        loading: false,
+        pending: { normalizationToken: res.data.normalizationToken, profile: res.data.profile, ambiguous: res.data.ambiguous },
+      }));
+    } catch (err) {
+      setPropertyLookup((p) => ({ ...p, loading: false, error: err.response?.data?.error || 'Address lookup failed.' }));
+    }
+  };
+
+  const handleConfirmPropertyProfile = (overrides) => {
+    const pending = propertyLookup.pending;
+    if (!pending) return;
+    setPropertyLookup((p) => ({ ...p, confirmedProfile: { ...pending, overrides }, pending: null }));
+    // Prefill the existing structured manual fields from the confirmed
+    // profile as a convenience -- they remain fully editable, and a later
+    // manual edit here does not un-confirm the saved propertyProfile (it
+    // only affects the plain legacy fields).
+    const f = pending.profile.fields || {};
+    setForm((p) => ({
+      ...p,
+      propertyStreet: overrides?.addressLine1 ?? f.addressLine1?.value ?? p.propertyStreet,
+      propertyCity: overrides?.city ?? f.city?.value ?? p.propertyCity,
+      propertyState: overrides?.state ?? f.stateCode?.value ?? f.state?.value ?? p.propertyState,
+      propertyZip: overrides?.postalCode ?? f.postalCode?.value ?? p.propertyZip,
+    }));
+  };
+
+  const handleRejectPropertyProfile = () => {
+    setPropertyLookup((p) => ({ ...p, pending: null, confirmedProfile: null }));
+  };
   // Phase 6: each staged photo is `{ id, file, url, name, size, status, error }`.
   // status: 'checking' (hash/decode validation in flight) | 'ready' |
   // 'corrupt' (failed to decode) | 'duplicate' (same content already staged).
@@ -1237,6 +1299,28 @@ export default function Dashboard() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
   const [previewPhotoId, setPreviewPhotoId] = useState(null);
   const photoHashesRef = useRef(new Map()); // id -> content hash, for duplicate detection
+  // Phase 44 (Central Plan Configuration & Atomic Photo-Capacity Enforcement):
+  // server-derived capacity for the wizard's live counter/warning/blocked
+  // state, replacing the old flat MAX_PHOTOS=100 constant. `null` means not
+  // loaded yet -- every consumer below falls back to the same pre-Phase-44
+  // flat-100 behavior while loading/on a failed fetch, matching the
+  // backend's own safe-fallback contract (never fail closed into unlimited,
+  // but never block the UI on a slow/failed capacity fetch either).
+  const [photoCapacity, setPhotoCapacity] = useState(null);
+  const {
+    unlimited: photoLimitUnlimited,
+    effectiveLimit: effectivePhotoLimit,
+    atLimit: atPhotoLimit,
+    nearLimit: nearPhotoLimit,
+    message: photoLimitMessage,
+    browseHint: photoBrowseHint,
+  } = derivePhotoCapacityDisplay(photoCapacity, photos.length);
+  const refreshPhotoCapacity = useCallback(() => {
+    reportsAPI.getPhotoCapacity(photoDraftIdRef.current || undefined)
+      .then((res) => setPhotoCapacity(res.data))
+      .catch(() => {}); // keep the last-known (or flat-100 fallback) value on failure
+  }, []);
+  useEffect(() => { refreshPhotoCapacity(); }, [refreshPhotoCapacity]);
   // Phase 25 (mobile immediate-upload): the staging draft this wizard session
   // uploads photos against, created lazily on the first capture/selection.
   const photoDraftIdRef = useRef(null);
@@ -1600,12 +1684,16 @@ export default function Dashboard() {
           error: record.error || p.error,
         };
       }));
+      // Phase 44: refresh the live counter after every upload/retry/duplicate
+      // outcome -- capacity is server-derived, so the client never guesses it.
+      refreshPhotoCapacity();
     } catch (err) {
       setPhotos(prev => prev.map(p => (p.id === id
         ? { ...p, uploading: false, uploaded: false, uploadError: err.response?.data?.error || 'Upload failed' }
         : p)));
+      if (err?.response?.data?.code === 'MAX_PHOTOS') refreshPhotoCapacity();
     }
-  }, []);
+  }, [refreshPhotoCapacity]);
 
   // Fires uploads for any staged photo that's client-validated ('ready') but
   // hasn't been sent to the server yet -- covers a fresh capture, a rotated
@@ -1659,12 +1747,12 @@ export default function Dashboard() {
   const handlePhotoAdd = (files) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (arr.length === 0) return;
-    if (photos.length >= MAX_PHOTOS) {
-      toast.error(MAX_PHOTOS_MESSAGE);
+    if (!photoLimitUnlimited && photos.length >= effectivePhotoLimit) {
+      toast.error(photoLimitMessage);
       return;
     }
-    if (photos.length + arr.length > MAX_PHOTOS) {
-      toast.error(MAX_PHOTOS_MESSAGE);
+    if (!photoLimitUnlimited && photos.length + arr.length > effectivePhotoLimit) {
+      toast.error(photoLimitMessage);
       return;
     }
     const staged = arr.map(f => ({
@@ -1689,13 +1777,22 @@ export default function Dashboard() {
   };
 
   const removePhoto = (id) => {
+    let hadServerCopy = false;
     setPhotos(prev => {
       const target = prev.find(p => p.id === id);
-      if (target) { URL.revokeObjectURL(target.url); deleteStagedPhotoIfAny(target); }
+      if (target) {
+        URL.revokeObjectURL(target.url);
+        deleteStagedPhotoIfAny(target);
+        hadServerCopy = !!target.serverPhotoId;
+      }
       return prev.filter(p => p.id !== id);
     });
     photoHashesRef.current.delete(id);
     setSelectedPhotoIds(prev => prev.filter(pid => pid !== id));
+    // Phase 44: a deleted photo releases its capacity slot immediately
+    // (capacity is derived fresh from the server's own current count, so
+    // this refresh is what surfaces that release in the live counter).
+    if (hadServerCopy) refreshPhotoCapacity();
   };
 
   const rotatePhoto = async (id) => {
@@ -1837,6 +1934,19 @@ export default function Dashboard() {
       // dedicated analysis-progress view instead of treating this as "done".
       const res = await reportsAPI.generate(fd, onUploadProgress);
       const report = res.data.report || res.data;
+      // Phase 46: the wizard never sends the confirmed PropertyProfile as
+      // part of the multipart generate() body (kept isolated from the
+      // existing, carefully-staged photo/report creation payload) -- it's
+      // persisted with one follow-up call right after the report exists.
+      // A failure here is non-blocking: the report itself was already
+      // created successfully with its plain-text address fields intact.
+      if (propertyLookup.confirmedProfile) {
+        const { normalizationToken, overrides } = propertyLookup.confirmedProfile;
+        reportsAPI
+          .savePropertyProfile(report.id, { mode: 'provider_confirmed', normalizationToken, original: form.propertyAddress, overrides })
+          .catch(() => toast.error('Report created, but the confirmed address could not be saved. You can re-confirm it from the report.'));
+      }
+      setPropertyLookup({ enabled: propertyLookup.enabled, pending: null, confirmedProfile: null, loading: false, error: null });
       setForm(FORM_INITIAL);
       setActiveTemplate(null);
       photos.forEach(p => URL.revokeObjectURL(p.url));
@@ -2082,7 +2192,14 @@ export default function Dashboard() {
       const updated = res.data?.report || {};
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
-      toast.success('Report approved & finalized — exports are now clean');
+      // Phase 40: a Starter/free-plan report keeps the FlacronAI branding
+      // watermark after approval (client-confirmed policy, 2026-09-18) --
+      // only the DRAFT watermark is guaranteed to be gone.
+      toast.success(
+        tier === 'starter'
+          ? 'Report approved & finalized — DRAFT watermark removed (Starter plan reports keep the FlacronAI watermark)'
+          : 'Report approved & finalized — exports are now watermark-free'
+      );
       setShowApproveModal(false);
       handlePreviewPDF();
     } catch (err) {
@@ -2868,11 +2985,37 @@ export default function Dashboard() {
                             ) : (
                               <>
                                 <div>
-                                  <label className="label">Property Address *</label>
-                                  <input className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
-                                    value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                                  <label className="label" htmlFor="propertyAddressInput">Property Address *</label>
+                                  {propertyLookup.enabled && !linkedClaim ? (
+                                    <AddressAutocompleteField
+                                      inputId="propertyAddressInput"
+                                      placeholder="Start typing the full address…"
+                                      value={form.propertyAddress}
+                                      onChange={(v) => setForm(p => ({ ...p, propertyAddress: v }))}
+                                      onSelectPlace={handleAddressPlaceSelected}
+                                    />
+                                  ) : (
+                                    <input id="propertyAddressInput" className="input" placeholder="Full street address, city, state, zip" disabled={!!linkedClaim}
+                                      value={form.propertyAddress} onChange={e => setForm(p => ({ ...p, propertyAddress: e.target.value }))} />
+                                  )}
                                   {linkedClaim && <p className="text-xs text-gray-400 mt-1">Auto-filled from the linked claim — go back to Step 1 to change it.</p>}
+                                  {propertyLookup.loading && <p className="text-xs text-gray-400 mt-1">Looking up address…</p>}
+                                  {propertyLookup.error && <p className="text-xs text-amber-600 mt-1">{propertyLookup.error} — you can continue typing the address manually.</p>}
                                 </div>
+
+                                {propertyLookup.pending && (
+                                  <PropertyProfileReview
+                                    profile={propertyLookup.pending.profile}
+                                    ambiguous={propertyLookup.pending.ambiguous}
+                                    onConfirm={handleConfirmPropertyProfile}
+                                    onReject={handleRejectPropertyProfile}
+                                  />
+                                )}
+                                {propertyLookup.confirmedProfile && !propertyLookup.pending && (
+                                  <p className="text-xs text-green-700 flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5" /> Address confirmed via Google — structured fields below were pre-filled and remain editable.
+                                  </p>
+                                )}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="sm:col-span-2">
                                     <label className="label">Street Address <span className="font-normal text-gray-400">(optional)</span></label>
@@ -3018,7 +3161,9 @@ export default function Dashboard() {
                                 <p className="text-xs text-gray-500 mt-0.5">Photos required — upload at least one damage photo for analysis</p>
                               </div>
                               <div className="text-right">
-                                <span className="text-sm text-gray-500">{uploadedPhotoCount} / {MAX_PHOTOS}</span>
+                                <span className="text-sm text-gray-500">
+                                  {photoLimitUnlimited ? `${uploadedPhotoCount} / Unlimited` : `${uploadedPhotoCount} / ${effectivePhotoLimit}`}
+                                </span>
                                 {(uploadingPhotoCount > 0 || uploadFailedCount > 0 || photoFailedCount > 0 || photoDuplicateCount > 0) && (
                                   <p className="text-[11px] text-gray-400 mt-0.5">
                                     {uploadingPhotoCount > 0 && `${uploadingPhotoCount} uploading · `}
@@ -3035,13 +3180,13 @@ export default function Dashboard() {
                                 distinct from the drag-and-drop area below, so a mobile user can
                                 deliberately choose the camera vs. an existing photo, per spec. */}
                             <div className="grid grid-cols-2 gap-3 mb-3">
-                              <button type="button" disabled={photos.length >= MAX_PHOTOS}
-                                onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } cameraInputRef.current?.click(); }}
+                              <button type="button" disabled={atPhotoLimit}
+                                onClick={() => { if (atPhotoLimit) { toast.error(photoLimitMessage); return; } cameraInputRef.current?.click(); }}
                                 className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                 <Camera className="w-4 h-4" /> Take Photo
                               </button>
-                              <button type="button" disabled={photos.length >= MAX_PHOTOS}
-                                onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } fileInputRef.current?.click(); }}
+                              <button type="button" disabled={atPhotoLimit}
+                                onClick={() => { if (atPhotoLimit) { toast.error(photoLimitMessage); return; } fileInputRef.current?.click(); }}
                                 className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                 <FolderOpen className="w-4 h-4" /> Choose From Library
                               </button>
@@ -3049,7 +3194,7 @@ export default function Dashboard() {
                                   browsers that support it; on desktop it's ignored and behaves
                                   like a normal file picker. Kept as a SEPARATE input from the
                                   library one so the two buttons trigger genuinely distinct pickers. */}
-                              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" disabled={photos.length >= MAX_PHOTOS}
+                              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" disabled={atPhotoLimit}
                                 onChange={e => { handlePhotoAdd(e.target.files); e.target.value = ''; }} />
                             </div>
                             {photos.length > 0 && (
@@ -3058,21 +3203,28 @@ export default function Dashboard() {
 
                             <div
                               className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all ${
-                                photos.length >= MAX_PHOTOS ? 'opacity-50 cursor-not-allowed border-gray-200' :
+                                atPhotoLimit ? 'opacity-50 cursor-not-allowed border-gray-200' :
                                   dragging ? 'border-brand-500 bg-brand-500/10 cursor-pointer' : 'border-gray-200 hover:border-brand-400 hover:bg-brand-500/5 cursor-pointer'
                               }`}
-                              onDragOver={e => { e.preventDefault(); if (photos.length < MAX_PHOTOS) setDragging(true); }}
+                              onDragOver={e => { e.preventDefault(); if (!atPhotoLimit) setDragging(true); }}
                               onDragLeave={() => setDragging(false)}
-                              onDrop={e => { if (photos.length >= MAX_PHOTOS) { e.preventDefault(); toast.error(MAX_PHOTOS_MESSAGE); return; } handleDrop(e); }}
-                              onClick={() => { if (photos.length >= MAX_PHOTOS) { toast.error(MAX_PHOTOS_MESSAGE); return; } fileInputRef.current?.click(); }}>
+                              onDrop={e => { if (atPhotoLimit) { e.preventDefault(); toast.error(photoLimitMessage); return; } handleDrop(e); }}
+                              onClick={() => { if (atPhotoLimit) { toast.error(photoLimitMessage); return; } fileInputRef.current?.click(); }}>
                               <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                               <p className="text-gray-700 font-medium">Drag & drop damage photos here</p>
-                              <p className="text-gray-500 text-sm mt-1">or click to browse — up to {MAX_PHOTOS} photos, 10MB each</p>
-                              <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" disabled={photos.length >= MAX_PHOTOS}
+                              <p className="text-gray-500 text-sm mt-1">
+                                {photoBrowseHint}
+                              </p>
+                              <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" disabled={atPhotoLimit}
                                 onChange={e => { handlePhotoAdd(e.target.files); e.target.value = ''; }} />
                             </div>
-                            {photos.length >= MAX_PHOTOS && (
-                              <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {MAX_PHOTOS_MESSAGE}</p>
+                            {atPhotoLimit && (
+                              <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {photoLimitMessage}</p>
+                            )}
+                            {nearPhotoLimit && (
+                              <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Approaching your plan's photo limit ({photos.length} / {effectivePhotoLimit}).
+                              </p>
                             )}
 
                             {photos.length > 0 && (

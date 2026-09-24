@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { appendStagedPhoto, STAGE_TRANSACTION_MAX_ATTEMPTS, claimDraftPhotos } = require('../utils/photoDraftStaging');
+const { appendStagedPhoto, STAGE_TRANSACTION_MAX_ATTEMPTS, claimDraftPhotos, removeStagedPhoto } = require('../utils/photoDraftStaging');
 
 // Regression test for a real data-loss bug: POST /api/reports/photos/stage
 // used to do a plain (non-transactional) read-append-write on the
@@ -288,4 +288,92 @@ test('claimDraftPhotos: a draft owned by a different user is never handed out (c
   assert.equal(result.found, false);
   assert.deepEqual(result.photos, []);
   assert.equal(db.store.get('reportDrafts/d4').data.claimed, undefined, "the real owner's draft is untouched");
+});
+
+// ── Phase 44 (Central Plan Configuration & Atomic Photo-Capacity
+// Enforcement): usage-counting fix + removeStagedPhoto (the release
+// counterpart, made transactional for the same reason appendStagedPhoto is).
+
+test('appendStagedPhoto: a "failed" (corrupt) or "duplicate" record never consumed a capacity unit in the first place, so it is never blocked by maxPhotos even once already at the cap', async () => {
+  const db = new FakeFirestore();
+  const CAP = 1;
+  await appendStagedPhoto(db, { draftId: 'usage1', uid: 'u1', record: makeRecord('good1'), maxPhotos: CAP });
+  // Already at the cap -- but a corrupt/duplicate record must still be
+  // appended (for visibility/error display), never rejected as MAX_PHOTOS,
+  // because it was never going to consume a unit.
+  const failedRecord = { id: 'bad1', status: 'failed', fileName: 'bad1.jpg', error: 'corrupt file' };
+  const duplicateRecord = { id: 'dup1', status: 'duplicate', fileName: 'dup1.jpg', error: 'duplicate' };
+  await appendStagedPhoto(db, { draftId: 'usage1', uid: 'u1', record: failedRecord, maxPhotos: CAP });
+  await appendStagedPhoto(db, { draftId: 'usage1', uid: 'u1', record: duplicateRecord, maxPhotos: CAP });
+
+  const stored = db.store.get('reportDrafts/usage1').data.photos;
+  assert.equal(stored.length, 3, 'all three records are present -- failed/duplicate are never dropped');
+  assert.equal(stored.filter((p) => p.status === 'uploaded').length, 1, 'only the genuinely uploaded one counts as committed');
+});
+
+test('appendStagedPhoto: a genuinely "uploaded" record IS still blocked once the cap (counting only uploaded records) is reached', async () => {
+  const db = new FakeFirestore();
+  const CAP = 1;
+  await appendStagedPhoto(db, { draftId: 'usage2', uid: 'u1', record: makeRecord('good1'), maxPhotos: CAP });
+  await assert.rejects(
+    () => appendStagedPhoto(db, { draftId: 'usage2', uid: 'u1', record: makeRecord('good2'), maxPhotos: CAP }),
+    (err) => err.code === 'MAX_PHOTOS'
+  );
+});
+
+test('removeStagedPhoto: removes exactly the target photo, leaves the rest untouched', async () => {
+  const db = new FakeFirestore();
+  await appendStagedPhoto(db, { draftId: 'rm1', uid: 'u1', record: makeRecord('p0'), maxPhotos: 100 });
+  await appendStagedPhoto(db, { draftId: 'rm1', uid: 'u1', record: makeRecord('p1'), maxPhotos: 100 });
+
+  const { removed, photos } = await removeStagedPhoto(db, { draftId: 'rm1', uid: 'u1', photoId: 'p0' });
+  assert.equal(removed.id, 'p0');
+  assert.deepEqual(photos.map((p) => p.id), ['p1']);
+  assert.deepEqual(db.store.get('reportDrafts/rm1').data.photos.map((p) => p.id), ['p1']);
+});
+
+test('removeStagedPhoto: releases capacity immediately -- a slot freed by a delete can be reused by the very next append', async () => {
+  const db = new FakeFirestore();
+  const CAP = 1;
+  await appendStagedPhoto(db, { draftId: 'rm2', uid: 'u1', record: makeRecord('p0'), maxPhotos: CAP });
+  await assert.rejects(() => appendStagedPhoto(db, { draftId: 'rm2', uid: 'u1', record: makeRecord('p1'), maxPhotos: CAP }), (err) => err.code === 'MAX_PHOTOS');
+
+  await removeStagedPhoto(db, { draftId: 'rm2', uid: 'u1', photoId: 'p0' });
+
+  // Capacity is derived fresh from the array length -- no separate counter
+  // to update, so the freed slot is immediately usable.
+  const photos = await appendStagedPhoto(db, { draftId: 'rm2', uid: 'u1', record: makeRecord('p1'), maxPhotos: CAP });
+  assert.deepEqual(photos.map((p) => p.id), ['p1']);
+});
+
+test('removeStagedPhoto: unknown draft -> NOT_FOUND, never throws an unhandled error', async () => {
+  const db = new FakeFirestore();
+  await assert.rejects(() => removeStagedPhoto(db, { draftId: 'nope', uid: 'u1', photoId: 'x' }), (err) => err.code === 'NOT_FOUND');
+});
+
+test('removeStagedPhoto: a draft owned by a different user is denied (cross-account access), not partially applied', async () => {
+  const db = new FakeFirestore();
+  await appendStagedPhoto(db, { draftId: 'rm3', uid: 'owner', record: makeRecord('p0'), maxPhotos: 100 });
+  await assert.rejects(() => removeStagedPhoto(db, { draftId: 'rm3', uid: 'attacker', photoId: 'p0' }), (err) => err.code === 'NOT_FOUND');
+  assert.equal(db.store.get('reportDrafts/rm3').data.photos.length, 1, "the real owner's photo survives the denied attempt");
+});
+
+test('removeStagedPhoto: an unknown photoId on a real draft -> PHOTO_NOT_FOUND', async () => {
+  const db = new FakeFirestore();
+  await appendStagedPhoto(db, { draftId: 'rm4', uid: 'u1', record: makeRecord('p0'), maxPhotos: 100 });
+  await assert.rejects(() => removeStagedPhoto(db, { draftId: 'rm4', uid: 'u1', photoId: 'does-not-exist' }), (err) => err.code === 'PHOTO_NOT_FOUND');
+});
+
+test('removeStagedPhoto: concurrent delete + append for the same draft never silently drops either operation (transactional, mirrors appendStagedPhoto\'s own guarantee)', async () => {
+  const db = new FakeFirestore();
+  await appendStagedPhoto(db, { draftId: 'rm5', uid: 'u1', record: makeRecord('p0'), maxPhotos: 100 });
+  await appendStagedPhoto(db, { draftId: 'rm5', uid: 'u1', record: makeRecord('p1'), maxPhotos: 100 });
+
+  await Promise.all([
+    removeStagedPhoto(db, { draftId: 'rm5', uid: 'u1', photoId: 'p0' }),
+    appendStagedPhoto(db, { draftId: 'rm5', uid: 'u1', record: makeRecord('p2'), maxPhotos: 100 }),
+  ]);
+
+  const ids = db.store.get('reportDrafts/rm5').data.photos.map((p) => p.id).sort();
+  assert.deepEqual(ids, ['p1', 'p2'], 'p0 removed, p1 untouched, p2 added -- neither operation was lost to a lost-update race');
 });

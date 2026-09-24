@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Check, X, Star, Zap, Building2, Crown, ChevronDown, ChevronUp, Phone, Mail, Globe, Users } from 'lucide-react';
+import { Check, X, Star, Zap, Building2, Crown, ChevronDown, ChevronUp, Phone, Mail, Globe, Users, Image } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { paymentAPI, salesAPI } from '../services/api';
@@ -12,6 +12,8 @@ import { PLAN_PRICING } from '../data/plans.js';
 import { PRODUCT_JSONLD } from '../data/structuredData.js';
 import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
 import useEscapeToClose from '../hooks/useEscapeToClose';
+import usePublicPlanConfig from '../hooks/usePublicPlanConfig';
+import { photoLimitLabel } from '../utils/photoLimitLabel.js';
 
 const PLANS = [
   {
@@ -239,6 +241,7 @@ export default function Pricing() {
   const [loadingTier, setLoadingTier] = useState(null);
   const { isAuthenticated, tier: currentTier } = useAuth();
   const navigate = useNavigate();
+  const { plans: photoPlans, addOns } = usePublicPlanConfig();
 
   const handleCheckout = async (planId) => {
     if (!isAuthenticated) { navigate(`/signup?plan=${planId}${annual ? '_annual' : ''}`); return; }
@@ -319,6 +322,12 @@ export default function Pricing() {
                     )}
                   </div>
                   <div className="space-y-2 mb-6 flex-1">
+                    {photoLimitLabel(photoPlans[plan.id]) && (
+                      <div className="flex items-start gap-2">
+                        <Image className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-700">{photoLimitLabel(photoPlans[plan.id])}</span>
+                      </div>
+                    )}
                     {plan.features.map((f, fi) => (
                       <div key={fi} className="flex items-start gap-2">
                         {f.included
@@ -346,6 +355,27 @@ export default function Pricing() {
             })}
           </div>
 
+          {/* Photo Add-On Packs (Phase 45/48) -- one-time, per-report capacity purchases */}
+          {addOns.enabled && addOns.packs.length > 0 && (
+            <motion.div className="mb-20" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+              <h2 className="text-2xl font-bold text-gray-900 text-center mb-2">Need more photos for one report?</h2>
+              <p className="text-center text-gray-600 text-sm mb-8 max-w-xl mx-auto">
+                One-time photo add-on packs apply to a single report only — they don&apos;t change your monthly plan limit or renew automatically.
+                {!addOns.checkoutAvailable && ' Purchasing is not currently available; pricing below is shown for reference.'}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+                {addOns.packs.map((pack) => (
+                  <div key={pack.id} className="card p-5 text-center">
+                    <p className="text-lg font-bold text-gray-900">+{pack.capacity}</p>
+                    <p className="text-xs text-gray-600 mb-2">photos, this report</p>
+                    <p className="text-brand-600 font-semibold">${(pack.amountCents / 100).toFixed(2)}</p>
+                    {!pack.available && <p className="text-xs text-gray-500 mt-1">Unavailable</p>}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* Comparison Table */}
           <motion.div className="mb-20" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Full Feature Comparison</h2>
@@ -361,6 +391,14 @@ export default function Pricing() {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="border-b border-gray-200 hover:bg-gray-100">
+                    <td className="px-6 py-3 text-primary text-sm">Photos per report</td>
+                    {(['starter', 'professional', 'agency', 'enterprise']).map((tier) => (
+                      <td key={tier} className="px-4 py-3 text-center text-sm text-gray-700">
+                        {photoPlans[tier]?.unlimited ? 'Unlimited' : (photoPlans[tier]?.basePhotoLimit ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
                   {COMPARISON_FEATURES.map((row, i) => (
                     <tr key={i} className="border-b border-gray-200 hover:bg-gray-100">
                       <td className="px-6 py-3 text-primary text-sm">{row.label}</td>

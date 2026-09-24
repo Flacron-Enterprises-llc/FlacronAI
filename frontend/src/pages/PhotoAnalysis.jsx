@@ -8,8 +8,8 @@ import Seo from '../components/Seo.jsx';
 const WORKFLOW = [
   {
     icon: Image,
-    title: 'Upload up to 100 photos',
-    desc: 'Add damage photos from the wizard — take a photo or choose from your library on mobile, or drag-and-drop on desktop. Duplicates are detected automatically, both within the batch and against photos already attached to the report.',
+    title: 'Upload photos, based on your plan',
+    desc: 'Add damage photos from the wizard — take a photo or choose from your library on mobile, or drag-and-drop on desktop. Your per-report photo allowance depends on your plan, up to unlimited on Enterprise. Duplicates are detected automatically, both within the batch and against photos already attached to the report.',
   },
   {
     icon: Cpu,
@@ -43,7 +43,7 @@ export default function PhotoAnalysis() {
     <div className="min-h-screen bg-bg">
       <Seo
         title="Photo Analysis — FlacronAI"
-        description="Upload up to 100 inspection photos per report. Each one is analyzed for visible conditions and reviewed by you before it becomes part of the report."
+        description="Upload inspection photos per report — capacity scales with your plan, up to unlimited on Enterprise. Each one is analyzed for visible conditions and reviewed by you before it becomes part of the report."
         path="/photo-analysis"
       />
       <Navbar />
@@ -60,8 +60,8 @@ export default function PhotoAnalysis() {
               Analyze the Entire Inspection — Not Just the First Few Photos
             </h1>
             <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-8">
-              Every one of the up to 100 photos you upload gets processed, not a sample. Every finding is
-              reviewed by you before it becomes part of the draft.
+              Every photo you upload gets processed, not a sample — your plan's full photo allowance, up to unlimited on
+              Enterprise. Every finding is reviewed by you before it becomes part of the draft.
             </p>
             <Link to="/signup" className="btn-primary inline-flex items-center gap-2">
               Try It Free
@@ -75,8 +75,8 @@ export default function PhotoAnalysis() {
       <section className="pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto card p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-bold text-gray-700">Photo Batch</span>
-            <span className="text-sm text-brand-600 font-semibold">100 photos</span>
+            <span className="text-sm font-bold text-gray-700">Photo Batch (example)</span>
+            <span className="text-sm text-brand-600 font-semibold">42 photos</span>
           </div>
           <div className="grid grid-cols-10 gap-1.5 mb-6" aria-hidden="true">
             {Array.from({ length: 70 }).map((_, i) => (

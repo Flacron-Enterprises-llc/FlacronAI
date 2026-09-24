@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { tokenizeInline, parseBlockToken } = require('./richContent');
+const { REVIEWED_STATUSES } = require('./watermarkPolicy');
 
 // Resolves with a Buffer of the generated PDF (no disk I/O — Render is ephemeral).
 // `logoBuffer` (Buffer|null) is embedded in the header; `appendixPhotos` is the
@@ -232,8 +233,13 @@ const generatePDF = async (report, options = {}) => {
         doc.rect(cx - 95, coverY, 190, 2).fill(accentHex);
         coverY += 16;
 
-        // Draft/final status badge — mirrors the app's own draft/finalized concept
-        if ((report.status || 'draft') !== 'finalized') {
+        // Draft/final status badge — mirrors the app's own draft/finalized
+        // concept. Phase 40: recognizes the same reviewed-status set as the
+        // watermark policy (finalized + legacy approved/completed), so a
+        // legacy-status report's cover page doesn't call itself a draft
+        // while everything else in the export treats it as reviewed.
+        const isReportReviewed = REVIEWED_STATUSES.has(report.status);
+        if (!isReportReviewed) {
           doc
             .fontSize(11)
             .fillColor(accentHex)
@@ -248,11 +254,9 @@ const generatePDF = async (report, options = {}) => {
           coverY += 10;
         }
 
-        const statusLabel =
-          {
-            draft: 'Draft — pending adjuster review',
-            finalized: 'Finalized — approved by licensed adjuster',
-          }[report.status] || 'Draft — pending adjuster review';
+        const statusLabel = isReportReviewed
+          ? 'Finalized — approved by licensed adjuster'
+          : 'Draft — pending adjuster review';
 
         const details = [
           ['Report Type', report.reportType || 'Initial'],

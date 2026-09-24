@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { getAuth, getFirestore, FieldValue } = require('../config/firebase');
-const { isAtLeastTier, getTier } = require('../config/tiers');
+const { isAtLeastTier, getTier, hasTierFeature } = require('../config/tiers');
 const { normalizeApiKeyScopes } = require('../config/apiScopes');
 const { hasCapability } = require('../utils/orgRoles');
 const { MFA_ASSERTION_HEADER, verifyMfaAssertion, isMfaEnforcementEnabled } = require('../utils/mfaAssertion');
@@ -490,6 +490,29 @@ const requireApiAccess = (req, res, next) => {
   return next();
 };
 
+// Require a named per-tier feature flag from config/tiers.js (e.g.
+// 'aiPricing'). Server-side and default-deny: a missing/unknown tier is
+// refused rather than treated as any plan.
+const requireTierFeature = (feature, message) => {
+  const gate = (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required', code: 'NO_AUTH' });
+    }
+    if (!hasTierFeature(req.user.tier, feature)) {
+      return res.status(403).json({
+        success: false,
+        error: message || 'This feature is not included in your current plan.',
+        code: 'FEATURE_NOT_IN_PLAN',
+        feature,
+        currentTier: req.user.tier || null,
+      });
+    }
+    return next();
+  };
+  gate.tierFeature = feature; // lets tests assert exactly which routes carry this gate
+  return gate;
+};
+
 // Browser bearer sessions continue through normal RBAC. API-key requests must
 // carry the explicit permission required by the endpoint.
 const requireApiScope = (scope) => (req, res, next) => {
@@ -546,6 +569,7 @@ module.exports = {
   authenticateAny,
   optionalAuth,
   requireTier,
+  requireTierFeature,
   requireTeamCapability,
   requireApiAccess,
   requireApiScope,

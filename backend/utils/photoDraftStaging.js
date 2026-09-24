@@ -28,7 +28,11 @@ const appendStagedPhoto = async (db, { draftId, uid, record, maxPhotos, nowIso =
   return db.runTransaction(async (tx) => {
     const freshDoc = await tx.get(ref);
     const freshPhotos = freshDoc.exists ? freshDoc.data().photos || [] : [];
-    if (freshPhotos.length >= maxPhotos) {
+    // Phase 44 usage-counting rule: only a genuinely 'uploaded' photo
+    // consumes a capacity unit -- a 'failed' (corrupt file) or 'duplicate'
+    // entry never did and must never count against the cap.
+    const committedCount = freshPhotos.filter((p) => p.status === 'uploaded').length;
+    if (record.status === 'uploaded' && committedCount >= maxPhotos) {
       const err = new Error(`Maximum of ${maxPhotos} photos reached. Remove a photo to upload another.`);
       err.code = 'MAX_PHOTOS';
       throw err;
@@ -85,4 +89,35 @@ const claimDraftPhotos = async (db, { draftId, uid }) => {
   });
 };
 
-module.exports = { appendStagedPhoto, STAGE_TRANSACTION_MAX_ATTEMPTS, claimDraftPhotos };
+// Phase 44 (Central Plan Configuration & Atomic Photo-Capacity Enforcement):
+// the capacity-releasing counterpart to appendStagedPhoto above, made
+// transactional for the same reason -- a delete racing a concurrent stage
+// request for the same draft must never read a stale "before" photos array
+// (which could silently resurrect the just-deleted photo, or drop a photo
+// staged in the same window). Capacity itself needs no separate "release"
+// step: it is always derived fresh from the current photos array length, so
+// removing an entry here IS the release, by construction.
+const removeStagedPhoto = async (db, { draftId, uid, photoId, nowIso = () => new Date().toISOString() }) => {
+  const ref = db.collection('reportDrafts').doc(draftId);
+  return db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists || doc.data().userId !== uid) {
+      const err = new Error('Draft not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    const data = doc.data();
+    const photos = data.photos || [];
+    const target = photos.find((p) => p.id === photoId);
+    if (!target) {
+      const err = new Error('Photo not found');
+      err.code = 'PHOTO_NOT_FOUND';
+      throw err;
+    }
+    const nextPhotos = photos.filter((p) => p.id !== photoId);
+    tx.set(ref, { ...data, photos: nextPhotos, updatedAt: nowIso() });
+    return { removed: target, photos: nextPhotos };
+  });
+};
+
+module.exports = { appendStagedPhoto, STAGE_TRANSACTION_MAX_ATTEMPTS, claimDraftPhotos, removeStagedPhoto };

@@ -6,6 +6,14 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Seo from '../components/Seo.jsx';
 import { buildFaqJsonLd } from '../data/structuredData.js';
+import usePublicPlanConfig from '../hooks/usePublicPlanConfig';
+import { buildPhotoLimitAnswer } from '../utils/faqPhotoLimitAnswer.js';
+
+// Stable id for the one FAQ entry whose answer is server-derived (Phase 48
+// correction) -- its `a` below is a safe static placeholder, overwritten at
+// render time with the live per-tier answer so it's never stale relative to
+// PlanConfig.
+const PHOTO_LIMIT_FAQ_ID = 'photo-limit-per-report';
 
 const FAQS = [
   // General
@@ -69,9 +77,10 @@ const FAQS = [
     a: 'FlacronAI\'s FLACRON ENGINE drafts report text and analyzes supported images, with an automatic backup engine that takes over for text drafting if the primary is unavailable. Provider availability can vary by deployment. Every output remains an editable draft requiring professional review and approval.',
   },
   {
+    id: PHOTO_LIMIT_FAQ_ID,
     category: 'Technical',
     q: 'How many photos can I upload per report?',
-    a: 'You can upload up to 100 photos per report. Supported formats are JPEG and PNG. Individual files must be under 10MB. We recommend using a mixture of overview shots and detailed damage photos for best analysis results.',
+    a: 'Your plan\'s per-report photo limit varies by tier, with one-time add-on packs available to extend a single report. Individual files must be under 10MB.',
   },
   {
     category: 'Technical',
@@ -144,6 +153,9 @@ function FAQItem({ q, a }) {
 export default function FAQs() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
+  const { plans } = usePublicPlanConfig();
+  const photoLimitAnswer = useMemo(() => buildPhotoLimitAnswer(plans), [plans]);
+  const answerFor = (f) => (f.id === PHOTO_LIMIT_FAQ_ID ? photoLimitAnswer : f.a);
 
   const filtered = useMemo(() => {
     return FAQS.filter(f => {
@@ -197,7 +209,7 @@ export default function FAQs() {
                     <h2 className="text-xs font-semibold text-gray-500 uppercase px-1 mb-2 mt-6 first:mt-0">{cat}</h2>
                   )}
                   <div className="space-y-2">
-                    {items.map((f, i) => <FAQItem key={i} q={f.q} a={f.a} />)}
+                    {items.map((f, i) => <FAQItem key={i} q={f.q} a={answerFor(f)} />)}
                   </div>
                 </div>
               );

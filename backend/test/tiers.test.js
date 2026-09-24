@@ -8,7 +8,10 @@ const {
   canGenerate,
   getBaseTier,
   getTierKeyFromStripePriceId,
+  getEffectiveTier,
+  canGenerateAsync,
 } = require('../config/tiers');
+const { invalidatePlanConfigCache, RECOMMENDED_DEFAULT_CONFIG } = require('../config/planConfig');
 
 test('plan limits match the documented offer (5/50/200/unlimited)', () => {
   assert.equal(TIERS.starter.reportsPerMonth, 5);
@@ -65,4 +68,56 @@ test('Stripe price IDs resolve back to the correct monthly or annual tier key', 
   else process.env.STRIPE_PRICE_AGENCY = previousMonthly;
   if (previousAnnual === undefined) delete process.env.STRIPE_PRICE_AGENCY_ANNUAL;
   else process.env.STRIPE_PRICE_AGENCY_ANNUAL = previousAnnual;
+});
+
+// ── Phase 44 (Central Plan Configuration): getEffectiveTier/canGenerateAsync ──
+// live-read PlanConfig for reportsPerMonth instead of this file's own static
+// TIERS object -- getTier()/canGenerate() above are UNCHANGED and still used
+// as-is by every pre-Phase-44 caller/test above this point.
+
+class SingleDocFakeDb {
+  constructor(doc = null) { this.doc = doc; }
+  collection(name) {
+    if (name !== 'planConfig') throw new Error(`unexpected collection ${name}`);
+    return { doc: () => ({ get: async () => ({ exists: !!this.doc, data: () => this.doc }) }) };
+  }
+}
+
+test('getEffectiveTier falls back to this file\'s own static reportsPerMonth when PlanConfig is absent (safe-fallback, not a behavior change for today)', async () => {
+  invalidatePlanConfigCache();
+  const db = new SingleDocFakeDb(null);
+  const tier = await getEffectiveTier(db, 'professional');
+  assert.equal(tier.reportsPerMonth, 50, 'matches TIERS.professional.reportsPerMonth exactly');
+  assert.equal(tier.name, 'Professional', 'every other static field is still present');
+});
+
+test('getEffectiveTier reads the LIVE PlanConfig value once populated, overriding this file\'s static reportsPerMonth', async () => {
+  invalidatePlanConfigCache();
+  const configured = { ...RECOMMENDED_DEFAULT_CONFIG, plans: { ...RECOMMENDED_DEFAULT_CONFIG.plans, professional: { reportsPerMonth: 75, basePhotoLimit: 100 } } };
+  const db = new SingleDocFakeDb(configured);
+  const tier = await getEffectiveTier(db, 'professional');
+  assert.equal(tier.reportsPerMonth, 75, 'live PlanConfig value wins, not the static 50');
+});
+
+test('getEffectiveTier resolves enterprise\'s "unlimited" back to canGenerate()\'s existing -1 sentinel contract', async () => {
+  invalidatePlanConfigCache();
+  const db = new SingleDocFakeDb(RECOMMENDED_DEFAULT_CONFIG);
+  const tier = await getEffectiveTier(db, 'enterprise');
+  assert.equal(tier.reportsPerMonth, -1);
+});
+
+test('canGenerateAsync enforces the LIVE monthly limit, mirroring canGenerate()\'s own semantics', async () => {
+  invalidatePlanConfigCache();
+  const configured = { ...RECOMMENDED_DEFAULT_CONFIG, plans: { ...RECOMMENDED_DEFAULT_CONFIG.plans, starter: { reportsPerMonth: 2, basePhotoLimit: 25 } } };
+  const db = new SingleDocFakeDb(configured);
+  assert.equal(await canGenerateAsync(db, 'starter', 1), true);
+  assert.equal(await canGenerateAsync(db, 'starter', 2), false, 'at the live-configured limit -> blocked');
+  assert.equal(await canGenerateAsync(db, 'enterprise', 999999), true);
+});
+
+test('canGenerateAsync never throws and never fails closed into unlimited when the read itself throws', async () => {
+  invalidatePlanConfigCache();
+  const db = { collection: () => ({ doc: () => ({ get: async () => { throw new Error('down'); } }) }) };
+  assert.equal(await canGenerateAsync(db, 'starter', 4), true);
+  assert.equal(await canGenerateAsync(db, 'starter', 5), false, 'falls back to the static 5-report limit, never unlimited');
 });

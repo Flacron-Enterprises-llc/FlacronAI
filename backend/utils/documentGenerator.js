@@ -2,6 +2,7 @@ const PizZip = require('pizzip');
 // isAllowedStoredImage also rejects AVIF disguised as HEIC (structural check).
 const { sharp, isAllowedStoredImage, PHOTO_TYPES } = require('./safeImage');
 const { tokenizeInline, parseBlockToken, collectReferencedPhotoIds } = require('./richContent');
+const { REVIEWED_STATUSES } = require('./watermarkPolicy');
 
 // Phase 9: OOXML inline-image embedding for `![[photo:ID|caption]]`/photo-grid
 // tokens. 1in = 914400 EMU; at 96 DPI, 1px = 9525 EMU.
@@ -503,10 +504,11 @@ const generateDOCX = async (report, options = {}) => {
         ['Prepared With', hideFlacronBranding ? companyName : 'FlacronAI (FLACRON ENGINE)'],
         [
           'Status',
-          {
-            draft: 'Draft — pending adjuster review',
-            finalized: 'Finalized — approved by licensed adjuster',
-          }[report.status] || 'Draft — pending adjuster review',
+          // Phase 40: recognizes the same reviewed-status set as the
+          // watermark policy (finalized + legacy approved/completed).
+          REVIEWED_STATUSES.has(report.status)
+            ? 'Finalized — approved by licensed adjuster'
+            : 'Draft — pending adjuster review',
         ],
       ]
         .map(

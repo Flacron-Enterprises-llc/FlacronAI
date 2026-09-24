@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Monitor, FileText, Pencil, CheckCircle, Download, RefreshCw,
   AlertCircle, ShieldCheck, Lock, X, Share2, UserCheck, XCircle, RotateCcw,
-  FileWarning, Link2, Scale,
+  FileWarning, Link2, Scale, Plus, ArrowUp, ArrowDown, Sparkles, ImagePlus, Home,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import ReportMarkdown from '../components/ReportMarkdown';
@@ -14,10 +14,33 @@ import ShareReportModal from '../components/ShareReportModal';
 import CommentsPanel from '../components/CommentsPanel';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { useAuth } from '../context/AuthContext';
-import { reportsAPI, teamsAPI } from '../services/api';
+import { reportsAPI, teamsAPI, paymentAPI } from '../services/api';
 import api from '../services/api';
+import {
+  deriveAddOnAvailability, derivePurchasablePacks, deriveSanitizedPurchaseDisplay,
+  deriveCapacityBreakdown, deriveCheckoutButtonLabel, shouldSyncAfterRedirect,
+} from '../utils/photoAddOnDisplay';
 import { parseReportSections } from '../utils/reportSections';
+import { injectSection7Detail } from '../utils/canonicalEstimateContent';
+import {
+  CANONICAL_UNIT_OPTIONS, CANONICAL_CONFIDENCE_OPTIONS, CANONICAL_STATUS_OPTIONS,
+  emptyCanonicalLineItem, emptyLabeledAmount, draftFromServerEstimate,
+  reorderLineItems, removeLineItemAt, toggleLineItemEvidence,
+  computeEstimatePreviewTotals, buildCanonicalEstimatePayload,
+  validateCanonicalEstimateDraft, classifyCanonicalEstimateSaveError,
+  canStartCanonicalEstimateSave, shouldWarnBeforeClosingCanonicalEstimateEditor,
+  isCanonicalEstimateReadOnly,
+} from '../utils/canonicalEstimateEditor';
+import {
+  buildPriceSuggestionsRequestPayload, validatePriceSuggestionsRequest,
+  classifyPriceSuggestionsError, mergeProposedPricingIntoLineItems,
+  canStartPriceSuggestionsGeneration,
+} from '../utils/pricingSuggestions';
 import { getLocalTodayIso } from '../utils/inspectionDate';
+import { mapPropertyProfileToLocationContext } from '../utils/propertyProfile';
+import { computePropertyIntelligenceEligibility } from '../utils/propertyIntelligence';
+import { injectSection3PropertyBlock } from '../utils/propertyIntelligenceContent';
+import { PropertyIntelligenceReview } from '../components/PropertyProfileReview';
 import { isFinalizedReportStatus } from '../utils/reportImmutability';
 import { computeInvoicePreviewTotals } from '../utils/invoiceTotals';
 import { addDaysToIsoDate } from '../utils/dateMath';
@@ -45,7 +68,7 @@ const REVIEWED_STATUSES = ['finalized', 'approved', 'completed'];
 // Mirrors backend/utils/invoiceCalculations.js's DUE_DATE_TERM_DAYS exactly.
 const DUE_DATE_TERM_DAYS = 30;
 
-function ApproveModal({ report, onClose, onApproved }) {
+function ApproveModal({ report, tier, onClose, onApproved }) {
   useEscapeToClose(onClose, true, true);
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
@@ -71,7 +94,15 @@ function ApproveModal({ report, onClose, onApproved }) {
         signature: { name: name.trim(), title: title.trim(), licenseNumber: licenseNumber.trim(), licenseState: licenseState.trim(), company: company.trim() },
         confirmReview: true,
       });
-      toast.success('Report approved & finalized — exports are now clean');
+      // Phase 40: approval only ever removes the DRAFT watermark -- a
+      // Starter/free-plan report keeps the FlacronAI branding watermark
+      // after approval (client-confirmed policy, 2026-09-18), so this must
+      // not claim "clean" for every tier.
+      toast.success(
+        tier === 'starter'
+          ? 'Report approved & finalized — DRAFT watermark removed (Starter plan reports keep the FlacronAI watermark)'
+          : 'Report approved & finalized — exports are now watermark-free'
+      );
       onApproved(res.data?.report || {});
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Approval failed');
@@ -93,7 +124,13 @@ function ApproveModal({ report, onClose, onApproved }) {
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
-        <p className="text-xs text-gray-500 mb-4">This finalizes the report as reviewed. Exports will no longer carry the DRAFT watermark. Any later edit reopens it as a draft.</p>
+        <p className="text-xs text-gray-500 mb-4">
+          This finalizes the report as reviewed. Exports will no longer carry the DRAFT watermark.{' '}
+          {tier === 'starter'
+            ? 'Starter plan reports keep the FlacronAI branding watermark — upgrade to export watermark-free.'
+            : 'Your plan exports watermark-free.'}
+          {' '}Any later edit reopens it as a draft.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Full name *</label>
@@ -481,6 +518,727 @@ function RepairEstimateModal({ report, mode, onClose, onSaved }) {
             {saving ? 'Saving…' : isRevise ? 'Save Revision' : 'Create Estimate'}
           </button>
         </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Phase 42 (Section 7 Rendering, Editor & Report Integration): editor for the
+// PRIMARY report's own Phase 41 canonical structured estimate -- a SEPARATE
+// lifecycle from the RepairEstimateModal above (never the same data, never
+// synced). Every dollar amount shown while editing is a client-side PREVIEW
+// only; the actual PUT response's `totals` (recomputed server-side from the
+// submitted line items) is what's kept and displayed afterward -- this
+// modal never persists a client-computed total.
+function CanonicalEstimateEditor({ report, readOnly, onClose, onSaved }) {
+  useEscapeToClose(onClose, true, true);
+  const [phase, setPhase] = useState('loading'); // loading | ready | load-error
+  const [loadErrorMsg, setLoadErrorMsg] = useState('');
+  const [serverEstimate, setServerEstimate] = useState(null); // last known-good server copy (null = legacy/none yet)
+  const [currency, setCurrency] = useState('USD');
+  const [region, setRegion] = useState('');
+  const [lineItems, setLineItems] = useState([]);
+  const [permits, setPermits] = useState([]);
+  const [generalConditions, setGeneralConditions] = useState([]);
+  const [manualAdjustments, setManualAdjustments] = useState([]);
+  const [overheadProfitPercent, setOverheadProfitPercent] = useState('0');
+  const [taxRatePercent, setTaxRatePercent] = useState('0');
+  const [changeSummary, setChangeSummary] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null); // { kind, message, currentRevision }
+  const [expandedId, setExpandedId] = useState(null);
+  const [photos, setPhotos] = useState(null);
+  const [thumbUrls, setThumbUrls] = useState({});
+
+  // Phase 43 (OpenAI Preliminary Pricing Service). Entirely separate,
+  // additive state -- generation never touches lineItems/permits/etc until
+  // the user explicitly accepts + applies a proposal (see applyPricing
+  // below), and Save (above) is completely unaffected. `pricingAccepted` is
+  // a Set of suggestionIds the user has individually checked; nothing is
+  // ever auto-accepted. `pricingAbortRef` backs the Cancel button.
+  const [pricingPanelOpen, setPricingPanelOpen] = useState(false);
+  const [pricingCountry, setPricingCountry] = useState('');
+  const [pricingState, setPricingState] = useState('');
+  const [pricingCity, setPricingCity] = useState('');
+  const [pricingPostalCode, setPricingPostalCode] = useState('');
+  // Phase 46 -> Phase 43 regional-input handoff (additive, out-of-scope
+  // deep wiring deliberately deferred per PHASES.md Phase 46's own scope
+  // note): a ONE-TIME prefill of these manual pricing-location fields from
+  // the report's confirmed PropertyProfile, only while all four are still
+  // blank (never overwrites anything the user already typed here, and
+  // manual entry keeps working unchanged when no confirmed profile exists).
+  useEffect(() => {
+    if (pricingCountry || pricingState || pricingCity || pricingPostalCode) return;
+    const loc = mapPropertyProfileToLocationContext(report?.propertyProfile);
+    if (!loc) return;
+    setPricingCountry(loc.country);
+    setPricingState(loc.state);
+    setPricingCity(loc.city);
+    setPricingPostalCode(loc.postalCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report?.propertyProfile]);
+  const [pricingSelectedIds, setPricingSelectedIds] = useState(new Set()); // existing lineItem ids chosen for pricing
+  const [pricingPhase, setPricingPhase] = useState('idle'); // idle | loading | ready | empty | error
+  const [pricingClassifiedError, setPricingClassifiedError] = useState(null);
+  const [pricingProposal, setPricingProposal] = useState(null); // { proposalId, items, cacheStatus, pricingDate }
+  const [pricingAccepted, setPricingAccepted] = useState(new Set());
+  const pricingAbortRef = useRef(null);
+
+  const applyServerEstimate = (est) => {
+    setServerEstimate(est);
+    const draft = draftFromServerEstimate(est);
+    setCurrency(draft.currency);
+    setRegion(draft.region);
+    setLineItems(draft.lineItems);
+    setPermits(draft.permits);
+    setGeneralConditions(draft.generalConditions);
+    setManualAdjustments(draft.manualAdjustments);
+    setOverheadProfitPercent(draft.overheadProfitPercent);
+    setTaxRatePercent(draft.taxRatePercent);
+    setChangeSummary('');
+    setDirty(false);
+  };
+
+  const load = useCallback(() => {
+    setPhase('loading');
+    setLoadErrorMsg('');
+    reportsAPI.getCanonicalEstimate(report.id)
+      .then((res) => {
+        applyServerEstimate(res.data?.estimate || null);
+        setPhase('ready');
+      })
+      .catch((err) => {
+        setLoadErrorMsg(err?.response?.data?.error || 'Could not load the detailed estimate.');
+        setPhase('load-error');
+      });
+  }, [report.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Evidence photo picker data -- same pattern as SectionedReportEditor's
+  // PhotoPickerModal: private objects fetched as authenticated thumbnail
+  // blobs, only from THIS report's own photos.
+  useEffect(() => {
+    let cancelled = false;
+    const created = [];
+    (async () => {
+      try {
+        const res = await reportsAPI.getPhotos(report.id);
+        const list = (res.data.photos || []).filter((p) => p.status === 'uploaded');
+        if (cancelled) return;
+        setPhotos(list);
+        await Promise.all(list.map(async (p) => {
+          try {
+            const img = await reportsAPI.getPhotoImageBlob(report.id, p.id, 'thumbnail');
+            const url = URL.createObjectURL(img.data);
+            created.push(url);
+            if (!cancelled) setThumbUrls((prev) => ({ ...prev, [p.id]: url }));
+          } catch { /* leave placeholder */ }
+        }));
+      } catch {
+        if (!cancelled) setPhotos([]);
+      }
+    })();
+    return () => { cancelled = true; created.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [report.id]);
+
+  const markDirty = () => { setDirty(true); setSaveError(null); };
+
+  const updateLineItem = (i, field, value) => {
+    setLineItems((prev) => prev.map((li, idx) => (idx === i ? { ...li, [field]: value } : li)));
+    markDirty();
+  };
+  const addLineItem = () => { setLineItems((prev) => [...prev, emptyCanonicalLineItem()]); markDirty(); };
+  const removeLineItem = (i) => {
+    if (lineItems.length <= 1) { toast.error('An estimate needs at least one line item.'); return; }
+    if (!window.confirm('Remove this line item? This cannot be undone once you save.')) return;
+    setLineItems((prev) => removeLineItemAt(prev, i));
+    markDirty();
+  };
+  const moveLineItem = (i, dir) => {
+    setLineItems((prev) => reorderLineItems(prev, i, dir));
+    markDirty();
+  };
+  const toggleEvidence = (i, photoId) => {
+    setLineItems((prev) => toggleLineItemEvidence(prev, i, photoId));
+    markDirty();
+  };
+
+  const makeAmountListHandlers = (setList) => ({
+    add: () => { setList((prev) => [...prev, emptyLabeledAmount()]); markDirty(); },
+    update: (i, field, value) => { setList((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r))); markDirty(); },
+    remove: (i) => { setList((prev) => prev.filter((_, idx) => idx !== i)); markDirty(); },
+  });
+  // Cheap to recreate every render (each just closes over its own setter) --
+  // no memoization needed since these are only ever used as JSX handlers.
+  const permitHandlers = makeAmountListHandlers(setPermits);
+  const gcHandlers = makeAmountListHandlers(setGeneralConditions);
+  const adjHandlers = makeAmountListHandlers(setManualAdjustments);
+
+  // Phase 43 (OpenAI Preliminary Pricing Service). Selecting an existing
+  // line item to (re)price, generating a proposal (review-only, never
+  // persists), then accepting individual items and merging them into THIS
+  // component's own draft state -- the user still clicks the existing Save
+  // button above to persist. Never renders provider/model anywhere (see
+  // pricingSuggestions.js's header comment).
+  const togglePricingSelection = (id) => {
+    setPricingSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const cancelPricingGeneration = () => {
+    pricingAbortRef.current?.abort();
+  };
+
+  const generatePricing = async ({ regenerate = false } = {}) => {
+    if (!canStartPriceSuggestionsGeneration({ generating: pricingPhase === 'loading', readOnly })) return;
+    const targets = lineItems
+      .filter((li) => pricingSelectedIds.has(li.id))
+      .map((li) => ({
+        targetLineItemId: li.id,
+        room: li.room, damageType: li.damageType, repairAction: li.repairAction,
+        description: li.description, material: li.material, quantity: li.quantity, unit: li.unit,
+        trade: li.trade, category: li.category,
+      }));
+    const localError = validatePriceSuggestionsRequest({ locationContext: { country: pricingCountry }, targets });
+    if (localError) { toast.error(localError); return; }
+
+    const controller = new AbortController();
+    pricingAbortRef.current = controller;
+    setPricingPhase('loading');
+    setPricingClassifiedError(null);
+    try {
+      const payload = buildPriceSuggestionsRequestPayload({
+        locationContext: { country: pricingCountry, state: pricingState, city: pricingCity, postalCode: pricingPostalCode },
+        currency, targets, regenerate,
+      });
+      const res = await reportsAPI.getPriceSuggestions(report.id, payload, controller.signal);
+      const items = res.data?.items || [];
+      setPricingProposal({
+        proposalId: res.data?.proposalId,
+        items,
+        cacheStatus: res.data?.cacheStatus,
+        pricingDate: res.data?.pricingDate,
+      });
+      setPricingAccepted(new Set());
+      setPricingPhase(items.length === 0 ? 'empty' : 'ready');
+    } catch (err) {
+      const classified = classifyPriceSuggestionsError(err);
+      if (classified.kind === 'cancelled') { setPricingPhase('idle'); return; }
+      setPricingClassifiedError(classified);
+      setPricingPhase('error');
+    } finally {
+      pricingAbortRef.current = null;
+    }
+  };
+
+  const togglePricingAccepted = (suggestionId) => {
+    setPricingAccepted((prev) => {
+      const next = new Set(prev);
+      if (next.has(suggestionId)) next.delete(suggestionId);
+      else next.add(suggestionId);
+      return next;
+    });
+  };
+
+  const applyPricing = () => {
+    if (!pricingProposal || pricingAccepted.size === 0) return;
+    const { lineItems: merged, applied, skipped } = mergeProposedPricingIntoLineItems(
+      lineItems,
+      pricingProposal.proposalId,
+      pricingProposal.items,
+      [...pricingAccepted]
+    );
+    setLineItems(merged);
+    markDirty();
+    setPricingSelectedIds(new Set());
+    setPricingProposal(null);
+    setPricingAccepted(new Set());
+    setPricingPhase('idle');
+    if (skipped.length > 0) {
+      toast.error(`${applied.length} item(s) applied; ${skipped.length} skipped (already has a manual price override).`);
+    } else {
+      toast.success(`${applied.length} preliminary price${applied.length === 1 ? '' : 's'} applied -- review, then Save to persist.`);
+    }
+  };
+
+  // Client-side PREVIEW only (see computeEstimatePreviewTotals's own header
+  // comment for the documented roll-up order) -- the server independently
+  // recomputes and returns the authoritative figures after save
+  // (applyServerEstimate above replaces this preview with that state); it
+  // is never submitted or trusted as final.
+  const preview = useMemo(
+    () => computeEstimatePreviewTotals(lineItems, permits, generalConditions, manualAdjustments, overheadProfitPercent, taxRatePercent),
+    [lineItems, permits, generalConditions, manualAdjustments, overheadProfitPercent, taxRatePercent]
+  );
+
+  const save = async () => {
+    if (!canStartCanonicalEstimateSave({ saving, readOnly })) return;
+    const localError = validateCanonicalEstimateDraft(lineItems);
+    if (localError) { toast.error(localError); return; }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const payload = buildCanonicalEstimatePayload({
+        serverEstimate, currency, region, changeSummary, overheadProfitPercent, taxRatePercent,
+        lineItems, permits, generalConditions, manualAdjustments,
+      });
+      const res = await reportsAPI.saveCanonicalEstimate(report.id, payload);
+      applyServerEstimate(res.data.estimate);
+      onSaved?.();
+      toast.success('Detailed estimate saved');
+    } catch (err) {
+      setSaveError(classifyCanonicalEstimateSaveError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (shouldWarnBeforeClosingCanonicalEstimateEditor({ dirty, saving })) {
+      if (!window.confirm('You have unsaved changes to the detailed estimate. Close without saving?')) return;
+    }
+    onClose();
+  };
+
+  const inputCls = 'w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:bg-gray-50 disabled:text-gray-500';
+  const smallInputCls = 'w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:bg-gray-50 disabled:text-gray-500';
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={() => !saving && handleClose()}>
+      <motion.div className="card w-full max-w-6xl max-h-[90vh] overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="canonical-estimate-title"
+        initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 id="canonical-estimate-title" className="text-lg font-bold text-gray-900">
+            Section 7 — Detailed Repair Estimate {readOnly && <span className="text-xs font-normal text-gray-500">(read-only)</span>}
+          </h2>
+          <button onClick={handleClose} disabled={saving} aria-label="Close" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Pricing Source generated by: Flacron Engine only applies once Phase 43's AI pricing is enabled -- every figure here today is manually entered and computed automatically. FlacronAI's AI never decides a dollar amount. Status: {serverEstimate ? `Revision ${serverEstimate.revision}` : 'No estimate saved yet'} — Preliminary / Editable.
+        </p>
+
+        {phase === 'loading' && (
+          <div className="flex items-center gap-2 text-sm text-gray-500 py-10 justify-center">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Loading detailed estimate…
+          </div>
+        )}
+
+        {phase === 'load-error' && (
+          <div className="flex flex-col items-center gap-3 py-10">
+            <AlertCircle className="w-8 h-8 text-amber-500" />
+            <p className="text-sm text-gray-700">{loadErrorMsg}</p>
+            <button onClick={load} className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Retry</button>
+          </div>
+        )}
+
+        {phase === 'ready' && (
+          <>
+            {readOnly && (
+              <div className="card p-3 mb-4 bg-gray-50 border border-gray-200 text-xs text-gray-600 flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 shrink-0" /> This report is finalized or you only have view access -- the detailed estimate is shown read-only.
+              </div>
+            )}
+            {saveError?.kind === 'conflict' && (
+              <div className="card p-3 mb-4 border border-amber-300 bg-amber-50 text-xs text-amber-800 flex items-center justify-between gap-3">
+                <span>{saveError.message}</span>
+                <button
+                  onClick={() => { if (window.confirm('Discard your unsaved changes and reload the latest saved estimate?')) load(); }}
+                  className="btn-secondary text-xs py-1.5 px-3 shrink-0"
+                >
+                  Discard & Reload
+                </button>
+              </div>
+            )}
+            {saveError && saveError.kind !== 'conflict' && (
+              <div className="card p-3 mb-4 border border-red-300 bg-red-50 text-xs text-red-700 flex items-center justify-between gap-3">
+                <span>{saveError.message}</span>
+                {saveError.kind === 'network' && (
+                  <button onClick={save} className="btn-secondary text-xs py-1.5 px-3 shrink-0">Retry</button>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                <input value={currency} disabled={readOnly} onChange={(e) => { setCurrency(e.target.value); markDirty(); }} maxLength={3} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Location / Region</label>
+                <input value={region} disabled={readOnly} onChange={(e) => { setRegion(e.target.value); markDirty(); }} placeholder="e.g. Central TX" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Overhead & Profit %</label>
+                <input type="number" min="0" max="100" step="any" value={overheadProfitPercent} disabled={readOnly} onChange={(e) => { setOverheadProfitPercent(e.target.value); markDirty(); }} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sales tax rate %</label>
+                <input type="number" min="0" max="100" step="any" value={taxRatePercent} disabled={readOnly} onChange={(e) => { setTaxRatePercent(e.target.value); markDirty(); }} className={inputCls} />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Line Items</h3>
+              {!readOnly && (
+                <button onClick={addLineItem} className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add Line Item</button>
+              )}
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {lineItems.map((li, i) => {
+                const comp = (Number(li.materialUnitCost) || 0) + (Number(li.laborUnitCost) || 0) + (Number(li.equipmentUnitCost) || 0);
+                const effectiveUnitPrice = li.overrideActive ? (Number(li.unitPriceOverride) || 0) : comp;
+                const expanded = expandedId === li.id;
+                return (
+                  <div key={li.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-end">
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Room / Area *</label>
+                        <input aria-label={`Room for line item ${i + 1}`} value={li.room} disabled={readOnly} onChange={(e) => updateLineItem(i, 'room', e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Category *</label>
+                        <input aria-label={`Category for line item ${i + 1}`} value={li.category} disabled={readOnly} onChange={(e) => updateLineItem(i, 'category', e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Description *</label>
+                        <input aria-label={`Description for line item ${i + 1}`} value={li.description} disabled={readOnly} onChange={(e) => updateLineItem(i, 'description', e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Qty *</label>
+                        <input aria-label={`Quantity for line item ${i + 1}`} type="number" min="0" step="any" value={li.quantity} disabled={readOnly} onChange={(e) => updateLineItem(i, 'quantity', e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Unit *</label>
+                        <select aria-label={`Unit for line item ${i + 1}`} value={li.unit} disabled={readOnly} onChange={(e) => updateLineItem(i, 'unit', e.target.value)} className={smallInputCls}>
+                          {CANONICAL_UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-2 text-xs">
+                      <div className="flex items-center gap-3 text-gray-500">
+                        <span>Unit Price: <span className="font-semibold text-gray-800">{money(effectiveUnitPrice)}</span></span>
+                        <span>Line Total: <span className="font-semibold text-brand-600">{money(effectiveUnitPrice * (Number(li.quantity) || 0))}</span></span>
+                        <label className="flex items-center gap-1">
+                          <input type="checkbox" checked={li.taxable !== false} disabled={readOnly} onChange={(e) => updateLineItem(i, 'taxable', e.target.checked)} /> Taxable
+                        </label>
+                        {li.evidencePhotoIds.length > 0 && <span>{li.evidencePhotoIds.length} photo(s) linked</span>}
+                        {li.pricingSource === 'ai_suggested' && (
+                          <span className="inline-flex items-center gap-1 text-brand-600"><Sparkles className="w-3 h-3" /> Flacron Engine priced</span>
+                        )}
+                        {!readOnly && (
+                          <label className="flex items-center gap-1" title="Include this item the next time you generate preliminary pricing">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select line item ${i + 1} for preliminary pricing`}
+                              checked={pricingSelectedIds.has(li.id)}
+                              onChange={() => togglePricingSelection(li.id)}
+                            /> Price this
+                          </label>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => moveLineItem(i, -1)} disabled={readOnly || i === 0} aria-label={`Move line item ${i + 1} up`} className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => moveLineItem(i, 1)} disabled={readOnly || i === lineItems.length - 1} aria-label={`Move line item ${i + 1} down`} className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setExpandedId(expanded ? null : li.id)} className="text-brand-600 hover:underline px-2">{expanded ? 'Hide details' : 'Details'}</button>
+                        {!readOnly && lineItems.length > 1 && (
+                          <button onClick={() => removeLineItem(i)} aria-label={`Remove line item ${i + 1}`} className="text-gray-400 hover:text-red-500 p-1"><X className="w-3.5 h-3.5" /></button>
+                        )}
+                      </div>
+                    </div>
+
+                    {expanded && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Trade</label>
+                          <input value={li.trade} disabled={readOnly} onChange={(e) => updateLineItem(i, 'trade', e.target.value)} className={smallInputCls} placeholder="defaults to category" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Repair Action</label>
+                          <input value={li.repairAction} disabled={readOnly} onChange={(e) => updateLineItem(i, 'repairAction', e.target.value)} className={smallInputCls} placeholder="e.g. Replace" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Material</label>
+                          <input value={li.material} disabled={readOnly} onChange={(e) => updateLineItem(i, 'material', e.target.value)} className={smallInputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Damage Type</label>
+                          <input value={li.damageType} disabled={readOnly} onChange={(e) => updateLineItem(i, 'damageType', e.target.value)} className={smallInputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Material Cost</label>
+                          <input type="number" min="0" step="any" value={li.materialUnitCost} disabled={readOnly} onChange={(e) => updateLineItem(i, 'materialUnitCost', e.target.value)} className={smallInputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Labor Cost</label>
+                          <input type="number" min="0" step="any" value={li.laborUnitCost} disabled={readOnly} onChange={(e) => updateLineItem(i, 'laborUnitCost', e.target.value)} className={smallInputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Equipment Cost</label>
+                          <input type="number" min="0" step="any" value={li.equipmentUnitCost} disabled={readOnly} onChange={(e) => updateLineItem(i, 'equipmentUnitCost', e.target.value)} className={smallInputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Confidence</label>
+                          <select value={li.confidence} disabled={readOnly} onChange={(e) => updateLineItem(i, 'confidence', e.target.value)} className={smallInputCls}>
+                            {CANONICAL_CONFIDENCE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
+                          <select value={li.lineStatus} disabled={readOnly} onChange={(e) => updateLineItem(i, 'lineStatus', e.target.value)} className={smallInputCls}>
+                            {CANONICAL_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div className="sm:col-span-3">
+                          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Assumptions</label>
+                          <input value={li.assumptions} disabled={readOnly} onChange={(e) => updateLineItem(i, 'assumptions', e.target.value)} className={smallInputCls} />
+                        </div>
+
+                        <div className="col-span-2 sm:col-span-4 border-t border-gray-100 pt-2 mt-1">
+                          <label className="flex items-center gap-1.5 text-xs text-gray-700 mb-1">
+                            <input type="checkbox" checked={li.overrideActive} disabled={readOnly} onChange={(e) => updateLineItem(i, 'overrideActive', e.target.checked)} />
+                            Manually override unit price (otherwise computed as Material + Labor + Equipment = {money(comp)})
+                          </label>
+                          {li.overrideActive && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="number" min="0" step="any" value={li.unitPriceOverride} disabled={readOnly} onChange={(e) => updateLineItem(i, 'unitPriceOverride', e.target.value)} className={smallInputCls} placeholder="Override unit price" />
+                              <input value={li.overrideReason} disabled={readOnly} onChange={(e) => updateLineItem(i, 'overrideReason', e.target.value)} className={smallInputCls} placeholder="Reason for override (required)" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="col-span-2 sm:col-span-4 border-t border-gray-100 pt-2 mt-1">
+                          <p className="text-[10px] font-medium text-gray-500 mb-1">Evidence photos (from this report only)</p>
+                          {photos === null && <p className="text-xs text-gray-400">Loading photos…</p>}
+                          {photos?.length === 0 && <p className="text-xs text-gray-400">No uploaded photos on this report yet.</p>}
+                          {photos?.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {photos.map((p) => {
+                                const checked = li.evidencePhotoIds.includes(p.id);
+                                return (
+                                  <button key={p.id} type="button" disabled={readOnly} onClick={() => toggleEvidence(i, p.id)}
+                                    aria-pressed={checked}
+                                    className={`relative h-14 w-14 overflow-hidden rounded-lg border-2 ${checked ? 'border-brand-500' : 'border-gray-200'} disabled:opacity-60`}>
+                                    {thumbUrls[p.id] ? (
+                                      <img src={thumbUrls[p.id]} alt={p.fileName || 'Report photo'} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <span className="flex h-full w-full items-center justify-center text-[9px] text-gray-400">…</span>
+                                    )}
+                                    {checked && <span className="absolute right-0.5 top-0.5 rounded-full bg-brand-500 p-0.5"><CheckCircle className="w-2.5 h-2.5 text-white" /></span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {[
+              { title: 'Permits', rows: permits, handlers: permitHandlers, allowNegative: false },
+              { title: 'General Conditions', rows: generalConditions, handlers: gcHandlers, allowNegative: false },
+              { title: 'Manual Adjustments', rows: manualAdjustments, handlers: adjHandlers, allowNegative: true },
+            ].map(({ title, rows, handlers, allowNegative }) => (
+              <div key={title} className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-sm font-bold text-gray-800">{title}</h3>
+                  {!readOnly && <button onClick={handlers.add} className="btn-secondary text-xs py-1 px-2">+ Add</button>}
+                </div>
+                {rows.length === 0 && <p className="text-xs text-gray-400 mb-1">None entered.</p>}
+                {rows.map((r, i) => (
+                  <div key={r.id} className="flex items-center gap-2 mb-1.5">
+                    <input value={r.description} disabled={readOnly} onChange={(e) => handlers.update(i, 'description', e.target.value)} placeholder="Description" className={`${smallInputCls} flex-1`} />
+                    <input type="number" step="any" min={allowNegative ? undefined : 0} value={r.amount} disabled={readOnly} onChange={(e) => handlers.update(i, 'amount', e.target.value)} className={`${smallInputCls} w-24`} />
+                    <label className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
+                      <input type="checkbox" checked={r.taxable !== false} disabled={readOnly} onChange={(e) => handlers.update(i, 'taxable', e.target.checked)} /> Taxable
+                    </label>
+                    {!readOnly && (
+                      <button onClick={() => { if (window.confirm('Remove this entry?')) handlers.remove(i); }} aria-label="Remove entry" className="text-gray-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            <div className="card p-3 mb-5 bg-gray-50 border border-gray-200 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Line-Item Subtotal</span><span className="font-medium">{money(preview.lineSubtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Permits</span><span className="font-medium">{money(preview.permitsTotal)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">General Conditions</span><span className="font-medium">{money(preview.gcTotal)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Manual Adjustments</span><span className="font-medium">{money(preview.adjTotal)}</span></div>
+              <div className="flex justify-between border-t border-gray-200 mt-1 pt-1"><span className="font-semibold text-gray-700">Direct Cost</span><span className="font-semibold">{money(preview.directCost)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Overhead & Profit ({overheadProfitPercent || 0}%)</span><span className="font-medium">{money(preview.op)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Taxable Basis (excludes O&P)</span><span className="font-medium">{money(preview.taxableBasis)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Tax ({taxRatePercent || 0}%)</span><span className="font-medium">{money(preview.tax)}</span></div>
+              <div className="flex justify-between border-t border-gray-200 mt-1 pt-1"><span className="font-bold text-gray-800">Total Estimate</span><span className="font-bold text-brand-600">{money(preview.grandTotal)}</span></div>
+              <p className="text-[10px] text-gray-400 mt-1">Preview only -- the server recomputes and stores the authoritative totals shown after Save.</p>
+              {serverEstimate?.totals && (
+                <p className="text-[10px] text-gray-500 mt-1">Last saved (Rev. {serverEstimate.revision}) authoritative total: <span className="font-semibold">{money(serverEstimate.totals.grandTotal)}</span></p>
+              )}
+            </div>
+
+            {/* Phase 43 (OpenAI Preliminary Pricing Service). Hidden entirely
+                when read-only (finalized report or view-only access) -- same
+                `readOnly` flag already gating the rest of this editor. Every
+                figure generated here is a PROPOSAL ONLY: nothing here is
+                persisted until the user accepts items and clicks the
+                existing Save Detailed Estimate button below. Never renders
+                a provider/model name anywhere -- only the fixed labels
+                "Flacron Engine" / "Preliminary / Editable". */}
+            {!readOnly && (
+              <div className="card p-3 mb-5 border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setPricingPanelOpen((v) => !v)}
+                  className="w-full flex items-center justify-between text-sm font-bold text-gray-800"
+                >
+                  <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-600" /> Preliminary Pricing (Flacron Engine)</span>
+                  <span className="text-xs font-normal text-gray-400">{pricingPanelOpen ? 'Hide' : 'Show'}</span>
+                </button>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Optional. Suggests a preliminary, editable material/labor/equipment cost for the item(s) you select below --
+                  never a final price. Status: Preliminary / Editable. Every suggestion must be reviewed and accepted before it counts toward the estimate.
+                </p>
+
+                {pricingPanelOpen && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Country *</label>
+                        <input value={pricingCountry} onChange={(e) => setPricingCountry(e.target.value)} placeholder="e.g. US" className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">State/Province</label>
+                        <input value={pricingState} onChange={(e) => setPricingState(e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">City</label>
+                        <input value={pricingCity} onChange={(e) => setPricingCity(e.target.value)} className={smallInputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Postal Code</label>
+                        <input value={pricingPostalCode} onChange={(e) => setPricingPostalCode(e.target.value)} className={smallInputCls} />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mb-2">
+                      {pricingSelectedIds.size === 0
+                        ? 'Check "Price this" on one or more line items above, then generate.'
+                        : `${pricingSelectedIds.size} line item(s) selected for pricing.`}
+                    </p>
+
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => generatePricing({ regenerate: false })}
+                        disabled={pricingPhase === 'loading' || pricingSelectedIds.size === 0}
+                        className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {pricingPhase === 'loading' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        {pricingPhase === 'loading' ? 'Generating…' : 'Generate Preliminary Pricing'}
+                      </button>
+                      {pricingPhase === 'loading' && (
+                        <button type="button" onClick={cancelPricingGeneration} className="btn-secondary text-xs py-1.5 px-3">Cancel</button>
+                      )}
+                      {pricingProposal && pricingPhase !== 'loading' && (
+                        <button type="button" onClick={() => generatePricing({ regenerate: true })} className="text-xs text-gray-500 hover:text-gray-700 underline">
+                          Regenerate
+                        </button>
+                      )}
+                    </div>
+
+                    {pricingPhase === 'error' && pricingClassifiedError && (
+                      <div className="card p-3 mb-3 border border-red-300 bg-red-50 text-xs text-red-700 flex items-center justify-between gap-3">
+                        <span>{pricingClassifiedError.message}</span>
+                        {['retryable', 'rate_limited', 'network'].includes(pricingClassifiedError.kind) && (
+                          <button onClick={() => generatePricing({ regenerate: false })} className="btn-secondary text-xs py-1.5 px-3 shrink-0">Retry</button>
+                        )}
+                      </div>
+                    )}
+
+                    {pricingPhase === 'empty' && (
+                      <p className="text-xs text-gray-500 mb-3">No preliminary pricing suggestions are available for this scope. You can still price these items manually.</p>
+                    )}
+
+                    {pricingPhase === 'ready' && pricingProposal && (
+                      <div className="space-y-2 mb-3">
+                        {pricingProposal.cacheStatus === 'hit' && (
+                          <p className="text-[10px] text-gray-400">Served from a previously generated suggestion for this same scope.</p>
+                        )}
+                        {pricingProposal.items.map((item) => (
+                          <label key={item.suggestionId} className="flex items-start gap-2 border border-gray-200 rounded-lg p-2 text-xs cursor-pointer hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={pricingAccepted.has(item.suggestionId)}
+                              onChange={() => togglePricingAccepted(item.suggestionId)}
+                              aria-label={`Accept preliminary pricing for ${item.description}`}
+                            />
+                            <span className="flex-1">
+                              <span className="font-semibold text-gray-800">{item.description}</span>{' '}
+                              <span className="text-gray-500">({item.room}{item.targetLineItemId ? '' : ' -- new item'})</span>
+                              <br />
+                              Material {money(item.materialUnitCost)} + Labor {money(item.laborUnitCost)} + Equipment {money(item.equipmentUnitCost)}
+                              {' = '}Unit Price {money(item.unitPrice)} · Line Total <span className="font-semibold text-brand-600">{money(item.lineTotal)}</span>
+                              <br />
+                              <span className="text-gray-400">Confidence: {item.confidence}{item.assumptions ? ` · ${item.assumptions}` : ''}</span>
+                            </span>
+                          </label>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={applyPricing}
+                          disabled={pricingAccepted.size === 0}
+                          className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Apply {pricingAccepted.size > 0 ? `${pricingAccepted.size} ` : ''}Accepted Item{pricingAccepted.size === 1 ? '' : 's'}
+                        </button>
+                        <p className="text-[10px] text-gray-400">Applying merges the accepted item(s) into the estimate above -- nothing is saved until you click Save Detailed Estimate.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!readOnly && (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Change summary (optional)</label>
+                <textarea value={changeSummary} onChange={(e) => { setChangeSummary(e.target.value); markDirty(); }} rows={2}
+                  placeholder="e.g. Added kitchen drywall and flooring line items"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+              </div>
+            )}
+
+            {!readOnly && (
+              <div className="flex gap-3 mt-2">
+                <button onClick={handleClose} disabled={saving} className="btn-secondary flex-1 text-sm py-2 disabled:opacity-50">Close</button>
+                <button onClick={save} disabled={saving} className="btn-primary flex-1 text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-50">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  {saving ? 'Saving…' : 'Save Detailed Estimate'}
+                </button>
+              </div>
+            )}
+            {readOnly && (
+              <div className="flex mt-2">
+                <button onClick={onClose} className="btn-secondary flex-1 text-sm py-2">Close</button>
+              </div>
+            )}
+          </>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -1267,6 +2025,239 @@ function ReviewResponseModal({ decision, onClose, onSubmit }) {
   );
 }
 
+// Phase 45 (Stripe Report-Specific Photo Add-Ons). Client sends only a
+// server-known `packId` (+ the report id) -- the checkout endpoint resolves
+// every authoritative value itself (see routes/payment.js). This modal never
+// treats a redirect back from Stripe as proof of payment on its own: when
+// `autoSyncIntentId` is set (from the success redirect's query string), it
+// calls the server sync endpoint and then reloads capacity from the server,
+// same as the webhook path would eventually produce.
+function PhotoAddOnModal({ report, onClose, autoSyncIntentId }) {
+  useEscapeToClose(onClose, true, true);
+  const [phase, setPhase] = useState('loading'); // loading | ready | load-error
+  const [loadErrorMsg, setLoadErrorMsg] = useState('');
+  const [photoCapacity, setPhotoCapacity] = useState(null);
+  const [catalogue, setCatalogue] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [checkoutPhase, setCheckoutPhase] = useState('idle'); // idle | creating | redirecting | error | network_retry
+  const [checkoutPackId, setCheckoutPackId] = useState(null);
+  const [checkoutErrorMsg, setCheckoutErrorMsg] = useState('');
+
+  const load = useCallback(() => {
+    setPhase('loading');
+    setLoadErrorMsg('');
+    Promise.all([reportsAPI.getReportPhotoCapacity(report.id), paymentAPI.getPhotoPacks()])
+      .then(([capRes, packRes]) => {
+        setPhotoCapacity(capRes.data);
+        setCatalogue(packRes.data);
+        setPhase('ready');
+      })
+      .catch((err) => {
+        setLoadErrorMsg(err?.response?.data?.error || 'Could not load photo capacity.');
+        setPhase('load-error');
+      });
+  }, [report.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!autoSyncIntentId) return;
+    setSyncing(true);
+    paymentAPI.syncPhotoPackCheckout(autoSyncIntentId)
+      .catch(() => {}) // the webhook remains the authoritative fallback either way
+      .finally(() => { setSyncing(false); load(); });
+    // Only ever runs once per mount for the intent the redirect named.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSyncIntentId]);
+
+  const buy = async (packId) => {
+    setCheckoutPhase('creating');
+    setCheckoutPackId(packId);
+    setCheckoutErrorMsg('');
+    try {
+      const res = await paymentAPI.createPhotoPackCheckout(report.id, packId);
+      if (res.data?.unlimited) {
+        toast('Your plan already includes unlimited photo capacity.', { icon: 'ℹ️' });
+        setCheckoutPhase('idle');
+        return;
+      }
+      if (res.data?.url) {
+        setCheckoutPhase('redirecting');
+        window.location.href = res.data.url;
+        return;
+      }
+      setCheckoutPhase('idle');
+    } catch (err) {
+      setCheckoutErrorMsg(err?.response?.data?.error || 'Could not start checkout. Please try again.');
+      setCheckoutPhase(err?.response ? 'error' : 'network_retry');
+    }
+  };
+
+  const availability = deriveAddOnAvailability({ report, photoCapacity, catalogue });
+  const breakdown = deriveCapacityBreakdown(photoCapacity);
+  const packs = derivePurchasablePacks(catalogue);
+  const purchases = (photoCapacity?.purchases || []).map(deriveSanitizedPurchaseDisplay).filter(Boolean);
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={() => checkoutPhase !== 'creating' && checkoutPhase !== 'redirecting' && onClose()}>
+      <motion.div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="photo-addon-modal-title"
+        initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 id="photo-addon-modal-title" className="text-lg font-bold text-gray-900">Add Photo Capacity</h2>
+          <button onClick={onClose} aria-label="Close" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        {phase === 'loading' && <p className="text-sm text-gray-500">Loading…</p>}
+        {phase === 'load-error' && (
+          <div className="text-sm text-red-600 flex items-center gap-2">
+            {loadErrorMsg}
+            <button onClick={load} className="btn-secondary text-xs py-1 px-2">Retry</button>
+          </div>
+        )}
+
+        {phase === 'ready' && (
+          <>
+            {syncing && <p className="text-xs text-gray-500 mb-3">Confirming your payment…</p>}
+
+            {breakdown && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mb-4 bg-gray-50 rounded-lg p-3">
+                <div>Base plan capacity: <strong>{breakdown.unlimited ? 'Unlimited' : breakdown.basePhotoLimit}</strong></div>
+                <div>Purchased capacity: <strong>{breakdown.unlimited ? '—' : breakdown.addOnCapacity}</strong></div>
+                <div>Effective capacity: <strong>{breakdown.unlimited ? 'Unlimited' : breakdown.effectiveCapacity}</strong></div>
+                <div>Remaining: <strong>{breakdown.unlimited ? 'Unlimited' : breakdown.remaining}</strong></div>
+              </div>
+            )}
+
+            {availability.state === 'unlimited' && (
+              <p className="text-sm text-green-700 mb-3">Your plan already includes unlimited photo capacity for this report — no purchase needed.</p>
+            )}
+            {(availability.state === 'ineligible' || availability.state === 'not_configured') && (
+              <p className="text-sm text-gray-500 mb-3">{availability.reason}</p>
+            )}
+
+            {availability.state === 'available' && (
+              <div className="space-y-2 mb-4">
+                {packs.map((pack) => (
+                  <div key={pack.id} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{pack.label}</div>
+                      <div className="text-xs text-gray-500">{pack.displayPrice} one-time, this report only</div>
+                    </div>
+                    <button
+                      disabled={pack.disabled || checkoutPhase === 'creating' || checkoutPhase === 'redirecting'}
+                      onClick={() => buy(pack.id)}
+                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
+                    >
+                      {deriveCheckoutButtonLabel(checkoutPackId === pack.id ? checkoutPhase : 'idle', pack.label)}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(checkoutPhase === 'error' || checkoutPhase === 'network_retry') && checkoutErrorMsg && (
+              <p className="text-xs text-red-600 mb-3">{checkoutErrorMsg}</p>
+            )}
+
+            {purchases.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-600 mb-2">Purchase history</h3>
+                <ul className="space-y-1">
+                  {purchases.map((p) => (
+                    <li key={p.id} className="text-xs text-gray-600 flex items-center justify-between">
+                      <span>+{p.capacity} photos ({p.displayPrice})</span>
+                      <span className="capitalize">{p.bucket.replace(/_/g, ' ')}{p.needsManualReview ? ' · under review' : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Phase 47 (Property Intelligence: RealtyAPI U.S. Adapter & Report
+// Integration). Wraps PropertyIntelligenceReview (components/
+// PropertyProfileReview.jsx) with the actual lookup/apply API calls -- the
+// component itself stays pure/presentational. `onSaved` lets the caller
+// re-fetch the report so the desktop preview's `propertySection3Markdown`
+// (server-computed, see routes/reports.js's GET /:id) picks up newly
+// confirmed fields.
+function PropertyIntelligenceModal({ report, onClose, onSaved }) {
+  useEscapeToClose(onClose, true, true);
+  const [intelligence, setIntelligence] = useState(report.propertyProfile?.propertyIntelligence || null);
+  const [lookupResult, setLookupResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const eligibility = computePropertyIntelligenceEligibility(report.propertyProfile);
+
+  const runLookup = async (recheck) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await reportsAPI.requestPropertyIntelligence(report.id, { recheck: !!recheck });
+      setLookupResult(res.data);
+    } catch (err) {
+      setError({ code: err?.response?.data?.code, message: err?.response?.data?.error || 'Could not look up property details. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applySelection = async (payload) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await reportsAPI.applyPropertyIntelligence(report.id, payload);
+      setIntelligence(res.data.propertyIntelligence);
+      setLookupResult(null);
+      toast.success('Property details confirmed');
+      onSaved?.();
+    } catch (err) {
+      setError({ code: err?.response?.data?.code, message: err?.response?.data?.error || 'Could not save property details. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={() => !saving && onClose()}>
+      <motion.div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" role="dialog" aria-modal="true" aria-labelledby="property-intelligence-modal-title"
+        initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 id="property-intelligence-modal-title" className="text-lg font-bold text-gray-900">Property Details (Section 3)</h2>
+          <button onClick={onClose} aria-label="Close" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <PropertyIntelligenceReview
+          eligibility={eligibility}
+          intelligence={intelligence}
+          lookupResult={lookupResult}
+          loading={loading}
+          saving={saving}
+          error={error}
+          onLookup={runLookup}
+          onApply={applySelection}
+        />
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // Phase 11 (Report Preview, Export Options & Document Layout Completion): a
 // real, bookmarkable, directly-linkable report page -- ahead of the broader
 // Phase 30 routing migration, added here specifically because the spec calls
@@ -1277,6 +2268,7 @@ function ReviewResponseModal({ decision, onClose, onSubmit }) {
 export default function ReportPreviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { tier, user } = useAuth();
 
   const [report, setReport] = useState(null);
@@ -1300,6 +2292,40 @@ export default function ReportPreviewPage() {
   const [showEstimateModal, setShowEstimateModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showCoverageLetterModal, setShowCoverageLetterModal] = useState(false);
+  const [showCanonicalEstimateModal, setShowCanonicalEstimateModal] = useState(false);
+  // Phase 42 (2026-09-18 correction, CHECK 1): the server-computed Section 7
+  // detail markdown (same string the export route splices into PDF/DOCX/
+  // HTML) -- '' when the report has no canonical estimate yet, which is a
+  // documented no-op for `injectSection7Detail` below, so desktop preview
+  // follows the EXACT same replace-the-legacy-body selection rule as every
+  // export format, not a separate/stale rendering path.
+  const [canonicalDetailMarkdown, setCanonicalDetailMarkdown] = useState('');
+  // Phase 45 (Stripe Report-Specific Photo Add-Ons).
+  const [showPhotoAddOnModal, setShowPhotoAddOnModal] = useState(false);
+  const [photoAddOnSyncIntentId, setPhotoAddOnSyncIntentId] = useState(null);
+  // Phase 47 (Property Intelligence: RealtyAPI U.S. Adapter & Report
+  // Integration).
+  const [showPropertyIntelligenceModal, setShowPropertyIntelligenceModal] = useState(false);
+
+  // Detect a post-Stripe-Checkout redirect back to this exact report page.
+  // The query string is NEVER treated as proof of payment -- it only decides
+  // whether to open the panel and ask the SERVER (via the sync endpoint,
+  // inside PhotoAddOnModal) what actually happened, same spirit as
+  // Dashboard.jsx's existing subscription-checkout redirect handling.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const cancelled = params.get('photoPackCheckout') === 'cancelled';
+    const { shouldSync, intentId } = shouldSyncAfterRedirect(params);
+    if (!shouldSync && !cancelled) return;
+    navigate(`/reports/${id}/preview`, { replace: true }); // clean the URL immediately
+    if (cancelled) {
+      toast('Checkout cancelled — no charge was made.', { icon: 'ℹ️' });
+      return;
+    }
+    setPhotoAddOnSyncIntentId(intentId);
+    setShowPhotoAddOnModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -1313,6 +2339,9 @@ export default function ReportPreviewPage() {
       })
       .catch((err) => setError(err?.response?.status === 404 ? 'not_found' : 'error'))
       .finally(() => setLoading(false));
+    reportsAPI.getCanonicalEstimate(id)
+      .then((res) => setCanonicalDetailMarkdown(res.data?.detailMarkdown || ''))
+      .catch(() => setCanonicalDetailMarkdown('')); // best-effort; never blocks the report itself from loading
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -1345,7 +2374,21 @@ export default function ReportPreviewPage() {
 
   // Must run unconditionally (before the loading/error early returns below)
   // to satisfy the Rules of Hooks -- guards internally instead.
+  // NOTE: comment anchors (`sections`, below) intentionally keep using the
+  // report's REAL stored `content` -- comments anchor to actual section
+  // titles that exist in the persisted document, not this display-only
+  // substitution. Only the visible desktop preview uses `displayContent`.
   const sections = useMemo(() => (report ? parseReportSections(report.content) : []), [report]);
+  const displayContent = useMemo(() => {
+    if (!report) return '';
+    const withSection7 = injectSection7Detail(report.content, canonicalDetailMarkdown);
+    // Phase 47: same architecture as Section 7 above -- the server computes
+    // the already-formatted Section 3 block (`propertySection3Markdown`,
+    // see GET /:id) so the desktop preview follows the EXACT same
+    // confirmed-only, append-beneath-the-narrative rule as every export
+    // format, never a separate/stale rendering path.
+    return injectSection3PropertyBlock(withSection7, report.propertySection3Markdown);
+  }, [report, canonicalDetailMarkdown]);
 
   const handleExport = async (format, options = {}) => {
     try {
@@ -1600,6 +2643,35 @@ export default function ReportPreviewPage() {
                 <FileText className="w-4 h-4" /> Revise Estimate
               </button>
             )}
+            {/* Phase 42: the primary report's own canonical structured
+                estimate (Section 7 detail) -- a SEPARATE lifecycle from the
+                RepairEstimate document above, so it's offered on the same
+                set of primary-report document types, never on a derivative
+                document. Visible to any viewer (view-only for non-editors/
+                finalized reports); editing is gated inside the modal. */}
+            {canActOn && report.documentType !== 'MoldSupplement' && report.documentType !== 'RepairEstimate' && report.documentType !== 'Invoice' && report.documentType !== 'CoverageDeterminationLetter' && (
+              <button onClick={() => setShowCanonicalEstimateModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
+                <FileText className="w-4 h-4" /> Detailed Estimate (Section 7)
+              </button>
+            )}
+            {/* Phase 47: only offered on the primary report type/its own
+                confirmed U.S. address -- same document-type gating as the
+                estimate buttons above; non-eligible reports simply see no
+                button (manual Section 3 entry is unaffected either way). */}
+            {canEdit && canActOn && report.documentType !== 'MoldSupplement' && report.documentType !== 'RepairEstimate' && report.documentType !== 'Invoice' && report.documentType !== 'CoverageDeterminationLetter' && (
+              <button onClick={() => setShowPropertyIntelligenceModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
+                <Home className="w-4 h-4" /> Property Details (Section 3)
+              </button>
+            )}
+            {/* Phase 45: report-specific photo capacity add-ons. Owner-only
+                (a billing action) and only on the primary report type (the
+                one photos are actually uploaded against) -- never on a
+                derivative document, same gating as the buttons above. */}
+            {isOwner && report.documentType !== 'MoldSupplement' && report.documentType !== 'RepairEstimate' && report.documentType !== 'Invoice' && report.documentType !== 'CoverageDeterminationLetter' && (
+              <button onClick={() => setShowPhotoAddOnModal(true)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
+                <ImagePlus className="w-4 h-4" /> Add Photo Pack
+              </button>
+            )}
             {/* Phase 38: an Invoice can only be generated from an existing
                 Repair Estimate (reuses its line items/totals), or revised in
                 place when this report IS an Invoice.
@@ -1664,8 +2736,8 @@ export default function ReportPreviewPage() {
         {/* Preview body */}
         <div className="card p-4 sm:p-6">
           {mode === 'desktop' ? (
-            report.content ? (
-              <ReportMarkdown content={report.content} />
+            displayContent ? (
+              <ReportMarkdown content={displayContent} />
             ) : (
               <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
                 <FileText className="w-10 h-10 text-gray-300" />
@@ -1719,6 +2791,7 @@ export default function ReportPreviewPage() {
         {showApproveModal && (
           <ApproveModal
             report={report}
+            tier={tier}
             onClose={() => setShowApproveModal(false)}
             onApproved={(updates) => {
               setReport((prev) => ({ ...prev, ...updates, status: 'finalized' }));
@@ -1755,6 +2828,38 @@ export default function ReportPreviewPage() {
                 navigate(`/reports/${savedReport.id}/preview`);
               }
             }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showCanonicalEstimateModal && (
+          <CanonicalEstimateEditor
+            report={report}
+            readOnly={isCanonicalEstimateReadOnly({ isFinalized, canEdit })}
+            onClose={() => setShowCanonicalEstimateModal(false)}
+            onSaved={() => {
+              reportsAPI.getCanonicalEstimate(report.id)
+                .then((res) => setCanonicalDetailMarkdown(res.data?.detailMarkdown || ''))
+                .catch(() => {});
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showPropertyIntelligenceModal && (
+          <PropertyIntelligenceModal
+            report={report}
+            onClose={() => setShowPropertyIntelligenceModal(false)}
+            onSaved={load}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showPhotoAddOnModal && (
+          <PhotoAddOnModal
+            report={report}
+            autoSyncIntentId={photoAddOnSyncIntentId}
+            onClose={() => { setShowPhotoAddOnModal(false); setPhotoAddOnSyncIntentId(null); }}
           />
         )}
       </AnimatePresence>
