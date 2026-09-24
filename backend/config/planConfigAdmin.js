@@ -44,12 +44,23 @@ const isPositiveIntegerOrUnlimited = (v) => v === UNLIMITED || (Number.isInteger
 // addOnPackPrices, schemaVersion, status -- those are either Phase
 // 44-owned entitlements this change request explicitly leaves untouched, or
 // internal bookkeeping this module manages itself.
+//
+// Each key here is one the running system actually enforces:
+// plans.*.basePhotoLimit (photo-capacity routes via resolvePlanContext),
+// addOnsEnabled (photo-pack catalogue + checkout in routes/payment.js) and
+// displayLabels (public-plan-config `label`, shown on the FAQ).
+// `watermarkPolicyEnabled` is deliberately NOT admin-editable: nothing reads
+// it (utils/watermarkPolicy.js decides from review status + tier) and its
+// "off" meaning is undefined -- it must never be able to suppress the
+// mandatory DRAFT watermark. It stays in the stored schema for compatibility.
+const ADMIN_EDITABLE_KEYS = Object.freeze(['plans', 'addOnsEnabled', 'displayLabels']);
+
 const validatePatchShape = (patch) => {
   const errors = [];
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     return { valid: false, errors: ['patch must be an object'] };
   }
-  const allowedKeys = ['plans', 'addOnsEnabled', 'watermarkPolicyEnabled', 'displayLabels'];
+  const allowedKeys = ADMIN_EDITABLE_KEYS;
   const unknown = Object.keys(patch).filter((k) => !allowedKeys.includes(k));
   if (unknown.length) errors.push(`unrecognized field(s): ${unknown.join(', ')} (allowed: ${allowedKeys.join(', ')})`);
 
@@ -76,9 +87,6 @@ const validatePatchShape = (patch) => {
   }
   if (patch.addOnsEnabled !== undefined && typeof patch.addOnsEnabled !== 'boolean') {
     errors.push('addOnsEnabled must be a boolean');
-  }
-  if (patch.watermarkPolicyEnabled !== undefined && typeof patch.watermarkPolicyEnabled !== 'boolean') {
-    errors.push('watermarkPolicyEnabled must be a boolean');
   }
   if (patch.displayLabels !== undefined) {
     if (typeof patch.displayLabels !== 'object' || Array.isArray(patch.displayLabels)) {
@@ -112,7 +120,6 @@ const mergeAllowedPatch = (current, patch) => {
     }
   }
   if (patch.addOnsEnabled !== undefined) merged.addOnsEnabled = patch.addOnsEnabled;
-  if (patch.watermarkPolicyEnabled !== undefined) merged.watermarkPolicyEnabled = patch.watermarkPolicyEnabled;
   if (patch.displayLabels) {
     for (const [id, label] of Object.entries(patch.displayLabels)) {
       if (!PLAN_IDS.includes(id)) continue;
@@ -247,6 +254,7 @@ module.exports = {
   MAX_CHANGE_SUMMARY_LENGTH,
   PlanConfigConflictError,
   PlanConfigPatchInvalidError,
+  ADMIN_EDITABLE_KEYS,
   validatePatchShape,
   mergeAllowedPatch,
   getAdminPlanConfigView,

@@ -25,7 +25,8 @@ export const buildPlanConfigPatch = (form, base) => {
   }
   if (Object.keys(changedPlans).length) patch.plans = changedPlans;
   if (form.addOnsEnabled !== base.addOnsEnabled) patch.addOnsEnabled = form.addOnsEnabled;
-  if (form.watermarkPolicyEnabled !== base.watermarkPolicyEnabled) patch.watermarkPolicyEnabled = form.watermarkPolicyEnabled;
+  // watermarkPolicyEnabled is intentionally never sent: it has no enforced
+  // behavior and the server rejects it (planConfigAdmin.js ADMIN_EDITABLE_KEYS).
   const changedLabels = {};
   for (const id of PLAN_IDS) {
     if (form.displayLabels[id] !== base.displayLabels[id]) changedLabels[id] = form.displayLabels[id];

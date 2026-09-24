@@ -46,7 +46,6 @@ export default function AdminPlanConfig() {
   const buildFormFromView = (view) => ({
     plans: Object.fromEntries(PLAN_IDS.map((id) => [id, { basePhotoLimit: view.config.plans[id].basePhotoLimit }])),
     addOnsEnabled: !!view.config.addOnsEnabled,
-    watermarkPolicyEnabled: !!view.config.watermarkPolicyEnabled,
     displayLabels: { ...view.displayLabels },
   });
 
@@ -220,11 +219,15 @@ export default function AdminPlanConfig() {
                     onChange={(e) => setForm((p) => ({ ...p, addOnsEnabled: e.target.checked }))} />
                   Report-specific photo add-on packs supported
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={form.watermarkPolicyEnabled}
-                    onChange={(e) => setForm((p) => ({ ...p, watermarkPolicyEnabled: e.target.checked }))} />
-                  Watermark policy enabled
-                </label>
+                {/* No watermark toggle: watermarks are decided server-side by
+                    utils/watermarkPolicy.js from report review status and the
+                    plan's tier flag, and PlanConfig's watermarkPolicyEnabled is
+                    not read anywhere -- a toggle here would imply control the
+                    system doesn't have. */}
+                <p className="text-xs text-gray-500">
+                  Watermarks are not configurable here: un-reviewed drafts are always marked DRAFT, and the
+                  branding watermark follows each plan&apos;s tier.
+                </p>
               </div>
 
               <div className="card p-6 mb-5">

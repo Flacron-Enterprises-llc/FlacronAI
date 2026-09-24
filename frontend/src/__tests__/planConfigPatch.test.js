@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildPlanConfigPatch, validatePlanConfigForm, isPlanConfigFormDirty, UNLIMITED } from '../utils/planConfigPatch';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const BASE = {
   plans: {
@@ -30,9 +32,14 @@ describe('buildPlanConfigPatch', () => {
     expect(patch.plans.agency.basePhotoLimit).toBe(UNLIMITED);
   });
 
-  it('includes addOnsEnabled/watermarkPolicyEnabled only when changed', () => {
+  it('includes addOnsEnabled only when changed', () => {
     const form = { ...BASE, addOnsEnabled: true };
     expect(buildPlanConfigPatch(form, BASE)).toEqual({ addOnsEnabled: true });
+  });
+
+  it('never sends watermarkPolicyEnabled (unenforced; the server rejects it) even if it differs', () => {
+    const form = { ...BASE, watermarkPolicyEnabled: false };
+    expect(buildPlanConfigPatch(form, BASE)).toEqual({});
   });
 
   it('includes only the changed display label', () => {
@@ -81,5 +88,21 @@ describe('isPlanConfigFormDirty', () => {
   });
   it('is true once any field changes', () => {
     expect(isPlanConfigFormDirty({ ...BASE, addOnsEnabled: true }, BASE)).toBe(true);
+  });
+});
+
+describe('AdminPlanConfig page: only enforced settings are editable', () => {
+  const source = readFileSync(fileURLToPath(new URL('../pages/AdminPlanConfig.jsx', import.meta.url)), 'utf8');
+
+  it('renders no watermarkPolicyEnabled control and never binds it into form state', () => {
+    expect(source).not.toMatch(/form\.watermarkPolicyEnabled/);
+    expect(source).not.toMatch(/watermarkPolicyEnabled:\s*!!/);
+    expect(source).not.toMatch(/Watermark policy enabled/);
+  });
+
+  it('still exposes the enforced controls (photo limits, add-ons toggle, display labels)', () => {
+    expect(source).toMatch(/setPlanLimit\(/);
+    expect(source).toMatch(/form\.addOnsEnabled/);
+    expect(source).toMatch(/setLabel\(/);
   });
 });

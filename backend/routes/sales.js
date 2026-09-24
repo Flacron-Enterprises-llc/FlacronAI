@@ -556,7 +556,7 @@ router.get('/admin/plan-config/history', authenticateToken, requireAdmin, async 
 });
 
 // PUT /api/sales/admin/plan-config — allowlisted patch (basePhotoLimit per
-// tier, addOnsEnabled, watermarkPolicyEnabled, displayLabels) with
+// tier, addOnsEnabled, displayLabels -- see planConfigAdmin ADMIN_EDITABLE_KEYS) with
 // optimistic concurrency (`expectedRevision`) and a required
 // `changeSummary`. Never accepts reportsPerMonth or any other field --
 // unknown fields are rejected outright, not silently ignored.
