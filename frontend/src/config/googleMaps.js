@@ -17,6 +17,10 @@ export const isBrowserAutocompleteConfigured = () => !!BROWSER_KEY;
 
 let loadPromise = null;
 
+// Global function name Google calls (via the script URL's `callback=`) once
+// the Maps JS API has finished initialising.
+const READY_CALLBACK = '__flacronGoogleMapsReady';
+
 // Google reports a rejected key (wrong key, API not enabled, referrer not
 // allowed) by calling the global `gm_authFailure` hook AFTER the script has
 // loaded -- the script's own `error` event never fires for it. Track it so
@@ -66,12 +70,6 @@ export const loadPlacesLibrary = () => {
       reject(new Error('Google Maps can only load in a browser environment.'));
       return;
     }
-    if (window.google?.maps?.places) {
-      resolve(window.google.maps.places);
-      return;
-    }
-
-    const existing = document.getElementById('google-maps-places-script');
     const onReady = async () => {
       try {
         const places = await window.google.maps.importLibrary('places');
@@ -81,8 +79,31 @@ export const loadPlacesLibrary = () => {
       }
     };
 
+    // API already initialised (e.g. a retry after an unrelated failure).
+    if (typeof window.google?.maps?.importLibrary === 'function') {
+      onReady();
+      return;
+    }
+    if (window.google?.maps?.places) {
+      resolve(window.google.maps.places);
+      return;
+    }
+
+    // With `loading=async` the script's `load` event fires as soon as the
+    // bootstrap file has downloaded -- BEFORE `google.maps.importLibrary`
+    // exists. Calling it from `load` threw, rejected this promise and
+    // silently switched the widget to manual entry (no Places requests ever
+    // sent). Google's readiness signal for this mode is the `callback` URL
+    // parameter, so resolve from there instead.
+    window[READY_CALLBACK] = () => {
+      delete window[READY_CALLBACK];
+      onReady();
+    };
+
+    const existing = document.getElementById('google-maps-places-script');
     if (existing) {
-      existing.addEventListener('load', onReady, { once: true });
+      // Still loading from an earlier attempt: its URL already names the
+      // same callback, which was just re-pointed at this attempt.
       existing.addEventListener('error', () => reject(new Error('Failed to load Google Maps script.')), { once: true });
       return;
     }
@@ -94,8 +115,7 @@ export const loadPlacesLibrary = () => {
     // `loading=async` + importLibrary is Google's currently-recommended
     // pattern; `libraries=places` primes the classic bootstrap loader too
     // for broader compatibility across Maps JS API versions.
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(BROWSER_KEY)}&libraries=places&loading=async&v=weekly`;
-    script.addEventListener('load', onReady, { once: true });
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(BROWSER_KEY)}&libraries=places&loading=async&v=weekly&callback=${READY_CALLBACK}`;
     script.addEventListener('error', () => reject(new Error('Failed to load Google Maps script.')), { once: true });
     document.head.appendChild(script);
   });
@@ -113,5 +133,8 @@ export const __resetForTests = () => {
   loadPromise = null;
   authFailed = false;
   authFailureListeners.clear();
-  if (typeof window !== 'undefined') delete window.__flacronMapsAuthHookInstalled;
+  if (typeof window !== 'undefined') {
+    delete window.__flacronMapsAuthHookInstalled;
+    delete window[READY_CALLBACK];
+  }
 };

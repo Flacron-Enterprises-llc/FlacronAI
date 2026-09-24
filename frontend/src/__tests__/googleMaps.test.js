@@ -96,10 +96,46 @@ describe('loadPlacesLibrary with a configured browser key', () => {
     expect(url.searchParams.get('libraries')).toBe('places');
     expect(url.searchParams.get('loading')).toBe('async');
     expect(appended[0].async).toBe(true);
+    const callbackName = url.searchParams.get('callback');
+    expect(typeof fakeWindow[callbackName]).toBe('function');
     fakeWindow.google = { maps: { importLibrary: async (name) => (name === 'places' ? places : null) } };
-    appended[0].listeners.load();
+    fakeWindow[callbackName]();
     await expect(first).resolves.toBe(places);
     await expect(second).resolves.toBe(places);
+    expect(fakeWindow[callbackName]).toBeUndefined();
+  });
+
+  it('regression: the script `load` event firing before google.maps.importLibrary exists does not reject', async () => {
+    // Real `loading=async` order (reproduced against production Google in
+    // Chrome): `load` fires when the bootstrap file arrives, importLibrary is
+    // defined later, then Google invokes the URL's `callback`. Resolving from
+    // `load` threw "importLibrary is not a function", which dropped the field
+    // to manual entry and no Places request was ever sent while typing.
+    const { appended, fakeWindow } = installFakeBrowser();
+    const places = { AutocompleteSuggestion: { fetchAutocompleteSuggestions: () => {} } };
+    const { loadPlacesLibrary } = await importFreshModule();
+    let settled = null;
+    const attempt = loadPlacesLibrary().then(
+      (v) => (settled = { ok: v }),
+      (e) => (settled = { err: e })
+    );
+    fakeWindow.google = { maps: {} }; // bootstrap arrived, API not initialised yet
+    appended[0].listeners.load?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBeNull();
+    fakeWindow.google.maps.importLibrary = async () => places;
+    fakeWindow[new URL(appended[0].src).searchParams.get('callback')]();
+    await attempt;
+    expect(settled).toEqual({ ok: places });
+  });
+
+  it('resolves via importLibrary without a new script when the API is already initialised', async () => {
+    const { appended, fakeWindow } = installFakeBrowser();
+    const places = { AutocompleteSuggestion: { fetchAutocompleteSuggestions: () => {} } };
+    fakeWindow.google = { maps: { importLibrary: async () => places } };
+    const { loadPlacesLibrary } = await importFreshModule();
+    await expect(loadPlacesLibrary()).resolves.toBe(places);
+    expect(appended).toHaveLength(0);
   });
 
   it('rejects on a script load error and allows a later retry', async () => {
