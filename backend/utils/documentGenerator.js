@@ -1,5 +1,6 @@
 const PizZip = require('pizzip');
-const sharp = require('sharp');
+// isAllowedStoredImage also rejects AVIF disguised as HEIC (structural check).
+const { sharp, isAllowedStoredImage, PHOTO_TYPES } = require('./safeImage');
 const { tokenizeInline, parseBlockToken, collectReferencedPhotoIds } = require('./richContent');
 
 // Phase 9: OOXML inline-image embedding for `![[photo:ID|caption]]`/photo-grid
@@ -29,6 +30,8 @@ const resolveImageAssets = async (content, photoMap) => {
   for (const id of ids) {
     const entry = photoMap?.[id];
     if (!entry?.buffer) continue;
+    // Never hand bytes with a non-allowed signature to a decoder.
+    if (!isAllowedStoredImage(entry.buffer, PHOTO_TYPES)) continue;
     let widthPx = 320;
     let heightPx = 220;
     try {
@@ -134,6 +137,7 @@ const resolveAppendixAssets = async (appendixPhotos) => {
     let heightPx = 220;
     let decodable = true;
     try {
+      if (!isAllowedStoredImage(item.buffer, PHOTO_TYPES)) throw new Error('not an allowed image type');
       const meta = await sharp(item.buffer).metadata();
       if (meta.width && meta.height) {
         widthPx = meta.width;
