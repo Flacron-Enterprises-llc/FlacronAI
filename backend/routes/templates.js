@@ -20,7 +20,7 @@ const { templateLogoObject, uploadBuffer } = require('../config/storage');
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: mimeFileFilter(['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'], 'Only JPG, PNG, SVG, WebP allowed'),
+  fileFilter: mimeFileFilter(['image/jpeg', 'image/png', 'image/webp'], 'Only JPG, PNG, WebP allowed'),
 });
 
 const statusForCode = (code) => {
@@ -145,21 +145,16 @@ router.post('/:id/logo', authenticateToken, logoUpload.single('logo'), async (re
     const check = await templateService.getTemplateForEdit(req.user, req.params.id);
     if (check.error) return respondResult(res, check);
 
-    // Validate the actual bytes before anything is stored or decoded.
-    const logoType = await validateLogoUpload(req.file, { allowSvg: true });
+    // Validate the actual bytes before anything is stored or decoded. SVG is
+    // rejected (active content, no sanitizer); only JPG/PNG/WebP reach sharp.
+    await validateLogoUpload(req.file);
 
-    let objectPath, url;
-    if (logoType === 'svg') {
-      objectPath = templateLogoObject(req.user.uid, req.params.id, `logo_${Date.now()}.svg`);
-      ({ url } = await uploadBuffer(objectPath, req.file.buffer, 'image/svg+xml', { publicToken: true }));
-    } else {
-      const buf = await sharp(req.file.buffer)
-        .resize(400, 200, { fit: 'inside', withoutEnlargement: true })
-        .png()
-        .toBuffer();
-      objectPath = templateLogoObject(req.user.uid, req.params.id, `logo_${Date.now()}.png`);
-      ({ url } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true }));
-    }
+    const buf = await sharp(req.file.buffer)
+      .resize(400, 200, { fit: 'inside', withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    const objectPath = templateLogoObject(req.user.uid, req.params.id, `logo_${Date.now()}.png`);
+    const { url } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true });
 
     const result = await templateService.setTemplateLogo(req.user, req.params.id, { objectPath, url });
     return respondResult(res, result);

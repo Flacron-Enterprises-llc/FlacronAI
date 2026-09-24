@@ -438,7 +438,7 @@ export default function TemplateBuilder() {
                 <label className="btn-secondary text-xs py-2 px-3 inline-flex items-center gap-2 cursor-pointer">
                   {logoUploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                   {logoUploading ? 'Uploading…' : 'Upload logo'}
-                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={handleLogoUpload} disabled={!isEdit} />
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} disabled={!isEdit} />
                 </label>
               )}
               {!isEdit && <p className="text-[11px] text-gray-400 mt-1">Save the template first to add a logo.</p>}

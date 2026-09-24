@@ -18,8 +18,8 @@ const { sniffImageType } = require('./imageValidation');
 
 // libvips decoder classes the product actually needs. Everything else under
 // VipsForeignLoad is blocked process-wide. Encoders (savers) are unaffected.
-// SVG is deliberately NOT decoded by sharp: SVG logos are stored as-is and
-// never rasterised server-side.
+// SVG is deliberately NOT decoded by sharp, and SVG logo uploads are
+// rejected outright (see looksLikeSvg / validateLogoUpload below).
 const ALLOWED_DECODERS = Object.freeze([
   'VipsForeignLoadJpeg',
   'VipsForeignLoadPng',
@@ -208,41 +208,44 @@ const isAllowedStoredImage = (buffer, allowed = PHOTO_TYPES) => {
   return type !== 'heic' || isHevcHeif(buffer);
 };
 
-// Minimal SVG sanity check for SVG logo uploads (stored as-is, never
-// rasterised). Rejects binary data wearing an image/svg+xml label: the bytes
-// must not match any raster signature, contain no NUL bytes, and look like an
-// XML/SVG document with an <svg> root element.
-const isSvgDocument = (buffer) => {
+// SVG logos are NOT accepted: SVG is active content (script, event handlers,
+// external references) and the application has no proven allow-list SVG
+// sanitizer. Uploads are rejected on BOTH the declared type (mimeFileFilter)
+// and the actual bytes (looksLikeSvg, below), so neither a .png name nor an
+// image/png label gets SVG markup through.
+const SVG_REJECTION_MESSAGE =
+  'SVG logos are not supported. Please upload a JPG, PNG or WebP image.';
+
+// Heuristic SVG/XML-markup detector for untrusted bytes. Deliberately broad
+// (it only ever causes a rejection): any <svg tag in the first 4 KiB counts,
+// whatever precedes it (BOM, whitespace, XML declaration, DOCTYPE, comments).
+// Binary raster formats (by signature) never match. Non-SVG text is still
+// rejected later by inspectImage, since it has no image signature.
+const looksLikeSvg = (buffer) => {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) return false;
   if (sniffImageType(buffer)) return false;
-  if (buffer.includes(0)) return false;
-  const text = buffer.toString('utf8').replace(/^FEFF/, '').trimStart();
-  if (!text.startsWith('<')) return false;
-  return /<svg[\s>]/i.test(text);
+  return /<svg[\s>/]/i.test(buffer.subarray(0, 4096).toString('utf8'));
 };
 
 // Multer fileFilter for a declared-MIME pre-check. Raises an
 // ImageValidationError (status 400) instead of a bare Error, so a rejected
 // upload is a clear 4xx rather than a 500. This is only the first, cheap
-// gate -- routes must still call inspectImage() on the actual bytes.
+// gate -- routes must still call validateLogoUpload() on the actual bytes.
 const mimeFileFilter = (allowedMimes, message) => (req, file, cb) => {
+  if (file.mimetype === 'image/svg+xml') {
+    return cb(new ImageValidationError(SVG_REJECTION_MESSAGE, 'SVG_NOT_SUPPORTED'));
+  }
   if (allowedMimes.includes(file.mimetype)) return cb(null, true);
   return cb(new ImageValidationError(message, 'UNSUPPORTED_IMAGE_TYPE'));
 };
 
-// Validates one multer logo file. A declared SVG must really be an SVG
-// document (it is stored as-is, never rasterised); anything else must be a
-// raster logo whose bytes match its declared type. Resolves 'svg' or the
-// sniffed raster type; rejects with ImageValidationError.
-const validateLogoUpload = async (file, { allowSvg = false } = {}) => {
-  if (allowSvg && file.mimetype === 'image/svg+xml') {
-    if (!isSvgDocument(file.buffer)) {
-      throw new ImageValidationError(
-        'The file contents do not match its declared image type.',
-        'IMAGE_TYPE_MISMATCH'
-      );
-    }
-    return 'svg';
+// Validates one multer logo file: SVG markup is rejected whatever its label,
+// and anything else must be a raster logo (JPG/PNG/WebP) whose bytes match
+// its declared type. Resolves the sniffed raster type; rejects with
+// ImageValidationError (400).
+const validateLogoUpload = async (file) => {
+  if (file.mimetype === 'image/svg+xml' || looksLikeSvg(file.buffer)) {
+    throw new ImageValidationError(SVG_REJECTION_MESSAGE, 'SVG_NOT_SUPPORTED');
   }
   const { type } = await inspectImage(file.buffer, {
     allowed: LOGO_TYPES,
@@ -270,5 +273,5 @@ module.exports = {
   inspectImage,
   isHevcHeif,
   isAllowedStoredImage,
-  isSvgDocument,
+  looksLikeSvg,
 };

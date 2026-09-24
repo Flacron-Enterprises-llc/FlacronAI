@@ -20,6 +20,7 @@ const firebaseConfigPath = require.resolve('../config/firebase');
 const storagePath = require.resolve('../config/storage');
 const templateServicePath = require.resolve('../services/templateService');
 const authMiddlewarePath = require.resolve('../middleware/auth');
+const pdfGeneratorPath = require.resolve('../utils/properPdfGenerator');
 const routePaths = {
   users: require.resolve('../routes/users'),
   templates: require.resolve('../routes/templates'),
@@ -29,13 +30,17 @@ const routePaths = {
 const AUTH_TIME = Math.floor(Date.now() / 1000);
 const TEST_UID = 'logo-route-uid';
 
-function installFakes() {
+// `enterpriseClient` seeds the white-label config doc; `storedLogo` is what
+// Storage returns for any download (e.g. a previously stored SVG logo).
+function installFakes({ enterpriseClient = null, storedLogo = Buffer.alloc(0) } = {}) {
   const uploads = [];
+  const pdfCalls = [];
   const userData = { tier: 'enterprise', email: 'logo-test@example.com', tokenVersion: 0 };
   for (const p of [
     firebaseConfigPath,
     storagePath,
     templateServicePath,
+    pdfGeneratorPath,
     authMiddlewarePath,
     ...Object.values(routePaths),
   ]) {
@@ -49,7 +54,21 @@ function installFakes() {
   const query = {
     limit: () => query,
     where: () => query,
-    get: async () => ({ empty: true, docs: [] }),
+    get: async () =>
+      enterpriseClient
+        ? { empty: false, docs: [{ data: () => enterpriseClient, ref: docRef }] }
+        : { empty: true, docs: [] },
+  };
+  require.cache[pdfGeneratorPath] = {
+    id: pdfGeneratorPath,
+    filename: pdfGeneratorPath,
+    loaded: true,
+    exports: {
+      generatePDF: async (report, options) => {
+        pdfCalls.push(options);
+        return Buffer.from('%PDF-fake');
+      },
+    },
   };
   require.cache[firebaseConfigPath] = {
     id: firebaseConfigPath,
@@ -93,7 +112,7 @@ function installFakes() {
       },
       deleteObject: async () => {},
       deletePrefix: async () => {},
-      downloadBuffer: async () => Buffer.alloc(0),
+      downloadBuffer: async () => storedLogo,
     },
   };
   require.cache[templateServicePath] = {
@@ -111,7 +130,7 @@ function installFakes() {
   app.use('/api/templates', require(routePaths.templates));
   app.use('/api/white-label', require(routePaths.whitelabel));
   app.use(errorHandler);
-  return { app, uploads };
+  return { app, uploads, pdfCalls };
 }
 
 async function withServer(app, fn) {
@@ -142,21 +161,18 @@ const ROUTES = [
     path: '/api/users/profile/logo',
     box: [300, 150],
     maxBytes: 2 * 1024 * 1024,
-    svg: false,
   },
   {
     name: 'template logo',
     path: '/api/templates/tpl-1/logo',
     box: [400, 200],
     maxBytes: 5 * 1024 * 1024,
-    svg: true,
   },
   {
     name: 'white-label logo',
     path: '/api/white-label/logo',
     box: [400, 200],
     maxBytes: 5 * 1024 * 1024,
-    svg: true,
   },
 ];
 
@@ -191,6 +207,23 @@ test.before(async () => {
     svg: Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>'
     ),
+    // UTF-8 BOM + XML declaration + comment before the <svg> root.
+    svgWithProlog: Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from(
+        [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<!-- logo -->',
+          '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+        ].join(String.fromCharCode(10))
+      ),
+    ]),
+    // Harmless marker only -- the script body is a comment, nothing executable.
+    svgWithScript: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>/* harmless test marker */</script></svg>'
+    ),
+    svgMalformed: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10'),
+    notMarkup: Buffer.from('just some plain text, not an image'),
   };
 });
 
@@ -288,22 +321,86 @@ for (const route of ROUTES) {
     });
   });
 
-  if (route.svg) {
-    test(`${route.name}: a real SVG is stored as-is; binary bytes labelled image/svg+xml are rejected`, async () => {
-      const { app, uploads } = installFakes();
-      await withServer(app, async (base) => {
-        const ok = await post(base + route.path, fx.svg, 'image/svg+xml', 'logo.svg');
-        assert.equal(ok.status, 200, JSON.stringify(ok.body));
-        assert.equal(uploads.length, 1);
-        assert.equal(uploads[0].contentType, 'image/svg+xml');
-        assert.ok(uploads[0].buffer.equals(fx.svg));
-        for (const key of ['tiff', 'vips', 'avif', 'bigPng']) {
-          const res = await post(base + route.path, fx[key], 'image/svg+xml', 'logo.svg');
-          assert.equal(res.status, 400, key);
-          assert.equal(res.body.code, 'IMAGE_TYPE_MISMATCH', key);
-        }
-        assert.equal(uploads.length, 1);
-      });
+  test(`${route.name}: SVG is rejected with 400 whatever its label or shape, and nothing is stored`, async () => {
+    const { app, uploads } = installFakes();
+    await withServer(app, async (base) => {
+      const cases = [
+        // [label, bytes, declared type]
+        ['real SVG, honest label', fx.svg, 'image/svg+xml', 'logo.svg'],
+        ['real SVG disguised as PNG', fx.svg, 'image/png', 'logo.png'],
+        ['real SVG disguised as JPEG', fx.svg, 'image/jpeg', 'logo.jpg'],
+        ['SVG with BOM + XML declaration as PNG', fx.svgWithProlog, 'image/png', 'logo.png'],
+        ['script-bearing SVG as PNG', fx.svgWithScript, 'image/png', 'logo.png'],
+        ['script-bearing SVG, honest label', fx.svgWithScript, 'image/svg+xml', 'logo.svg'],
+        ['malformed (unterminated) SVG as PNG', fx.svgMalformed, 'image/png', 'logo.png'],
+      ];
+      for (const [label, bytes, type, name] of cases) {
+        const res = await post(base + route.path, bytes, type, name);
+        assert.equal(res.status, 400, `${label}: ${JSON.stringify(res.body)}`);
+        assert.equal(res.body.code, 'SVG_NOT_SUPPORTED', label);
+        assert.match(res.body.error, /SVG logos are not supported/, label);
+      }
+      assert.equal(uploads.length, 0);
     });
-  }
+  });
+
+  test(`${route.name}: non-SVG text and raster bytes labelled image/svg+xml are rejected with 400`, async () => {
+    const { app, uploads } = installFakes();
+    await withServer(app, async (base) => {
+      for (const [bytes, type] of [
+        [fx.notMarkup, 'image/png'],
+        [fx.bigPng, 'image/svg+xml'],
+        [fx.tiff, 'image/svg+xml'],
+      ]) {
+        const res = await post(base + route.path, bytes, type);
+        assert.equal(res.status, 400, JSON.stringify(res.body));
+        assert.ok(
+          ['SVG_NOT_SUPPORTED', 'UNSUPPORTED_IMAGE_TYPE'].includes(res.body.code),
+          res.body.code
+        );
+      }
+      assert.equal(uploads.length, 0);
+    });
+  });
 }
+
+// ---- export: previously stored logos ------------------------------------------
+
+test('white-label preview: a previously stored SVG logo is never passed to the PDF generator', async () => {
+  const { app, pdfCalls } = installFakes({
+    enterpriseClient: {
+      userId: TEST_UID,
+      logoPath: 'users/x/whitelabel/wl_logo_old.svg',
+      companyName: 'Acme',
+    },
+    storedLogo: fx.svgWithScript,
+  });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/white-label/preview`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer faketoken' },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(pdfCalls.length, 1);
+    assert.equal(pdfCalls[0].logoBuffer, null, 'stored SVG must be omitted, not embedded');
+  });
+});
+
+test('white-label preview: a stored PNG logo is still passed to the PDF generator', async () => {
+  const { app, pdfCalls } = installFakes({
+    enterpriseClient: {
+      userId: TEST_UID,
+      logoPath: 'users/x/whitelabel/wl_logo.png',
+      companyName: 'Acme',
+    },
+    storedLogo: fx.bigPng,
+  });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/white-label/preview`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer faketoken' },
+    });
+    assert.equal(res.status, 200);
+    assert.ok(Buffer.isBuffer(pdfCalls[0].logoBuffer) && pdfCalls[0].logoBuffer.equals(fx.bigPng));
+  });
+});

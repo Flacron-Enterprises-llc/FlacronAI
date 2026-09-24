@@ -16,7 +16,7 @@ const {
   LOGO_TYPES,
   inspectImage,
   isAllowedStoredImage,
-  isSvgDocument,
+  looksLikeSvg,
   ImageValidationError,
 } = require('../utils/safeImage');
 const {
@@ -340,20 +340,40 @@ test('isAllowedStoredImage only admits allowed signatures (export-time gate)', a
   assert.equal(isAllowedStoredImage(null), false);
 });
 
-test('isSvgDocument accepts a real SVG and rejects binary images or non-SVG text wearing an SVG label', async () => {
+test('looksLikeSvg flags real, prolog-prefixed, script-bearing and malformed SVG; never raster bytes', async () => {
   const fx = await formats();
-  assert.equal(
-    isSvgDocument(
-      Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"></svg>')
-    ),
-    true
-  );
-  assert.equal(isSvgDocument(Buffer.from('FEFF  <svg viewBox="0 0 1 1"/>')), true);
-  for (const bin of [fx.tiff, fx.png, fx.gif, fx.avif, fx.vips])
-    assert.equal(isSvgDocument(bin), false);
-  assert.equal(isSvgDocument(Buffer.from('<html><body>hi</body></html>')), false);
-  assert.equal(isSvgDocument(Buffer.from('not markup <svg>')), false);
-  assert.equal(isSvgDocument(Buffer.alloc(0)), false);
+  const NL = String.fromCharCode(10);
+  const svgs = [
+    '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+    ['<?xml version="1.0"?>', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'].join(NL),
+    ['<!DOCTYPE svg>', '<!-- c -->', '<svg/>'].join(NL),
+    '   <SVG viewBox="0 0 1 1"/>',
+    // Harmless marker only -- the script body is a comment.
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>/* harmless test marker */</script></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="10', // malformed / unterminated
+  ];
+  for (const text of svgs) assert.equal(looksLikeSvg(Buffer.from(text)), true, text);
+  const withBom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('<svg/>')]);
+  assert.equal(looksLikeSvg(withBom), true, 'UTF-8 BOM before <svg>');
+  for (const bin of [fx.tiff, fx.png, fx.gif, fx.avif, fx.vips, fx.jpeg, fx.webp]) {
+    assert.equal(looksLikeSvg(bin), false);
+  }
+  // A raster signature followed by SVG text is judged by its signature (and
+  // then rejected by inspectImage as unreadable), not treated as SVG.
+  const pngThenSvg = Buffer.concat([fx.png.subarray(0, 8), Buffer.from('<svg/>')]);
+  assert.equal(looksLikeSvg(pngThenSvg), false);
+  await expectRejection(inspectImage(pngThenSvg, { allowed: LOGO_TYPES }), 'IMAGE_UNREADABLE');
+  assert.equal(looksLikeSvg(Buffer.from('<html><body>hi</body></html>')), false);
+  assert.equal(looksLikeSvg(Buffer.alloc(0)), false);
+  assert.equal(looksLikeSvg(null), false);
+});
+
+test('SVG can never reach sharp or an export: rejected as a photo, as a stored image, and by the decoder allow-list', async () => {
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>');
+  await expectRejection(inspectImage(svg, { allowed: PHOTO_TYPES }), 'UNSUPPORTED_IMAGE_TYPE');
+  assert.equal(isAllowedStoredImage(svg), false);
+  assert.equal(isAllowedStoredImage(svg, ['jpeg', 'png']), false);
+  await assert.rejects(() => sharp(svg).metadata(), /unsupported image format/i);
 });
 
 // ---- orientation, alpha, animation, thumbnails -----------------------------
