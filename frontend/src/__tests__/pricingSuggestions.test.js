@@ -100,6 +100,13 @@ describe('classifyPriceSuggestionsError', () => {
   it('classifies a network error (no response)', () => {
     expect(classifyPriceSuggestionsError({}).kind).toBe('network');
   });
+  it('classifies a plan-entitlement 403 as not_in_plan (no retry), keeping the server message', () => {
+    const err = { response: { status: 403, data: { code: 'FEATURE_NOT_IN_PLAN', error: 'Upgrade to use AI pricing.' } } };
+    const c = classifyPriceSuggestionsError(err);
+    expect(c.kind).toBe('not_in_plan');
+    expect(c.message).toBe('Upgrade to use AI pricing.');
+    expect(classifyPriceSuggestionsError({ response: { status: 403, data: { code: 'FEATURE_NOT_IN_PLAN' } } }).message).toMatch(/manually/);
+  });
   it('classifies cancellation distinctly (AbortController)', () => {
     expect(classifyPriceSuggestionsError({ code: 'ERR_CANCELED' }).kind).toBe('cancelled');
     expect(classifyPriceSuggestionsError({ name: 'CanceledError' }).kind).toBe('cancelled');

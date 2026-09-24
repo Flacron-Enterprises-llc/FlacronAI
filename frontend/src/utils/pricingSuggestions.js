@@ -98,6 +98,12 @@ export const classifyPriceSuggestionsError = (err) => {
   if (data?.code === 'VALIDATION_ERROR') {
     return { kind: 'validation', message: data.error, field: data.field };
   }
+  if (data?.code === 'FEATURE_NOT_IN_PLAN') {
+    return {
+      kind: 'not_in_plan',
+      message: data.error || 'AI pricing suggestions are not included in your plan. You can still enter prices manually.',
+    };
+  }
   if (data?.code === 'REPORT_FINALIZED') {
     return { kind: 'finalized', message: data.error };
   }

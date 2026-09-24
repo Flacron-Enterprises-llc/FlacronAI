@@ -20,6 +20,7 @@ const TIERS = {
     exportFormats: ['pdf'],
     prioritySupport: false,
     reportHistory: false,
+    aiPricing: false, // preliminary AI pricing suggestions (paid OpenAI call)
   },
   professional: {
     name: 'Professional',
@@ -33,6 +34,7 @@ const TIERS = {
     exportFormats: ['pdf', 'docx', 'html'],
     prioritySupport: true,
     reportHistory: true,
+    aiPricing: true,
   },
   agency: {
     name: 'Agency',
@@ -46,6 +48,7 @@ const TIERS = {
     exportFormats: ['pdf', 'docx', 'html'],
     prioritySupport: true,
     reportHistory: true,
+    aiPricing: true,
   },
   enterprise: {
     name: 'Enterprise',
@@ -59,6 +62,7 @@ const TIERS = {
     exportFormats: ['pdf', 'docx', 'html'],
     prioritySupport: true,
     reportHistory: true,
+    aiPricing: true,
     dedicatedSupport: true,
     customSubdomain: true,
   },
@@ -126,6 +130,16 @@ const getTierKeyFromStripePriceId = (priceId) => {
 // Resolve the base tier name from a tier key (strips _annual suffix)
 const getBaseTier = (tierName) => (tierName || '').replace('_annual', '') || 'starter';
 
+// Default-deny feature check: unlike getTier() (which falls back to Starter),
+// an unknown/missing tier grants NOTHING here, and only an explicit `true`
+// on the tier definition counts as entitled.
+const hasTierFeature = (tierName, feature) => {
+  if (typeof tierName !== 'string' || !tierName) return false;
+  const base = getBaseTier(tierName);
+  if (!Object.prototype.hasOwnProperty.call(TIERS, base)) return false;
+  return TIERS[base][feature] === true;
+};
+
 module.exports = {
   TIERS,
   TIER_ORDER,
@@ -137,4 +151,5 @@ module.exports = {
   getStripePriceId,
   getTierKeyFromStripePriceId,
   getBaseTier,
+  hasTierFeature,
 };

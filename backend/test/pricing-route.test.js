@@ -24,6 +24,9 @@ const firebaseConfigPath = require.resolve('../config/firebase');
 const auditLogServicePath = require.resolve('../services/auditLogService');
 const pricingServicePath = require.resolve('../services/pricingService');
 const reportsRoutePath = require.resolve('../routes/reports');
+// Cleared per test too: auth.js binds getFirestore at require time, so a
+// cached copy would keep reading the FIRST test's fake users.
+const authMiddlewarePath = require.resolve('../middleware/auth');
 
 const TEST_UID = 'pricing-route-uid';
 const TEST_EMAIL = 'pricing-route@example.com';
@@ -53,10 +56,11 @@ function installFakes({ reportsById, pricingServiceImpl, usersById }) {
   delete require.cache[auditLogServicePath];
   delete require.cache[pricingServicePath];
   delete require.cache[reportsRoutePath];
+  delete require.cache[authMiddlewarePath];
 
   const fakeDb = makeFakeDb(
     reportsById,
-    usersById || { [TEST_UID]: { tier: 'starter', email: TEST_EMAIL } }
+    usersById || { [TEST_UID]: { tier: 'professional', email: TEST_EMAIL } }
   );
   const auditLogs = [];
   require.cache[firebaseConfigPath] = {
@@ -329,4 +333,83 @@ test('an unrecognized/unthrown-code error still returns a safe generic 500 (defe
     assert.equal(body.code, 'PRICING_ERROR');
     assert.equal(body.success, false);
   });
+});
+
+// ---- plan entitlement (config/tiers.js `aiPricing` flag) -------------------
+// Paid OpenAI pricing is gated server-side by the tier's `aiPricing` flag.
+// Every tier defined in config/tiers.js is exercised, plus annual keys and
+// unknown/missing tiers (default deny).
+
+const { TIERS, hasTierFeature } = require('../config/tiers');
+
+const tierCases = [
+  ...Object.keys(TIERS).map((tier) => ({ tier, allowed: tier !== 'starter' })),
+  { tier: 'professional_annual', allowed: true },
+  { tier: 'agency_annual', allowed: true },
+  { tier: 'enterprise_annual', allowed: true },
+  { tier: 'gold', allowed: false },
+  { tier: 'STARTER', allowed: false },
+  { tier: undefined, allowed: false }, // auth middleware defaults a missing tier to 'starter'
+];
+
+test('every defined tier has an explicit boolean aiPricing flag; only Starter is excluded', () => {
+  assert.deepEqual(Object.keys(TIERS).sort(), ['agency', 'enterprise', 'professional', 'starter']);
+  for (const [name, def] of Object.entries(TIERS)) {
+    assert.equal(typeof def.aiPricing, 'boolean', `${name}.aiPricing must be explicit`);
+  }
+  assert.equal(TIERS.starter.aiPricing, false);
+});
+
+test('hasTierFeature is default-deny for unknown, missing, non-string and prototype-key tiers', () => {
+  for (const t of [undefined, null, '', 'gold', 123, {}, '__proto__', 'constructor', 'toString']) {
+    assert.equal(hasTierFeature(t, 'aiPricing'), false, String(t));
+  }
+  assert.equal(hasTierFeature('professional', 'unknownFeature'), false);
+});
+
+for (const { tier, allowed } of tierCases) {
+  test(`price-suggestions entitlement: tier=${String(tier)} -> ${allowed ? 'allowed (200)' : 'denied (403 FEATURE_NOT_IN_PLAN)'}`, async () => {
+    let serviceCalls = 0;
+    const { router } = installFakes({
+      reportsById: { 'report-1': seedReport() },
+      usersById: { [TEST_UID]: { tier, email: TEST_EMAIL } },
+      pricingServiceImpl: async () => {
+        serviceCalls += 1;
+        return okProposal;
+      },
+    });
+    await withTestServer(router, async (base) => {
+      const { res, body } = await postPriceSuggestions(base, 'report-1');
+      if (allowed) {
+        assert.equal(res.status, 200);
+        assert.equal(serviceCalls, 1);
+      } else {
+        assert.equal(res.status, 403);
+        assert.equal(body.code, 'FEATURE_NOT_IN_PLAN');
+        assert.equal(body.feature, 'aiPricing');
+        assert.match(body.error, /manually/);
+        assert.equal(serviceCalls, 0, 'a denied tier must never reach the paid provider');
+      }
+    });
+  });
+}
+
+test('a Starter user is still served the report and the manual-entry save route carries no AI-pricing gate', async () => {
+  const { router } = installFakes({
+    reportsById: { 'report-1': seedReport() },
+    usersById: { [TEST_UID]: { tier: 'starter', email: TEST_EMAIL } },
+    pricingServiceImpl: async () => okProposal,
+  });
+  await withTestServer(router, async (base) => {
+    const getRes = await fetch(`${base}/report-1`, { headers: { Authorization: 'Bearer faketoken' } });
+    assert.equal(getRes.status, 200);
+  });
+
+  const gatesOn = (method, path) => {
+    const layer = router.stack.find((l) => l.route && l.route.path === path && l.route.methods[method]);
+    assert.ok(layer, `route ${method.toUpperCase()} ${path} exists`);
+    return layer.route.stack.map((s) => s.handle.tierFeature).filter(Boolean);
+  };
+  assert.deepEqual(gatesOn('post', '/:id/estimate-detail/price-suggestions'), ['aiPricing']);
+  assert.deepEqual(gatesOn('put', '/:id/canonical-estimate'), [], 'manual estimate entry must stay available to every tier');
 });

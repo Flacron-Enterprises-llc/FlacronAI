@@ -4,7 +4,12 @@ const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getFirestore } = require('../config/firebase');
-const { authenticateAny, requireApiScope, requireTeamCapability } = require('../middleware/auth');
+const {
+  authenticateAny,
+  requireApiScope,
+  requireTeamCapability,
+  requireTierFeature,
+} = require('../middleware/auth');
 const requireCanGenerate = requireTeamCapability('canGenerate');
 const requireCanEditReports = requireTeamCapability('canEditReports');
 const requireCanApprove = requireTeamCapability('canApprove');
@@ -4343,6 +4348,13 @@ router.post(
   '/:id/estimate-detail/price-suggestions',
   authenticateAny,
   reportsWrite,
+  // Paid OpenAI call: gated by the per-tier `aiPricing` flag in
+  // config/tiers.js (Starter excluded; unknown tier denied). Manual
+  // line-item entry via PUT /:id/canonical-estimate is unaffected.
+  requireTierFeature(
+    'aiPricing',
+    'AI pricing suggestions are available on Professional plans and above. You can still enter prices manually.'
+  ),
   pricingLimiter,
   async (req, res) => {
     // Cancellation: if the client disconnects (e.g. the user clicks
