@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { reportsAPI, usersAPI, whiteLabelAPI, teamsAPI } from '../services/api.js';
 import { formatStatus } from '../utils/formatStatus';
 import { isFinalizedReportStatus } from '../utils/reportImmutability';
+import { deriveEnterpriseDashboardPhotoLabel } from '../utils/enterpriseDashboardPhotoLabel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ClaimLinkSection from '../components/ClaimLinkSection';
 import SectionedReportEditor from '../components/SectionedReportEditor';
@@ -137,6 +138,19 @@ export default function EnterpriseDashboard() {
   // Report generation state
   const [form, setForm] = useState(FORM_INIT);
   const [photos, setPhotos] = useState([]);
+  // Phase 48 correction: server-derived photo capacity (Phase 44's own
+  // authoritative source) instead of a static "up to 100" label -- this
+  // page is Enterprise-only, so the plan-level check always resolves to
+  // unlimited, but it's still fetched (never assumed) so a real future
+  // per-report add-on/limit change is reflected here too. `null` while
+  // loading/on a failed fetch -- falls back to the same safe display state
+  // Dashboard.jsx's wizard already uses (photoCapacityDisplay.js), never
+  // claiming an unverified "unlimited" before the server confirms it.
+  const [photoCapacity, setPhotoCapacity] = useState(null);
+  const photoCapacityLabel = deriveEnterpriseDashboardPhotoLabel(photoCapacity, photos.length);
+  useEffect(() => {
+    reportsAPI.getPhotoCapacity().then((res) => setPhotoCapacity(res.data)).catch(() => {});
+  }, []);
   // Link report generation to a real CRM claim instead of free-typing claim details
   // (T-6.16) -- every user on this page is Enterprise tier, so CRM is always available.
   const [claimMode, setClaimMode] = useState('linked');
@@ -419,7 +433,16 @@ export default function EnterpriseDashboard() {
       const updated = res.data?.report || {};
       setGeneratedReport(prev => ({ ...prev, ...updated, content: editableContent, status: 'finalized' }));
       setReports(prev => prev.map(r => (r.id === generatedReport.id ? { ...r, status: 'finalized' } : r)));
-      toast.success('Report approved & finalized — exports are now clean');
+      // Phase 40: a Starter/free-plan report keeps the FlacronAI branding
+      // watermark after approval (client-confirmed policy, 2026-09-18) --
+      // only the DRAFT watermark is guaranteed to be gone. This dashboard is
+      // normally reached by paid tiers, but the check keeps the copy correct
+      // regardless of which tier renders it.
+      toast.success(
+        tier === 'starter'
+          ? 'Report approved & finalized — DRAFT watermark removed (Starter plan reports keep the FlacronAI watermark)'
+          : 'Report approved & finalized — exports are now watermark-free'
+      );
       setShowApproveModal(false);
       autoPreviewPdf({ ...generatedReport, status: 'finalized' });
     } catch (err) {
@@ -897,7 +920,7 @@ export default function EnterpriseDashboard() {
 
                       {/* Photos */}
                       <div className="mb-5">
-                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Damage Photos (up to 100)</label>
+                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1.5">{photoCapacityLabel}</label>
                         <div onClick={() => {
                             if (!form.insuredName.trim() || !isValidEmail(form.insuredEmail)) {
                               toast.error('Enter the claimant\'s name and a valid email before uploading photos.');

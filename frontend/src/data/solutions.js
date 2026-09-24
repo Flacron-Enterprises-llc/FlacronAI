@@ -1,6 +1,9 @@
 // Phase 23: persona data for the /solutions index + /solutions/:slug detail pages.
 // Every claim here is a real, already-shipped capability (Golden Rule #1) —
-// no invented integrations, certifications, or accuracy figures.
+// no invented integrations, certifications, or accuracy figures. Photo
+// capacity is described in non-numeric terms (Phase 48 correction) rather
+// than importing a static number here -- this file is plain data, not a
+// component, so it can't consume the live PlanConfig read Pricing.jsx uses.
 
 const SOLUTIONS = [
   {
@@ -15,7 +18,7 @@ const SOLUTIONS = [
       'No easy way to hand a reviewer a clean, consistent draft',
     ],
     features: [
-      { title: 'Automated Drafting', desc: 'Claim details and up to 100 photos become a structured draft in minutes, not hours.' },
+      { title: 'Automated Drafting', desc: 'Claim details and your plan\'s photo allowance become a structured draft in minutes, not hours.' },
       { title: 'Mobile Photo Capture', desc: 'Take photos or choose from your library directly in the wizard on your phone.' },
       { title: 'Multi-Format Export', desc: 'Export to PDF or DOCX for the carrier, or share a secure link.' },
     ],
@@ -123,7 +126,7 @@ const SOLUTIONS = [
       'Needing a professional-looking document to support a scope discussion',
     ],
     features: [
-      { title: 'Photo Analysis', desc: 'Upload up to 100 job-site photos; every one is available for structured review.' },
+      { title: 'Photo Analysis', desc: 'Upload job-site photos within your plan\'s allowance; every one is available for structured review.' },
       { title: 'Multi-Format Export', desc: 'Export a professional PDF or DOCX to support your scope of work.' },
       { title: 'CRM Integration', desc: 'Track clients and claims linked to your reports automatically.' },
     ],

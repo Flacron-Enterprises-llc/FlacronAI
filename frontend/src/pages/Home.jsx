@@ -370,7 +370,7 @@ const Counter = ({ end, suffix = '' }) => {
 const features = [
   { icon: Zap, title: 'Automated Drafting', desc: 'FlacronAI organizes submitted claim details and supported photos into a structured draft ready for professional review.' },
   { icon: FileText, title: 'Multi-Format Export', desc: 'Export professional PDFs with custom branding, editable DOCX files, and embeddable HTML.' },
-  { icon: Image, title: 'Image Analysis', desc: 'Upload up to 100 damage photos. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
+  { icon: Image, title: 'Image Analysis', desc: 'Upload damage photos — capacity scales with your plan, up to unlimited on Enterprise. Supported photos may be analyzed for visible conditions, with every observation subject to human review.' },
   { icon: Users, title: 'CRM Integration', desc: 'Manage clients, schedule inspections, track claims — all linked to your reports automatically.' },
   { icon: Globe, title: 'White-Label Portal', desc: 'Enterprise clients get a fully branded portal with a custom subdomain, logo, colors, and report footer.' },
   { icon: Code2, title: 'Developer API', desc: 'REST API with API key authentication. Integrate FlacronAI into your existing claim management system.' },
@@ -381,7 +381,7 @@ const features = [
 
 const steps = [
   { num: '01', title: 'Add Claim & Property Details', desc: 'Enter claim, property, and loss information — policy number, insured details, and inspection notes.' },
-  { num: '02', title: 'Upload Inspection Photos', desc: 'Add up to 100 damage photos plus supporting documents. Uploads are validated and organized automatically.' },
+  { num: '02', title: 'Upload Inspection Photos', desc: 'Add damage photos plus supporting documents — your plan\'s photo allowance applies. Uploads are validated and organized automatically.' },
   { num: '03', title: 'The FLACRON ENGINE Drafts It', desc: 'Submitted photos and documentation are analyzed in the background and assembled into a structured draft.' },
   { num: '04', title: 'Review Every Observation', desc: 'Accept, edit, or exclude each AI-flagged observation, photo by photo, before it becomes part of the report.' },
   { num: '05', title: 'Edit in the Report Editor', desc: 'Refine language, reorder sections, and use FLACRON ENGINE writing assistance in a full rich-text editor.' },
@@ -555,11 +555,11 @@ const Home = () => {
             </div>
             <h2 className="text-4xl font-black text-gray-900 mb-4">Analyze the Entire Inspection</h2>
             <p className="text-gray-600 text-lg leading-relaxed mb-6">
-              Upload up to 100 damage photos per report. The FLACRON ENGINE processes the full batch in the background and flags visible conditions for your review — every finding stays editable, and nothing is added to the draft without your say.
+              Upload damage photos per report — capacity scales with your plan, up to unlimited on Enterprise. The FLACRON ENGINE processes the full batch in the background and flags visible conditions for your review — every finding stays editable, and nothing is added to the draft without your say.
             </p>
             <div className="space-y-3">
               {[
-                { icon: Image, label: 'Uploaded', desc: 'Up to 100 photos per report, validated and organized automatically.' },
+                { icon: Image, label: 'Uploaded', desc: 'A plan-based photo allowance per report, validated and organized automatically.' },
                 { icon: Cpu, label: 'Analyzed in batches', desc: 'Processed automatically in the background — no manual step required.' },
                 { icon: Eye, label: 'Reviewed by you', desc: 'Accept, edit, or exclude each flagged observation before it reaches the draft.' },
               ].map(({ icon: Icon, label, desc }) => (
@@ -587,9 +587,9 @@ const Home = () => {
             className="card p-6"
           >
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-bold text-gray-700">Photo Batch</span>
+              <span className="text-sm font-bold text-gray-700">Photo Batch (example)</span>
               <span className="text-sm text-brand-600 font-semibold">
-                <Counter end={100} /> photos
+                <Counter end={42} /> photos
               </span>
             </div>
             <div className="grid grid-cols-10 gap-1.5 mb-6" aria-hidden="true">

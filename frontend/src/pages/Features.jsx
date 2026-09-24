@@ -24,7 +24,7 @@ const FEATURE_SECTIONS = [
   {
     icon: Image,
     title: 'Photo Analysis',
-    desc: 'Upload up to 100 damage photos per report. Each one is analyzed for visible conditions and made available for structured, per-photo review.',
+    desc: 'Upload damage photos per report — capacity scales with your plan, up to unlimited on Enterprise. Each one is analyzed for visible conditions and made available for structured, per-photo review.',
     bullets: [
       'Location, category, severity, and observation per photo',
       'Accept, edit, exclude, or add a note to any AI-flagged observation',
@@ -143,7 +143,7 @@ export default function Features() {
               Everything You Need to Draft a Report
             </h1>
             <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-8">
-              From claim details and up to 100 photos to a reviewed, exported report — every step below is
+              From claim details and a plan-based photo allowance to a reviewed, exported report — every step below is
               part of the actual product, not a roadmap item.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">

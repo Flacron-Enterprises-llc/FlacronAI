@@ -8,10 +8,31 @@ const { isNotificationEnabled } = require('../utils/notificationPrefs');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
 const {
   TIER_ORDER,
+  TIERS,
   getStripePriceId,
   getTierKeyFromStripePriceId,
   getBaseTier,
 } = require('../config/tiers');
+const { photoAddOnCheckoutLimiter } = require('../middleware/rateLimiters');
+const {
+  resolveStripeMode,
+  resolveActivePack,
+  getPackPriceId,
+  getPublicCatalogue,
+} = require('../config/photoAddOnPacks');
+const {
+  createCheckoutIntent,
+  markSessionCreated,
+  markSessionFailed,
+  getCheckoutIntent,
+  fulfillCheckoutIntent,
+  markExpired,
+  applyRefund,
+  applyDisputeCreated,
+  applyDisputeClosed,
+  toSanitizedPurchase,
+} = require('../utils/photoAddOnPurchases');
+const { getPlanConfig, resolvePlanContext, PLAN_IDS, UNLIMITED } = require('../config/planConfig');
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
@@ -32,6 +53,28 @@ const persistSubscription = async (userRef, subscription, tierKey = getSubscript
   });
 
   return tier;
+};
+
+// Phase 45: refund/dispute webhook events carry a `payment_intent` id, not
+// our own `checkoutIntentId` directly -- retrieve the PaymentIntent
+// server-side (its metadata was set at checkout-session creation via
+// `payment_intent_data.metadata`) to recover it. Never guesses/derives it
+// from anything client- or metadata-only on the refund/dispute object
+// itself. Returns null (safe no-op upstream) if it isn't one of our intents
+// or Stripe says the PaymentIntent doesn't exist. Any OTHER lookup failure
+// (network/5xx/rate limit) is rethrown so the webhook returns 500 without
+// recording the event as processed -- Stripe then retries, instead of a
+// refund/dispute being silently dropped and the pack keeping its capacity.
+const resolveCheckoutIntentIdFromPaymentIntent = async paymentIntentId => {
+  if (!paymentIntentId) return null;
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return paymentIntent.metadata?.checkoutIntentId || null;
+  } catch (err) {
+    console.error('Failed to resolve checkout intent from payment intent:', err.message);
+    if (err?.code === 'resource_missing') return null;
+    throw err;
+  }
 };
 
 const findActiveSubscription = async customerId => {
@@ -164,6 +207,210 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/payment/public-plan-config — Phase 48 (Pricing Page, Admin
+// Configuration UI & Cross-Surface Consistency). The ONE sanitized,
+// server-derived read model the public pricing page (and any other
+// unauthenticated marketing surface) consumes for plan photo limits and
+// add-on pack pricing -- the SAME PlanConfig/catalogue Phase 44/45
+// enforcement already reads, never a separately maintained copy. No auth
+// required (matches the ai-status/property-lookup/config precedent: a safe
+// feature/pricing check every visitor can make before signing up). Never
+// includes a Stripe Price ID, secret, admin identity, or internal Firestore
+// path -- see photoAddOnPacks.js's toPublicPack/getPublicCatalogue and this
+// handler's own field list below.
+router.get('/public-plan-config', async (req, res) => {
+  try {
+    const db = getFirestore();
+    const { config: planConfig, source } = await getPlanConfig(db);
+    const mode = resolveStripeMode();
+
+    const plans = Object.fromEntries(
+      PLAN_IDS.map((id) => {
+        const limits = planConfig.plans[id];
+        const unlimited = limits.basePhotoLimit === UNLIMITED;
+        return [
+          id,
+          {
+            label: (planConfig.displayLabels && planConfig.displayLabels[id]) || TIERS[id]?.name || id,
+            basePhotoLimit: unlimited ? null : limits.basePhotoLimit,
+            unlimited,
+          },
+        ];
+      })
+    );
+
+    const packs = getPublicCatalogue().map((p) => ({
+      ...p,
+      available: !!planConfig.addOnsEnabled && !!getPackPriceId(resolveActivePack(p.id), mode),
+    }));
+    const checkoutAvailable = packs.some((p) => p.available);
+
+    return res.json({
+      success: true,
+      plans,
+      addOns: {
+        enabled: !!planConfig.addOnsEnabled,
+        reportSpecific: true,
+        checkoutAvailable,
+        packs,
+      },
+      configSource: source, // 'firestore' | 'fallback' -- never raw validation error strings
+    });
+  } catch (err) {
+    console.error('Public plan config error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load pricing configuration', code: 'PUBLIC_PLAN_CONFIG_ERROR' });
+  }
+});
+
+// GET /api/payment/photo-packs — Phase 45 (Stripe Report-Specific Photo
+// Add-Ons). Sanitized, public-safe catalogue: display info only (label,
+// capacity, price, currency) plus a per-pack `available` flag -- never a
+// Stripe Price ID or which internal config slot is/isn't set.
+router.get('/photo-packs', authenticateToken, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const { config: planConfig } = await getPlanConfig(db);
+    const mode = resolveStripeMode();
+    const packs = getPublicCatalogue().map((p) => ({
+      ...p,
+      available: !!planConfig.addOnsEnabled && !!getPackPriceId(resolveActivePack(p.id), mode),
+    }));
+    return res.json({ success: true, enabled: !!planConfig.addOnsEnabled, packs });
+  } catch (err) {
+    console.error('Photo pack catalogue error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load photo packs', code: 'CATALOGUE_ERROR' });
+  }
+});
+
+// POST /api/payment/photo-pack-checkout — client sends only { reportId,
+// packId }; every authoritative attribute (amount, currency, capacity,
+// Stripe Price ID) is resolved server-side from the trusted catalogue.
+router.post('/photo-pack-checkout', authenticateToken, photoAddOnCheckoutLimiter, async (req, res) => {
+  try {
+    const reportId = String(req.body?.reportId || '').trim();
+    const packId = String(req.body?.packId || '').trim();
+    if (!reportId || !packId) {
+      return res.status(400).json({ success: false, error: 'reportId and packId are required', code: 'INVALID_REQUEST' });
+    }
+
+    const db = getFirestore();
+    const ownerDoc = await db.collection('users').doc(req.user.uid).get();
+    const ownerData = ownerDoc.data() || {};
+
+    // Enterprise/unlimited never needs purchased capacity -- checked before
+    // touching Stripe or the pack catalogue at all, using only the
+    // requester's own account tier (never report-specific data), so this can
+    // never be used to probe another report's existence or status.
+    const planCtx = await resolvePlanContext(db, ownerData.tier);
+    if (planCtx.unlimited) {
+      return res.json({ success: true, unlimited: true, message: 'Your plan already includes unlimited photo capacity.' });
+    }
+
+    const { config: planConfig } = await getPlanConfig(db);
+    if (!planConfig.addOnsEnabled) {
+      return res.status(503).json({ success: false, error: 'Photo capacity add-ons are not currently available.', code: 'ADDONS_DISABLED' });
+    }
+
+    const pack = resolveActivePack(packId);
+    if (!pack) {
+      return res.status(400).json({ success: false, error: 'Unknown or inactive photo pack', code: 'INVALID_PACK' });
+    }
+
+    const mode = resolveStripeMode();
+    const priceId = getPackPriceId(pack, mode);
+    if (!priceId) {
+      return res.status(503).json({
+        success: false,
+        error: 'Photo capacity add-ons are not currently configured.',
+        code: 'STRIPE_ADDONS_NOT_CONFIGURED',
+      });
+    }
+
+    let intent;
+    try {
+      intent = await createCheckoutIntent(db, { uid: req.user.uid, reportId, pack, mode });
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') {
+        return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      if (err.code === 'REPORT_FINALIZED') {
+        return res.status(409).json({ success: false, error: err.message, code: 'REPORT_FINALIZED' });
+      }
+      throw err;
+    }
+
+    const successUrl = `${process.env.FRONTEND_URL}/reports/${reportId}/preview?photoPackCheckout=success&session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`;
+    const cancelUrl = `${process.env.FRONTEND_URL}/reports/${reportId}/preview?photoPackCheckout=cancelled&intentId=${intent.id}`;
+
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          payment_method_types: ['card'],
+          ...(ownerData.stripeCustomerId ? { customer: ownerData.stripeCustomerId } : { customer_email: req.user.email }),
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: { checkoutIntentId: intent.id, reportId, schemaVersion: '1' },
+          payment_intent_data: { metadata: { checkoutIntentId: intent.id, reportId } },
+        },
+        // Protects against stripe-node's own automatic network-error retry
+        // creating a second Checkout Session for the same stored intent.
+        { idempotencyKey: `photopack_${intent.id}` }
+      );
+    } catch (err) {
+      console.error('Photo pack checkout session error:', err.message);
+      await markSessionFailed(db, intent.id, { reason: err.message });
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to create checkout session. Please try again.',
+        code: 'CHECKOUT_SESSION_FAILED',
+      });
+    }
+
+    await markSessionCreated(db, intent.id, { stripeSessionId: session.id });
+
+    return res.json({ success: true, checkoutIntentId: intent.id, url: session.url });
+  } catch (err) {
+    console.error('Photo pack checkout error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to start checkout', code: 'STRIPE_ERROR' });
+  }
+});
+
+// POST /api/payment/photo-pack-checkout/:intentId/sync — after Stripe
+// redirects back to the app, the query string is NEVER trusted; this
+// retrieves the Checkout Session server-side and, only if Stripe reports it
+// paid, fulfills through the exact same atomic path the webhook uses
+// (fulfillCheckoutIntent is idempotent either way). The webhook remains the
+// authoritative, required fulfillment path for reliability -- this only
+// shortens the visible wait when the redirect lands before the webhook does.
+router.post('/photo-pack-checkout/:intentId/sync', authenticateToken, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const intent = await getCheckoutIntent(db, req.params.intentId);
+    if (!intent || intent.uid !== req.user.uid) {
+      return res.status(404).json({ success: false, error: 'Checkout not found', code: 'NOT_FOUND' });
+    }
+
+    if (intent.stripeSessionId && (intent.status === 'pending' || intent.status === 'session_created')) {
+      const session = await stripe.checkout.sessions.retrieve(intent.stripeSessionId);
+      if (session.status === 'expired') {
+        await markExpired(db, intent.id, {});
+      } else if (session.payment_status === 'paid' || session.payment_status === 'no_payment_required') {
+        await fulfillCheckoutIntent(db, intent.id, { stripeSession: session, source: 'sync' });
+      }
+      // Otherwise payment is still in flight -- leave the intent untouched.
+    }
+
+    const refreshed = await getCheckoutIntent(db, intent.id);
+    return res.json({ success: true, purchase: toSanitizedPurchase(refreshed) });
+  } catch (err) {
+    console.error('Photo pack checkout sync error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to sync checkout status', code: 'STRIPE_ERROR' });
+  }
+});
+
 // POST /api/payment/webhook
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -189,6 +436,24 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
+        // Phase 45: a report-specific photo add-on is a `mode: 'payment'`
+        // Checkout Session carrying our own opaque `checkoutIntentId` --
+        // fully additive, and mutually exclusive with the existing
+        // `mode: 'subscription'` tier-upgrade path below (a subscription
+        // session never sets this field, so that path is untouched).
+        const checkoutIntentId = session.metadata?.checkoutIntentId;
+        if (checkoutIntentId) {
+          const result = await fulfillCheckoutIntent(db, checkoutIntentId, {
+            stripeSession: session,
+            eventId: event.id,
+            source: 'webhook',
+          });
+          if (!result.fulfilled && !result.alreadyFulfilled) {
+            console.error(`Photo add-on fulfillment rejected for intent ${checkoutIntentId}: ${result.reason}`);
+          }
+          break;
+        }
+
         const uid = session.metadata?.uid;
         const tier = getBaseTier(session.metadata?.tier); // strip _annual suffix
         if (uid && tier) {
@@ -201,6 +466,59 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           if (subscription.created >= previousCreatedAt) {
             await persistSubscription(userRef, subscription, session.metadata?.tier);
             console.log(`✅ User ${uid} upgraded to ${tier}`);
+          }
+        }
+        break;
+      }
+
+      // Phase 45: the Checkout Session's own 24h expiry -- grants nothing.
+      case 'checkout.session.expired': {
+        const session = event.data.object;
+        const checkoutIntentId = session.metadata?.checkoutIntentId;
+        if (checkoutIntentId) {
+          await markExpired(db, checkoutIntentId, { eventId: event.id });
+        }
+        break;
+      }
+
+      // Phase 45: refund of a report-specific photo add-on charge. The
+      // Charge event carries `payment_intent` directly; the PaymentIntent's
+      // own metadata (set at checkout-session creation) is retrieved
+      // server-side to locate the trusted intent doc -- never trusted from
+      // the charge object's own (unset) metadata.
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(charge.payment_intent);
+        if (checkoutIntentId) {
+          const fullyRefunded = charge.amount_refunded >= charge.amount;
+          await applyRefund(db, checkoutIntentId, {
+            eventId: event.id,
+            amountRefundedCents: charge.amount_refunded,
+            fullyRefunded,
+          });
+        }
+        break;
+      }
+
+      case 'charge.dispute.created': {
+        const dispute = event.data.object;
+        const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(dispute.payment_intent);
+        if (checkoutIntentId) {
+          await applyDisputeCreated(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id });
+        }
+        break;
+      }
+
+      // Real Stripe event names only -- there is no `charge.dispute.won`/
+      // `charge.dispute.lost`. The outcome is `dispute.status` ('won' |
+      // 'lost' | 'warning_closed'/etc.) on the single `charge.dispute.closed`
+      // event; only 'won'/'lost' are actionable capacity outcomes here.
+      case 'charge.dispute.closed': {
+        const dispute = event.data.object;
+        if (dispute.status === 'won' || dispute.status === 'lost') {
+          const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(dispute.payment_intent);
+          if (checkoutIntentId) {
+            await applyDisputeClosed(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id, outcome: dispute.status });
           }
         }
         break;

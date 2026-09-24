@@ -60,6 +60,7 @@ const WhiteLabelPortal = lazy(() => import('./pages/WhiteLabelPortal.jsx'));
 const EnterpriseOnboarding = lazy(() => import('./pages/EnterpriseOnboarding.jsx'));
 const AdminTierUpdate = lazy(() => import('./pages/AdminTierUpdate.jsx'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
+const AdminPlanConfig = lazy(() => import('./pages/AdminPlanConfig.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const TeamMemberProfile = lazy(() => import('./pages/TeamMemberProfile.jsx'));
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
@@ -163,6 +164,7 @@ const App = () => {
         <Route path="/white-label" element={<ProtectedRoute requiredTier="enterprise"><WhiteLabelPortal /></ProtectedRoute>} />
         <Route path="/admin-tier-update" element={<ProtectedRoute><AdminTierUpdate /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin-plan-config" element={<ProtectedRoute><AdminPlanConfig /></ProtectedRoute>} />
         <Route path="/enterprise-dashboard" element={<ProtectedRoute requiredTier="enterprise"><EnterpriseDashboard /></ProtectedRoute>} />
         <Route path="/team/members/:memberId" element={<ProtectedRoute requiredTier="enterprise"><TeamMemberProfile /></ProtectedRoute>} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

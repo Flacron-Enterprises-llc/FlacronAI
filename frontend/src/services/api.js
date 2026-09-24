@@ -5,14 +5,22 @@ import { clearMfaAssertion, getMfaAssertion, notifyMfaRequired } from './mfaAsse
 // Re-exported for existing call sites (AuthContext.jsx, MfaGate.jsx, Settings.jsx) --
 // the actual implementation lives in ./mfaAssertion.js (dependency-free, so it can be
 // unit-tested without triggering Firebase app initialization).
-export { getMfaAssertion, setMfaAssertion, clearMfaAssertion, MFA_REQUIRED_EVENT } from './mfaAssertion.js';
+export {
+  getMfaAssertion,
+  setMfaAssertion,
+  clearMfaAssertion,
+  MFA_REQUIRED_EVENT,
+} from './mfaAssertion.js';
 
 // Prefer the versioned API. The backend serves every route under BOTH /api
 // (legacy) and /api/v1 (versioned) from the same handlers. VITE_API_URL may be
 // configured as a bare origin (https://api.example.com), an /api base, or an
 // already-versioned /api/vN base — normalize all three to end in /api/vN so a
 // bare-origin config can never silently drop the /api prefix and 404 every call.
-const RAW_API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/+$/, '');
+const RAW_API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(
+  /\/+$/,
+  ''
+);
 const API_BASE = /\/api\/v\d+$/.test(RAW_API_BASE)
   ? RAW_API_BASE
   : /\/api$/.test(RAW_API_BASE)
@@ -82,7 +90,9 @@ api.interceptors.response.use(
       }
       // No Firebase user or refresh failed — session is genuinely gone
       localStorage.removeItem('flac_token');
-      const onAuthPage = ['/auth', '/login', '/signup'].some(p => window.location.pathname.startsWith(p));
+      const onAuthPage = ['/auth', '/login', '/signup'].some((p) =>
+        window.location.pathname.startsWith(p)
+      );
       if (!onAuthPage) {
         window.location.href = '/login';
       }
@@ -93,7 +103,7 @@ api.interceptors.response.use(
     if (response?.status === 429 && !isRateLimitRetrying && !config._retry) {
       isRateLimitRetrying = true;
       config._retry = true;
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
       isRateLimitRetrying = false;
       return api(config);
     }
@@ -105,7 +115,7 @@ api.interceptors.response.use(
     const isNetworkError = !response && error.code !== 'ECONNABORTED';
     if ((isTransientServerError || isNetworkError) && !config._transientRetry) {
       config._transientRetry = true;
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
       return api(config);
     }
 
@@ -135,11 +145,12 @@ export const reportsAPI = {
   // `onUploadProgress` (Phase 6 addendum) surfaces real byte-level progress of
   // the multipart body actually being sent -- used to drive genuine per-photo
   // upload progress in the wizard, not a fake timer.
-  generate: (formData, onUploadProgress) => api.post('/reports/generate', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 300000,
-    onUploadProgress,
-  }),
+  generate: (formData, onUploadProgress) =>
+    api.post('/reports/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+      onUploadProgress,
+    }),
   getAll: (params) => api.get('/reports', { params }),
   getDashboardSummary: () => api.get('/reports/dashboard-summary'),
   getOne: (id) => api.get(`/reports/${id}`),
@@ -174,15 +185,18 @@ export const reportsAPI = {
   reopenComment: (id, commentId) => api.post(`/reports/${id}/comments/${commentId}/reopen`),
   getSharedComments: (token) => api.get(`/reports/shared/${token}/comments`),
   addSharedComment: (token, data) => api.post(`/reports/shared/${token}/comments`, data),
-  resolveSharedComment: (token, commentId) => api.post(`/reports/shared/${token}/comments/${commentId}/resolve`),
-  reopenSharedComment: (token, commentId) => api.post(`/reports/shared/${token}/comments/${commentId}/reopen`),
+  resolveSharedComment: (token, commentId) =>
+    api.post(`/reports/shared/${token}/comments/${commentId}/resolve`),
+  reopenSharedComment: (token, commentId) =>
+    api.post(`/reports/shared/${token}/comments/${commentId}/reopen`),
   delete: (id, permanent = false) => api.delete(`/reports/${id}`, { params: { permanent } }),
   restore: (id) => api.post(`/reports/${id}/restore`),
   duplicate: (id) => api.post(`/reports/${id}/duplicate`),
   // Phase 36 (Mold Assessment Supplemental Report): generates a new,
   // separately-stored report linked back to `id` -- called from an
   // already-open report's detail view, not the primary wizard.
-  generateMoldSupplement: (id, data) => api.post(`/reports/${id}/mold-supplement`, data, { timeout: 60000 }),
+  generateMoldSupplement: (id, data) =>
+    api.post(`/reports/${id}/mold-supplement`, data, { timeout: 60000 }),
   // Phase 37 (Repair Estimate with Depreciation Schedule): `createEstimate`
   // spawns a new linked Repair Estimate document (like generateMoldSupplement
   // above); `reviseEstimate` edits an existing one in place, appending one
@@ -204,11 +218,61 @@ export const reportsAPI = {
   // every field is adjuster-entered or computed server-side.
   createCoverageLetter: (id, data) => api.post(`/reports/${id}/coverage-letter`, data),
   reviseCoverageLetter: (id, data) => api.put(`/reports/${id}/coverage-letter`, data),
+  // Phase 42 (Section 7 Rendering, Editor & Report Integration): reads/saves
+  // the PRIMARY report's own Phase 41 canonical structured estimate --
+  // `id` here is the primary report's id, not a derivative document. `PUT`
+  // recomputes and returns the authoritative server-side totals; the caller
+  // never trusts a client-computed total as final.
+  getCanonicalEstimate: (id) => api.get(`/reports/${id}/canonical-estimate`),
+  saveCanonicalEstimate: (id, data) => api.put(`/reports/${id}/canonical-estimate`, data),
+  // Phase 43 (OpenAI Preliminary Pricing Service): generates a PROPOSAL only
+  // -- persists nothing. `signal` (AbortController) lets the editor cancel
+  // an in-flight generation, same convention as searchAPI.search/
+  // photosAPI.list above. The caller reviews/accepts items and merges them
+  // into its own draft state; saving still goes through the existing
+  // `saveCanonicalEstimate` above.
+  getPriceSuggestions: (id, data, signal) =>
+    api.post(`/reports/${id}/estimate-detail/price-suggestions`, data, { signal }),
+  // Phase 46 (Property Intelligence: Address Normalization & Google
+  // Integration). `getPropertyLookupConfig` is public (no report id, no
+  // auth) -- a sanitized feature-status check the wizard makes once before
+  // deciding whether to render the autocomplete widget at all.
+  // `normalizePropertyAddress` resolves a browser-selected Google placeId
+  // into a trusted, server-normalized address (never a report write).
+  // `savePropertyProfile` is the only endpoint that ever persists a
+  // report's confirmed/manual property profile.
+  getPropertyLookupConfig: () => api.get('/reports/property-lookup/config'),
+  normalizePropertyAddress: (data, signal) =>
+    api.post('/reports/property-lookup/normalize', data, { signal }),
+  savePropertyProfile: (id, data) => api.put(`/reports/${id}/property-profile`, data),
+  // Phase 47 (Property Intelligence: RealtyAPI U.S. Adapter & Report
+  // Integration). `getPropertyIntelligenceConfig` is public, same
+  // sanitized-status precedent as `getPropertyLookupConfig` above.
+  // `requestPropertyIntelligence` looks up (or serves from cache) detailed
+  // U.S. property data for THIS report's already-confirmed address -- never
+  // an error for a non-US/unconfirmed address (a normal `status:
+  // 'not_eligible'` response instead). `getPropertyIntelligence` re-reads
+  // the currently-persisted state without triggering a new lookup.
+  // `applyPropertyIntelligence` is the only endpoint that ever persists
+  // reviewed/confirmed property-intelligence fields onto the report.
+  getPropertyIntelligenceConfig: () => api.get('/reports/property-lookup/intelligence/config'),
+  requestPropertyIntelligence: (id, data, signal) =>
+    api.post(`/reports/${id}/property-lookup/intelligence`, data, { signal }),
+  getPropertyIntelligence: (id) => api.get(`/reports/${id}/property-lookup/intelligence`),
+  applyPropertyIntelligence: (id, data) => api.put(`/reports/${id}/property-intelligence`, data),
   export: (id, data) => api.post(`/reports/${id}/export`, data),
-  getDownloadUrl: (id, filename) => `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
-  download: (id, filename) => api.get(`/reports/${id}/download?file=${filename}`, { responseType: 'blob' }),
-  downloadDocument: (id, fileName) => api.get(`/reports/${id}/documents/download?file=${encodeURIComponent(fileName)}`, { responseType: 'blob' }),
-  analyzeImages: (formData) => api.post('/reports/analyze-images', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  getDownloadUrl: (id, filename) =>
+    `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
+  download: (id, filename) =>
+    api.get(`/reports/${id}/download?file=${filename}`, { responseType: 'blob' }),
+  downloadDocument: (id, fileName) =>
+    api.get(`/reports/${id}/documents/download?file=${encodeURIComponent(fileName)}`, {
+      responseType: 'blob',
+    }),
+  analyzeImages: (formData) =>
+    api.post('/reports/analyze-images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   aiStatus: () => api.get('/reports/ai-status'),
   // Phase 25 (mobile immediate-upload): stages one wizard photo to Storage as
   // soon as it's captured/selected, ahead of the report even existing yet.
@@ -217,19 +281,37 @@ export const reportsAPI = {
     const fd = new FormData();
     fd.append('draftId', draftId);
     fd.append('image', file);
-    return api.post('/reports/photos/stage', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/reports/photos/stage', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
   getStagedPhotos: (draftId) => api.get(`/reports/photos/stage/${draftId}`),
-  deleteStagedPhoto: (draftId, photoId) => api.delete(`/reports/photos/stage/${draftId}/${photoId}`),
+  deleteStagedPhoto: (draftId, photoId) =>
+    api.delete(`/reports/photos/stage/${draftId}/${photoId}`),
+  // Phase 44 (Central Plan Configuration & Atomic Photo-Capacity Enforcement)
+  // -- sanitized, read-only PlanConfig-backed capacity for the wizard's live
+  // counter/warning/blocked-state, before a report even exists yet.
+  getPhotoCapacity: (draftId) =>
+    api.get('/reports/photos/capacity', { params: draftId ? { draftId } : {} }),
+  getReportPhotoCapacity: (id) => api.get(`/reports/${id}/photo-capacity`),
   getStagedPhotoImageBlob: (draftId, photoId, variant = 'thumbnail') =>
-    api.get(`/reports/photos/stage/${draftId}/${photoId}/image`, { params: { variant }, responseType: 'blob' }),
-  addImages: (id, formData) => api.post(`/reports/${id}/images`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.get(`/reports/photos/stage/${draftId}/${photoId}/image`, {
+      params: { variant },
+      responseType: 'blob',
+    }),
+  addImages: (id, formData) =>
+    api.post(`/reports/${id}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   // Phase 6 (Photo Upload & Per-Photo UX Hardening) -- per-photo gallery for a
   // generated report. Photos are private objects (same as documents/exports
   // above), so images are fetched as authenticated blobs, not a public <img src>.
   getPhotos: (id) => api.get(`/reports/${id}/photos`),
   getPhotoImageBlob: (id, photoId, variant = 'thumbnail') =>
-    api.get(`/reports/${id}/photos/${photoId}/image`, { params: { variant }, responseType: 'blob' }),
+    api.get(`/reports/${id}/photos/${photoId}/image`, {
+      params: { variant },
+      responseType: 'blob',
+    }),
   // Phase 7 (Async Photo Analysis Pipeline) -- polled while a report's status
   // is 'processing' to drive the analysis-progress view.
   getAnalysisStatus: (id) => api.get(`/reports/${id}/analysis-status`),
@@ -252,7 +334,10 @@ export const reportsAPI = {
 export const usersAPI = {
   getProfile: () => api.get('/users/profile'),
   updateProfile: (data) => api.put('/users/profile', data),
-  uploadLogo: (formData) => api.post('/users/profile/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  uploadLogo: (formData) =>
+    api.post('/users/profile/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   deleteLogo: () => api.delete('/users/profile/logo'),
   getUsage: () => api.get('/users/usage'),
   updateName: (displayName) => api.put('/users/update-name', { displayName }),
@@ -263,7 +348,8 @@ export const usersAPI = {
   getKeyUsage: (keyId) => api.get(`/users/api-keys/${keyId}/usage`),
   getApiUsage: () => api.get('/users/api-usage'),
   deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
-  recordRegistrationConsent: (policyVersion) => api.post('/users/consent/registration', { policyVersion }),
+  recordRegistrationConsent: (policyVersion) =>
+    api.post('/users/consent/registration', { policyVersion }),
   getLoginHistory: (params) => api.get('/users/login-history', { params }),
   // Phase 18 (Settings Completion)
   getOrganization: () => api.get('/users/organization'),
@@ -280,6 +366,14 @@ export const paymentAPI = {
   getSubscription: () => api.get('/payment/current-subscription'),
   getInvoices: () => api.get('/payment/invoices'),
   cancelSubscription: () => api.post('/payment/cancel-subscription'),
+  // Phase 45 (Stripe Report-Specific Photo Add-Ons).
+  getPhotoPacks: () => api.get('/payment/photo-packs'),
+  // Phase 48 — sanitized, no-auth pricing/capacity read model for the
+  // public pricing page (and any other unauthenticated marketing surface).
+  getPublicPlanConfig: () => api.get('/payment/public-plan-config'),
+  createPhotoPackCheckout: (reportId, packId) =>
+    api.post('/payment/photo-pack-checkout', { reportId, packId }),
+  syncPhotoPackCheckout: (intentId) => api.post(`/payment/photo-pack-checkout/${intentId}/sync`),
 };
 
 export const crmAPI = {
@@ -310,7 +404,8 @@ export const crmAPI = {
 export const whiteLabelAPI = {
   getConfig: () => api.get('/white-label/config'),
   updateConfig: (data) => api.put('/white-label/customize', data),
-  uploadLogo: (formData) => api.post('/white-label/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  uploadLogo: (formData) =>
+    api.post('/white-label/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getPortal: (subdomain) => api.get(`/white-label/portal/${subdomain}`),
   preview: () => api.post('/white-label/preview', {}, { responseType: 'blob' }),
 };
@@ -324,7 +419,10 @@ export const templatesAPI = {
   archive: (id) => api.post(`/templates/${id}/archive`),
   restore: (id) => api.post(`/templates/${id}/restore`),
   remove: (id) => api.delete(`/templates/${id}`),
-  uploadLogo: (id, formData) => api.post(`/templates/${id}/logo`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  uploadLogo: (id, formData) =>
+    api.post(`/templates/${id}/logo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   removeLogo: (id) => api.delete(`/templates/${id}/logo`),
 };
 
@@ -344,7 +442,8 @@ export const analyticsAPI = {
   // `tzOffset` = the browser's own `-new Date().getTimezoneOffset()`, so the
   // backend can bucket "Reports/Photos Over Time" by the viewer's local
   // calendar day/week/month instead of a hardcoded UTC one.
-  get: (params = {}) => api.get('/analytics', { params: { ...params, tzOffset: -new Date().getTimezoneOffset() } }),
+  get: (params = {}) =>
+    api.get('/analytics', { params: { ...params, tzOffset: -new Date().getTimezoneOffset() } }),
 };
 
 export const organizationAPI = {
@@ -395,6 +494,20 @@ export const salesAPI = {
   getUserReports: (uid) => api.get(`/sales/admin/user/${uid}/reports`),
   getUserBilling: (uid) => api.get(`/sales/admin/user/${uid}/billing`),
   sendUserEmail: (data) => api.post('/sales/admin/email', data),
+  // Phase 48 (Pricing Page, Admin Configuration UI & Cross-Surface Consistency).
+  getPlanConfig: () => api.get('/sales/admin/plan-config'),
+  getPlanConfigHistory: (limit) =>
+    api.get('/sales/admin/plan-config/history', { params: limit ? { limit } : {} }),
+  updatePlanConfig: (patch, changeSummary, expectedRevision) =>
+    api.put('/sales/admin/plan-config', { patch, changeSummary, expectedRevision }),
+  rollbackPlanConfigToLegacy: (changeSummary, expectedRevision) =>
+    api.post('/sales/admin/plan-config/legacy-rollback', {
+      changeSummary,
+      confirm: 'true',
+      expectedRevision,
+    }),
+  getAdminPhotoPacks: () => api.get('/sales/admin/photo-packs'),
+  getIntegrationStatus: () => api.get('/sales/admin/integration-status'),
 };
 
 export default api;

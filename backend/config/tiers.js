@@ -1,3 +1,12 @@
+// Phase 44 (Central Plan Configuration): `reportsPerMonth` below stays as the
+// static SAFE-FALLBACK value (it doubles as planConfig.js's own
+// FALLBACK_CONFIG source of truth) -- the LIVE, admin-editable value is read
+// from PlanConfig via `getEffectiveTier`/`canGenerateAsync` below, not from
+// this object directly, wherever a route actually enforces the monthly quota.
+// Every other field on TIERS (exportFormats/watermark/apiAccess/...) is
+// unaffected by Phase 44 and stays exactly as before.
+const { resolvePlanContext } = require('./planConfig');
+
 const TIERS = {
   starter: {
     name: 'Starter',
@@ -71,6 +80,24 @@ const canGenerate = (userTier, reportsThisMonth) => {
   return reportsThisMonth < tier.reportsPerMonth;
 };
 
+// Phase 44: live-config variants of getTier/canGenerate above. `db` is a
+// Firestore handle (same shape callers already have via getFirestore()).
+// Falls back to the plain static getTier()/canGenerate() behavior (this
+// file's own hardcoded values) if PlanConfig can't be read/is invalid --
+// resolvePlanContext already implements that safe-fallback itself, so this
+// never throws and never fails closed into "unlimited".
+const getEffectiveTier = async (db, tierName) => {
+  const base = getTier(tierName);
+  const ctx = await resolvePlanContext(db, tierName);
+  return { ...base, reportsPerMonth: ctx.reportsPerMonth };
+};
+
+const canGenerateAsync = async (db, userTier, reportsThisMonth) => {
+  const tier = await getEffectiveTier(db, userTier);
+  if (tier.reportsPerMonth === -1) return true;
+  return reportsThisMonth < tier.reportsPerMonth;
+};
+
 const getStripePriceId = (tierName) => {
   const map = {
     professional:        process.env.STRIPE_PRICE_PROFESSIONAL,
@@ -105,6 +132,8 @@ module.exports = {
   getTier,
   isAtLeastTier,
   canGenerate,
+  getEffectiveTier,
+  canGenerateAsync,
   getStripePriceId,
   getTierKeyFromStripePriceId,
   getBaseTier,

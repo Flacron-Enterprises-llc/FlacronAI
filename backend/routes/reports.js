@@ -68,7 +68,20 @@ const { buildInvoiceContent } = require('../utils/invoiceContent');
 // header comment.
 const { validateAndComputeCoverageLetter, validateSourceEligibility } = require('../utils/coverageLetterCalculations');
 const { buildCoverageLetterContent } = require('../utils/coverageLetterContent');
+// Phase 41 (Canonical Structured Estimate Data Model & Calculation Engine):
+// the primary report's own versioned structured estimate -- a SEPARATE
+// lifecycle from the RepairEstimate document above (see canonicalEstimate.js
+// header comment). Never AI-called; server always recomputes every total.
+const {
+  getCanonicalEstimate,
+  upsertCanonicalEstimate,
+} = require('../utils/canonicalEstimateStore');
+// Phase 42: pure markdown builder + in-memory splice for the canonical
+// estimate's rendered Section 7 detail -- see its header comment for why
+// all three export formats share this one representation.
+const { buildSection7DetailMarkdown, injectSection7Detail } = require('../utils/canonicalEstimateContent');
 const { addWatermarkToPDF } = require('../services/watermarkService');
+const { resolveWatermarkPolicy, REVIEWED_STATUSES } = require('../utils/watermarkPolicy');
 const {
   reportDocumentObject,
   exportObject,
@@ -86,11 +99,49 @@ const {
 const { isValidImageBuffer } = require('../utils/imageValidation');
 const { isValidDocumentBuffer } = require('../utils/documentValidation');
 const { processPhotoBatch } = require('../utils/photoBatchProcessor');
-const { appendStagedPhoto, claimDraftPhotos } = require('../utils/photoDraftStaging');
+const { appendStagedPhoto, claimDraftPhotos, removeStagedPhoto } = require('../utils/photoDraftStaging');
 const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
 const photoJobService = require('../services/photoJobService');
-const { aiLimiter } = require('../middleware/rateLimiters');
-const { getTier, canGenerate } = require('../config/tiers');
+const { aiLimiter, pricingLimiter, addressLookupLimiter, propertyIntelligenceLimiter } = require('../middleware/rateLimiters');
+// Phase 46 (Property Intelligence: Address Normalization & Google Integration).
+// See backend/services/propertyService.js for the full trust-boundary
+// contract; buildLegacyPropertyProfileView/markProviderFieldsStale are pure
+// read-side helpers used directly by the routes below.
+const propertyService = require('../services/propertyService');
+const {
+  buildLegacyPropertyProfileView,
+} = require('../utils/addressNormalization');
+// Phase 47 (Property Intelligence: RealtyAPI U.S. Adapter & Report
+// Integration). See backend/services/propertyIntelligenceService.js for the
+// full eligibility/lookup/apply contract. The RealtyAPI provider makes real,
+// billed requests only when backend/config/realtyApi.js's isConfigured() is
+// true (feature flag + key + base URL); otherwise lookups resolve to
+// PROPERTY_PROVIDER_NOT_CONFIGURED.
+const propertyIntelligenceService = require('../services/propertyIntelligenceService');
+const { buildEmptyPropertyIntelligence } = require('../utils/propertyIntelligence');
+const {
+  buildSection3PropertyBlockMarkdown,
+  injectSection3PropertyBlock,
+} = require('../utils/propertyIntelligenceContent');
+// Phase 43 (OpenAI Preliminary Pricing Service) -- generation-only, never
+// persists. See backend/services/pricingService.js for the full contract.
+const { generatePricingProposal } = require('../services/pricingService');
+const { getTier, getEffectiveTier, canGenerateAsync } = require('../config/tiers');
+// Phase 44 (Central Plan Configuration & Atomic Photo-Capacity Enforcement):
+// PlanConfig is the single source of truth for per-tier photo limits (and,
+// via tiers.js's getEffectiveTier/canGenerateAsync above, live reportsPerMonth
+// too) -- see backend/config/planConfig.js's header comment for the full
+// caching/validation/fallback contract.
+const { resolvePlanContext } = require('../config/planConfig');
+// Phase 45 (Stripe Report-Specific Photo Add-Ons): sanitized purchase-history
+// read only -- capacity fulfillment/reversal writes happen exclusively via
+// the atomic transactions in this module, triggered from routes/payment.js.
+const { listSanitizedPurchasesForReport } = require('../utils/photoAddOnPurchases');
+const {
+  partitionRecordsByCapacity,
+  computeBatchFingerprint,
+  appendReportPhotosAtomic,
+} = require('../utils/photoCapacity');
 const { recordAuditLog } = require('../services/auditLogService');
 const { emitEvent } = require('../services/webhookService');
 const { getClaim, getClient } = require('../services/crmService');
@@ -120,11 +171,24 @@ const WEATHER_CONDITIONS = [
   'Other',
 ];
 const OCCUPANCY_STATUSES = ['Occupied', 'Vacant', 'Under Renovation', 'Unknown'];
-// Mirrors the frontend's MAX_PHOTOS (Dashboard.jsx) -- enforced here too since
-// photo staging (POST /photos/stage) writes directly to Storage/Firestore
-// outside the /generate request that used to be the only server-side check.
-const MAX_PHOTOS = 100;
-const MAX_PHOTOS_MESSAGE = 'Maximum of 100 photos reached. Remove a photo to upload another.';
+// Phase 44: the old flat `MAX_PHOTOS = 100` constant (shared by every tier)
+// is removed -- every photo-adding route below now resolves the caller's
+// ACTUAL effective capacity from PlanConfig (backend/config/planConfig.js)
+// per request, via resolvePhotoCapacityForRequest() just below. `req.user.tier`
+// is already populated by the auth middleware from the user's own Firestore
+// doc (see middleware/auth.js), so this needs no extra user-doc read -- only
+// the (short-TTL-cached) PlanConfig read itself.
+const photoCapacityMessage = (capacity) =>
+  `Maximum of ${capacity} photos reached for your plan. Remove a photo, delete unused photos, or upgrade your plan.`;
+
+// `verifiedAddOnCapacity` (Phase 45): a report's own `purchasedPhotoCapacity`
+// snapshot (only ever incremented/decremented by the atomic Stripe
+// fulfillment/reversal transactions in utils/photoAddOnPurchases.js) --
+// defaults to 0 for the draft-stage routes below, which are pre-report-
+// creation and have no report to own a purchase against (add-ons are
+// report-specific only, never account-global; see PHASES.md Phase 45).
+const resolvePhotoCapacityForRequest = (db, req, verifiedAddOnCapacity = 0) =>
+  resolvePlanContext(db, req.user && req.user.tier, { verifiedAddOnCapacity });
 
 // Reject any uploaded file whose actual bytes aren't a real image (defeats a
 // spoofed mimetype). Returns the offending filename, or null if all are valid.
@@ -261,6 +325,86 @@ const checkAndResetMonthly = async (db, userId) => {
   }
   return data;
 };
+
+// GET /api/reports/property-lookup/config — Phase 46 sanitized public
+// config (no auth, matching the ai-status precedent immediately below: a
+// safe feature/status check every client can make before deciding whether
+// to render the autocomplete widget at all). Never returns the server key,
+// any key at all, or project/billing identifiers -- see
+// propertyService.getPublicConfig's own contract comment. Defined before
+// the /:id routes so 'property-lookup' is never captured as a report id.
+router.get('/property-lookup/config', (req, res) => {
+  return res.json({ success: true, ...propertyService.getPublicConfig() });
+});
+
+// GET /api/reports/property-lookup/intelligence/config — Phase 47 sanitized
+// public config, same no-auth precedent as the Phase 46 endpoint above.
+// Never returns a provider name/key/base URL/plan -- see
+// propertyIntelligenceService.getPublicConfig's own contract comment.
+router.get('/property-lookup/intelligence/config', (req, res) => {
+  return res.json({ success: true, ...propertyIntelligenceService.getPublicConfig() });
+});
+
+// POST /api/reports/property-lookup/normalize — Phase 46. Resolves a
+// browser-selected Google placeId into a trusted, server-normalized address
+// via the server-restricted key (never the browser key, never trusted from
+// the client as-is). Persists nothing to a report -- returns a short-lived
+// `normalizationToken` the wizard/editor later presents to PUT
+// /:id/property-profile to have these exact values trusted. Not tied to a
+// report id because this can happen before a report exists (the wizard's
+// property step, ahead of report creation) -- ownership/report checks live
+// on the persistence endpoint below instead.
+router.post('/property-lookup/normalize', authenticateAny, addressLookupLimiter, async (req, res) => {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+  try {
+    const result = await propertyService.normalizePlace(getFirestore(), {
+      placeId: req.body?.placeId,
+      original: req.body?.original,
+      requestedByUid: req.user.uid,
+      signal: controller.signal,
+    });
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'property_address_normalized',
+      targetType: 'addressNormalization',
+      targetId: result.normalizationToken,
+      meta: { ambiguous: result.ambiguous },
+      req,
+    });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    const knownCodes = {
+      ADDRESS_PROVIDER_UNAVAILABLE: 503,
+      ADDRESS_INVALID_INPUT: 400,
+      ADDRESS_NO_MATCH: 404,
+      ADDRESS_NO_PREDICTIONS: 404,
+      ADDRESS_AMBIGUOUS: 409,
+      ADDRESS_QUOTA_EXCEEDED: 402,
+      ADDRESS_RATE_LIMITED: 429,
+      ADDRESS_PERMISSION_DENIED: 500,
+      ADDRESS_BILLING_DISABLED: 500,
+      ADDRESS_TIMEOUT: 504,
+      ADDRESS_PROVIDER_ERROR: 502,
+      ADDRESS_NETWORK_ERROR: 502,
+      ADDRESS_MALFORMED_RESPONSE: 502,
+    };
+    if (err.code === 'ADDRESS_CANCELLED') return; // client already disconnected
+    if (knownCodes[err.code]) {
+      // ADDRESS_PERMISSION_DENIED/ADDRESS_BILLING_DISABLED deliberately never
+      // echo err.message (which may reference Google's own project/billing
+      // wording) -- a generic, safe message only.
+      const safeMessage =
+        err.code === 'ADDRESS_PERMISSION_DENIED' || err.code === 'ADDRESS_BILLING_DISABLED'
+          ? 'Address lookup is temporarily unavailable.'
+          : err.message;
+      return res.status(knownCodes[err.code]).json({ success: false, error: safeMessage, code: err.code });
+    }
+    console.error('Address normalization error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to look up address', code: 'ADDRESS_LOOKUP_ERROR' });
+  }
+});
 
 // GET /api/reports/ai-status
 router.get('/ai-status', async (req, res) => {
@@ -491,8 +635,13 @@ router.post(
         return res.status(403).json({ success: false, error: 'Not your draft', code: 'FORBIDDEN' });
       }
       const existingPhotos = doc.exists ? doc.data().photos || [] : [];
-      if (existingPhotos.length >= MAX_PHOTOS) {
-        return res.status(400).json({ success: false, error: MAX_PHOTOS_MESSAGE, code: 'MAX_PHOTOS' });
+
+      // Phase 44: the cap is now the caller's OWN plan's effective photo
+      // capacity (PlanConfig), never a flat 100 shared by every tier.
+      const { capacity, unlimited } = await resolvePhotoCapacityForRequest(db, req);
+      const committedCount = existingPhotos.filter((p) => p.status === 'uploaded').length;
+      if (!unlimited && committedCount >= capacity) {
+        return res.status(400).json({ success: false, error: photoCapacityMessage(capacity), code: 'MAX_PHOTOS', limit: capacity, used: committedCount });
       }
 
       const existingHashes = existingPhotos
@@ -509,12 +658,14 @@ router.post(
 
       // Transactional append -- see backend/utils/photoDraftStaging.js for
       // why this must be a transaction (fixes a silent-data-loss race on
-      // concurrent multi-file uploads to the same draftId).
+      // concurrent multi-file uploads to the same draftId). `maxPhotos` here
+      // is Infinity for an unlimited (Enterprise) plan -- appendStagedPhoto's
+      // `>=` check against Infinity is never true, so the cap is a no-op.
       const photos = await appendStagedPhoto(db, {
         draftId,
         uid: req.user.uid,
         record,
-        maxPhotos: MAX_PHOTOS,
+        maxPhotos: unlimited ? Infinity : capacity,
       });
 
       return res.status(201).json({
@@ -571,27 +722,25 @@ router.get('/photos/stage/:draftId/:photoId/image', authenticateAny, reportsGene
   }
 });
 
-// DELETE /api/reports/photos/stage/:draftId/:photoId — remove one staged photo.
+// DELETE /api/reports/photos/stage/:draftId/:photoId — remove one staged
+// photo. Phase 44: made transactional (removeStagedPhoto, mirroring
+// appendStagedPhoto's own idiom) -- a plain get()/update() here could race a
+// concurrent stage request for the same draft. Capacity itself needs no
+// explicit "release" logic: it's always derived fresh from the current
+// photos array length, so removing the entry IS the release.
 router.delete('/photos/stage/:draftId/:photoId', authenticateAny, reportsGenerate, async (req, res) => {
   try {
     const db = getFirestore();
-    const ref = db.collection('reportDrafts').doc(req.params.draftId);
-    const doc = await ref.get();
-    if (!doc.exists || doc.data().userId !== req.user.uid) {
-      return res.status(404).json({ success: false, error: 'Draft not found', code: 'NOT_FOUND' });
-    }
-    const photos = doc.data().photos || [];
-    const target = photos.find((p) => p.id === req.params.photoId);
-    if (!target) {
-      return res.status(404).json({ success: false, error: 'Photo not found', code: 'PHOTO_NOT_FOUND' });
-    }
-    await ref.update({
-      photos: photos.filter((p) => p.id !== req.params.photoId),
-      updatedAt: new Date().toISOString(),
-    });
-    deleteObjects([target.originalPath, target.objectPath, target.thumbnailPath].filter(Boolean)).catch(() => {});
+    const { removed } = await removeStagedPhoto(db, { draftId: req.params.draftId, uid: req.user.uid, photoId: req.params.photoId });
+    deleteObjects([removed.originalPath, removed.objectPath, removed.thumbnailPath].filter(Boolean)).catch(() => {});
     return res.json({ success: true });
   } catch (err) {
+    if (err.code === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: 'Draft not found', code: 'NOT_FOUND' });
+    }
+    if (err.code === 'PHOTO_NOT_FOUND') {
+      return res.status(404).json({ success: false, error: 'Photo not found', code: 'PHOTO_NOT_FOUND' });
+    }
     return res.status(500).json({ success: false, error: 'Failed to remove photo', code: 'STAGE_DELETE_ERROR' });
   }
 });
@@ -613,10 +762,10 @@ router.post(
 
     try {
       const userData = await checkAndResetMonthly(db, req.user.uid);
-      const tier = getTier(userData.tier || 'starter');
+      const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
 
-      if (!canGenerate(userData.tier, reportsThisMonth)) {
+      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -1058,6 +1207,42 @@ router.post(
         photoRecords = [...photoRecords, ...records];
         analyzableImages = [...analyzableImages, ...analyzable];
       }
+
+      // Phase 44 task 6: re-validate the claimed photo count against
+      // PlanConfig HERE, at commit time -- not only at staging time (Phase
+      // 44's own /photos/stage cap uses the same PlanConfig read, but a
+      // staged draft can sit for a while before Generate is clicked, and this
+      // is a brand-new report so there's no prior committed count to add).
+      // Any photo beyond the caller's effective capacity is demoted to
+      // 'failed' (capacityRejected) by the same pure partition function every
+      // other photo-adding route uses -- never silently dropped, never
+      // silently over-admitted. This report doesn't exist as a Firestore doc
+      // yet, so there is no cross-request contention to guard with a
+      // transaction here (unlike POST /:id/images below): the only shared
+      // mutable state (the staged draft) was already claimed atomically by
+      // claimDraftPhotos above.
+      const { capacity: photoCapacity, unlimited: photoCapacityUnlimited } = await resolvePhotoCapacityForRequest(db, req);
+      const { records: partitionedRecords, rejectedForCapacity } = partitionRecordsByCapacity(photoRecords, {
+        committedCount: 0,
+        capacity: photoCapacity,
+        unlimited: photoCapacityUnlimited,
+      });
+      if (rejectedForCapacity.length > 0) {
+        const rejectedIds = new Set(rejectedForCapacity.map((r) => r.id));
+        analyzableImages = analyzableImages.filter((img) => !rejectedIds.has(img.photoId));
+        // Orphan cleanup: these bytes were already written to Storage (by
+        // processPhotoBatch, above/before this check) before capacity could
+        // be evaluated -- exact-object delete only, best-effort. If this
+        // fails, the object is merely an orphaned Storage cost (never
+        // double-counted against capacity, since it's excluded from
+        // `photos`/`imagePaths` below regardless of whether the delete
+        // succeeds) -- see backend/utils/photoCapacity.js header comment.
+        deleteObjects(
+          rejectedForCapacity.flatMap((r) => [r.originalPath, r.objectPath, r.thumbnailPath].filter(Boolean))
+        ).catch((err) => console.warn('[POST /generate] orphaned-photo cleanup failed for report', reportId, err.message));
+      }
+      photoRecords = partitionedRecords;
+
       const imagePaths = photoRecords
         .filter((r) => r.status === 'uploaded')
         .map((r) => r.objectPath);
@@ -1507,6 +1692,34 @@ router.get('/:id', authenticateAny, reportsRead, async (req, res) => {
     // redaction, not a behavior change.
     const reportOut = { id: doc.id, ...doc.data() };
     delete reportOut.imagePaths;
+    // Phase 46: a pre-Phase-46 report has no `propertyProfile` at all --
+    // synthesize a safe, read-only manual/unverified VIEW from its existing
+    // plain address fields rather than leaving the frontend to guess. Never
+    // written back here (no Firestore write in a GET handler) -- it only
+    // becomes real, persisted data once the user explicitly confirms/saves
+    // via PUT /:id/property-profile.
+    if (!reportOut.propertyProfile) {
+      reportOut.propertyProfile = buildLegacyPropertyProfileView(reportOut);
+    }
+    // Phase 47: same non-destructive, read-only synthesis for a report that
+    // predates this schema (or has an address but no property lookup yet)
+    // -- never written back here, only becomes real once the user confirms
+    // via PUT /:id/property-intelligence.
+    if (!reportOut.propertyProfile.propertyIntelligence) {
+      // A new object, never a mutation of the underlying Firestore doc-data
+      // object (which `reportOut.propertyProfile` still references directly
+      // after the shallow `{ id: doc.id, ...doc.data() }` spread above).
+      reportOut.propertyProfile = { ...reportOut.propertyProfile, propertyIntelligence: buildEmptyPropertyIntelligence() };
+    }
+    // Phase 47: same architecture as Phase 42's canonical-estimate
+    // detailMarkdown (GET /:id/canonical-estimate) -- the server computes
+    // the already-formatted Section 3 markdown block ONCE here so the
+    // frontend never has to duplicate money/label FORMATTING logic in a
+    // second language; it only duplicates the tiny generic splice
+    // algorithm (frontend/src/utils/propertyIntelligenceContent.js).
+    // Confirmed-only contract enforced inside buildSection3PropertyBlockMarkdown
+    // itself; never persisted (computed fresh on every GET).
+    reportOut.propertySection3Markdown = buildSection3PropertyBlockMarkdown(reportOut.propertyProfile);
     if (Array.isArray(reportOut.photos)) {
       reportOut.photos = reportOut.photos.map((p) => {
         const photoOut = { ...p };
@@ -1521,6 +1734,340 @@ router.get('/:id', authenticateAny, reportsRead, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, error: 'Failed to fetch report', code: 'FETCH_ERROR' });
+  }
+});
+
+// PUT /api/reports/:id/property-profile — Phase 46. Persists the user's
+// confirmed (or manually entered) normalized address for an existing
+// report. Access mirrors PUT /:id (owner-with-canEditReports, or a
+// review-grantee); a finalized report is immutable through this endpoint,
+// same REPORT_FINALIZED precedent as PUT /:id and the pricing route.
+router.put('/:id/property-profile', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const report = doc.data();
+    const access = getReportAccess(report, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const isOwnerPath = access === 'owner';
+    if (isOwnerPath && !hasCapability(req.user, 'canEditReports')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your team role does not have permission to do this (canEditReports).',
+        code: 'TEAM_PERMISSION_DENIED',
+        capability: 'canEditReports',
+      });
+    }
+    if (!isOwnerPath && access !== 'review') {
+      return res.status(403).json({
+        success: false,
+        error: 'You only have view or comment access to this report.',
+        code: 'SHARE_PERMISSION_DENIED',
+      });
+    }
+    if (report.status === 'finalized') {
+      return res.status(409).json({
+        success: false,
+        error: 'Finalized reports cannot have their property profile changed.',
+        code: 'REPORT_FINALIZED',
+      });
+    }
+
+    const mode = req.body?.mode === 'manual' ? 'manual' : 'provider_confirmed';
+    if (mode === 'provider_confirmed' && !req.body?.normalizationToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'normalizationToken is required to confirm a provider-looked-up address.',
+        code: 'VALIDATION_ERROR',
+        field: 'normalizationToken',
+      });
+    }
+
+    // Client-injected trust is rejected by construction: buildConfirmedPropertyProfile
+    // never reads req.body.fields/source/verificationStatus -- only `overrides`
+    // (plain edit values) and, for provider_confirmed mode, the SERVER-STORED
+    // normalization record keyed by the token. There is no code path by which
+    // a client-supplied "source"/"verified" claim reaches the saved document.
+    const existingProfile = report.propertyProfile || buildLegacyPropertyProfileView(report);
+    const profile = await propertyService.buildConfirmedPropertyProfile(db, {
+      existingProfile,
+      mode,
+      normalizationToken: req.body?.normalizationToken,
+      original: req.body?.original,
+      overrides: req.body?.overrides,
+      requestedByUid: req.user.uid,
+    });
+
+    // Phase 47: an address save/edit here never touches propertyIntelligence
+    // itself, but if the ADDRESS actually changed since the last property
+    // lookup, that lookup's provider-derived fields are marked stale (never
+    // deleted, never silently kept as if still current) -- the same
+    // "changed address makes prior provider-derived data stale" rule
+    // addressNormalization.js's own markProviderFieldsStale already applies
+    // to Phase 46's own fields.
+    if (existingProfile.propertyIntelligence) {
+      profile.propertyIntelligence = propertyIntelligenceService.staleIfAddressChanged(
+        existingProfile.propertyIntelligence,
+        profile
+      );
+    }
+
+    await ref.update({ propertyProfile: profile, updatedAt: new Date().toISOString() });
+
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'property_profile_confirmed',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { mode, propertyLookupEligible: profile.propertyLookupEligible },
+      req,
+    });
+
+    return res.json({ success: true, propertyProfile: profile });
+  } catch (err) {
+    if (
+      [
+        'ADDRESS_NORMALIZATION_NOT_FOUND',
+        'ADDRESS_NORMALIZATION_FORBIDDEN',
+        'ADDRESS_NORMALIZATION_EXPIRED',
+      ].includes(err.code)
+    ) {
+      const status = err.code === 'ADDRESS_NORMALIZATION_FORBIDDEN' ? 403 : 400;
+      return res.status(status).json({ success: false, error: err.message, code: err.code });
+    }
+    console.error('Property profile save error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to save property profile', code: 'PROPERTY_PROFILE_ERROR' });
+  }
+});
+
+// Shared by the three Phase 47 routes below -- mirrors the identical
+// owner-with-canEditReports-or-review-grantee access block already
+// duplicated across PUT /:id/property-profile,
+// POST /:id/estimate-detail/price-suggestions, and PUT /:id/canonical-estimate
+// (kept inline in each of those for historical/diff-locality reasons); a
+// shared helper is used here because all THREE new Phase 47 routes need the
+// exact same check, and only being introduced together makes the
+// factoring worthwhile without touching any pre-existing route.
+const getReportEditAuthorization = (report, user) => {
+  const access = getReportAccess(report, user);
+  if (!access) {
+    return { error: { status: 404, body: { success: false, error: 'Report not found', code: 'NOT_FOUND' } } };
+  }
+  const isOwnerPath = access === 'owner';
+  if (isOwnerPath && !hasCapability(user, 'canEditReports')) {
+    return {
+      error: {
+        status: 403,
+        body: {
+          success: false,
+          error: 'Your team role does not have permission to do this (canEditReports).',
+          code: 'TEAM_PERMISSION_DENIED',
+          capability: 'canEditReports',
+        },
+      },
+    };
+  }
+  if (!isOwnerPath && access !== 'review') {
+    return {
+      error: {
+        status: 403,
+        body: { success: false, error: 'You only have view or comment access to this report.', code: 'SHARE_PERMISSION_DENIED' },
+      },
+    };
+  }
+  return { access };
+};
+
+const PROPERTY_INTELLIGENCE_ERROR_STATUS = {
+  PROPERTY_PROVIDER_NOT_CONFIGURED: 503,
+  PROPERTY_PROVIDER_UNAVAILABLE: 503,
+  PROPERTY_NO_MATCH: 404,
+  PROPERTY_PROVIDER_ERROR: 502,
+  PROPERTY_TIMEOUT: 504,
+  PROPERTY_MALFORMED_RESPONSE: 502,
+  PROPERTY_INVALID_INPUT: 400,
+  // Same "hide provider-account-state from the client" choice as
+  // ADDRESS_PERMISSION_DENIED/ADDRESS_BILLING_DISABLED (reports.js's Phase
+  // 46 address route) -- a key-permission problem is an ops/config issue,
+  // never a per-request client-facing detail.
+  PROPERTY_PERMISSION_DENIED: 500,
+  PROPERTY_QUOTA_EXCEEDED: 402,
+  PROPERTY_RATE_LIMITED: 429,
+  PROPERTY_LOOKUP_NOT_FOUND: 400,
+  PROPERTY_LOOKUP_FORBIDDEN: 403,
+  PROPERTY_LOOKUP_EXPIRED: 400,
+};
+
+// POST /api/reports/:id/property-lookup/intelligence — Phase 47. Requests
+// (or serves from cache) detailed U.S. property/parcel data for THIS
+// report's already-confirmed Phase 46 address. Never blocks report
+// creation/editing: a non-US or not-yet-confirmed address returns a normal
+// 200 response with `status: 'not_eligible'`, never an error (see
+// propertyIntelligenceService.computeEligibility). `recheck: true` bypasses
+// the shared cache (an explicit, deliberate refresh). `propertyIntelligenceLimiter`
+// bounds the real, billed provider call (see realtyApiProvider.js -- when the
+// provider is not configured this resolves to PROPERTY_PROVIDER_NOT_CONFIGURED, 503).
+router.post(
+  '/:id/property-lookup/intelligence',
+  authenticateAny,
+  reportsWrite,
+  propertyIntelligenceLimiter,
+  async (req, res) => {
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+    try {
+      const db = getFirestore();
+      const doc = await db.collection('reports').doc(req.params.id).get();
+      if (!doc.exists) {
+        return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const report = doc.data();
+      const { error } = getReportEditAuthorization(report, req.user);
+      if (error) return res.status(error.status).json(error.body);
+      if (report.status === 'finalized') {
+        return res.status(409).json({
+          success: false,
+          error: 'Finalized reports cannot request a new property lookup.',
+          code: 'REPORT_FINALIZED',
+        });
+      }
+
+      const propertyProfile = report.propertyProfile || buildLegacyPropertyProfileView(report);
+      const result = await propertyIntelligenceService.requestPropertyIntelligence(db, {
+        reportId: req.params.id,
+        propertyProfile,
+        requestedByUid: req.user.uid,
+        recheck: req.body?.recheck === true,
+        signal: controller.signal,
+      });
+
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'property_intelligence_lookup_requested',
+        targetType: 'report',
+        targetId: req.params.id,
+        meta: { status: result.status },
+        req,
+      });
+
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      if (err.code === 'PROPERTY_CANCELLED') return; // client already disconnected
+      const status = PROPERTY_INTELLIGENCE_ERROR_STATUS[err.code];
+      if (status) {
+        return res.status(status).json({ success: false, error: err.message, code: err.code });
+      }
+      console.error('Property intelligence lookup error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to look up property details', code: 'PROPERTY_INTELLIGENCE_ERROR' });
+    }
+  }
+);
+
+// GET /api/reports/:id/property-lookup/intelligence — Phase 47. Reads the
+// report's currently-persisted propertyIntelligence (confirmed or not) --
+// used to re-open the review step / poll status without triggering a new
+// (billed) provider call. Read access mirrors the generic GET /:id.
+router.get('/:id/property-lookup/intelligence', authenticateAny, reportsRead, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reports').doc(req.params.id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const report = doc.data();
+    const access = getReportAccess(report, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const intelligence = report.propertyProfile?.propertyIntelligence || buildEmptyPropertyIntelligence();
+    return res.json({ success: true, propertyIntelligence: intelligence });
+  } catch (err) {
+    console.error('Property intelligence fetch error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load property details', code: 'PROPERTY_INTELLIGENCE_ERROR' });
+  }
+});
+
+// PUT /api/reports/:id/property-intelligence — Phase 47. Persists the
+// user's reviewed/edited/confirmed property-intelligence fields (a SIBLING
+// of Phase 46's PUT /:id/property-profile, not a replacement -- both write
+// into the same `report.propertyProfile` object, at different keys). Same
+// access/finalized-immutability precedent as every other report-mutation
+// route above.
+router.put('/:id/property-intelligence', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('reports').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const report = doc.data();
+    const { error } = getReportEditAuthorization(report, req.user);
+    if (error) return res.status(error.status).json(error.body);
+    if (report.status === 'finalized') {
+      return res.status(409).json({
+        success: false,
+        error: 'Finalized reports cannot have their property details changed.',
+        code: 'REPORT_FINALIZED',
+      });
+    }
+
+    const mode = req.body?.mode === 'manual' ? 'manual' : 'provider_confirmed';
+    if (mode === 'provider_confirmed' && !req.body?.lookupId) {
+      return res.status(400).json({
+        success: false,
+        error: 'lookupId is required to apply a looked-up property detail.',
+        code: 'VALIDATION_ERROR',
+        field: 'lookupId',
+      });
+    }
+
+    const existingProfile = report.propertyProfile || buildLegacyPropertyProfileView(report);
+    // Client-injected trust is rejected by construction, same as PUT
+    // /:id/property-profile: applyPropertyIntelligence never reads
+    // req.body.fields/source/verificationStatus -- only `overrides`, which
+    // keys the client SELECTED to accept, and, for provider_confirmed mode,
+    // the SERVER-STORED lookup record keyed by lookupId.
+    const propertyIntelligence = await propertyIntelligenceService.applyPropertyIntelligence(db, {
+      reportId: req.params.id,
+      existingIntelligence: existingProfile.propertyIntelligence,
+      mode,
+      lookupId: req.body?.lookupId,
+      selectedKeys: req.body?.selectedKeys,
+      overrides: req.body?.overrides,
+      requestedByUid: req.user.uid,
+      addressFingerprint: existingProfile.propertyIntelligence?.addressFingerprint,
+    });
+
+    const propertyProfile = { ...existingProfile, propertyIntelligence };
+    await ref.update({ propertyProfile, updatedAt: new Date().toISOString() });
+
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'property_intelligence_confirmed',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { mode, status: propertyIntelligence.status },
+      req,
+    });
+
+    return res.json({ success: true, propertyIntelligence });
+  } catch (err) {
+    const status = PROPERTY_INTELLIGENCE_ERROR_STATUS[err.code];
+    if (status) {
+      return res.status(status).json({ success: false, error: err.message, code: err.code });
+    }
+    console.error('Property intelligence save error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to save property details', code: 'PROPERTY_INTELLIGENCE_ERROR' });
   }
 });
 
@@ -2730,10 +3277,11 @@ const setCommentResolved = (resolved) => async (req, res) => {
 router.post('/:id/comments/:commentId/resolve', authenticateAny, reportsWrite, setCommentResolved(true));
 router.post('/:id/comments/:commentId/reopen', authenticateAny, reportsWrite, setCommentResolved(false));
 
-// A report is "reviewed" (exports clean) only once a human finalizes it.
-// Legacy reports saved before the review gate used 'completed' — treat as reviewed.
-const isReviewed = (status) =>
-  status === 'finalized' || status === 'approved' || status === 'completed';
+// A report is "reviewed" (export gate passes) only once a human finalizes
+// it. Legacy reports saved before the review gate used 'completed' — treat
+// as reviewed. Shares its status set with the watermark policy resolver
+// (backend/utils/watermarkPolicy.js) so the two never drift apart.
+const isReviewed = (status) => REVIEWED_STATUSES.has(status);
 
 // QA fix (report immutability): true only when the CURRENT persisted status
 // is the canonical 'finalized' state (the only value /approve itself ever
@@ -3190,12 +3738,12 @@ router.post(
     try {
       const db = getFirestore();
       const userData = await checkAndResetMonthly(db, req.user.uid);
-      const tier = getTier(userData.tier || 'starter');
+      const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
       // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
       // other report generation -- no new tier restriction for this document
       // type (confirmed 2026-08-24, consistent with Phase 31's precedent).
-      if (!canGenerate(userData.tier, reportsThisMonth)) {
+      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -3379,12 +3927,12 @@ router.post(
     try {
       const db = getFirestore();
       const userData = await checkAndResetMonthly(db, req.user.uid);
-      const tier = getTier(userData.tier || 'starter');
+      const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
       // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
       // other generated report -- no new tier restriction for this document
       // type (consistent with Phase 31/36's precedent).
-      if (!canGenerate(userData.tier, reportsThisMonth)) {
+      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -3639,6 +4187,285 @@ router.put('/:id/estimate', authenticateAny, reportsWrite, async (req, res) => {
   }
 });
 
+// GET /api/reports/:id/canonical-estimate — Phase 41. Returns the primary
+// report's canonical structured estimate, or `{ estimate: null, legacy:
+// true }` when the report predates this schema / never had one created --
+// the legacy-fallback contract (no destructive migration, no fabricated
+// line items). Read access mirrors the generic GET /:id: owner or anyone
+// holding at least a 'view' share/assignment grant.
+router.get('/:id/canonical-estimate', authenticateAny, reportsRead, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reports').doc(req.params.id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const access = getReportAccess(doc.data(), req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const estimate = await getCanonicalEstimate(db, req.params.id);
+    if (!estimate) {
+      return res.json({ success: true, estimate: null, legacy: true, detailMarkdown: '' });
+    }
+    // Phase 42 (2026-09-18 correction, CHECK 1): also return the SAME
+    // server-computed detail markdown the export route splices into Section
+    // 7 -- so the desktop preview can apply the identical replace-the-legacy
+    // -body selection rule as PDF/DOCX/HTML, instead of only ever showing
+    // the stale AI-narrative summary. The frontend only splices this
+    // string into its own copy of `content` for display; nothing here is
+    // persisted.
+    const detailMarkdown = buildSection7DetailMarkdown(estimate, { reportStatus: doc.data().status });
+    return res.json({ success: true, estimate, legacy: false, detailMarkdown });
+  } catch (err) {
+    console.error('Canonical estimate fetch error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to load canonical estimate',
+      code: 'CANONICAL_ESTIMATE_ERROR',
+    });
+  }
+});
+
+// PUT /api/reports/:id/canonical-estimate — Phase 41. Upserts (creates or
+// revises) the primary report's canonical structured estimate. Same
+// owner-or-review-grantee access pattern as PUT /:id/estimate above (this is
+// an edit to data owned by an already-shared primary report, not spawning a
+// new derivative document). All validation, component reconciliation,
+// rollup calculation, evidence-index maintenance, and the finalized-report
+// immutability guard live in canonicalEstimateStore.upsertCanonicalEstimate
+// (transactional) / canonicalEstimate.js (pure) -- this handler only maps
+// their thrown error codes to the backend's standard {success,error,code}
+// envelope. The server NEVER trusts a client-submitted total: every dollar
+// figure returned here was just freshly recomputed from the submitted line
+// items.
+router.put('/:id/canonical-estimate', authenticateAny, reportsWrite, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reports').doc(req.params.id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const existing = doc.data();
+    const access = getReportAccess(existing, req.user);
+    if (!access) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const isOwnerPath = access === 'owner';
+    if (isOwnerPath && !hasCapability(req.user, 'canEditReports')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your team role does not have permission to do this (canEditReports).',
+        code: 'TEAM_PERMISSION_DENIED',
+        capability: 'canEditReports',
+      });
+    }
+    if (!isOwnerPath && access !== 'review') {
+      return res.status(403).json({
+        success: false,
+        error: 'You only have view or comment access to this report.',
+        code: 'SHARE_PERMISSION_DENIED',
+      });
+    }
+
+    const estimate = await upsertCanonicalEstimate(db, {
+      reportId: req.params.id,
+      body: req.body,
+      actor: { uid: req.user.uid, email: req.user.email },
+    });
+    recordAuditLog({
+      actorUid: req.user.uid,
+      actorEmail: req.user.email,
+      action: 'canonical_estimate_upserted',
+      targetType: 'report',
+      targetId: req.params.id,
+      meta: { revision: estimate.revision, grandTotalCents: estimate.totals.grandTotalCents },
+      req,
+    });
+    return res.json({ success: true, estimate });
+  } catch (err) {
+    if (err.code === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: err.message, code: err.code });
+    }
+    if (err.code === 'REPORT_FINALIZED') {
+      return res.status(409).json({ success: false, error: err.message, code: err.code });
+    }
+    if (err.code === 'REVISION_CONFLICT') {
+      return res
+        .status(409)
+        .json({ success: false, error: err.message, code: err.code, currentRevision: err.currentRevision });
+    }
+    if (['VALIDATION_ERROR', 'UNSUPPORTED_SCHEMA_VERSION', 'MIXED_CURRENCY'].includes(err.code)) {
+      return res.status(400).json({ success: false, error: err.message, code: err.code });
+    }
+    // Phase 43 trust-boundary correction (2026-09-19): errors thrown by
+    // resolveAppliedProposals (pricingProposalStore.js) when `appliedProposal`
+    // references an unknown/expired/cross-user/already-consumed-elsewhere
+    // proposal or suggestion -- always a clearly-coded rejection, never a
+    // crash, and never a silent no-op.
+    if (err.code === 'PRICING_PROPOSAL_NOT_FOUND') {
+      return res.status(404).json({ success: false, error: err.message, code: err.code });
+    }
+    if (err.code === 'PRICING_PROPOSAL_FORBIDDEN') {
+      return res.status(403).json({ success: false, error: err.message, code: err.code });
+    }
+    if (err.code === 'PRICING_PROPOSAL_EXPIRED' || err.code === 'PRICING_SUGGESTION_ALREADY_CONSUMED') {
+      return res.status(409).json({ success: false, error: err.message, code: err.code });
+    }
+    if (err.code === 'PRICING_SUGGESTION_NOT_FOUND') {
+      return res.status(400).json({ success: false, error: err.message, code: err.code });
+    }
+    console.error('Canonical estimate upsert error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to save canonical estimate',
+      code: 'CANONICAL_ESTIMATE_ERROR',
+    });
+  }
+});
+
+// POST /api/reports/:id/estimate-detail/price-suggestions — Phase 43
+// (OpenAI Preliminary Pricing Service). GENERATES A PROPOSAL ONLY -- this
+// route persists NOTHING. The user reviews/accepts suggested items in the
+// editor, which merges accepted items into its own draft state; the
+// EXISTING, unmodified PUT /:id/canonical-estimate above is the only route
+// that ever saves an estimate (and the only place a total is ever
+// authoritative -- see canonicalEstimateStore.upsertCanonicalEstimate's own
+// header comment). Access mirrors PUT /:id/canonical-estimate exactly
+// (owner-with-canEditReports, or a review-grantee); a finalized report is
+// blocked from even GENERATING a new proposal (409), matching the existing
+// REPORT_FINALIZED precedent, even though nothing here would be persisted.
+// `pricingLimiter` (backend/middleware/rateLimiters.js) applies a
+// dedicated, conservative per-user budget on top of pricingService.js's own
+// per-request item-count cap, since a call here can trigger a real, billed
+// OpenAI request.
+router.post(
+  '/:id/estimate-detail/price-suggestions',
+  authenticateAny,
+  reportsWrite,
+  pricingLimiter,
+  async (req, res) => {
+    // Cancellation: if the client disconnects (e.g. the user clicks
+    // Cancel, wiring an AbortController through axios on the frontend), we
+    // stop waiting on the in-flight provider call as soon as we notice --
+    // matching this codebase's existing axios/AbortController convention
+    // elsewhere (no dedicated 499 response is sent since the client is
+    // already gone; the request simply never resolves once aborted).
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    try {
+      const db = getFirestore();
+      const doc = await db.collection('reports').doc(req.params.id).get();
+      if (!doc.exists) {
+        return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const report = doc.data();
+      const access = getReportAccess(report, req.user);
+      if (!access) {
+        return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+      }
+      const isOwnerPath = access === 'owner';
+      if (isOwnerPath && !hasCapability(req.user, 'canEditReports')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Your team role does not have permission to do this (canEditReports).',
+          code: 'TEAM_PERMISSION_DENIED',
+          capability: 'canEditReports',
+        });
+      }
+      if (!isOwnerPath && access !== 'review') {
+        return res.status(403).json({
+          success: false,
+          error: 'You only have view or comment access to this report.',
+          code: 'SHARE_PERMISSION_DENIED',
+        });
+      }
+      if (report.status === 'finalized') {
+        return res.status(409).json({
+          success: false,
+          error: 'Finalized reports cannot be repriced.',
+          code: 'REPORT_FINALIZED',
+        });
+      }
+
+      const proposal = await generatePricingProposal(db, {
+        reportId: req.params.id,
+        requestedByUid: req.user.uid,
+        body: req.body,
+        signal: controller.signal,
+      });
+
+      // Audit log: counts/fingerprint-adjacent metadata only -- NEVER the
+      // OpenAI prompt/response text itself (Golden Rule #6-adjacent: a
+      // request/response body can contain locale + repair-scope text that,
+      // while not insured PII, still shouldn't sit verbatim in the audit
+      // trail indefinitely).
+      recordAuditLog({
+        actorUid: req.user.uid,
+        actorEmail: req.user.email,
+        action: 'pricing_suggestions_generated',
+        targetType: 'report',
+        targetId: req.params.id,
+        meta: { itemCount: proposal.items.length, cacheStatus: proposal.cacheStatus },
+        req,
+      });
+
+      // Phase 43 trust-boundary correction (2026-09-19): `proposalId` (and
+      // each item's own `suggestionId`, already on `proposal.items`) is the
+      // opaque handle the editor sends back on PUT /:id/canonical-estimate
+      // as `appliedProposal` to apply accepted suggestions -- `items` here
+      // never carries `providerModel`/raw provider internals (pricingService
+      // .js strips it before returning).
+      return res.json({
+        success: true,
+        proposalId: proposal.proposalId,
+        items: proposal.items,
+        cacheStatus: proposal.cacheStatus,
+        pricingDate: proposal.pricingDate,
+      });
+    } catch (err) {
+      if (err.code === 'PRICING_PROVIDER_UNAVAILABLE') {
+        return res.status(503).json({ success: false, error: 'Preliminary pricing is not currently available.', code: err.code });
+      }
+      if (err.code === 'PRICING_TIMEOUT') {
+        return res.status(504).json({ success: false, error: 'The pricing provider timed out. Please try again.', code: err.code });
+      }
+      if (err.code === 'PRICING_RATE_LIMITED') {
+        return res.status(429).json({ success: false, error: 'The pricing provider is temporarily rate-limited. Please try again shortly.', code: err.code });
+      }
+      if (err.code === 'PRICING_QUOTA_EXCEEDED') {
+        return res.status(402).json({ success: false, error: 'Preliminary pricing is temporarily unavailable (provider quota).', code: err.code });
+      }
+      if (err.code === 'PRICING_AUTH_FAILED') {
+        // Never expose provider auth detail verbatim -- full detail was
+        // already logged server-side only, inside config/openai.js's
+        // categorize().
+        return res.status(500).json({ success: false, error: 'Preliminary pricing is temporarily unavailable.', code: err.code });
+      }
+      if (err.code === 'PRICING_MALFORMED_RESPONSE') {
+        return res.status(502).json({ success: false, error: 'The pricing provider returned an unusable response. Please try again.', code: err.code });
+      }
+      if (err.code === 'PRICING_LIMIT_EXCEEDED') {
+        return res.status(429).json({ success: false, error: err.message, code: err.code });
+      }
+      if (err.code === 'VALIDATION_ERROR') {
+        return res.status(400).json({ success: false, error: err.message, code: err.code, field: err.field });
+      }
+      if (err.code === 'PRICING_CANCELLED') {
+        // The client already disconnected -- nothing to send.
+        return;
+      }
+      console.error('Preliminary pricing generation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to generate preliminary pricing suggestions.',
+        code: 'PRICING_ERROR',
+      });
+    }
+  }
+);
+
 // POST /api/reports/:id/invoice — Phase 38 (Invoice Document): creates a NEW
 // Invoice report doc from an existing, already-created Repair Estimate
 // (`:id` is the ESTIMATE's own id). "Services Rendered" is the estimate's
@@ -3663,11 +4490,11 @@ router.post(
     try {
       const db = getFirestore();
       const userData = await checkAndResetMonthly(db, req.user.uid);
-      const tier = getTier(userData.tier || 'starter');
+      const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
       // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
       // other generated report -- no new tier restriction for this document type.
-      if (!canGenerate(userData.tier, reportsThisMonth)) {
+      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -3984,11 +4811,11 @@ router.post(
     try {
       const db = getFirestore();
       const userData = await checkAndResetMonthly(db, req.user.uid);
-      const tier = getTier(userData.tier || 'starter');
+      const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
       // Golden Rule #4: same monthly-limit/tier-capability enforcement as any
       // other generated report -- no new tier restriction for this document type.
-      if (!canGenerate(userData.tier, reportsThisMonth)) {
+      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,
@@ -4513,10 +5340,14 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     // so it can never silently override an explicit user/org choice.
     const templateBranding = report.templateBranding || null;
     const logoObjectPath = wlConfig?.logoPath || userData.logoPath || templateBranding?.logoObjectPath || null;
-    const draftWatermark = !reviewed; // un-reviewed drafts are always watermarked
-    const watermarkText = draftWatermark
-      ? 'DRAFT — PENDING ADJUSTER REVIEW'
-      : 'Generated by FlacronAI — Upgrade to remove watermark';
+    // Phase 40: single authoritative watermark policy, driven only by the
+    // server-persisted report status (never client-supplied) and the
+    // server-resolved tier config -- never trust a client field here.
+    const watermarkPolicy = resolveWatermarkPolicy({
+      reportStatus: report.status,
+      tierWatermark: !!tier.watermark,
+    });
+    const watermarkText = watermarkPolicy.text;
     // Phase 13 found (and fixed) that this only ever suppressed the literal
     // "FlacronAI" text for a TEMPLATE's own branding, never for a real
     // company name the user/org had set themselves -- Phase 18 closes that
@@ -4678,7 +5509,7 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
       ...(tocSections ? { tocSections } : {}),
       companyName: resolvedCompanyName || 'FlacronAI',
       primaryColor: wlConfig?.primaryColor ? hexToRgb(wlConfig.primaryColor) : [253, 68, 3],
-      watermark: tier.watermark || draftWatermark,
+      watermark: watermarkPolicy.show,
       watermarkText,
       reportFooter: wlConfig?.reportFooter || orgUserData.reportFooter || templateBranding?.footerText || null,
       hideFlacronBranding:
@@ -4750,6 +5581,35 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     }
     pdfOptions.photoMap = photoMap;
 
+    // Phase 42: render the canonical structured estimate (Phase 41) as
+    // Section 7's detailed breakdown, REPLACING the legacy AI-narrative
+    // estimate body (never shown together) -- across PDF/DOCX/HTML
+    // identically, from ONE normalized markdown representation spliced into
+    // an in-memory copy of `content` (never persisted -- the canonical
+    // estimate subdoc stays the only source of truth; see
+    // canonicalEstimateContent.js's header comment). Legacy-fallback
+    // contract: a report with no canonical estimate (or one with no line
+    // items yet) gets `detailMarkdown === ''`, so injectSection7Detail is a
+    // no-op and today's legacy rendering is unchanged.
+    stage = 'canonical-estimate-lookup';
+    const canonicalEstimate = await getCanonicalEstimate(db, req.params.id);
+    const section7Detail = buildSection7DetailMarkdown(canonicalEstimate, { reportStatus: report.status });
+    const reportWithSection7 = section7Detail
+      ? { ...report, content: injectSection7Detail(report.content, section7Detail) }
+      : report;
+
+    // Phase 47: APPEND (never replace) a confirmed-property-details block
+    // beneath Section 3's existing narrative -- across PDF/DOCX/HTML
+    // identically, from the SAME `report.propertyProfile` the desktop
+    // preview reads (frontend/src/utils/propertyIntelligenceContent.js
+    // mirrors this exact pair of pure functions). Only USER_CONFIRMED
+    // fields are ever rendered; a report with none gets
+    // `section3Block === ''`, so injectSection3PropertyBlock is a no-op.
+    const section3Block = buildSection3PropertyBlockMarkdown(report.propertyProfile);
+    const renderReport = section3Block
+      ? { ...reportWithSection7, content: injectSection3PropertyBlock(reportWithSection7.content, section3Block) }
+      : reportWithSection7;
+
     let buffer;
     let ext;
     let contentType;
@@ -4766,12 +5626,12 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
         stage = 'pdf-generation';
         // The final overlay below is the single authoritative PDF watermark.
         // Disable PDFKit's built-in layer here to avoid doubled/illegible marks.
-        buffer = await generatePDF(report, { ...pdfOptions, watermark: false });
+        buffer = await generatePDF(renderReport, { ...pdfOptions, watermark: false });
       } else if (format === 'docx') {
         ext = 'docx';
         contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         stage = 'docx-generation';
-        buffer = await generateDOCX(report, {
+        buffer = await generateDOCX(renderReport, {
           reportTitle: pdfOptions.reportTitle,
           companyName: pdfOptions.companyName,
           hideFlacronBranding: pdfOptions.hideFlacronBranding,
@@ -4790,7 +5650,7 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
         ext = 'html';
         contentType = 'text/html';
         stage = 'html-generation';
-        buffer = Buffer.from(generateHTML(report, { ...pdfOptions, photoMap }), 'utf8');
+        buffer = Buffer.from(generateHTML(renderReport, { ...pdfOptions, photoMap }), 'utf8');
       } else {
         return res
           .status(400)
@@ -4809,11 +5669,13 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
       });
     }
 
-    // Apply watermark overlay for starter tier and/or un-reviewed drafts.
-    // Fail closed: a draft must never be returned as a clean-looking final
-    // document just because watermark post-processing failed -- so this is
-    // its own stage/error code rather than folded into pdf-generation above.
-    if (format === 'pdf' && (tier.watermark || draftWatermark)) {
+    // Apply the watermark overlay per the centralized policy (draft mark for
+    // any un-reviewed report, branding mark for a reviewed Starter/free
+    // report, nothing for a reviewed paid report). Fail closed: a draft must
+    // never be returned as a clean-looking final document just because
+    // watermark post-processing failed -- so this is its own stage/error
+    // code rather than folded into pdf-generation above.
+    if (format === 'pdf' && watermarkPolicy.show) {
       try {
         stage = 'watermark';
         buffer = await addWatermarkToPDF(buffer, pdfOptions.watermarkText, null);
@@ -4999,6 +5861,92 @@ const DEFAULT_PHOTO_REVIEW = () => ({
   reviewedAt: null,
 });
 
+// GET /api/reports/photos/capacity — Phase 44 task 8: the sanitized,
+// read-only PlanConfig-backed capacity API. Two shapes share one handler:
+//   - no draftId: plan-level capacity only (used before a wizard draft even
+//     exists) -- `used`/`remaining` describe an empty draft.
+//   - ?draftId=...: the wizard's own in-progress staged-photo count (owned
+//     by the caller; a foreign/unknown draftId is treated as empty, never a
+//     404/403 -- callers poll this liberally and a draft's existence is not
+//     itself sensitive).
+// NEVER exposes Stripe price ids, secrets, env values, addOnPackPrices, or
+// any other internal-only PlanConfig field -- only the fields listed in the
+// response object below.
+router.get('/photos/capacity', authenticateAny, reportsRead, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ctx = await resolvePhotoCapacityForRequest(db, req);
+    let used = 0;
+    const draftId = String(req.query.draftId || '').trim();
+    if (draftId) {
+      const doc = await db.collection('reportDrafts').doc(draftId).get();
+      if (doc.exists && doc.data().userId === req.user.uid) {
+        used = (doc.data().photos || []).filter((p) => p.status === 'uploaded').length;
+      }
+    }
+    const remaining = ctx.unlimited ? null : Math.max(0, ctx.capacity - used);
+    return res.json({
+      success: true,
+      plan: ctx.planId,
+      basePhotoLimit: ctx.unlimited ? null : ctx.basePhotoLimit,
+      addOnCapacity: ctx.verifiedAddOnCapacity,
+      effectiveCapacity: ctx.unlimited ? null : ctx.capacity,
+      unlimited: ctx.unlimited,
+      used,
+      remaining,
+      uploadAllowed: ctx.unlimited || remaining > 0,
+      // Safe, non-sensitive status only -- 'firestore' (validated authoritative
+      // config) or 'fallback' (built-in accepted default; see planConfig.js).
+      // Never the raw validation error strings.
+      configSource: ctx.configSource,
+    });
+  } catch {
+    return res.status(500).json({ success: false, error: 'Failed to load photo capacity', code: 'CAPACITY_ERROR' });
+  }
+});
+
+// GET /api/reports/:id/photo-capacity — same sanitized shape as above, but
+// report-specific (Phase 44: "capacity is report-specific") -- `used` is the
+// report's own currently-committed photo count, for the post-generation
+// "add more photos" surface (POST /:id/images).
+router.get('/:id/photo-capacity', authenticateAny, reportsRead, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const doc = await db.collection('reports').doc(req.params.id).get();
+    if (!doc.exists || !getReportAccess(doc.data(), req.user)) {
+      return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+    }
+    const report = doc.data();
+    // Phase 45: base + verified (fulfilled, non-reversed) report-specific
+    // add-on capacity -- the snapshot is only ever written by the atomic
+    // Stripe fulfillment/reversal transactions, never trusted from a client.
+    const ctx = await resolvePhotoCapacityForRequest(db, req, report.purchasedPhotoCapacity || 0);
+    const used = (report.photos || []).filter((p) => p.status === 'uploaded').length;
+    const remaining = ctx.unlimited ? null : Math.max(0, ctx.capacity - used);
+    const purchases = await listSanitizedPurchasesForReport(db, report);
+    return res.json({
+      success: true,
+      plan: ctx.planId,
+      basePhotoLimit: ctx.unlimited ? null : ctx.basePhotoLimit,
+      addOnCapacity: ctx.verifiedAddOnCapacity,
+      effectiveCapacity: ctx.unlimited ? null : ctx.capacity,
+      unlimited: ctx.unlimited,
+      used,
+      remaining,
+      uploadAllowed: ctx.unlimited || remaining > 0,
+      // Phase 45: sanitized purchase history for this report only -- never
+      // raw Stripe ids/prices/payment-method data (see toSanitizedPurchase).
+      purchases,
+      // Safe, non-sensitive status only -- 'firestore' (validated authoritative
+      // config) or 'fallback' (built-in accepted default; see planConfig.js).
+      // Never the raw validation error strings.
+      configSource: ctx.configSource,
+    });
+  } catch {
+    return res.status(500).json({ success: false, error: 'Failed to load photo capacity', code: 'CAPACITY_ERROR' });
+  }
+});
+
 // GET /api/reports/:id/photos — normalized per-photo list for a review gallery.
 // Reports created since Phase 6 already have a `photos` array (id/fileName/
 // size/status/thumbnail availability), extended (Phase 8) with each photo's
@@ -5045,6 +5993,13 @@ router.get('/:id/photos', authenticateAny, reportsRead, async (req, res) => {
           analysis: p.analysis || null,
           review: p.review || DEFAULT_PHOTO_REVIEW(),
           reviewable: true,
+          // Phase 42 (2026-09-18 correction, CHECK 3): the reverse half of
+          // the bidirectional evidence contract Phase 41 already persists
+          // (`canonicalEstimateStore.computeReversePhotoIndex`) -- exposed
+          // here so the existing photo review/gallery surface can show
+          // which estimate line items reference this photo, without a
+          // second lookup/duplicated copy of the estimate itself.
+          relatedLineItemIds: Array.isArray(p.relatedLineItemIds) ? p.relatedLineItemIds : [],
           position: Number.isFinite(p.position) ? p.position : i,
           qualityWarning: !!p.qualityWarning,
           qualityReasons: p.qualityReasons || [],
@@ -5394,7 +6349,19 @@ router.get('/:id/photos/:photoId/image', authenticateAny, reportsRead, async (re
   }
 });
 
-// POST /api/reports/:id/images — add images to existing report
+// POST /api/reports/:id/images — add images to existing report.
+//
+// Phase 44 retrofit: this route previously had NO capacity check of any kind
+// -- a plain, non-atomic read-append-write (confirmed by the Phase 44 audit).
+// It now uses the exact same transactional idiom as appendStagedPhoto
+// (backend/utils/photoDraftStaging.js) via appendReportPhotosAtomic
+// (backend/utils/photoCapacity.js): Storage upload happens first (unchanged,
+// outside any transaction -- re-running it on a transaction retry would be
+// wasteful/could create duplicate objects), then a single Firestore
+// transaction atomically re-reads the report, rejects a finalized report,
+// resolves idempotency, re-checks content hashes against the FRESH state
+// (closes a race two pre-upload-only hash checks can't), partitions the
+// batch against the caller's live PlanConfig capacity, and commits.
 router.post(
   '/:id/images',
   authenticateAny,
@@ -5416,9 +6383,23 @@ router.post(
           .status(404)
           .json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
       }
+      // Cheap pre-check (advisory only -- the transaction below is the real,
+      // race-proof authority) so a request against an already-finalized
+      // report never even pays for a Storage upload.
+      if (doc.data().status === 'finalized') {
+        return res.status(409).json({ success: false, error: 'Finalized reports cannot be edited.', code: 'REPORT_FINALIZED' });
+      }
 
-      const existingPaths = doc.data().imagePaths || [];
       const existingPhotos = doc.data().photos || [];
+
+      // Idempotency key: a client-generated key scoped to this report's own
+      // upload-attempts ledger (see photoCapacity.js). A legacy client that
+      // sends none gets a freshly server-generated one EVERY call -- this
+      // keeps the route working for it, but a network-retried request from
+      // such a client is NOT protected against double-counting (documented
+      // limitation; every current-generation client (Dashboard.jsx's
+      // uploadQueue) is expected to send a stable per-attempt id).
+      const attemptId = String(req.body?.attemptId || '').trim() || uuidv4();
 
       // Phase 6: per-photo isolation here too (matches POST /generate) -- one
       // corrupt/duplicate file no longer blocks the rest of this add-on batch.
@@ -5427,11 +6408,13 @@ router.post(
       // main /generate flow -- this route responds as soon as upload/storage
       // (fast, synchronous) finishes, not after analysis completes.
       let newRecords = [];
-      let newPaths = [];
       let analyzableImages = [];
       if (req.files && req.files.length > 0) {
         // Phase 6 addendum: check new uploads against this report's ALREADY-
         // attached photos' content hashes too, not just against each other.
+        // (Advisory-only pre-check -- appendReportPhotosAtomic re-checks
+        // against the FRESH transactional state below, which is what
+        // actually closes the concurrent-upload race.)
         const existingHashes = existingPhotos
           .filter((p) => p.contentHash)
           .map((p) => ({ hash: p.contentHash, fileName: p.fileName }));
@@ -5443,28 +6426,79 @@ router.post(
           existingPhotos.length
         );
         newRecords = records;
-        newPaths = records.filter((r) => r.status === 'uploaded').map((r) => r.objectPath);
         analyzableImages = analyzable;
       }
 
-      await ref.update({
-        photos: [...existingPhotos, ...newRecords],
-        imagePaths: [...existingPaths, ...newPaths],
-        imageCount: existingPaths.length + newPaths.length,
-        updatedAt: new Date().toISOString(),
-      });
+      // Phase 45: include this report's own verified (fulfilled) add-on
+      // capacity -- re-read fresh here (advisory, same as the finalized
+      // pre-check above); appendReportPhotosAtomic's transaction is still
+      // the actual race-proof authority for the count itself.
+      const { capacity, unlimited } = await resolvePhotoCapacityForRequest(db, req, doc.data().purchasedPhotoCapacity || 0);
+      const requestFingerprint = computeBatchFingerprint(newRecords);
 
-      if (analyzableImages.length > 0) {
-        await photoJobService.createAnalysisJobs(
-          req.params.id,
-          analyzableImages.map((img) => img.photoId)
-        );
+      let txResult;
+      try {
+        txResult = await appendReportPhotosAtomic(db, {
+          reportId: req.params.id,
+          incomingRecords: newRecords,
+          effectiveCapacity: capacity,
+          unlimited,
+          attemptId,
+          requestFingerprint,
+        });
+      } catch (txErr) {
+        // Any photo already uploaded to Storage before a hard rejection
+        // (finalized/idempotency-conflict) is now orphaned -- exact-object
+        // best-effort cleanup, never a prefix/wildcard delete.
+        deleteObjects(
+          newRecords.flatMap((r) => [r.originalPath, r.objectPath, r.thumbnailPath].filter(Boolean))
+        ).catch(() => {});
+        if (txErr.code === 'NOT_FOUND') {
+          return res.status(404).json({ success: false, error: 'Report not found', code: 'NOT_FOUND' });
+        }
+        if (txErr.code === 'REPORT_FINALIZED') {
+          return res.status(409).json({ success: false, error: txErr.message, code: 'REPORT_FINALIZED' });
+        }
+        if (txErr.code === 'IDEMPOTENCY_KEY_CONFLICT') {
+          return res.status(409).json({ success: false, error: txErr.message, code: 'IDEMPOTENCY_KEY_CONFLICT' });
+        }
+        throw txErr;
+      }
+
+      // Orphan cleanup for anything the transaction demoted from 'uploaded'
+      // AFTER the bytes were already written (capacity exceeded, or a
+      // duplicate that only became detectable against the fresh state).
+      const rejected = [...txResult.rejectedForCapacity, ...txResult.rejectedForDuplicate];
+      if (rejected.length > 0) {
+        deleteObjects(
+          rejected.flatMap((r) => [r.originalPath, r.objectPath, r.thumbnailPath].filter(Boolean))
+        ).catch((err) => console.warn('[POST /:id/images] orphaned-photo cleanup failed for report', req.params.id, err.message));
+      }
+
+      const acceptedRecords = txResult.records.filter((r) => r.status === 'uploaded');
+      const newPaths = acceptedRecords.map((r) => r.objectPath);
+
+      // A pure replay of an already-processed attempt already ran analysis
+      // jobs the first time -- never re-queue them.
+      if (!txResult.replayed) {
+        const acceptedIds = new Set(acceptedRecords.map((r) => r.id));
+        analyzableImages = analyzableImages.filter((img) => acceptedIds.has(img.photoId));
+        if (analyzableImages.length > 0) {
+          await photoJobService.createAnalysisJobs(
+            req.params.id,
+            analyzableImages.map((img) => img.photoId)
+          );
+        }
+      } else {
+        analyzableImages = [];
       }
 
       res.json({
         success: true,
-        message: `${newPaths.length} images added, analyzing in the background`,
-        photos: newRecords,
+        message: txResult.replayed
+          ? `${newPaths.length} images already added (replayed retry), analyzing in the background`
+          : `${newPaths.length} images added, analyzing in the background`,
+        photos: txResult.records,
       });
 
       if (analyzableImages.length > 0) {

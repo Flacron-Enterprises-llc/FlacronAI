@@ -1,4 +1,4 @@
-import { CheckCircle, Pencil, Ban, MessageSquare, Sparkles, AlertTriangle, MapPin, PenLine } from 'lucide-react';
+import { CheckCircle, Pencil, Ban, MessageSquare, Sparkles, AlertTriangle, MapPin, PenLine, Link2 } from 'lucide-react';
 import { PHOTO_LOCATIONS } from '../utils/photoTaxonomy.js';
 
 // Phase 8 (Per-Photo Analysis Review UI), extracted in Phase 22 (Photo
@@ -75,6 +75,29 @@ export function ReviewStatusPill({ status }) {
   };
   const s = styles[status] || styles.pending;
   return <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${s.cls}`}>{s.label}</span>;
+}
+
+// Phase 42 (2026-09-18 correction, CHECK 3): the reverse half of the
+// bidirectional evidence contract -- Phase 41 already persists
+// `photo.relatedLineItemIds` (recomputed fresh on every canonical-estimate
+// save), but nothing surfaced it anywhere. Shared here (not duplicated)
+// since PhotoReview.jsx already backs every photo review/gallery/detail
+// surface (Dashboard's report gallery + the standalone /photos library).
+// Deliberately count-only, no estimate line-item descriptions fetched here
+// -- showing a plain "linked" fact requires no second API call/estimate
+// copy; anyone wanting the line-item detail already has the "Detailed
+// Estimate (Section 7)" editor for that.
+export function LinkedEstimateBadge({ relatedLineItemIds = [] }) {
+  if (!relatedLineItemIds?.length) return null;
+  const label = `Linked to ${relatedLineItemIds.length} estimate line item${relatedLineItemIds.length === 1 ? '' : 's'}`;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border shrink-0 bg-navy-500/10 text-navy-700 border-navy-500/20"
+      title={label}
+    >
+      <Link2 className="w-3 h-3" /> {label}
+    </span>
+  );
 }
 
 // The text report generation will actually use for this photo: the reviewer's
@@ -186,6 +209,7 @@ export function PhotoAnalysisPanel({
       <>
         <div className="flex flex-wrap gap-2">
           <QualityWarningBadge qualityWarning={photo.qualityWarning} qualityReasons={photo.qualityReasons} />
+          <LinkedEstimateBadge relatedLineItemIds={photo.relatedLineItemIds} />
         </div>
         <p className="text-sm text-gray-500">
           {['queued', 'analyzing'].includes(photo.analysisStatus)
@@ -207,6 +231,7 @@ export function PhotoAnalysisPanel({
         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Confidence: {photo.analysis.confidence}</span>
         <ReviewStatusPill status={photo.review?.status || 'pending'} />
         <QualityWarningBadge qualityWarning={photo.qualityWarning} qualityReasons={photo.qualityReasons} />
+        <LinkedEstimateBadge relatedLineItemIds={photo.relatedLineItemIds} />
       </div>
 
       {areaAndAnnotateRow}

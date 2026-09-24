@@ -59,4 +59,103 @@ const profileLimiter = rateLimit({
   keyGenerator: (req) => req.user?.uid || req.ip,
 });
 
-module.exports = { aiLimiter, profileLimiter };
+// Phase 43 (OpenAI Preliminary Pricing Service). A separate, conservative
+// budget for POST /:id/estimate-detail/price-suggestions -- each call can
+// trigger a real (billed) OpenAI request, so this is deliberately tighter
+// than aiLimiter's report-generation budget. Same shape/keying (per-user,
+// falling back to per-IP) as aiLimiter/profileLimiter above.
+const pricingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PRICING_RATE_LIMIT_PER_MIN) || 10,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Preliminary pricing rate limit exceeded -- please wait a moment and try again.',
+      code: 'PRICING_LIMIT_EXCEEDED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+// Phase 45 (Stripe Report-Specific Photo Add-Ons). Bounds abuse of Stripe
+// Checkout Session creation (a real, billable Stripe API call each time),
+// same shape/keying as pricingLimiter above.
+const photoAddOnCheckoutLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PHOTO_ADDON_CHECKOUT_RATE_LIMIT_PER_MIN) || 10,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many checkout attempts -- please wait a moment and try again.',
+      code: 'CHECKOUT_LIMIT_EXCEEDED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+// Phase 46 (Property Intelligence: Address Normalization & Google Integration).
+// Bounds abuse of the server-side Geocoding confirmation call (a real,
+// billed Google API call each time), same shape/keying as pricingLimiter.
+const addressLookupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.ADDRESS_LOOKUP_RATE_LIMIT_PER_MIN) || 20,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Address lookup rate limit exceeded -- please wait a moment and try again.',
+      code: 'ADDRESS_LOOKUP_LIMIT_EXCEEDED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+// Phase 47 (Property Intelligence: RealtyAPI U.S. Adapter & Report
+// Integration). Bounds abuse of a property-data lookup (a real, billed
+// third-party API call once a provider is actually configured), same
+// shape/keying as pricingLimiter/addressLookupLimiter.
+const propertyIntelligenceLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PROPERTY_INTELLIGENCE_RATE_LIMIT_PER_MIN) || 10,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Property data lookup rate limit exceeded -- please wait a moment and try again.',
+      code: 'PROPERTY_INTELLIGENCE_LIMIT_EXCEEDED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+// Phase 48 (Pricing Page, Admin Configuration UI & Cross-Surface
+// Consistency). Bounds abuse/mistakes on the admin PlanConfig write path --
+// same shape/keying as the other admin-adjacent limiters above. Not
+// billed/third-party, so a more generous budget than the Stripe/OpenAI/
+// Google limiters is fine; still bounded so a buggy client can't hammer
+// Firestore writes.
+const planConfigWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PLAN_CONFIG_WRITE_RATE_LIMIT_PER_MIN) || 20,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many configuration updates -- please wait a moment and try again.',
+      code: 'PLAN_CONFIG_WRITE_RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+module.exports = {
+  aiLimiter,
+  profileLimiter,
+  pricingLimiter,
+  photoAddOnCheckoutLimiter,
+  addressLookupLimiter,
+  propertyIntelligenceLimiter,
+  planConfigWriteLimiter,
+};
