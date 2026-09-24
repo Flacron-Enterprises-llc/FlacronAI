@@ -29,6 +29,25 @@ const norm = (v, { upper = false } = {}) => {
   return upper ? s.toUpperCase() : s.toLowerCase();
 };
 
+// `repairAction` is the field that distinguishes otherwise-identical jobs
+// ("replace" vs "paint" the same 20 SF in the same kitchen), so it gets a
+// stricter normalization than `norm`: Unicode NFKC, lowercase, and every
+// whitespace run collapsed to one space. A plain single-spaced value
+// normalizes exactly as `norm` did, so existing cache keys are unchanged.
+const normalizeRepairAction = (v) =>
+  String(v ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+// The shared, cross-user cache is only safe to use when the item carries a
+// non-blank repair action -- without it, two different jobs with the same
+// room/quantity/unit would collide on one key. Free-text `description` is
+// deliberately NOT a substitute (it may contain personal details and is
+// never hashed). Callers skip both cache read and write when this is false.
+const isCacheableRepairAction = (v) => normalizeRepairAction(v) !== '';
+
 // Every field here is intentionally generic/normalizable -- see header
 // comment. `Object.keys(normalized).sort()` is passed to JSON.stringify as
 // an explicit allow-list AND to force a deterministic key order regardless
@@ -59,7 +78,7 @@ const computePricingFingerprint = ({
     postalCode: norm(postalCode, { upper: true }),
     room: norm(room),
     damageType: norm(damageType),
-    repairAction: norm(repairAction),
+    repairAction: normalizeRepairAction(repairAction),
     material: norm(material),
     quantity: Number.isFinite(Number(quantity)) ? Number(quantity) : 0,
     unit: norm(unit, { upper: true }),
@@ -74,4 +93,9 @@ const computePricingFingerprint = ({
   return crypto.createHash('sha256').update(json).digest('hex');
 };
 
-module.exports = { computePricingFingerprint, truncateToMonthWindow };
+module.exports = {
+  computePricingFingerprint,
+  truncateToMonthWindow,
+  normalizeRepairAction,
+  isCacheableRepairAction,
+};

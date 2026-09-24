@@ -31,7 +31,10 @@
 // proposal is applied/saved.
 const crypto = require('crypto');
 const { Timestamp } = require('../config/firebase');
-const { computePricingFingerprint } = require('../utils/pricingFingerprint');
+const {
+  computePricingFingerprint,
+  isCacheableRepairAction,
+} = require('../utils/pricingFingerprint');
 const { getPricingProvider } = require('./pricingProviders/registry');
 const openaiConfig = require('../config/openai');
 const {
@@ -435,8 +438,11 @@ const generatePricingProposal = async (db, { reportId, requestedByUid, body, sig
   const { locationContext, currency, pricingDate, items, regenerate } = parsed;
 
   const requestById = new Map(items.map((it) => [it.requestId, it]));
+  // Only items with a non-blank repair action get a shared-cache key (see
+  // pricingFingerprint.js's isCacheableRepairAction). Items without one are
+  // always priced fresh and never written to the shared cache.
   const fingerprintByRequestId = new Map(
-    items.map((it) => [
+    items.filter((it) => isCacheableRepairAction(it.repairAction)).map((it) => [
       it.requestId,
       computePricingFingerprint({
         country: locationContext.country,
@@ -467,7 +473,8 @@ const generatePricingProposal = async (db, { reportId, requestedByUid, body, sig
   if (!regenerate) {
     for (const it of items) {
       if (signal?.aborted) throw makeError('Pricing request cancelled', 'PRICING_CANCELLED');
-      const cached = await getCachedItem(db, fingerprintByRequestId.get(it.requestId));
+      const fingerprint = fingerprintByRequestId.get(it.requestId);
+      const cached = fingerprint ? await getCachedItem(db, fingerprint) : null;
       if (cached) {
         anyHit = true;
         resolvedItems.push(
@@ -533,7 +540,8 @@ const generatePricingProposal = async (db, { reportId, requestedByUid, body, sig
         promptVersion: provider.PROMPT_VERSION,
       };
       resolvedItems.push(buildProposalItem(request, validated, meta, pricingDate));
-      await setCachedItem(db, fingerprintByRequestId.get(validated.requestId), {
+      const writeFingerprint = fingerprintByRequestId.get(validated.requestId);
+      if (writeFingerprint) await setCachedItem(db, writeFingerprint, {
         trade: validated.trade,
         category: validated.category,
         materialUnitCost: validated.materialUnitCost,
