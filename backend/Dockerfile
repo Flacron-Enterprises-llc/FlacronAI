@@ -1,4 +1,7 @@
-FROM node:20-bookworm-slim
+# Pinned (not the floating node:20 tag): sharp 0.35.x requires Node >=20.9.0.
+# 20.20.2 is the same image the floating 20-bookworm-slim tag resolved to
+# when pinned (sha256:2cf067cf...). Bump deliberately, never implicitly.
+FROM node:20.20.2-bookworm-slim
 
 WORKDIR /app
 
