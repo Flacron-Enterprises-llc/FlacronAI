@@ -2199,17 +2199,27 @@ function PropertyIntelligenceModal({ report, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  // Synchronous in-flight guard: each uncached lookup is a billed provider
+  // call, and a disabled button alone does not stop two clicks that land
+  // before React re-renders.
+  const lookupInFlight = useRef(false);
+
   const eligibility = computePropertyIntelligenceEligibility(report.propertyProfile);
 
   const runLookup = async (recheck) => {
+    if (lookupInFlight.current) return;
+    lookupInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
       const res = await reportsAPI.requestPropertyIntelligence(report.id, { recheck: !!recheck });
-      setLookupResult(res.data);
+      // Never null: an empty body must still leave the idle state (the
+      // review UI shows a "no details returned" message for it).
+      setLookupResult(res?.data || {});
     } catch (err) {
       setError({ code: err?.response?.data?.code, message: err?.response?.data?.error || 'Could not look up property details. Please try again.' });
     } finally {
+      lookupInFlight.current = false;
       setLoading(false);
     }
   };

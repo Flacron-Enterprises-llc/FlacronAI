@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { CheckCircle2, MapPin, Pencil, RotateCcw, X, Home, AlertTriangle, Loader2 } from 'lucide-react';
 import { VERIFICATION_STATUS } from '../utils/propertyProfile';
-import { FIELD_GROUPS, isFieldConfirmed } from '../utils/propertyIntelligence';
+import { FIELD_GROUPS, isFieldConfirmed, getLookupResultView } from '../utils/propertyIntelligence';
 
 const LABELS = {
   addressLine1: 'Street address',
@@ -164,7 +164,11 @@ export const PropertyIntelligenceReview = ({
   const hasConfirmed = FIELD_GROUPS.some((g) => isFieldConfirmed(confirmedFields[g.key]));
   const isStale = intelligence?.status === 'stale';
 
-  const reviewFields = lookupResult?.fields || null;
+  // Gate on the lookup OUTCOME, not on `lookupResult.fields` -- no_match/
+  // ambiguous/not_eligible responses carry no `fields` and must still show
+  // a message instead of silently returning to the idle button.
+  const lookupView = getLookupResultView(lookupResult);
+  const reviewFields = lookupView.kind === 'review' ? lookupResult.fields : null;
 
   const toggleSelected = (key, checked) => setSelected((p) => ({ ...p, [key]: checked }));
   const valueFor = (key) => (edits[key] !== undefined ? edits[key] : reviewFields?.[key]?.value ?? '');
@@ -201,6 +205,7 @@ export const PropertyIntelligenceReview = ({
         <button
           type="button"
           disabled={loading}
+          aria-busy={loading}
           className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-60"
           onClick={() => onLookup(isStale || hasConfirmed)}
         >
@@ -223,14 +228,11 @@ export const PropertyIntelligenceReview = ({
         </dl>
       )}
 
-      {reviewFields && lookupResult.status === 'no_match' && (
-        <p className="text-sm text-gray-500">No public-record match was found for this address. You can continue with manual entry.</p>
-      )}
-      {reviewFields && lookupResult.status === 'ambiguous' && (
-        <p className="text-sm text-gray-500">Multiple property records matched this address -- please try a more specific address.</p>
+      {lookupView.kind === 'message' && !loading && (
+        <p role="status" className="text-sm text-gray-500">{lookupView.message}</p>
       )}
 
-      {reviewFields && (lookupResult.status === 'full' || lookupResult.status === 'partial') && (
+      {reviewFields && (
         <>
           <dl className="space-y-2 text-sm">
             {FIELD_GROUPS.filter((g) => reviewFields[g.key]?.value !== null && reviewFields[g.key]?.value !== undefined).map((g) => (

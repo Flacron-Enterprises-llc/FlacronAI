@@ -106,6 +106,42 @@ export const computePropertyIntelligenceEligibility = (propertyProfile) => {
   return { eligible: true, reason: null };
 };
 
+const hasValue = (field) => field?.value !== null && field?.value !== undefined;
+
+// Maps a POST /:id/property-lookup/intelligence response body onto what the
+// review UI should show. The backend returns TWO shapes: full/partial (and a
+// field-less no_match) carry a top-level `fields` map, but provider-side
+// no_match, ambiguous, and server-side not_eligible return only
+// `{ status, reason?, intelligence }` -- no `fields`. Gating the UI on
+// `fields` alone made those outcomes fall straight back to the idle
+// "Look up property details" button with no message at all.
+//   { kind: 'idle' }                -- no lookup requested yet
+//   { kind: 'review' }              -- full/partial with at least one value
+//   { kind: 'message', message }    -- every other outcome, never silent
+export const getLookupResultView = (lookupResult) => {
+  if (!lookupResult) return { kind: 'idle' };
+  const { status, fields, reason } = lookupResult;
+  const reviewable = (status === LOOKUP_STATUS.FULL || status === LOOKUP_STATUS.PARTIAL)
+    && FIELD_KEYS.some((key) => hasValue(fields?.[key]));
+  if (reviewable) return { kind: 'review' };
+
+  if (status === LOOKUP_STATUS.NO_MATCH) {
+    return { kind: 'message', message: 'No public-record match was found for this address. You can continue with manual entry.' };
+  }
+  if (status === LOOKUP_STATUS.AMBIGUOUS) {
+    return { kind: 'message', message: 'Multiple property records matched this address -- please try a more specific address.' };
+  }
+  if (status === LOOKUP_STATUS.NOT_ELIGIBLE) {
+    return {
+      kind: 'message',
+      message: reason === 'country_not_supported'
+        ? 'Detailed property records are only available for U.S. addresses. You can continue with manual entry.'
+        : 'Property records need a confirmed, complete U.S. address (street, city and ZIP code). Please re-confirm the address above.',
+    };
+  }
+  return { kind: 'message', message: 'No property details were returned for this address. You can try again or continue with manual entry.' };
+};
+
 export const isFieldConfirmed = (field) => field?.verificationStatus === VERIFICATION_STATUS.USER_CONFIRMED;
 
 // True when any THIRD_PARTY-sourced field is flagged stale (the linked
