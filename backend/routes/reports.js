@@ -1911,6 +1911,32 @@ const PROPERTY_INTELLIGENCE_ERROR_STATUS = {
   PROPERTY_LOOKUP_EXPIRED: 400,
 };
 
+// Single-line structured log for a failed property-intelligence lookup.
+// Carries only diagnostic metadata -- failure stage, error name/code,
+// provider HTTP status, report id, and a sanitized message. Never the
+// request URL (it embeds the address), headers/key, the address, or any
+// property values; URLs are redacted from the message and it is length-capped.
+const sanitizeLogMessage = (message) =>
+  String(message || '')
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 300);
+
+const logPropertyIntelligenceFailure = (err, reportId, httpStatus) => {
+  const entry = {
+    event: 'property_intelligence_lookup_failed',
+    stage: err?.stage || 'route',
+    errorName: err?.name || null,
+    errorCode: err?.code || null,
+    providerStatus: Number.isInteger(err?.providerStatus) ? err.providerStatus : null,
+    httpStatus,
+    reportId,
+    message: sanitizeLogMessage(err?.message),
+  };
+  const log = httpStatus >= 500 ? console.error : console.warn;
+  log(`[property-intelligence] ${JSON.stringify(entry)}`);
+};
+
 // POST /api/reports/:id/property-lookup/intelligence — Phase 47. Requests
 // (or serves from cache) detailed U.S. property/parcel data for THIS
 // report's already-confirmed Phase 46 address. Never blocks report
@@ -1968,10 +1994,10 @@ router.post(
     } catch (err) {
       if (err.code === 'PROPERTY_CANCELLED') return; // client already disconnected
       const status = PROPERTY_INTELLIGENCE_ERROR_STATUS[err.code];
+      logPropertyIntelligenceFailure(err, req.params.id, status || 500);
       if (status) {
         return res.status(status).json({ success: false, error: err.message, code: err.code });
       }
-      console.error('Property intelligence lookup error:', err);
       return res.status(500).json({ success: false, error: 'Failed to look up property details', code: 'PROPERTY_INTELLIGENCE_ERROR' });
     }
   }

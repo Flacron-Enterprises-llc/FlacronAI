@@ -266,3 +266,87 @@ test('PUT /:id/property-intelligence: preserves the rest of propertyProfile (add
     assert.equal(reportsById['report-1'].propertyProfile.fields.city.value, 'Austin');
   });
 });
+
+// --- structured failure logging (diagnostics, never secrets/PII) ----------
+
+// Captures console.error/console.warn lines emitted while `fn` runs.
+async function captureConsole(fn) {
+  const lines = [];
+  const { error, warn } = console;
+  console.error = (...args) => lines.push(args.join(' '));
+  console.warn = (...args) => lines.push(args.join(' '));
+  try {
+    await fn();
+  } finally {
+    console.error = error;
+    console.warn = warn;
+  }
+  return lines;
+}
+
+const parseIntelLogLine = (lines) => {
+  const line = lines.find((l) => l.startsWith('[property-intelligence] '));
+  assert.ok(line, 'expected one structured [property-intelligence] log line');
+  assert.ok(!line.includes('\n'), 'log entry must be a single line');
+  return JSON.parse(line.slice('[property-intelligence] '.length));
+};
+
+test('POST /:id/property-lookup/intelligence: an uncoded failure logs a sanitized structured line and returns the generic 500', async () => {
+  const err = Object.assign(
+    new Error('Write failed for https://realtor.realtyapi.io/details/byaddress?address=77%20Oak%20Hill%20Dr\nsecond line'),
+    { stage: 'cache_write' }
+  );
+  const { router } = installFakes({
+    reportsById: { 'report-1': seedReport() },
+    intelligenceServiceImpl: { requestPropertyIntelligence: async () => { throw err; } },
+  });
+  let res;
+  let body;
+  const lines = await captureConsole(() =>
+    withTestServer(router, async (base) => {
+      res = await fetch(`${base}/report-1/property-lookup/intelligence`, { method: 'POST', headers: authed, body: '{}' });
+      body = await res.json();
+    })
+  );
+  assert.equal(res.status, 500);
+  assert.deepEqual(body, { success: false, error: 'Failed to look up property details', code: 'PROPERTY_INTELLIGENCE_ERROR' });
+
+  const entry = parseIntelLogLine(lines);
+  assert.equal(entry.event, 'property_intelligence_lookup_failed');
+  assert.equal(entry.stage, 'cache_write');
+  assert.equal(entry.errorName, 'Error');
+  assert.equal(entry.errorCode, null);
+  assert.equal(entry.providerStatus, null);
+  assert.equal(entry.httpStatus, 500);
+  assert.equal(entry.reportId, 'report-1');
+  assert.ok(!entry.message.includes('realtyapi.io'), 'URLs are redacted');
+  assert.ok(!entry.message.includes('Oak'), 'no address fragment leaks via an embedded URL');
+  assert.match(entry.message, /\[url\]/);
+  const raw = lines.join('\n');
+  assert.ok(!/x-realtyapi-key|authorization|Bearer/i.test(raw), 'no header/credential material is ever logged');
+});
+
+test('POST /:id/property-lookup/intelligence: a categorized provider failure logs its stage, code and provider HTTP status', async () => {
+  const err = Object.assign(new Error('Property data lookup permission denied.'), {
+    code: 'PROPERTY_PERMISSION_DENIED',
+    providerStatus: 403,
+    stage: 'provider_call',
+  });
+  const { router } = installFakes({
+    reportsById: { 'report-1': seedReport() },
+    intelligenceServiceImpl: { requestPropertyIntelligence: async () => { throw err; } },
+  });
+  let res;
+  const lines = await captureConsole(() =>
+    withTestServer(router, async (base) => {
+      res = await fetch(`${base}/report-1/property-lookup/intelligence`, { method: 'POST', headers: authed, body: '{}' });
+      await res.json();
+    })
+  );
+  assert.equal(res.status, 500);
+  const entry = parseIntelLogLine(lines);
+  assert.equal(entry.stage, 'provider_call');
+  assert.equal(entry.errorCode, 'PROPERTY_PERMISSION_DENIED');
+  assert.equal(entry.providerStatus, 403);
+  assert.equal(entry.reportId, 'report-1');
+});
