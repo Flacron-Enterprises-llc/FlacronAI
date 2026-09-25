@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { FakeFirestore } = require('./helpers/fakeFirestore');
+const { ValidatingFakeFirestore } = require('./helpers/firestoreValidation');
 const { LOOKUP_STATUS, VERIFICATION_STATUS } = require('../utils/propertyIntelligence');
 const {
   buildSection3PropertyBlockMarkdown,
@@ -315,5 +316,88 @@ test(
     // Manual entry must remain fully available -- an empty result, not a
     // thrown/blocking error.
     assert.equal(result.intelligence.fields.yearBuilt.value, null);
+  })
+);
+
+// Production regression (2026-09-25): a real, SPARSE 200 response (null
+// sale price, no tax history, no details_sections bullets, no flood data)
+// normalizes to many `undefined` values, which real Firestore rejected on
+// the cache write -- an uncoded error -> generic 500
+// PROPERTY_INTELLIGENCE_ERROR after the billed provider call had already
+// succeeded. ValidatingFakeFirestore applies the real SDK's document
+// validation (offline, never committed) to every write, which the plain
+// FakeFirestore never did.
+const SANITIZED_SPARSE_RESPONSE = {
+  message: 'Success',
+  source: 'realtor.com',
+  detail: {
+    property_id: '9998887771',
+    last_update_date: '2026-03-01T00:00:00Z',
+    last_sold_date: null,
+    last_sold_price: null,
+    details: {
+      beds: 3,
+      baths: '2',
+      sqft: 1500,
+      lot_sqft: null,
+      stories: 1,
+      year_built: 1998,
+      garage: 0,
+      type: 'single_family',
+      heating: null,
+      cooling: null,
+    },
+    tax_history: [],
+    details_sections: [],
+  },
+};
+
+test(
+  'real Phase 47 pipeline: a sparse provider response resolves to PARTIAL and every write passes real Firestore validation (no generic 500)',
+  withEnv(REALTY_ENV, async () => {
+    const sparseProvider = {
+      PROVIDER_NAME: realtyApiProviderReal.PROVIDER_NAME,
+      lookupProperty: (normalizedAddress, options = {}) =>
+        realtyApiProviderReal.lookupProperty(normalizedAddress, {
+          ...options,
+          fetchImpl: async () => ({ ok: true, status: 200, json: async () => SANITIZED_SPARSE_RESPONSE }),
+        }),
+      normalizePropertyResult: realtyApiProviderReal.normalizePropertyResult,
+    };
+    delete require.cache[registryPath];
+    delete require.cache[servicePath];
+    require.cache[registryPath] = {
+      id: registryPath,
+      filename: registryPath,
+      loaded: true,
+      exports: {
+        getPropertyIntelligenceProvider: () => sparseProvider,
+        PROVIDERS: {},
+        DEFAULT_PROVIDER: 'realty_api',
+      },
+    };
+    const service = require('../services/propertyIntelligenceService');
+    const db = new ValidatingFakeFirestore();
+
+    const result = await service.requestPropertyIntelligence(db, {
+      reportId: 'report-e2e-sparse',
+      propertyProfile: CONFIRMED_US_PROFILE,
+      requestedByUid: 'uid-e2e',
+    });
+    assert.equal(result.status, LOOKUP_STATUS.PARTIAL);
+    assert.equal(result.fields.yearBuilt.value, 1998);
+    assert.equal(result.fields.garageSpaces.value, 0, 'a real 0 survives the cache write and validation');
+    assert.equal(result.fields.lastSalePrice.value, null);
+    assert.equal(result.fields.roofType.value, null);
+
+    // The cache doc was actually written (and validated) -- a second request
+    // is served from it, not re-billed.
+    const second = await service.requestPropertyIntelligence(db, {
+      reportId: 'report-e2e-sparse',
+      propertyProfile: CONFIRMED_US_PROFILE,
+      requestedByUid: 'uid-e2e',
+    });
+    assert.equal(second.cacheHit, true);
+    assert.equal(second.fields.garageSpaces.value, 0);
   })
 );

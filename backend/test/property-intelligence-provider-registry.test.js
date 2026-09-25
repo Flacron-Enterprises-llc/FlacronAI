@@ -199,8 +199,9 @@ test(
               { addressLine1: 'x', city: 'y', state: 'TX', postalCode: '1' },
               { fetchImpl, timeoutMs: 10 }
             ),
-          (err) => err.code === expectedCode,
-          `status ${status} should map to ${expectedCode}`
+          // providerStatus: server-side diagnostics only (logged by the route).
+          (err) => err.code === expectedCode && err.providerStatus === status,
+          `status ${status} should map to ${expectedCode} and carry providerStatus`
         );
       }
     }

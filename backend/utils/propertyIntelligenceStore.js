@@ -111,6 +111,35 @@ const stripCacheExcludedFields = (values) => {
   return clean;
 };
 
+// Firestore rejects `undefined` anywhere in a document ("Cannot use
+// "undefined" as a Firestore value"), and a provider adapter's
+// normalizePropertyResult deliberately returns `undefined` for every fact a
+// property record lacks -- so a real, sparse provider response used to make
+// the cache write throw an uncoded error (a generic 500) AFTER the billed
+// provider call had already succeeded. Removes ONLY `undefined` (object keys
+// and array elements), recursing into plain objects/arrays; `null`, `false`,
+// `0`, `''`, and non-plain objects (Date, Timestamp) are kept as-is. Scoped
+// to this write rather than enabling `ignoreUndefinedProperties` app-wide.
+const isPlainObject = (v) => {
+  if (!v || typeof v !== 'object') return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
+
+const removeUndefinedDeep = (value) => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined).map(removeUndefinedDeep);
+  }
+  if (isPlainObject(value)) {
+    const clean = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (item !== undefined) clean[key] = removeUndefinedDeep(item);
+    }
+    return clean;
+  }
+  return value;
+};
+
 const getCachedPropertyValues = async (db, fingerprint) => {
   const snap = await cacheDocRef(db, fingerprint).get();
   if (!snap.exists) return null;
@@ -128,7 +157,7 @@ const setCachedPropertyValues = async (db, fingerprint, rawValues, { providerRec
   const expiresAt = new Date(now.getTime() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   await cacheDocRef(db, fingerprint).set({
     fingerprint,
-    values: stripCacheExcludedFields(rawValues || {}),
+    values: removeUndefinedDeep(stripCacheExcludedFields(rawValues || {})),
     providerRecordId: providerRecordId || null,
     providerEffectiveDate: providerEffectiveDate || null,
     generatedAt: now.toISOString(),
@@ -147,4 +176,5 @@ module.exports = {
   getCachedPropertyValues,
   setCachedPropertyValues,
   stripCacheExcludedFields,
+  removeUndefinedDeep,
 };

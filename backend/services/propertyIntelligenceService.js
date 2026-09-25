@@ -99,7 +99,21 @@ const currentFingerprint = (propertyProfile) => {
 // ONLY for a genuine operational failure (provider not configured,
 // timeout, malformed response, transient upstream error) -- the route maps
 // those to their documented HTTP status.
-const requestPropertyIntelligence = async (db, { reportId, propertyProfile, requestedByUid, recheck, signal } = {}) => {
+//
+// Any error that escapes is tagged with `err.stage` (the step that was
+// running) so the route can log WHERE a lookup failed without logging the
+// address or any property data.
+const requestPropertyIntelligence = async (db, options = {}) => {
+  const stageRef = { stage: 'eligibility' };
+  try {
+    return await runPropertyIntelligenceLookup(db, options, stageRef);
+  } catch (err) {
+    if (err && typeof err === 'object' && !err.stage) err.stage = stageRef.stage;
+    throw err;
+  }
+};
+
+const runPropertyIntelligenceLookup = async (db, { reportId, propertyProfile, requestedByUid, recheck, signal } = {}, stageRef) => {
   const eligibility = computeEligibility(propertyProfile);
   if (!eligibility.eligible) {
     return { status: LOOKUP_STATUS.NOT_ELIGIBLE, reason: eligibility.reason, intelligence: buildEmptyPropertyIntelligence() };
@@ -116,6 +130,7 @@ const requestPropertyIntelligence = async (db, { reportId, propertyProfile, requ
   let rawValues = null;
   let cacheHit = false;
   if (!recheck) {
+    stageRef.stage = 'cache_read';
     rawValues = await getCachedPropertyValues(db, fingerprint);
     cacheHit = !!rawValues;
   }
@@ -126,6 +141,7 @@ const requestPropertyIntelligence = async (db, { reportId, propertyProfile, requ
 
   if (!rawValues) {
     let raw;
+    stageRef.stage = 'provider_call';
     try {
       raw = await provider.lookupProperty(input, { timeoutMs: undefined, signal });
     } catch (err) {
@@ -137,9 +153,11 @@ const requestPropertyIntelligence = async (db, { reportId, propertyProfile, requ
     if (raw?.ambiguous) {
       ambiguous = true;
     } else {
+      stageRef.stage = 'normalize';
       rawValues = provider.normalizePropertyResult(raw);
       providerRecordId = rawValues.providerRecordId || null;
       providerEffectiveDate = rawValues.providerEffectiveDate || null;
+      stageRef.stage = 'cache_write';
       await setCachedPropertyValues(db, fingerprint, rawValues, { providerRecordId, providerEffectiveDate });
     }
   }
@@ -148,10 +166,12 @@ const requestPropertyIntelligence = async (db, { reportId, propertyProfile, requ
     return { status: LOOKUP_STATUS.AMBIGUOUS, intelligence: buildEmptyPropertyIntelligence() };
   }
 
+  stageRef.stage = 'field_validation';
   const fields = normalizeProviderFields(rawValues);
   const populatedCount = FIELD_KEYS.filter((k) => fields[k].value !== null).length;
   const status = populatedCount === 0 ? LOOKUP_STATUS.NO_MATCH : populatedCount === FIELD_KEYS.length ? LOOKUP_STATUS.FULL : LOOKUP_STATUS.PARTIAL;
 
+  stageRef.stage = 'lookup_persist';
   const { lookupId, expiresAt } = await createPropertyLookup(db, {
     reportId,
     requestedByUid,

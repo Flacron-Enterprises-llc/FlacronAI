@@ -251,3 +251,29 @@ test('staleIfAddressChanged: marks stale only when the address fingerprint actua
   assert.equal(changed.status, 'stale');
   assert.equal(changed.fields.yearBuilt.verificationStatus, VERIFICATION_STATUS.STALE);
 });
+
+// Diagnostics: an escaping error carries the step that was running, so the
+// route can log WHERE a lookup failed without logging address/property data.
+test('requestPropertyIntelligence: an escaping error is tagged with its failure stage (provider_call / cache_write)', async () => {
+  const providerErr = Object.assign(new Error('upstream down'), { code: 'PROPERTY_PROVIDER_ERROR', providerStatus: 503 });
+  const failingProvider = loadServiceWithProvider({ lookupProperty: async () => { throw providerErr; } });
+  await assert.rejects(
+    () => failingProvider.requestPropertyIntelligence(new FakeFirestore(), { reportId: 'r1', propertyProfile: CONFIRMED_US_PROFILE, requestedByUid: 'uid-1' }),
+    (err) => err.stage === 'provider_call' && err.code === 'PROPERTY_PROVIDER_ERROR' && err.providerStatus === 503
+  );
+
+  const service = loadServiceWithProvider({
+    lookupProperty: async () => ({ raw: {}, ambiguous: false }),
+    normalizePropertyResult: () => ({ yearBuilt: 1998 }),
+  });
+  const db = new FakeFirestore();
+  const realCollection = db.collection.bind(db);
+  db.collection = (name) =>
+    name === 'propertyIntelligenceCache'
+      ? { doc: () => ({ get: async () => ({ exists: false }), set: async () => { throw new Error('write rejected'); } }) }
+      : realCollection(name);
+  await assert.rejects(
+    () => service.requestPropertyIntelligence(db, { reportId: 'r1', propertyProfile: CONFIRMED_US_PROFILE, requestedByUid: 'uid-1' }),
+    (err) => err.stage === 'cache_write' && err.code === undefined
+  );
+});

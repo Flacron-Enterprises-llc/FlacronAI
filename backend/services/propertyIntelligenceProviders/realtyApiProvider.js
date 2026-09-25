@@ -183,7 +183,9 @@ const lookupProperty = async (
       const retried = retryIfAllowed();
       if (retried) return retried;
     }
-    throw categorizeStatus(resp.status, body);
+    // `providerStatus` is for server-side diagnostics only (the route logs
+    // it, never returns it) -- the response body is not attached.
+    throw Object.assign(categorizeStatus(resp.status, body), { providerStatus: resp.status });
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw makeError(
