@@ -1,4 +1,12 @@
-import { canSubmit, createInitialWizardState, readyPhotoCount, wizardReducer } from './wizardReducer';
+import {
+  canSubmit,
+  createInitialWizardState,
+  isPristine,
+  isRetryablePhoto,
+  readyPhotoCount,
+  wizardReducer,
+} from './wizardReducer';
+import type { WizardState } from './wizardTypes';
 
 describe('wizardReducer — field edits are recoverable and never lose other data', () => {
   it('SET_FIELD only touches the one field, leaving photos/step untouched', () => {
@@ -18,7 +26,7 @@ describe('wizardReducer — field edits are recoverable and never lose other dat
     state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p1', uri: 'file:///a.jpg', fileName: 'a.jpg' });
     state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p2', uri: 'file:///b.jpg', fileName: 'b.jpg' });
     state = wizardReducer(state, { type: 'PHOTO_RESOLVED', localId: 'p1', serverId: 's1', status: 'uploaded' });
-    state = wizardReducer(state, { type: 'PHOTO_FAILED', localId: 'p2', error: 'Network error' });
+    state = wizardReducer(state, { type: 'PHOTO_FAILED', localId: 'p2', error: 'Network error', reason: 'network' });
 
     expect(state.fields.insuredName).toBe('Jordan Rivera');
     expect(state.photos.find((p) => p.localId === 'p1')?.status).toBe('uploaded');
@@ -85,15 +93,10 @@ describe('wizardReducer — duplicate-submit prevention', () => {
     expect(canSubmit(state)).toBe(false);
   });
 
-  it('canSubmit requires at least one ready photo — a duplicate alone still counts, a failure does not', () => {
-    let state = createInitialWizardState('draft-1');
-    state = wizardReducer(state, { type: 'SET_FIELD', key: 'claimNumber', value: 'CLM-1' });
-    state = wizardReducer(state, { type: 'SET_FIELD', key: 'insuredName', value: 'Jordan Rivera' });
-    state = wizardReducer(state, { type: 'SET_FIELD', key: 'insuredEmail', value: 'jordan@example.com' });
-    state = wizardReducer(state, { type: 'SET_FIELD', key: 'propertyAddress', value: '123 Main St' });
-    state = wizardReducer(state, { type: 'SET_FIELD', key: 'lossDate', value: '2026-01-01' });
+  it('canSubmit requires at least one genuinely uploaded photo — a duplicate or a failure alone never counts', () => {
+    let state = filledState();
     state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p1', uri: 'file:///a.jpg', fileName: 'a.jpg' });
-    state = wizardReducer(state, { type: 'PHOTO_FAILED', localId: 'p1', error: 'oops' });
+    state = wizardReducer(state, { type: 'PHOTO_FAILED', localId: 'p1', error: 'oops', reason: 'network' });
 
     expect(readyPhotoCount(state)).toBe(0);
     expect(canSubmit(state)).toBe(false);
@@ -101,8 +104,89 @@ describe('wizardReducer — duplicate-submit prevention', () => {
     state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p2', uri: 'file:///b.jpg', fileName: 'b.jpg' });
     state = wizardReducer(state, { type: 'PHOTO_RESOLVED', localId: 'p2', serverId: 's2', status: 'duplicate' });
 
+    expect(readyPhotoCount(state)).toBe(0);
+    expect(canSubmit(state)).toBe(false);
+
+    state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p3', uri: 'file:///c.jpg', fileName: 'c.jpg' });
+    state = wizardReducer(state, { type: 'PHOTO_RESOLVED', localId: 'p3', serverId: 's3', status: 'uploaded' });
+
     expect(readyPhotoCount(state)).toBe(1);
     expect(canSubmit(state)).toBe(true);
+  });
+});
+
+function filledState(): WizardState {
+  let state = createInitialWizardState('draft-1');
+  for (const [key, value] of Object.entries({
+    claimNumber: 'CLM-1',
+    insuredName: 'Jordan Rivera',
+    insuredEmail: 'jordan@example.com',
+    propertyAddress: '123 Main St',
+    lossDate: '2026-01-01',
+  })) {
+    state = wizardReducer(state, { type: 'SET_FIELD', key, value });
+  }
+  return state;
+}
+
+describe('wizardReducer — upload outcomes', () => {
+  it('a server-rejected photo keeps its staged id (so Remove can delete it server-side) and is not retryable', () => {
+    let state = filledState();
+    state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p1', uri: 'file:///a.jpg', fileName: 'a.jpg' });
+    state = wizardReducer(state, {
+      type: 'PHOTO_FAILED',
+      localId: 'p1',
+      error: 'File is not a valid image.',
+      reason: 'rejected',
+      serverId: 'staged-1',
+    });
+
+    const photo = state.photos[0];
+    expect(photo.status).toBe('failed');
+    expect(photo.serverId).toBe('staged-1');
+    expect(isRetryablePhoto(photo)).toBe(false);
+    expect(canSubmit(state)).toBe(false);
+  });
+
+  it('network and plan-limit failures are retryable; on-device format/size refusals are not', () => {
+    let state = createInitialWizardState('draft-1');
+    const reasons = ['network', 'capacity', 'unsupported', 'too-large'] as const;
+    reasons.forEach((reason, i) => {
+      state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: `p${i}`, uri: `file:///${i}.jpg`, fileName: `${i}.jpg` });
+      state = wizardReducer(state, { type: 'PHOTO_FAILED', localId: `p${i}`, error: reason, reason });
+    });
+    expect(state.photos.map(isRetryablePhoto)).toEqual([true, true, false, false]);
+  });
+
+  it('cannot submit while any photo is still uploading, even with another photo ready', () => {
+    let state = filledState();
+    state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p1', uri: 'file:///a.jpg', fileName: 'a.jpg' });
+    state = wizardReducer(state, { type: 'PHOTO_RESOLVED', localId: 'p1', serverId: 's1', status: 'uploaded' });
+    state = wizardReducer(state, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p2', uri: 'file:///b.jpg', fileName: 'b.jpg' });
+
+    expect(canSubmit(state)).toBe(false);
+    state = wizardReducer(state, { type: 'PHOTO_RESOLVED', localId: 'p2', serverId: 's2', status: 'uploaded' });
+    expect(canSubmit(state)).toBe(true);
+  });
+});
+
+describe('wizardReducer — isPristine (discard prompt)', () => {
+  it('a brand-new wizard with only its default selections is pristine', () => {
+    expect(isPristine(createInitialWizardState('d'))).toBe(true);
+  });
+
+  it('any typed field, changed default, or added photo makes it non-pristine', () => {
+    const base = createInitialWizardState('d');
+    expect(isPristine(wizardReducer(base, { type: 'SET_FIELD', key: 'claimNumber', value: 'C' }))).toBe(false);
+    expect(isPristine(wizardReducer(base, { type: 'SET_FIELD', key: 'lossType', value: 'Fire' }))).toBe(false);
+    expect(
+      isPristine(wizardReducer(base, { type: 'ADD_PHOTO_PLACEHOLDER', localId: 'p', uri: 'file:///a.jpg', fileName: 'a.jpg' }))
+    ).toBe(false);
+  });
+
+  it('whitespace-only edits still count as pristine', () => {
+    const base = createInitialWizardState('d');
+    expect(isPristine(wizardReducer(base, { type: 'SET_FIELD', key: 'claimNumber', value: '   ' }))).toBe(true);
   });
 });
 

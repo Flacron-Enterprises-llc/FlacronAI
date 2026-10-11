@@ -11,14 +11,30 @@ import { useReportsList } from '../hooks/useReportsList';
 import { ReportCard } from '../components/ReportCard';
 import { StateMessage } from '../components/StateMessage';
 import { ChoiceChips } from '../wizard/components/ChoiceChips';
+import { useRefreshOnFocus } from '../reportsEvents';
 
-const STATUS_FILTERS = ['All', 'draft', 'processing', 'finalized', 'archived'] as const;
+/** Label → the exact `status` value `GET /reports?status=` matches (an equality filter
+ * server-side). `completed`/`approved` are legacy reviewed statuses older reports still carry;
+ * archived reports only appear when explicitly requested. */
+export const STATUS_FILTERS: { label: string; value: string | undefined }[] = [
+  { label: 'All', value: undefined },
+  { label: 'Needs review', value: 'draft' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Failed', value: 'failed' },
+  { label: 'Finalized', value: 'finalized' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Archived', value: 'archived' },
+];
+const FILTER_LABELS = STATUS_FILTERS.map((f) => f.label);
 
 export function ReportsListScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = useState<string>('All');
-  const list = useReportsList(statusFilter === 'All' ? undefined : statusFilter);
+  const [filterLabel, setFilterLabel] = useState<string>('All');
+  const status = STATUS_FILTERS.find((f) => f.label === filterLabel)?.value;
+  const list = useReportsList(status);
+  useRefreshOnFocus(list.refresh);
 
   const renderItem = ({ item }: { item: Report }) => (
     <ReportCard report={item} onPress={() => router.push({ pathname: '/report/[id]', params: { id: item.id } })} />
@@ -31,7 +47,7 @@ export function ReportsListScreen() {
         <PrimaryButton label="+ New" onPress={() => router.push('/report/new')} />
       </View>
 
-      <ChoiceChips label="Status" value={statusFilter} options={STATUS_FILTERS} onChange={setStatusFilter} />
+      <ChoiceChips label="Status" value={filterLabel} options={FILTER_LABELS} onChange={setFilterLabel} />
 
       {list.isOffline && (
         <ThemedText variant="caption" color="muted" style={styles.offline}>
@@ -51,7 +67,13 @@ export function ReportsListScreen() {
           refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} tintColor={theme.colors.primary} />}
           onEndReachedThreshold={0.4}
           onEndReached={list.loadMore}
-          ListEmptyComponent={<StateMessage title="No reports found" description="Try a different status filter, or generate a new report." />}
+          ListEmptyComponent={
+            list.isOffline ? (
+              <StateMessage title="You’re offline" description="Your reports will load once you’re connected." onRetry={list.retry} />
+            ) : (
+              <StateMessage title="No reports found" description="Try a different status filter, or generate a new report." />
+            )
+          }
           ListFooterComponent={list.loadingMore ? <ActivityIndicator style={styles.footerLoader} color={theme.colors.primary} /> : null}
           contentContainerStyle={list.reports.length === 0 ? styles.emptyContent : undefined}
         />

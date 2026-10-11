@@ -1,6 +1,7 @@
 import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/features/auth/context/AuthProvider';
+import { peekPendingReport } from '@/features/navigation/pendingDeepLink';
 
 /**
  * The single always-reachable anchor route ("/") — computes where to send the user based
@@ -12,6 +13,9 @@ import { useAuth } from '@/features/auth/context/AuthProvider';
  * Renders nothing while `status === 'loading'` — the root layout keeps the splash screen
  * up for that entire window, so this is never visibly reached mid-decision (prevents any
  * flash of the wrong destination).
+ *
+ * After authentication, a report deep link that arrived while signed out (see
+ * `features/navigation/pendingDeepLink.ts`) wins over the default dashboard destination.
  */
 export default function RootIndex() {
   const { status } = useAuth();
@@ -25,8 +29,11 @@ export default function RootIndex() {
       return <Redirect href="/mfa" />;
     case 'profile-unavailable':
       return <Redirect href="/account-unavailable" />;
-    case 'authenticated':
+    case 'authenticated': {
+      const pendingReportId = peekPendingReport();
+      if (pendingReportId) return <Redirect href={{ pathname: '/report/[id]', params: { id: pendingReportId } }} />;
       return <Redirect href="/dashboard" />;
+    }
     case 'loading':
     default:
       return null;

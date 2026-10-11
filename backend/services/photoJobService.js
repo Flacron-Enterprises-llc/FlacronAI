@@ -29,6 +29,18 @@ const { getReportAccess } = require('../utils/reportAccess');
 const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
 
 const MAX_GENERATION_ATTEMPTS = 2;
+// Pipeline lease (restart recovery). Pipelines run in-process, so a server
+// restart/redeploy mid-run used to leave a report 'processing' (or photos
+// 'queued'/'analyzing') forever, and Retry refused it as ALREADY_PROCESSING.
+// Every run now holds a lease on the report (`pipelineLease: {id, heartbeatAt}`)
+// renewed every PIPELINE_HEARTBEAT_MS. Only a run whose heartbeat is older than
+// PIPELINE_STALE_MS (10x the heartbeat) is treated as abandoned, so a live run
+// -- however slow -- is never mistaken for a dead one. The lease is its own
+// field: heartbeats deliberately do NOT bump `updatedAt` (annotation saves use
+// it for optimistic STALE_UPDATE checks).
+const PIPELINE_HEARTBEAT_MS = Number(process.env.PIPELINE_HEARTBEAT_MS) || 60 * 1000;
+const PIPELINE_STALE_MS = Number(process.env.PIPELINE_STALE_MS) || 10 * 60 * 1000;
+const IN_FLIGHT_PHOTO_STATUSES = ['queued', 'analyzing'];
 // Phase 8: an edited/added observation or note length cap, enforced
 // server-side regardless of what the frontend already restricts client-side.
 const MAX_OBSERVATION_LENGTH = 3000;
@@ -249,7 +261,23 @@ const getAnalysisStatus = async (reportId, uid) => {
   const db = getFirestore();
   const reportDoc = await db.collection('reports').doc(reportId).get();
   if (!reportDoc.exists || reportDoc.data().userId !== uid) return null;
-  const report = reportDoc.data();
+  let report = reportDoc.data();
+
+  // Restart recovery: surface an abandoned run as a retryable failure (the
+  // clients already offer Retry for 'failed' / needs_attention) instead of
+  // 'processing' forever. Transactional, so it can't race a live heartbeat or
+  // a concurrent retry claim.
+  if (isPipelineAbandoned(report)) {
+    const reportRef = db.collection('reports').doc(reportId);
+    report = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(reportRef);
+      const fresh = snap.data();
+      if (!isPipelineAbandoned(fresh)) return fresh;
+      const update = abandonedPipelineUpdate(fresh);
+      tx.update(reportRef, update);
+      return { ...fresh, ...update };
+    });
+  }
 
   const jobsSnap = await db.collection('analysisJobs').where('reportId', '==', reportId).get();
   const photoJobs = jobsSnap.docs.map((d) => d.data()).filter((j) => j.type === 'photo_analysis');
@@ -270,6 +298,70 @@ const getAnalysisStatus = async (reportId, uid) => {
     generation: generationJob ? { status: generationJob.status, error: generationJob.error } : null,
   };
 };
+
+// ── Pipeline lease helpers ───────────────────────────────────────────────────
+
+// True when the report has (or may have) a pipeline in flight.
+const isPipelineBusy = (report) =>
+  report.status === 'processing' ||
+  (report.photos || []).some((p) => IN_FLIGHT_PHOTO_STATUSES.includes(p.analysisStatus));
+
+// True when that pipeline is provably alive: a recent lease heartbeat, or --
+// for a report written before leases existed / before the first heartbeat
+// lands -- a recent updatedAt.
+const isPipelineActive = (report, now = Date.now()) => {
+  const lease = report.pipelineLease;
+  const last = Date.parse((lease && lease.heartbeatAt) || report.updatedAt || '') || 0;
+  return now - last <= PIPELINE_STALE_MS;
+};
+
+const isPipelineAbandoned = (report, now = Date.now()) => isPipelineBusy(report) && !isPipelineActive(report, now);
+
+// Starts (or adopts, when a retry already claimed one transactionally) a lease
+// and keeps it alive until stop(). Each heartbeat/stop only writes while the
+// lease is still ours, so a superseded run can never clobber the new owner's
+// lease.
+const startPipelineLease = (reportRef, leaseId = uuidv4()) => {
+  const db = getFirestore();
+  const writeIfOurs = (value) =>
+    db
+      .runTransaction(async (tx) => {
+        const snap = await tx.get(reportRef);
+        if (!snap.exists) return;
+        const current = snap.data().pipelineLease;
+        if (current && current.id && current.id !== leaseId) return;
+        tx.update(reportRef, { pipelineLease: value });
+      })
+      .catch((err) => console.warn(`[photoJobService] pipeline lease write failed: ${err.message}`));
+  const beat = () => writeIfOurs({ id: leaseId, heartbeatAt: nowIso() });
+  const ready = beat();
+  const timer = setInterval(beat, PIPELINE_HEARTBEAT_MS);
+  if (timer.unref) timer.unref();
+  return {
+    leaseId,
+    ready,
+    stop: async () => {
+      clearInterval(timer);
+      await ready;
+      await writeIfOurs(null);
+    },
+  };
+};
+
+// Fields that turn an abandoned run into a normal, retryable failure.
+const abandonedPipelineUpdate = (report) => ({
+  status: report.status === 'processing' ? 'failed' : report.status,
+  pipelineError:
+    report.status === 'processing'
+      ? 'Processing was interrupted before it finished. Use Retry to continue.'
+      : report.pipelineError || null,
+  photos: (report.photos || []).map((p) =>
+    IN_FLIGHT_PHOTO_STATUSES.includes(p.analysisStatus)
+      ? { ...p, analysisStatus: 'needs_attention', analysisError: 'Analysis was interrupted. Use Retry.' }
+      : p
+  ),
+  pipelineLease: null,
+});
 
 // ── The pipeline itself ──────────────────────────────────────────────────────
 
@@ -293,7 +385,16 @@ const generateReportWithRetry = async (reportData, imageAnalysis, photoCount) =>
 // newly-created 'processing' report. Never throws (a catch-all wraps the
 // whole body) -- a report must never be left stuck in 'processing' forever
 // just because something here threw unexpectedly.
-const runReportPipeline = async ({ reportId, uid, analyzableImages, reportData, userEmail, existingImageAnalysis = null }) => {
+const runReportPipeline = async (args) => {
+  const lease = startPipelineLease(getFirestore().collection('reports').doc(args.reportId), args.leaseId);
+  try {
+    return await runReportPipelineUnleased(args);
+  } finally {
+    await lease.stop();
+  }
+};
+
+const runReportPipelineUnleased = async ({ reportId, uid, analyzableImages, reportData, userEmail, existingImageAnalysis = null }) => {
   const db = getFirestore();
   const reportRef = db.collection('reports').doc(reportId);
   // Declared here (not inside the try block below) so the outer catch-all --
@@ -442,7 +543,17 @@ const runReportPipeline = async ({ reportId, uid, analyzableImages, reportData, 
 // regenerated report text when photos are added after the fact, and Phase 7
 // doesn't change that scope) or the monthly usage counters (those are
 // charged once, at report creation, not per photo added afterward).
-const runPhotoAnalysisOnly = async ({ reportId, uid, claimNumber, claimType, analyzableImages, existingImageAnalysis = null }) => {
+const runPhotoAnalysisOnly = async (args) => {
+  if (!args.analyzableImages || args.analyzableImages.length === 0) return;
+  const lease = startPipelineLease(getFirestore().collection('reports').doc(args.reportId), args.leaseId);
+  try {
+    return await runPhotoAnalysisOnlyUnleased(args);
+  } finally {
+    await lease.stop();
+  }
+};
+
+const runPhotoAnalysisOnlyUnleased = async ({ reportId, uid, claimNumber, claimType, analyzableImages, existingImageAnalysis = null }) => {
   const db = getFirestore();
   const reportRef = db.collection('reports').doc(reportId);
   if (analyzableImages.length === 0) return;
@@ -494,35 +605,45 @@ const runPhotoAnalysisOnly = async ({ reportId, uid, claimNumber, claimType, ana
 const retryFailedAnalysis = async (reportId, uid) => {
   const db = getFirestore();
   const reportRef = db.collection('reports').doc(reportId);
-  const reportDoc = await reportRef.get();
-  if (!reportDoc.exists || reportDoc.data().userId !== uid) return { success: false, code: 'NOT_FOUND' };
-  const report = reportDoc.data();
 
-  // Idempotency fix (production incident: generation "takes excessively
-  // long", partly driven by duplicate/overlapping pipeline runs for the same
-  // report): a report already mid-pipeline (the initial run, or an earlier
-  // retry) is still 'processing' -- a repeated "Retry Analysis" click, or the
-  // frontend's status-poll racing a manual retry, must not fire a SECOND
-  // concurrent runReportPipeline that re-downloads and re-analyzes whatever
-  // photos happen to be 'needs_attention' at that instant while the first
-  // run is still working. Checked before NOTHING_TO_RETRY below so it wins
-  // even when the in-flight run hasn't flagged any photo needs_attention yet.
-  if (report.status === 'processing') {
+  // Idempotency + restart recovery, decided atomically: a report whose
+  // pipeline is still alive (fresh lease heartbeat) is ALREADY_PROCESSING; one
+  // whose run was abandoned (server restart mid-run) is recovered; and the
+  // claim (status -> 'processing' + a new lease) happens in the same
+  // transaction, so two concurrent Retry calls can never both start a pipeline
+  // (and pay for the same Claude calls twice) -- the loser sees the winner's
+  // fresh lease and gets ALREADY_PROCESSING.
+  const claim = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(reportRef);
+    if (!snap.exists || snap.data().userId !== uid) return { code: 'NOT_FOUND' };
+    const current = snap.data();
+    if (isPipelineBusy(current) && isPipelineActive(current)) return { code: 'ALREADY_PROCESSING' };
+    const recovered = isPipelineBusy(current) ? { ...current, ...abandonedPipelineUpdate(current) } : current;
+    const stuck = (recovered.photos || []).filter((p) => p.analysisStatus === 'needs_attention');
+    if (stuck.length === 0 && recovered.status !== 'failed') return { code: 'NOTHING_TO_RETRY' };
+    const leaseId = uuidv4();
+    tx.update(reportRef, {
+      ...(recovered === current ? {} : { photos: recovered.photos }),
+      status: 'processing',
+      pipelineError: null,
+      updatedAt: nowIso(),
+      pipelineLease: { id: leaseId, heartbeatAt: nowIso() },
+    });
+    return { report: recovered, stuckPhotos: stuck, leaseId };
+  });
+
+  if (claim.code === 'NOT_FOUND') return { success: false, code: 'NOT_FOUND' };
+  if (claim.code === 'ALREADY_PROCESSING') {
     return {
       success: false,
       code: 'ALREADY_PROCESSING',
       error: 'This report is already being processed. Please wait for it to finish before retrying.',
     };
   }
-
-  const stuckPhotos = (report.photos || []).filter((p) => p.analysisStatus === 'needs_attention');
-  const generationFailed = report.status === 'failed';
-
-  if (stuckPhotos.length === 0 && !generationFailed) {
+  if (claim.code === 'NOTHING_TO_RETRY') {
     return { success: false, code: 'NOTHING_TO_RETRY', error: 'Nothing needs retrying on this report.' };
   }
-
-  await reportRef.update({ status: 'processing', pipelineError: null, updatedAt: nowIso() });
+  const { report, stuckPhotos, leaseId } = claim;
 
   // Perf fix: re-download each stuck photo's already-stored display-tier
   // bytes (no re-upload -- the objects are already in Storage from the
@@ -583,6 +704,7 @@ const retryFailedAnalysis = async (reportId, uid) => {
     reportData,
     userEmail: null,
     existingImageAnalysis: report.imageAnalysis || null,
+    leaseId,
   }).catch((err) => console.error('[photoJobService] retry pipeline failed:', err.message));
 
   return { success: true };
@@ -961,6 +1083,10 @@ const regenerateFromPhotoReview = async (reportId, uid, userEmail) => {
 };
 
 module.exports = {
+  isPipelineBusy,
+  isPipelineActive,
+  isPipelineAbandoned,
+  PIPELINE_STALE_MS,
   createAnalysisJobs,
   createGenerationJob,
   runReportPipeline,

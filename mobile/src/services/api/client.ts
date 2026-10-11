@@ -38,7 +38,7 @@
  *   distinguished from each other and from a generic network failure.
  * - Never logs a token, a request/response body, or any header value.
  */
-import { getApiBaseUrl } from '@/config/env';
+import { getApiBaseUrl, getAppEnv } from '@/config/env';
 import { ApiRequestError, type ApiErrorCategory, type QueryParams } from '@/types/api';
 import { getFirebaseAuth } from '../firebase/client';
 import { clearMfaAssertion, getMfaAssertion } from '../mfaAssertionStorage';
@@ -214,6 +214,8 @@ function parseRetryAfterMs(response: Response): number | null {
 // this app calls — never guessed. See types/api.ts's ApiErrorCategory doc for the mapping
 // rationale.
 const AUTH_FATAL_CODES = new Set([
+  // Phase 8: the account was self-deleted (server tombstone).
+  'ACCOUNT_DELETED',
   'NO_TOKEN',
   'NO_AUTH',
   'NO_API_KEY',
@@ -237,9 +239,14 @@ const PERMISSION_CODES = new Set([
   'FORBIDDEN',
   'EXPORT_FORMAT_NOT_ALLOWED',
   'TEAM_OWNER_BLOCKED',
+  // Plan-feature gate (`requireTierFeature`, backend/middleware/auth.js) and the
+  // password-change recency gate (`requireRecentAuth`) — both are authorization decisions
+  // about one action, never a sign that the session itself is invalid.
+  'FEATURE_NOT_IN_PLAN',
+  'RECENT_LOGIN_REQUIRED',
 ]);
 
-function classify(status: number, code: string | null): { category: ApiErrorCategory; retryable: boolean } {
+export function classify(status: number, code: string | null): { category: ApiErrorCategory; retryable: boolean } {
   if (code === 'MFA_REQUIRED') return { category: 'mfa_required', retryable: false };
   if (status === 429) return { category: 'rate_limited', retryable: true };
   if (status === 503 || (code && TRANSIENT_CODES.has(code))) return { category: 'transient_server', retryable: true };
@@ -247,7 +254,11 @@ function classify(status: number, code: string | null): { category: ApiErrorCate
   if (status === 401 || status === 403) {
     if (code && PERMISSION_CODES.has(code)) return { category: 'permission', retryable: false };
     if (code && AUTH_FATAL_CODES.has(code)) return { category: 'auth_fatal', retryable: false };
-    return { category: 'auth_fatal', retryable: false };
+    // A 401 means the credential itself was rejected. A 403 with a code this client doesn't
+    // recognise is a per-action authorization decision (the backend sends dozens of these,
+    // e.g. per-report share/review grants) — treating it as a dead session would wrongly push
+    // the user toward signing out for what is really "you can't do this here".
+    return status === 401 ? { category: 'auth_fatal', retryable: false } : { category: 'permission', retryable: false };
   }
   if (status === 404) return { category: 'not_found', retryable: false };
   if (status === 409) return { category: 'conflict', retryable: false };
@@ -344,6 +355,15 @@ async function performAttempt<T>(path: string, options: RequestOptions): Promise
         retryable: true,
         isNetworkError: true,
       });
+    }
+    // Development-env builds only (incl. the Phase 10 e2e build): keep the platform's own
+    // reason, which is otherwise lost behind the generic message. Never in preview/production.
+    try {
+      if (getAppEnv() === 'development') {
+        console.warn(`[api] network error ${options.method ?? 'GET'} ${path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } catch {
+      // diagnostics must never change how the error is classified
     }
     throw new ApiRequestError('Unable to reach the server. Check your connection and try again.', {
       isNetworkError: true,

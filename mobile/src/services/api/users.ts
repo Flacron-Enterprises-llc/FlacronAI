@@ -7,10 +7,11 @@
  * cached tier value as the enforcement decision) — confirmed at
  * `backend/routes/users.js` (`GET /users/usage`).
  *
- * Deliberately NOT covered here (confirmed to exist in `users.js` but out of Phase 5's
- * stated scope — settings/profile + dashboard/report/tier screens only): account
- * deletion, login history, organization info, API keys, logo upload, onboarding-step
- * tracking. Add typed wrappers for these only when a phase actually needs the screen that
+ * Phase 8 adds `changePassword` (`PUT /users/change-password`, recent sign-in required)
+ * and `deleteAccount` (`DELETE /users/account`, recent sign-in + explicit confirmation).
+ *
+ * Deliberately NOT covered here: login history, organization info, API keys, logo upload,
+ * onboarding-step tracking (web-only surfaces). Add typed wrappers for these only when a phase actually needs the screen that
  * calls them, so this file doesn't grow speculative surface.
  */
 import { apiRequest } from './client';
@@ -40,6 +41,17 @@ export type ProfileUpdate = Partial<
   Pick<UserProfile, 'displayName' | 'firstName' | 'lastName' | 'company' | 'phone' | 'address' | 'notifications'>
 >;
 
+export interface DeleteAccountResult {
+  success: true;
+  message: string;
+  /** Subscriptions that keep billing after deletion. Stripe subscriptions are cancelled (and
+   * confirmed with Stripe) before deletion, so `stripe` is false on success; App Store / Google
+   * Play subscriptions can only be cancelled by the user in the store. */
+  subscriptionsStillBilling?: { stripe: boolean; store: 'ios' | 'android' | null };
+  /** Number of Stripe subscriptions this request cancelled (0 if none / already ended). */
+  stripeSubscriptionsCancelled?: number;
+}
+
 export const usersApi = {
   getProfile: () => apiRequest<{ success: true; user: UserProfile }>('/users/profile'),
 
@@ -65,6 +77,24 @@ export const usersApi = {
   /** Thin, explicitly-named wrapper over `updateProfile` for the one field a
    * notification-settings screen needs to change — kept separate so that call site reads
    * as "update notification prefs," not "update profile with some object." */
+  /** Requires a sign-in within the last 5 minutes (re-authenticate first). On success the
+   * server revokes every session, including this one. */
+  changePassword: (newPassword: string) =>
+    apiRequest<{ success: true; message: string }>('/users/change-password', {
+      method: 'PUT',
+      body: { newPassword },
+    }),
+
+  /** Irreversible. Requires a sign-in within the last 5 minutes + `confirmation: 'DELETE'`.
+   * Idempotent server-side, so a retry after a failure/timeout is safe. */
+  deleteAccount: () =>
+    apiRequest<DeleteAccountResult>('/users/account', {
+      method: 'DELETE',
+      body: { confirmation: 'DELETE' },
+      idempotent: true,
+      timeoutMs: 60000,
+    }),
+
   updateNotificationPreferences: (notifications: NotificationPreferences) =>
     apiRequest<{ success: true; message: string; updates: unknown }>('/users/profile', {
       method: 'PUT',

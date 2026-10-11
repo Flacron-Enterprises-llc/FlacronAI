@@ -13,6 +13,13 @@ const { CORS_ALLOWED_HEADERS, CORS_ALLOWED_METHODS } = require('./config/corsOpt
 
 const app = express();
 
+// Behind the AWS load balancer `req.ip` is the balancer's address unless Express trusts the
+// proxy hop(s) -- every IP-keyed rate limit would then lump all users together. Set
+// TRUST_PROXY_HOPS to the exact number of proxies in front of the app (e.g. 1 for an ALB);
+// unset/0 keeps the previous behaviour (trust nothing, so X-Forwarded-For can't be spoofed).
+const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || '0', 10);
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
+
 // ── SECURITY ──────────────────────────────────────────────────────────────────
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -175,6 +182,7 @@ const routeTable = [
   { path: '/users', router: require('./routes/users') },
   { path: '/reports', router: require('./routes/reports') },
   { path: '/payment', router: require('./routes/payment') },
+  { path: '/billing', router: require('./routes/billing') },
   { path: '/crm', router: require('./routes/crm') },
   { path: '/white-label', router: require('./routes/whitelabel') },
   { path: '/teams', router: require('./routes/teams') },
@@ -212,6 +220,19 @@ app.use(errorHandler);
 // ── START SERVER ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
+  // Mobile Phase 6: durable push outbox worker. A no-op unless
+  // PUSH_NOTIFICATIONS_ENABLED=true; safe to run in every instance (lease-based).
+  try {
+    require('./services/pushService').startPushWorker(require('./config/firebase').getFirestore());
+  } catch (err) {
+    console.warn('[Push] worker not started:', err.message);
+  }
+  // Mobile Phase 10: finishes account deletions that failed part-way (lease-based).
+  try {
+    require('./services/accountDeletionCleanup').startAccountDeletionSweeper(require('./config/firebase').getFirestore());
+  } catch (err) {
+    console.warn('[AccountDeletion] sweeper not started:', err.message);
+  }
   console.log(`\n🚀 FlacronAI API running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 Health check: http://localhost:${PORT}/health\n`);

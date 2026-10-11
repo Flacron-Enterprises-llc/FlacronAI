@@ -7,6 +7,9 @@ import type { WizardFields } from '../wizardTypes';
 interface ReviewStepProps {
   fields: WizardFields;
   readyPhotoCount: number;
+  uploadingCount: number;
+  /** Failed or duplicate photos — shown so the user knows they won't be in the report. */
+  notReadyCount: number;
   submitError: string | null;
 }
 
@@ -15,13 +18,18 @@ const SUMMARY_ROWS: [string, string][] = [
   ['insuredName', 'Insured name'],
   ['insuredEmail', 'Insured email'],
   ['claimType', 'Claim type'],
+  ['reportType', 'Report type'],
   ['propertyAddress', 'Property / loss location'],
   ['lossType', 'Loss type'],
   ['lossDate', 'Date of loss'],
   ['inspectionDate', 'Inspection date'],
+  ['inspectionType', 'Inspection type'],
+  ['weatherConditions', 'Weather conditions'],
+  ['occupancyStatus', 'Occupancy status'],
+  ['propertyType', 'Property type'],
 ];
 
-export function ReviewStep({ fields, readyPhotoCount, submitError }: ReviewStepProps) {
+export function ReviewStep({ fields, readyPhotoCount, uploadingCount, notReadyCount, submitError }: ReviewStepProps) {
   const theme = useTheme();
 
   return (
@@ -49,6 +57,16 @@ export function ReviewStep({ fields, readyPhotoCount, submitError }: ReviewStepP
           <ThemedText variant="body" style={styles.rowValue}>
             {readyPhotoCount} ready to submit
           </ThemedText>
+          {uploadingCount > 0 && (
+            <ThemedText variant="caption" color="muted">
+              {uploadingCount} still uploading — Generate is available once they finish.
+            </ThemedText>
+          )}
+          {notReadyCount > 0 && (
+            <ThemedText variant="caption" style={{ color: theme.colors.warning }}>
+              {notReadyCount} not included (failed or duplicate) — see the Photos step.
+            </ThemedText>
+          )}
         </View>
       </View>
 

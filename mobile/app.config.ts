@@ -1,4 +1,6 @@
 import type { ExpoConfig } from 'expo/config';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { assertQaBuildEnv } = require('./build-guards/qaProfileGuard');
 
 // FlacronAI mobile app configuration.
 //
@@ -6,6 +8,16 @@ import type { ExpoConfig } from 'expo/config';
 // and must not change without client sign-off. This file intentionally configures
 // identity/build metadata only — no authentication, API base URL usage, or feature
 // wiring belongs here (see Phase boundaries in the phase tracker).
+
+// Set per EAS build profile in eas.json (`EXPO_PUBLIC_APP_ENV`); absent for local dev.
+const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV;
+
+// QA handover build (eas.json profile `qa` sets FLACRON_BUILD_PROFILE=qa): fail the
+// build unless every Firebase/API value is the staging one and no E2E/test hook is on
+// (the shared `preview` EAS environment carries production values). The verified
+// values are stamped into `extra.qaBuild`, which ships inside the APK's embedded app
+// config so the final artifact can be checked too.
+const QA_BUILD = process.env.FLACRON_BUILD_PROFILE === 'qa' ? assertQaBuildEnv(process.env) : undefined;
 
 const config: ExpoConfig = {
   name: 'FlacronAI',
@@ -43,6 +55,9 @@ const config: ExpoConfig = {
     },
     // Tablet support on Android is a responsive-layout and testing concern, not a
     // config flag — no restrictive screen-size or orientation lock is applied here.
+    // Phase 10: the app never draws over other apps; the template's overlay permission
+    // would otherwise appear in the store listing / Data safety review.
+    blockedPermissions: ['android.permission.SYSTEM_ALERT_WINDOW'],
   },
 
   web: {
@@ -84,8 +99,9 @@ const config: ExpoConfig = {
     // MFA server-side enforcement (2026-09-08 fix, AUTHENTICATION_ARCHITECTURE.md §12) —
     // Keychain/Keystore-backed storage for the short-lived MFA session assertion. No
     // plugin options set: this app never uses SecureStore's optional Face ID-gated
-    // `requireAuthentication` mode, so the default (no extra Info.plist entry) is correct.
-    'expo-secure-store',
+    // `requireAuthentication` mode. Phase 10: the plugin otherwise adds a generic
+    // NSFaceIDUsageDescription for a capability the app never uses — removed (`false`).
+    ['expo-secure-store', { faceIDPermission: false }],
     // Phase 5 — Core Dashboard Feature Parity: the generate-report wizard's Photos step
     // needs both camera capture and photo-library selection. Custom, specific permission
     // strings (not the generic template defaults) so the OS prompt tells the person why
@@ -105,6 +121,25 @@ const config: ExpoConfig = {
     // Phase 5 — lets a finalized report export (PDF/DOCX) be saved and shared via the
     // native share sheet after an authenticated download. No extra options needed.
     'expo-sharing',
+    // Phase 6 — Push Notifications (Expo push service; see MOBILE_DEVELOPMENT_PHASES.md §5).
+    // `defaultChannel` matches ANDROID_CHANNEL_ID in src/features/push/pushProvider.ts. iOS
+    // `aps-environment` follows the EAS profile: internal-distribution `preview` and store
+    // `production` builds talk to APNs production; dev-client builds use the sandbox.
+    // Android small icon (Phase 10): 96×96 white-on-transparent FA silhouette derived from
+    // brand-mark.png's alpha channel; Android tints it with `color`.
+    [
+      'expo-notifications',
+      {
+        icon: './assets/images/notification-icon.png',
+        color: '#FD4403',
+        defaultChannel: 'report-activity',
+        mode: APP_ENV === 'preview' || APP_ENV === 'production' ? 'production' : 'development',
+      },
+    ],
+    // Phase 7 — StoreKit 2 / Google Play Billing (wires the Play Billing Gradle dependency; its
+    // manifest contributes the BILLING permission at build time). Native: requires a
+    // development/production build, never Expo Go.
+    'expo-iap',
   ],
 
   experiments: {
@@ -120,6 +155,7 @@ const config: ExpoConfig = {
   },
 
   extra: {
+    ...(QA_BUILD ? { qaBuild: QA_BUILD } : {}),
     eas: {
       projectId: 'c8227fa0-8a62-4e51-8ccc-c8feb58d0466',
     },

@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "PassOnlyTheStagingInstanceRoleToEC2", "Effect": "Allow", "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/flacronai-staging-ec2",
+      "Condition": { "StringEquals": { "iam:PassedToService": "ec2.amazonaws.com" } } },
+    { "Sid": "ReadTheStagingInstanceProfile", "Effect": "Allow",
+      "Action": ["iam:GetInstanceProfile", "iam:GetRole"],
+      "Resource": ["arn:aws:iam::<AWS_ACCOUNT_ID>:instance-profile/flacronai-staging-ec2", "arn:aws:iam::<AWS_ACCOUNT_ID>:role/flacronai-staging-ec2"] }
+  ]
+}

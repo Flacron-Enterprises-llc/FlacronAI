@@ -33,6 +33,9 @@ class FakeFirestore {
       get: async () => fs._directChildrenSnapshot(basePath),
       orderBy: (field, dir = 'asc') => fs._query(basePath).orderBy(field, dir),
       limit: (n) => fs._query(basePath).limit(n),
+      // Mobile Phase 6 (additive): where() with '==' and numeric '<=', enough for
+      // utils/pushDeviceStore.js's `where('uid','==',uid)`.
+      where: (field, op, value) => fs._query(basePath).where(field, op, value),
       // Phase 48: auto-id create, matching real Firestore's collection().add()
       // (used by services/auditLogService.js). Equivalent to
       // .doc().set(data) but returns the created doc reference, like the
@@ -47,8 +50,13 @@ class FakeFirestore {
 
   _query(basePath) {
     const fs = this;
-    const state = { orderByField: null, dir: 'asc', limitN: null };
+    const state = { orderByField: null, dir: 'asc', limitN: null, filters: [] };
     const api = {
+      where(field, op, value) {
+        if (op !== '==' && op !== '<=') throw new Error(`FakeFirestore: unsupported where op ${op}`);
+        state.filters.push({ field, op, value });
+        return api;
+      },
       orderBy(field, dir = 'asc') {
         state.orderByField = field;
         state.dir = dir;
@@ -60,7 +68,10 @@ class FakeFirestore {
       },
       async get() {
         const snap = await fs._directChildrenSnapshot(basePath);
-        let docs = snap.docs;
+        // '<=' mirrors Firestore's type-scoped ranges: only same-type values
+        // match (a null field never matches a numeric range).
+        const matches = (f, v) => (f.op === '<=' ? typeof v === typeof f.value && v !== null && v <= f.value : v === f.value);
+        let docs = snap.docs.filter((d) => state.filters.every((f) => matches(f, d.data()[f.field])));
         if (state.orderByField) {
           docs = [...docs].sort((a, b) => {
             const av = a.data()[state.orderByField];
@@ -70,7 +81,7 @@ class FakeFirestore {
           });
         }
         if (state.limitN) docs = docs.slice(0, state.limitN);
-        return { docs, empty: docs.length === 0 };
+        return { docs, empty: docs.length === 0, size: docs.length };
       },
     };
     return api;
@@ -83,7 +94,9 @@ class FakeFirestore {
       if (!path.startsWith(prefix)) continue;
       const rest = path.slice(prefix.length);
       if (rest.includes('/')) continue; // only direct children, not grandchildren
-      docs.push({ id: rest, data: () => entry.data });
+      // Mobile Phase 7 (additive): `ref`/`exists` like real QueryDocumentSnapshots
+      // (routes/payment.js's Stripe webhook updates `snapshot.docs[0].ref`).
+      docs.push({ id: rest, data: () => entry.data, exists: true, ref: this._doc(path) });
     }
     return { docs, empty: docs.length === 0 };
   }
@@ -96,7 +109,8 @@ class FakeFirestore {
       collection: (name) => fs._collection(`${path}/${name}`),
       get: async () => {
         const entry = fs.store.get(path);
-        return { exists: !!entry, data: () => entry?.data, id: path.split('/').pop() };
+        // `ref` like a real DocumentSnapshot (Mobile Phase 7, additive).
+        return { exists: !!entry, data: () => entry?.data, id: path.split('/').pop(), ref: fs._doc(path) };
       },
       set: async (data) => {
         const prev = fs.store.get(path);
@@ -107,7 +121,35 @@ class FakeFirestore {
         if (!prev) throw new Error(`FakeFirestore: cannot update non-existent doc ${path}`);
         fs.store.set(path, { version: prev.version + 1, data: { ...prev.data, ...patch } });
       },
+      delete: async () => {
+        fs.store.delete(path);
+      },
+      // Real Firestore's create(): fails with ALREADY_EXISTS (gRPC code 6).
+      create: async (data) => {
+        if (fs.store.has(path)) throw Object.assign(new Error('6 ALREADY_EXISTS: Document already exists'), { code: 6 });
+        fs.store.set(path, { version: 1, data });
+      },
     };
+  }
+
+  // Mobile Phase 8 (additive): WriteBatch + recursiveDelete, as used by
+  // routes/users.js account deletion.
+  batch() {
+    const ops = [];
+    return {
+      delete: (ref) => ops.push(() => ref.delete()),
+      set: (ref, data) => ops.push(() => ref.set(data)),
+      update: (ref, data) => ops.push(() => ref.update(data)),
+      commit: async () => {
+        for (const op of ops) await op();
+      },
+    };
+  }
+
+  async recursiveDelete(ref) {
+    for (const path of [...this.store.keys()]) {
+      if (path === ref.__path || path.startsWith(`${ref.__path}/`)) this.store.delete(path);
+    }
   }
 
   async runTransaction(fn, options = {}) {
@@ -132,6 +174,9 @@ class FakeFirestore {
         update: (ref, patch) => {
           pendingWrites.push({ path: ref.__path, type: 'update', data: patch });
         },
+        delete: (ref) => {
+          pendingWrites.push({ path: ref.__path, type: 'delete' });
+        },
       };
       // A thrown validation/business error propagates immediately, no retry.
       const result = await fn(tx);
@@ -142,7 +187,9 @@ class FakeFirestore {
       if (stale) continue;
       for (const w of pendingWrites) {
         const prev = this.store.get(w.path);
-        if (w.type === 'update') {
+        if (w.type === 'delete') {
+          this.store.delete(w.path);
+        } else if (w.type === 'update') {
           if (!prev) throw new Error(`FakeFirestore: cannot update non-existent doc ${w.path}`);
           this.store.set(w.path, { version: prev.version + 1, data: { ...prev.data, ...w.data } });
         } else {

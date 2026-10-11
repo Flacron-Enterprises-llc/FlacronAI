@@ -61,7 +61,15 @@ describe('reportsApi — simple JSON routes', () => {
 
   it('exportReport defaults are passed through as the request body', async () => {
     await reportsApi.exportReport('r1', { format: 'pdf' });
-    expect(mockApiRequest).toHaveBeenCalledWith('/reports/r1/export', { method: 'POST', body: { format: 'pdf' } });
+    // Long-running server render — must not use the 20s client default.
+    expect(mockApiRequest).toHaveBeenCalledWith('/reports/r1/export', { method: 'POST', body: { format: 'pdf' }, timeoutMs: 120000 });
+  });
+
+  it('getPhotoCapacity scopes the plan-capacity read to the draft when given one', async () => {
+    await reportsApi.getPhotoCapacity('d1');
+    expect(mockApiRequest).toHaveBeenCalledWith('/reports/photos/capacity', { params: { draftId: 'd1' } });
+    await reportsApi.getPhotoCapacity();
+    expect(mockApiRequest).toHaveBeenCalledWith('/reports/photos/capacity', { params: undefined });
   });
 });
 
@@ -197,6 +205,7 @@ describe('reportsApi — binary downloads', () => {
     await reportsApi.downloadExport('r1', 'report.pdf', true);
     expect(mockApiRequestBinary).toHaveBeenCalledWith('/reports/r1/download', {
       params: { file: 'report.pdf', inline: true },
+      timeoutMs: 120000,
     });
   });
 

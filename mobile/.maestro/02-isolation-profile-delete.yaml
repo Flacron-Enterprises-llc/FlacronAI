@@ -1,0 +1,75 @@
+appId: com.flacronenterprises.flacronai
+name: Second account sees no foreign reports, edits profile, deletes itself
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+# Launch-time test endpoints (e2e build only; filled in right before each run).
+- stopApp
+- openLink: "${E2E_CONFIG_LINK}"
+# iOS asks "Open in FlacronAI?" for custom-scheme links.
+- tapOn:
+    text: "Open"
+    optional: true
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: "second.demo@example.test"
+      PASSWORD: "${E2E_PASSWORD_B}"
+- assertVisible: "No reports yet"
+- assertNotVisible: "DEMO-1001"
+- tapOn: "Reports.*"
+- assertVisible: "No reports found"
+- takeScreenshot: 20-isolation-empty-list
+- tapOn: "Settings.*"
+- takeScreenshot: 21-settings
+- tapOn: "Profile.*"
+- tapOn:
+    text: "Company"
+    index: 1
+- inputText: "Second Demo Co"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Save changes"
+- tapOn: "Save changes"
+- extendedWaitUntil:
+    visible: "Profile saved."
+    timeout: 20000
+- takeScreenshot: 22-profile-saved
+- back
+- scrollUntilVisible:
+    element: "Delete account.*"
+- tapOn: "Delete account.*"
+- extendedWaitUntil:
+    visible: "This permanently deletes:"
+    timeout: 20000
+- takeScreenshot: 23-delete-account
+- scrollUntilVisible:
+    element: "Type DELETE to confirm"
+- tapOn:
+    text: "Type DELETE to confirm"
+    index: 1
+- inputText: "DELETE"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Current password"
+- tapOn:
+    text: "Current password"
+    index: 1
+- inputText: "${E2E_PASSWORD_B}"
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: "Delete account"
+      below: "Current password"
+- tapOn:
+    text: "Delete account"
+    below: "Current password"
+- extendedWaitUntil:
+    visible: "Account deleted"
+    timeout: 60000
+- takeScreenshot: 24-account-deleted
+- tapOn: "OK"
+- assertVisible: "Welcome back"
+- takeScreenshot: 25-signed-out-after-deletion

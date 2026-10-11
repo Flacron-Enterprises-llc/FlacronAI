@@ -6,6 +6,7 @@ import type { ReportStatus } from '@/services/api/reports';
 
 const LABELS: Record<string, string> = {
   processing: 'Processing',
+  failed: 'Generation failed',
   draft: 'Draft — needs review',
   finalized: 'Finalized',
   completed: 'Completed',
@@ -25,6 +26,8 @@ function toneFor(status: string, theme: ReturnType<typeof useTheme>): { bg: stri
       return { bg: theme.colors.success + '22', fg: theme.colors.success };
     case 'archived':
       return { bg: theme.colors.border, fg: theme.colors.muted };
+    case 'failed':
+      return { bg: theme.colors.error + '22', fg: theme.colors.error };
     default:
       return { bg: theme.colors.surface, fg: theme.colors.muted };
   }

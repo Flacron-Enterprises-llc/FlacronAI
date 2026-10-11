@@ -80,12 +80,14 @@ const deleteObjects = async (objectPaths = []) => {
 
 // Wipes every object under a path prefix — used for full account deletion
 // (users/{uid}/) so photos/exports/logos are removed without having to track
-// every individual object path.
-const deletePrefix = async (prefix) => {
+// every individual object path. `strict: true` rethrows so account deletion can
+// stay incomplete (and be finished later) instead of leaving files behind.
+const deletePrefix = async (prefix, { strict = false } = {}) => {
   try {
     await getBucket().deleteFiles({ prefix, force: true });
   } catch (err) {
     console.warn('[Storage] deletePrefix failed for', prefix, '-', err.message);
+    if (strict) throw err;
   }
 };
 

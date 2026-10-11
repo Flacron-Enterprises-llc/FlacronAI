@@ -32,6 +32,13 @@ async function ensureLibraryPermission(): Promise<boolean> {
 
 const MAX_REMAINING_DEFAULT = 100;
 
+/** iOS 14+: ask PhotoKit for the most compatible representation, which transcodes HEIC library
+ * photos to JPEG on the way out — the analysis pipeline can't read HEIC (see
+ * `fileHelpers.ts` `checkPhotoAsset`, which still catches anything that slips through, e.g. on
+ * Android where no equivalent conversion option exists). Passed as the enum's string value so
+ * the option doesn't depend on the enum object at runtime. Camera captures are already JPEG. */
+const COMPATIBLE_REPRESENTATION = 'compatible' as ImagePicker.UIImagePickerPreferredAssetRepresentationMode;
+
 export function useImageCapture() {
   const [busy, setBusy] = useState(false);
 
@@ -67,6 +74,7 @@ export function useImageCapture() {
         exif: false,
         allowsMultipleSelection: true,
         selectionLimit: Math.max(1, remaining),
+        preferredAssetRepresentationMode: COMPATIBLE_REPRESENTATION,
       });
       if (result.canceled) return { status: 'cancelled' };
       return { status: 'success', assets: result.assets };

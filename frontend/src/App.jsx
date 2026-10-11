@@ -51,6 +51,7 @@ const Contact = lazy(() => import('./pages/Contact.jsx'));
 const FAQs = lazy(() => import('./pages/FAQs.jsx'));
 const About = lazy(() => import('./pages/About.jsx'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
+const AccountDeletion = lazy(() => import('./pages/AccountDeletion.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
 const AcceptableUsePolicy = lazy(() => import('./pages/AcceptableUsePolicy.jsx'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy.jsx'));
@@ -137,6 +138,7 @@ const App = () => {
         <Route path="/faqs" element={<FAQs />} />
         <Route path="/about" element={<About />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/account-deletion" element={<AccountDeletion />} />
         <Route path="/terms-of-service" element={<TermsOfService />} />
         <Route path="/acceptable-use-policy" element={<AcceptableUsePolicy />} />
         <Route path="/refund-policy" element={<RefundPolicy />} />

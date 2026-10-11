@@ -2154,6 +2154,88 @@ const higherSeverity = (a, b) =>
 // Normalizes one multer-shaped image into an Anthropic vision content block.
 // Returns null for anything unusable (unsupported type or unreadable buffer) so
 // the caller can count it as skipped rather than silently vanishing.
+// ── Vision payload sizing ─────────────────────────────────────────────────────
+// Photos are analyzed from their stored full-resolution display copy. Sending
+// those as-is can break Claude's input limits: each image's base64 must stay
+// under the per-image limit, and every batch must stay under the per-request
+// size limit (base64 inflates bytes by 4/3). So, on an in-memory copy only
+// (the stored originals are never touched):
+//   1. downscale to VISION_MAX_EDGE (Claude 4.7+ models analyze at most 2576 px
+//      on the long edge, so token cost and detail are unchanged);
+//   2. if the encoded image is still over VISION_MAX_IMAGE_B64_BYTES, re-encode
+//      at progressively lower JPEG quality, then smaller edges;
+//   3. pack batches by BOTH photo count (VISION_BATCH_SIZE) and total encoded
+//      bytes (VISION_MAX_BATCH_B64_BYTES, well under the request limit to leave
+//      room for the prompt and JSON envelope).
+// An image that cannot be brought under the limit is skipped (counted, never
+// sent) rather than failing the whole batch.
+const VISION_MAX_EDGE = 2576;
+const VISION_MAX_IMAGE_B64_BYTES = 5 * 1024 * 1024;
+const VISION_MAX_BATCH_B64_BYTES = 20 * 1024 * 1024;
+const VISION_REENCODE_STEPS = [
+  { edge: VISION_MAX_EDGE, quality: 85 },
+  { edge: VISION_MAX_EDGE, quality: 70 },
+  { edge: 2048, quality: 70 },
+  { edge: 1568, quality: 65 },
+  { edge: 1024, quality: 60 },
+];
+const VISION_RESIZABLE = new Set(['jpeg', 'jpg', 'png', 'webp']);
+
+const base64Length = (byteLength) => 4 * Math.ceil(byteLength / 3);
+
+// Returns { buffer, mimetype } within the limits, or null if impossible.
+const prepareImageForVision = async (img) => {
+  if (!img || !img.buffer) return null;
+  const type = String(img.mimetype || '').toLowerCase().replace('image/', '');
+  const buffer = Buffer.from(img.buffer);
+  let width = 0;
+  let height = 0;
+  if (VISION_RESIZABLE.has(type)) {
+    try {
+      const meta = await require('sharp')(buffer).metadata();
+      width = meta.width || 0;
+      height = meta.height || 0;
+    } catch {
+      // Unreadable by sharp: fall through to the size check on the raw bytes.
+    }
+  }
+  const fits = base64Length(buffer.length) <= VISION_MAX_IMAGE_B64_BYTES;
+  if (fits && Math.max(width, height) <= VISION_MAX_EDGE) return { ...img, buffer };
+  if (!VISION_RESIZABLE.has(type) || !width) return fits ? { ...img, buffer } : null;
+  for (const step of VISION_REENCODE_STEPS) {
+    try {
+      const out = await require('sharp')(buffer)
+        .rotate()
+        .resize(step.edge, step.edge, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: step.quality })
+        .toBuffer();
+      if (base64Length(out.length) <= VISION_MAX_IMAGE_B64_BYTES) return { ...img, buffer: out, mimetype: 'image/jpeg' };
+    } catch (err) {
+      console.warn('Vision resize failed:', err.message);
+      return fits ? { ...img, buffer } : null;
+    }
+  }
+  return null;
+};
+
+// Greedy packing: a new batch starts when adding the next block would exceed
+// either the photo count or the encoded-byte budget.
+const packVisionBatches = (blocks, photoIds) => {
+  const batches = [];
+  let current = null;
+  blocks.forEach((block, i) => {
+    const size = block.source.data.length;
+    if (!current || current.blocks.length >= VISION_BATCH_SIZE || current.bytes + size > VISION_MAX_BATCH_B64_BYTES) {
+      current = { blocks: [], photoIds: [], bytes: 0 };
+      batches.push(current);
+    }
+    current.blocks.push(block);
+    current.photoIds.push(photoIds[i]);
+    current.bytes += size;
+  });
+  return batches;
+};
+
 const toImageBlock = (img) => {
   if (!img || !img.buffer) return null;
   try {
@@ -2512,9 +2594,11 @@ const analyzeImages = async (images, { callVisionApi, onBatchComplete, claimType
   const blocks = [];
   const blockPhotoIds = [];
   let skipped = 0;
+  const prepared = await Promise.all(all.map(prepareImageForVision));
   for (let i = 0; i < all.length; i++) {
     const img = all[i];
-    const block = toImageBlock(img);
+    if (!prepared[i]) console.warn(`Skipping image ${img && img.photoId}: cannot fit vision size limits`);
+    const block = prepared[i] ? toImageBlock(prepared[i]) : null;
     if (block) {
       blocks.push(block);
       blockPhotoIds.push(img.photoId ?? i);
@@ -2528,12 +2612,9 @@ const analyzeImages = async (images, { callVisionApi, onBatchComplete, claimType
   }
 
   const total = blocks.length;
-  const batches = [];
-  const batchPhotoIdGroups = [];
-  for (let offset = 0; offset < blocks.length; offset += VISION_BATCH_SIZE) {
-    batches.push({ blocks: blocks.slice(offset, offset + VISION_BATCH_SIZE), total, locationOptions });
-    batchPhotoIdGroups.push(blockPhotoIds.slice(offset, offset + VISION_BATCH_SIZE));
-  }
+  const packed = packVisionBatches(blocks, blockPhotoIds);
+  const batches = packed.map((b) => ({ blocks: b.blocks, total, locationOptions }));
+  const batchPhotoIdGroups = packed.map((b) => b.photoIds);
 
   const onBatchDone = onBatchComplete
     ? (batchIndex, result) => onBatchComplete(batchPhotoIdGroups[batchIndex], result)
@@ -2734,6 +2815,10 @@ const checkAIHealth = async () => {
 };
 
 module.exports = {
+  prepareImageForVision,
+  packVisionBatches,
+  VISION_MAX_IMAGE_B64_BYTES,
+  VISION_MAX_BATCH_B64_BYTES,
   generateReport,
   // Exported for direct unit testing of the Date of Inspection mapping fix
   // (QA regression: the generic report path hardcoded the generation date

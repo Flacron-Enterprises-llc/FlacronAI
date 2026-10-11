@@ -1,9 +1,7 @@
 /**
  * Typed wrappers for the in-app notification feed (`backend/routes/notifications.js`).
- * This is the existing in-app-only feed — push/device-token registration does not exist
- * anywhere in the backend yet (confirmed by a Phase 4 repo-wide search), so there is no
- * `registerDeviceToken`-type method here; that is real, later, additive backend work
- * (Phase 6 — Push Notifications), not something this phase can call into.
+ * This is the in-app feed. Push device-token registration (Mobile Phase 6) lives in
+ * `pushDevices.ts`.
  *
  * Notification *preferences* also live here as thin re-exports of `usersApi`'s profile
  * methods (confirmed: no dedicated `/notifications/preferences` endpoint exists — the 6
