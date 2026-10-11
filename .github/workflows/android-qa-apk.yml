@@ -131,9 +131,12 @@ jobs:
       - name: Verify signature, staging config and absence of secrets
         run: |
           APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/certs.txt" | grep -E "Verified using|Signer #1 certificate (DN|SHA-256)"
-          grep -qi "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256" "$RUNNER_TEMP/certs.txt" \
-            || { echo "APK is not signed with the company certificate"; exit 1; }
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/certs.txt"
+          grep -E "Verified using v2|certificate (DN|SHA-256 digest)" "$RUNNER_TEMP/certs.txt"
+          # Every signer certificate (label format varies by apksigner version) must be the company one.
+          DIGESTS="$(grep -oiE 'certificate SHA-256 digest: [0-9a-f]{64}' "$RUNNER_TEMP/certs.txt" | awk '{print tolower($NF)}' | sort -u)"
+          [ "$DIGESTS" = "$EXPECTED_CERT_SHA256" ] \
+            || { echo "APK is not signed (only) with the company certificate: ${DIGESTS:-none found}"; exit 1; }
           node build-guards/verifyQaApk.js "$APK"
           # Server-side secrets and test credentials must never ship in the app.
           mkdir -p "$RUNNER_TEMP/apk" && unzip -q -o "$APK" -d "$RUNNER_TEMP/apk"
