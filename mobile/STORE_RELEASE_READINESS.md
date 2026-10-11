@@ -295,7 +295,9 @@ when prompted → install. Uninstall any older FlacronAI dev/EAS build first if 
 signature conflict (same package, different signer).
 
 **QA checklist (each tester, own disposable account):**
-1. Sign up → verify email → sign in; sign out/in; forgot password.
+1. Sign up with your own email → on the "verify your email" screen, message the QA coordinator, who runs
+   `backend/deploy/staging-gcp/verify-tester.sh <email>` (staging sends **no emails**) → tap the
+   refresh/continue button → dashboard. Sign out/in. (Forgot-password emails are not sent on staging — skip.)
 2. Optional: enable two-factor in Settings → Sign-in & security; sign in again with the code.
 3. New report: claim + property + loss details; add photos from camera AND library; try a non-image/oversized file.
 4. Generate → wait for "Draft — needs review" → read draft → comment → History tab.
@@ -304,4 +306,6 @@ signature conflict (same package, different signer).
 7. Settings → Profile edit → "Profile saved." shown; Legal & support links open.
 8. Second tester account must not see the first account's reports.
 9. Delete account (disposable account only) → signed out → cannot sign in again.
-10. Note device model / Android version for every issue; screenshot + time.
+10. AI draft, approval with content, PDF export and Stripe are expected to fail until the staging AI and
+    Stripe sandbox keys are added — record what you see, but don't file them as app bugs.
+11. Note device model / Android version for every issue; screenshot + time.
