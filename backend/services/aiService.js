@@ -2579,6 +2579,13 @@ const analyzeImages = async (images, { callVisionApi, onBatchComplete, claimType
   if (usingRealClient && !anthropic.getClient()) {
     // watsonx (granite) has no vision capability, so there is no image-analysis
     // fallback — degrade gracefully rather than blocking report generation.
+    // Still settle every photo through the batch hook: callers mark photos
+    // 'analyzing' before calling, and without this they would stay stuck there
+    // instead of becoming retryable ('needs_attention').
+    const photoIds = (images || []).map((img) => img && img.photoId).filter(Boolean);
+    if (onBatchComplete && photoIds.length > 0) {
+      await onBatchComplete(photoIds, { ok: false, error: 'Image analysis is unavailable right now.', attempts: 0 });
+    }
     return {
       summary: 'Image analysis unavailable — ANTHROPIC_API_KEY not configured',
       damages: [],
