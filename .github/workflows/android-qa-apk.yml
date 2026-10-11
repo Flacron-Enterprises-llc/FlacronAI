@@ -16,6 +16,7 @@ on:
       - qa/android-qa-apk
     paths:
       - "mobile/**"
+      - "!mobile/**/*.md"
       - ".github/workflows/android-qa-apk.yml"
   workflow_dispatch:
     inputs:

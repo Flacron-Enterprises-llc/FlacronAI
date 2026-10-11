@@ -258,41 +258,41 @@ sandbox 19/19), deletion recovery sweeper (42/42 local E2E).
 - **Tablets** (iPad / Android tablet layouts) and **accessibility** (VoiceOver, TalkBack, large text).
 - Google / Apple sign-in on the QA build (Google needs the build's SHA-1 in Firebase; Apple needs an iOS device).
 
-### 10.3 Private Android QA APK — `qa` profile (eas.json)
-Release APK, JS bundle embedded (no Metro / laptop / tunnels), signed with the existing EAS-managed
-Android keystore, `EXPO_PUBLIC_APP_ENV=preview` → the e2e launch-link override is inert (needs
-`development` + `EXPO_PUBLIC_E2E_RUNTIME_CONFIG=1`), no test flows/credentials in the bundle. Firebase
-client config: EAS `preview` environment (project `flacronai-c8dab`).
-**Blocked on one decision:** a stable HTTPS backend running this branch. Production
-(`api.flacronai.com`) does not have it — `/billing/*` and `/notifications/devices|push-status` return
-404 and the deletion/report fixes are not deployed. Build command once decided:
-`eas build -p android --profile qa` (with `EXPO_PUBLIC_API_BASE_URL` set in the profile).
+### 10.3 Private Android QA APK — GitHub Actions + Firebase App Distribution (2026-10-12)
+**Pipeline:** `.github/workflows/android-qa-apk.yml` runs on GitHub-hosted runners (free for this public
+repo) only from branch `qa/android-qa-apk`, in the branch-locked `qa-android` environment. It loads the
+`qa` profile env from `eas.json`, runs the QA config guards, `expo prebuild` + `gradlew assembleRelease`
+(Hermes JS bundle embedded — no Metro, laptop or tunnel), signs with the existing EAS-managed company
+keystore (GitHub environment secrets; cert SHA-256 `87974bb7…92a0b3`), then verifies the signature,
+the embedded staging config and the absence of server secrets/test credentials, and uploads to Firebase
+App Distribution (group `qa-testers`) using keyless Workload Identity Federation. The APK is **not**
+attached as a workflow artifact because the repository is public. No EAS build credits are used.
 
-**Staging (2026-10-11): EC2 provisioned (<staging EC2 instance>, EIP <staging EIP>), app NOT yet deployed — waiting on secret values, Firebase Auth/Storage, company billing and the Hostinger A record.**
-- **Design:** EC2 t4g.small (Docker + Caddy auto-HTTPS on `staging-api.flacronai.com`, DNS at Hostinger). AWS ≈ $19/month running, ≈ $5.70 stopped, $0.40 removed. AI ≈ $0.40–0.47 per 10-photo report (Opus 4.8, estimated).
-- **Scripts:** in `backend/deploy/staging/`; the bundle and remote script are forced to LF line endings.
-- **Proposed app fixes (not applied):** `proposed-patches/` — stale-processing recovery, and photo downscaling before vision. 35/35 related tests pass with them applied.
-- **QA APK:** the `qa` profile uses staging Firebase only. A local export confirmed no production IDs, tunnel hosts or test credentials, and the E2E hook compiled out.
-- **Blocked on:** AWS IAM verification (needs `aws login`), Owner acceptance, company billing, Rodrigue's final cost approval. Details: `backend/deploy/staging/ACCESS_REQUEST.md`.
+**Staging backend:** Cloud Run `flacronai-staging-api` (project `flacronai-staging-qa`, `us-central1`),
+`https://flacronai-staging-api-93799061110.us-central1.run.app/api/v1` — Google-managed HTTPS, min 0 /
+max 1 instance, CPU always allocated (background AI pipelines). Scripts + limits:
+`backend/deploy/staging-gcp/README.md`. The EC2 staging host is **stopped** (kept for recovery,
+`backend/deploy/staging/pause-staging.sh start`).
 
-**Feature status for the QA build (as of 2026-10-11):**
-- **Verified earlier on emulators/simulators (local backend):**
-  - Sign-in, report wizard, photo upload (small sample photo), AI draft, approve/validation, PDF export and share, account isolation, profile save, reaching the delete-account screen.
-- **Verified at API level:**
-  - Submitted account deletion, Stripe sandbox flows.
-- **Pending staging deploy:**
-  - All of the above against staging HTTPS.
-  - Real phone-size photos — at risk without the downscale patch.
-  - Restart recovery — gap without the stale-processing patch.
-- **Blocked:**
-  - Push (FCM/APNs + Expo token).
-  - Store purchases (store products + sandbox testers).
-  - Google sign-in (off in the QA build).
-  - Camera, tablets and accessibility (need real devices).
+**Verified at API level on staging (2026-10-12, disposable accounts; not device tests):**
+- Register → login (Firebase), unauthenticated request rejected (401), per-account profiles.
+- Photo staging upload; another account cannot see staged photos, read/export the report (404) or list it.
+- Report generation request accepted and processed in the background; without an AI key it fails
+  gracefully and photos end retryable (`needs_attention`) — fix f4899cd, previously stuck "analyzing".
+- Account deletion: account, reports, drafts and Storage objects removed; old token rejected; login fails.
 
-**Install (testers):** open the EAS build link on the Android phone → download the APK → allow "Install
-unknown apps" for the browser when prompted → open → install. Remove any older FlacronAI dev build first if
-Android reports a signature conflict.
+**Blocked / not yet verified:**
+- **AI generation, approval with content, final PDF** — the staging secret has no real
+  `ANTHROPIC_API_KEY`; **Stripe sandbox** — no real `STRIPE_SECRET_KEY` (both stored as 1-character
+  placeholders; `build-env.js` now refuses such values).
+- Background-job restart recovery on staging (covered by unit tests only).
+- Everything on a physical device; Push (FCM/APNs + Expo token); store purchases; Google sign-in
+  (off in the QA build); camera, tablets, accessibility.
+
+**Install (testers):** accept the Firebase App Distribution email invite on the Android phone → follow
+the link (sign in with the invited Google account) → download FlacronAI → allow "Install unknown apps"
+when prompted → install. Uninstall any older FlacronAI dev/EAS build first if Android reports a
+signature conflict (same package, different signer).
 
 **QA checklist (each tester, own disposable account):**
 1. Sign up → verify email → sign in; sign out/in; forgot password.
