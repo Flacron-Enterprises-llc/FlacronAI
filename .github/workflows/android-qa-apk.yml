@@ -144,7 +144,7 @@ jobs:
             echo "Forbidden secret/test material found in the APK"; exit 1
           fi
           rm -rf "$RUNNER_TEMP/apk"
-          echo "APK_SHA256=$(sha256sum "$APK" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          SUM="$(sha256sum "$APK" | cut -d' ' -f1)"; echo "APK SHA-256: $SUM"; echo "APK_SHA256=$SUM" >> "$GITHUB_ENV"
 
       - name: Authenticate to Google Cloud (keyless, staging project only)
         uses: google-github-actions/auth@v2
@@ -159,11 +159,20 @@ jobs:
           NOTES="FlacronAI QA build ${GITHUB_SHA::7} (staging backend + staging Firebase; NOT production).
           SHA-256: ${APK_SHA256}
           ${EXTRA_NOTES}"
-          npx --yes firebase-tools@14 appdistribution:distribute "$APK" \
+          # firebase-tools prints a tokenized, unauthenticated APK download URL. Workflow logs
+          # are PUBLIC, so its output goes to a private temp file and only the console link
+          # (Firebase sign-in required) is echoed.
+          OUT="$RUNNER_TEMP/appdist.log"
+          if ! npx --yes firebase-tools@14 appdistribution:distribute "$APK" \
             --app "$FIREBASE_ANDROID_APP_ID" \
             --project flacronai-staging-qa \
             --release-notes "$NOTES" \
-            --groups qa-testers
+            --groups qa-testers > "$OUT" 2>&1; then
+            grep -vE 'https?://' "$OUT" | tail -20
+            echo "App Distribution upload failed"; exit 1
+          fi
+          grep -oE 'https://console\.firebase\.google\.com/[^ ?]+' "$OUT" | head -1
+          rm -f "$OUT"
 
       - name: Summary
         if: always()
