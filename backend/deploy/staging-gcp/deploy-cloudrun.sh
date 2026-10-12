@@ -9,6 +9,12 @@ GCLOUD="${GCLOUD:-gcloud}"
 PROJECT="flacronai-staging-qa"; REGION="us-central1"; SERVICE="flacronai-staging-api"
 RUNTIME_SA="staging-api@${PROJECT}.iam.gserviceaccount.com"
 ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-8}"
+# Stripe SANDBOX (test-mode) price IDs — public identifiers, FlacronAI products tagged
+# app_id=flacronai. Amounts match frontend/src/data/plans.js + backend/config/tiers.js
+# (Professional $39.99/mo, Agency $99.99/mo). Annual + Enterprise intentionally unset on staging.
+STRIPE_PRICES="STRIPE_PRICE_PROFESSIONAL=price_1UPcOyKFLhrvSzkg7dPnG7Xj,STRIPE_PRICE_AGENCY=price_1UPcP0KFLhrvSzkg6A4SrFRM"
+STRIPE_PRICES="$STRIPE_PRICES,STRIPE_PRICE_PHOTOS_25_TEST=price_1UIUkOKFLhrvSzkg9I0WIWon,STRIPE_PRICE_PHOTOS_50_TEST=price_1UIV9bKFLhrvSzkgVDMHa5mS"
+STRIPE_PRICES="$STRIPE_PRICES,STRIPE_PRICE_PHOTOS_100_TEST=price_1UIVCHKFLhrvSzkgYqxn3oMW,STRIPE_PRICE_PHOTOS_250_TEST=price_1UIVEGKFLhrvSzkgdFMg3Vsv"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
 # Hard guard: refuse to run against any other project.
@@ -27,7 +33,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
   --min-instances 0 --max-instances 1 --concurrency 40 --timeout 600 \
   --set-secrets "/secrets/app.env=backend-env:latest" \
   --command node --args="--env-file=/secrets/app.env,server.js" \
-  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,PUSH_NOTIFICATIONS_ENABLED=false,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL}" \
+  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,PUSH_NOTIFICATIONS_ENABLED=false,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL},${STRIPE_PRICES}${EXTRA_ENV:+,$EXTRA_ENV}" \
   --labels "env=staging,app=flacronai" \
   --quiet
 

@@ -271,23 +271,20 @@ attached as a workflow artifact because the repository is public. No EAS build c
 **Staging backend:** Cloud Run `flacronai-staging-api` (project `flacronai-staging-qa`, `us-central1`),
 `https://flacronai-staging-api-93799061110.us-central1.run.app/api/v1` — Google-managed HTTPS, min 0 /
 max 1 instance, CPU always allocated (background AI pipelines). Scripts + limits:
-`backend/deploy/staging-gcp/README.md`. The EC2 staging host is **stopped** (kept for recovery,
-`backend/deploy/staging/pause-staging.sh start`).
+`backend/deploy/staging-gcp/README.md`. The EC2 staging host and its resources were **deleted** on 2026-10-12.
 
-**Verified at API level on staging (2026-10-12, disposable accounts; not device tests):**
-- Register → login (Firebase), unauthenticated request rejected (401), per-account profiles.
-- Photo staging upload; another account cannot see staged photos, read/export the report (404) or list it.
-- Report generation request accepted and processed in the background; without an AI key it fails
-  gracefully and photos end retryable (`needs_attention`) — fix f4899cd, previously stuck "analyzing".
-- Account deletion: account, reports, drafts and Storage objects removed; old token rejected; login fails.
+**Verified on staging, API level with disposable accounts (2026-10-12; automated scripts — NOT device tests):**
+- Register → verify (staging helper) → login; 401 without token; per-account isolation (other account: 404 on read/export, not in list, staged photos invisible).
+- Photo staging upload; background report pipeline runs on Cloud Run.
+- **Restart recovery:** a run left `processing` with a stale lease (simulated killed instance) is surfaced as retryable by the next status read; two concurrent Retries → one runs, the other `409 ALREADY_PROCESSING` (no duplicate processing).
+- **Stripe sandbox** (company sandbox, livemode=false): checkout session created with the FlacronAI Professional price; webhook with a wrong signature → 400; valid signed `checkout.session.completed` → tier `professional`, replay is idempotent; real Stripe-delivered events → 200 at Cloud Run.
+- **Account deletion** cancels the disposable subscription in Stripe (`canceled`) and removes reports, Firestore user doc and Storage objects; old token rejected.
+- **Deletion cleanup recovery:** a deletion that stopped after the Stripe step (stale tombstone) is finished by the sweeper (reports + Storage removed, login 401).
 
 **Blocked / not yet verified:**
-- **AI generation, approval with content, final PDF** — the staging secret has no real
-  `ANTHROPIC_API_KEY`; **Stripe sandbox** — no real `STRIPE_SECRET_KEY` (both stored as 1-character
-  placeholders; `build-env.js` now refuses such values).
-- Background-job restart recovery on staging (covered by unit tests only).
-- Everything on a physical device; Push (FCM/APNs + Expo token); store purchases; Google sign-in
-  (off in the QA build); camera, tablets, accessibility.
+- **AI draft generation → review/approval of real content → final PDF**: the stored Anthropic key is a user-scoped key (`sk-ant-usr-…`) that requires an `anthropic-workspace-id`; a workspace-scoped API key is needed (kept out of staging until then).
+- Stripe sandbox secret key was exposed in a local terminal and needs rotating (shared company sandbox — coordinate with the other Flacron products).
+- True instance kill during a long AI run (needs the AI key); everything on a physical device; push (FCM/APNs + Expo token); store purchases; Google sign-in (off in the QA build); camera, tablets, accessibility; annual/Enterprise billing (not configured on staging).
 
 **Install (testers):** accept the Firebase App Distribution email invite on the Android phone → follow
 the link (sign in with the invited Google account) → download FlacronAI → allow "Install unknown apps"

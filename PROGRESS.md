@@ -186,6 +186,14 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-12] — QA handover: secret-handling fix, Stripe sandbox billing, staging recovery checks, AWS staging removed
+- **Fixed:** `set-staging-secret.js` allowlists field names, refuses secrets as CLI arguments, never prints unknown names/values (a mistyped argument had printed the Stripe sandbox key); malformed field removed from the AWS secret; 9 regression tests (`backend/test/staging-secret-script.test.js`). Added `staging-gcp/sync-secret.sh` (AWS → Secret Manager, redeploy, retire old versions).
+- **Billing:** FlacronAI-tagged sandbox prices (Professional $39.99, Agency $99.99 monthly — match `frontend/src/data/plans.js`) wired into staging; webhook repointed to Cloud Run.
+- **QA (API-level, disposable accounts):** isolation, photo staging, restart recovery (stale lease + concurrent retry 409), Stripe checkout/webhook signature/entitlement/idempotency, deletion cancels subscription, deletion sweeper recovery — all passed. AI draft/approval/PDF **blocked** (Anthropic key is user-scoped, needs a workspace-scoped key).
+- **Release:** APK `ed25ab8` reused (only backend/tooling/docs changed since; full mobile tree verified); release notes updated; first authorized tester invited via group `qa-testers`.
+- **AWS:** EC2 instance, EBS volume, EIP, security group, build bucket, log group deleted; role policies removed. Retained: secret `flacronai/staging/app`, empty IAM role + instance profile (need iam:RemoveRoleFromInstanceProfile).
+- **Open:** rotate the exposed Stripe sandbox key (shared sandbox), workspace-scoped Anthropic key, device QA.
+
 ### [2026-10-12] — Mobile QA: Android QA APK via GitHub Actions + Firebase App Distribution; Cloud Run staging
 - **What:** committed the full uncommitted mobile phases 6–10 work (push, store billing, account management/deletion, legal, local data lifecycle) + backend support on branch `qa/android-qa-apk`; added `.github/workflows/android-qa-apk.yml` (signed standalone APK, staging-only guards, App Distribution upload via keyless WIF; no public artifact); moved QA staging from EC2 to Cloud Run (`backend/deploy/staging-gcp/`, min 0 / max 1 instance); EC2 staging stopped, not deleted.
 - **Fixed:** photos stuck "analyzing" when no vision provider is configured (`aiService.analyzeImages`, test added); `set-staging-secret`'s presence-only check replaced by format validation in `build-env.js`; mobile ESLint globals for build tooling; AWS IDs/personal emails redacted from public docs/scripts.

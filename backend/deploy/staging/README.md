@@ -1,5 +1,8 @@
 # FlacronAI backend — isolated QA staging (AWS EC2 + Firebase staging)
 
+> **2026-10-12: the EC2 staging host and its EIP, security group, build bucket and log group were deleted.** QA staging now runs on Cloud Run — see `../staging-gcp/README.md`. Only `set-staging-secret.js` (AWS secret `flacronai/staging/app`, the key-entry source for `../staging-gcp/sync-secret.sh`) is still in use; the EC2 scripts are kept for reference.
+
+
 Access, cost and approvals: **[ACCESS_REQUEST.md](ACCESS_REQUEST.md)**. Nothing is provisioned until
 the IAM items, company Firebase billing and cost approval in that document are complete.
 
