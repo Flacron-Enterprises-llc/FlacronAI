@@ -305,6 +305,67 @@ signature conflict (same package, different signer).
 7. Settings → Profile edit → "Profile saved." shown; Legal & support links open.
 8. Second tester account must not see the first account's reports.
 9. Delete account (disposable account only) → signed out → cannot sign in again.
-10. AI draft, approval with content, PDF export and Stripe are expected to fail until the staging AI and
-    Stripe sandbox keys are added — record what you see, but don't file them as app bugs.
+10. Staging AI and Stripe sandbox are configured (2026-10-12). Push, Google sign-in and store purchases are
+    NOT yet available in the QA build (see 10.4) — skip them.
 11. Note device model / Android version for every issue; screenshot + time.
+
+### 10.4 Google sign-in, push and store purchases — QA setup status (audited 2026-10-12)
+
+**Access verified:** GCP/Firebase `flacronai-staging-qa` — Owner (laibanoreen162@gmail.com). EAS
+`@flacron-enterprises-llc/flacronai` — Admin. GitHub `qa-android` environment secrets — write. AWS
+`flacron-qa` SSO — active. **Not verifiable from the CLI:** Play Console, Apple Developer, App Store
+Connect (no service account / API key exists in EAS or the repo; confirm in a browser whether an
+invitation was already accepted before requesting new access).
+
+**Existing credentials (fingerprints only):** EAS default Android keystore = company signing cert,
+SHA-1 `f0ab780b…5563a16c9`, SHA-256 `87974bb7…92a0b3` — both registered on the staging Firebase Android
+app (a second SHA-1 `5e8f1606…` is also registered; not the company cert). EAS: no FCM V1 key, no Play
+submission key, **no iOS credentials at all** (no Apple team, push key, certificate or profile).
+
+**Push (Android) — prepared, 2 steps outstanding:**
+- Done: the QA build now embeds the staging `google-services.json` (needed for the native FCM token
+  behind the Expo push token). CI writes it from the `qa-android` secret `GOOGLE_SERVICES_JSON_QA_B64`;
+  the QA guard fails the build unless it is the staging project's file for this package
+  (`qaBuild.fcmConfigured` is stamped into the APK). Nothing committed.
+- Outstanding (owner action — the automated session was not permitted to create service accounts/keys):
+  1. Create a staging-only sender and upload it to EAS:
+     `gcloud iam service-accounts create expo-fcm-sender --project flacronai-staging-qa` →
+     grant `roles/firebasecloudmessaging.admin` on `flacronai-staging-qa` only → create one JSON key into a
+     temp folder → `cd mobile && npx eas-cli credentials -p android` → *Google Service Account* →
+     *FCM V1* → upload → **delete the local key file**.
+  2. Then enable sending on staging: `PUSH_NOTIFICATIONS_ENABLED=true` via `set-staging-secret.js` +
+     `staging-gcp/sync-secret.sh`. Rebuild the QA APK (workflow_dispatch).
+- **Business note:** EAS keeps ONE FCM V1 key per Android package. Production (same package,
+  Firebase `flacronai-c8dab`) currently has none; when production push is configured, its key replaces
+  the staging one unless staging moves to a separate Expo project or direct FCM sending. Decide before
+  the production launch.
+- iOS push: blocked — no Apple team/APNs key in EAS (see access list).
+
+**Google sign-in (Android, staging) — blocked on a console step (no public API for it):**
+Google Auth Platform (consent screen + OAuth clients) can only be created in the console; the staging
+project has no organization and no consent screen yet. Owner steps in `flacronai-staging-qa`:
+1. Google Auth Platform → configure: app name "FlacronAI QA", **External**, user support + developer
+   email = company address; keep **Testing** status; add test user `yasirshaikh55888@gmail.com`.
+2. Firebase Console → Authentication → Sign-in method → **Google** → Enable (auto-creates the web OAuth
+   client).
+3. Firebase Console → Project settings → Android app → remove + re-add SHA-1 `f0ab780b…` (Firebase then
+   creates the Android OAuth client for `com.flacronenterprises.flacronai`).
+4. Put the web client ID (`93799061110-….apps.googleusercontent.com`) in `eas.json` `qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+   (the guard accepts only staging client IDs) and rebuild. Production OAuth clients are untouched.
+
+**Store purchases — blocked on access + decisions:** backend mappings are env-only
+(`APPLE_IAP_PRODUCT_*`, `GOOGLE_PLAY_PRODUCT_*` = `<product>:<basePlan>`; Enterprise ignored), none set.
+No Play/ASC products could be checked. Needed: store access (below), the Play app record (first AAB upload
+must be done in the Play Console), product IDs matching Professional $39.99 / Agency $99.99 monthly, a
+**decision on annual prices** ($383.88 / $959.88 on the website?), a Play service account
+(verification + RTDN Pub/Sub on staging) and an App Store Connect API key + ASN V2 URL pointing at staging.
+Stripe sandbox results (10.3) do **not** prove Play/Apple billing.
+
+**Missing access (one request):**
+| Service | Role / action | Scope | Who grants |
+|---|---|---|---|
+| Google Play Console | Admin (or: Release to testing tracks, Manage store presence, Manage orders and subscriptions, View financial data) + permission to invite a service account | App `com.flacronenterprises.flacronai` (create app record if absent) | Play Console account owner (Rodrigue) |
+| Google Play Console | Add `yasirshaikh55888@gmail.com` as internal tester + license tester | Same app | Same |
+| Apple Developer Program | Admin, or App Manager with access to Certificates, Identifiers & Profiles | Team owning `com.flacronenterprises.flacronai` | Apple Account Holder (Rodrigue) |
+| App Store Connect | App Manager + create an App Store Connect API key (App Manager role) for EAS | App `com.flacronenterprises.flacronai` | Account Holder / Admin |
+| App Store Connect | Sandbox tester + TestFlight internal tester for `yasirshaikh55888@gmail.com` | Same app | Same |

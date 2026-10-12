@@ -36,7 +36,43 @@ describe('qaProfileGuard', () => {
     expect(problems).toMatch(/FIREBASE_API_KEY is not the flacronai-staging-qa/);
     expect(problems).toMatch(/E2E_RUNTIME_CONFIG must be empty/);
     expect(problems).toMatch(/AUTH_EMULATOR_URL must be empty/);
-    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID must be empty/);
+    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID is not a flacronai-staging-qa OAuth client/);
+  });
+
+  it('accepts a staging Google web client and rejects the production one', () => {
+    expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '93799061110-abc123.apps.googleusercontent.com' }))).toEqual([]);
+    expect(
+      problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '773892679617-abc123.apps.googleusercontent.com' })).join()
+    ).toMatch(/not a flacronai-staging-qa OAuth client/);
+  });
+
+  describe('google-services.json', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const write = (json) => {
+      const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gs-')), 'google-services.json');
+      fs.writeFileSync(f, JSON.stringify(json));
+      return f;
+    };
+    const file = (projectId, number, pkg = 'com.flacronenterprises.flacronai') => ({
+      project_info: { project_id: projectId, project_number: number },
+      client: [{ client_info: { android_client_info: { package_name: pkg } } }],
+    });
+
+    it('accepts the staging file for this package', () => {
+      expect(problemsFor(envWith({ GOOGLE_SERVICES_JSON: write(file('flacronai-staging-qa', '93799061110')) }))).toEqual([]);
+    });
+
+    it('rejects the production file, a wrong package and unreadable files', () => {
+      const prod = problemsFor(envWith({ GOOGLE_SERVICES_JSON: write(file('flacronai-c8dab', '773892679617')) })).join('\n');
+      expect(prod).toMatch(/not the flacronai-staging-qa file/);
+      expect(prod).toMatch(/references production/);
+      expect(
+        problemsFor(envWith({ GOOGLE_SERVICES_JSON: write(file('flacronai-staging-qa', '93799061110', 'com.other')) })).join()
+      ).toMatch(/no client for com.flacronenterprises.flacronai/);
+      expect(problemsFor(envWith({ GOOGLE_SERVICES_JSON: '/nonexistent/google-services.json' })).join()).toMatch(/not a readable JSON/);
+    });
   });
 
   it('rejects a non-staging API base URL', () => {
@@ -55,7 +91,7 @@ describe('qaProfileGuard', () => {
     for (const [name, value] of Object.entries(STAGING)) expect(qa.env[name]).toBe(value);
     expect(hash(qa.env.EXPO_PUBLIC_FIREBASE_API_KEY)).toBe(realHash);
     expect(qa.env.EXPO_PUBLIC_E2E_RUNTIME_CONFIG).toBeUndefined();
-    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).toBe('');
+    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID === '' || /^93799061110-/.test(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)).toBe(true);
     expect(qa.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID).toBe('');
   });
 

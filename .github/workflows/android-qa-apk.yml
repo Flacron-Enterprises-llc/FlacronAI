@@ -91,6 +91,17 @@ jobs:
             console.log("loaded:", Object.keys(env).join(", "));
           '
 
+      - name: Write staging google-services.json (FCM, optional)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_QA_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then echo "not configured: push stays off in this build"; exit 0; fi
+          umask 077
+          F="$RUNNER_TEMP/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > "$F"
+          echo "GOOGLE_SERVICES_JSON=$F" >> "$GITHUB_ENV"
+          echo "written (verified as staging by the QA guard below)"
+
       - name: Configuration guards (unit tests + app config)
         run: |
           npx jest build-guards --ci

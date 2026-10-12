@@ -58,6 +58,10 @@ const config: ExpoConfig = {
     // Phase 10: the app never draws over other apps; the template's overlay permission
     // would otherwise appear in the store listing / Data safety review.
     blockedPermissions: ['android.permission.SYSTEM_ALERT_WINDOW'],
+    // QA build only: FCM config for push (the native SDK needs it to issue the device token
+    // behind the Expo push token). CI writes the staging file from an environment secret and
+    // the QA guard verifies it is staging; nothing is committed to the repo.
+    ...(QA_BUILD && process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
   },
 
   web: {

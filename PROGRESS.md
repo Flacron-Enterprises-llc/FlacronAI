@@ -186,6 +186,11 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-12] — QA push/Google/store audit; FCM config for the QA build
+- Audited access + credentials (details: `mobile/STORE_RELEASE_READINESS.md` §10.4). Company cert SHA-1/256 already on the staging Firebase Android app; EAS has no FCM V1 key, no Play/ASC keys, no iOS credentials.
+- QA build can now embed the staging `google-services.json` (CI secret `GOOGLE_SERVICES_JSON_QA_B64`, set); `qaProfileGuard` rejects non-staging files and non-staging Google web client IDs (9 guard tests pass; `expo config` verified with the real staging file).
+- Outstanding: staging FCM sender SA + EAS upload (automated session not permitted), Google consent screen/OAuth clients (console-only), store access + annual-price decision. No production change, no build run yet.
+
 ### [2026-10-12] — Staging AI verified (workspace header)
 - Client key is a personal key not scoped to a workspace: per the official auth docs it needs `anthropic-workspace-id`. `backend/config/anthropic.js` now sends it from `ANTHROPIC_WORKSPACE_ID` (staging = org Default workspace); test added.
 - Staging (API-level): real AI draft → approval (signature enforced) → finalized → clean PDF download; real instance kill mid-generation → retryable, concurrent retry 409, only unfinished work redone. Estimated AI spend ≈ $1 (4 single-photo Opus 4.8 runs; usage report not yet populated).
