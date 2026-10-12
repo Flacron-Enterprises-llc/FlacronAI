@@ -131,35 +131,98 @@ const buildNotification = (type, data = {}) => {
 // guard upstream (e.g. Phase 19's REVIEW_ALREADY_PENDING check, a single
 // approve/export call, one pipeline run per generation) -- documented at each
 // call site rather than re-derived here.
-const createNotification = async (db, { uid, type, title, body, meta = {}, link = null, dedupeKey = null }) => {
-  if (!uid || !type) return;
+//
+// Resolves true only when a new notification was actually written (false for
+// a dedupe hit or a swallowed failure) -- notifyUser uses this so a mobile
+// push is sent at most once per real notification.
+//
+// `outboxJob` (Mobile Phase 6, only passed while push is enabled): a function
+// (notificationId) => push outbox job | null. When given, the notification and
+// its `pushOutbox` job are written in ONE transaction, so neither can exist
+// without the other. If that transaction fails for any reason other than a
+// dedupe hit, the notification is still written the original way (without a
+// push) -- push can never cost an in-app notification.
+const writeWithOutbox = async (db, ref, payload, outboxJob) =>
+  db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) return 'duplicate';
+    const job = outboxJob(ref.id);
+    tx.set(ref, payload);
+    if (job) tx.set(db.collection('pushOutbox').doc(ref.id), job);
+    return 'created';
+  });
+
+const createNotification = async (db, { uid, type, title, body, meta = {}, link = null, dedupeKey = null, outboxJob = null }) => {
+  if (!uid || !type) return false;
   try {
     const payload = { uid, type, title, body, link, meta, read: false, createdAt: nowIso(), readAt: null };
-    if (dedupeKey) {
+    let outcome = null;
+    let ref = null;
+    if (outboxJob) {
+      ref = dedupeKey ? db.collection('notifications').doc(dedupeKey) : db.collection('notifications').doc();
+      try {
+        outcome = await writeWithOutbox(db, ref, payload, outboxJob);
+      } catch (err) {
+        console.warn('[Notifications] outbox write failed, writing notification without push:', err.message);
+      }
+      if (outcome === 'duplicate') return false;
+    }
+    if (outcome === 'created') {
+      // written together with its outbox job above
+    } else if (ref) {
+      // Push enabled but the combined write failed: save the notification under
+      // the SAME id (so an ambiguous commit can't produce a second copy) and flag
+      // it; the push worker's reconcile pass creates the missing job later.
+      try {
+        await ref.create(outboxJob(ref.id) ? { ...payload, pushPending: true } : payload);
+      } catch (err) {
+        if (err.code === 6 || /already exists/i.test(err.message || '')) return false;
+        throw err;
+      }
+    } else if (dedupeKey) {
       try {
         await db.collection('notifications').doc(dedupeKey).create(payload);
       } catch (err) {
         // ALREADY_EXISTS (gRPC code 6) -- a genuine duplicate, not a failure.
-        if (err.code === 6 || /already exists/i.test(err.message || '')) return;
+        if (err.code === 6 || /already exists/i.test(err.message || '')) return false;
         throw err;
       }
     } else {
       await db.collection('notifications').add(payload);
     }
-    await db
-      .collection('users')
-      .doc(uid)
-      .set({ unreadNotificationCount: FieldValue.increment(1) }, { merge: true });
+    // update(), not set(merge): a notification for an account that no longer
+    // exists (deleted while a report/billing event was in flight) must never
+    // recreate a stub user document. The counter is best-effort.
+    try {
+      await db.collection('users').doc(uid).update({ unreadNotificationCount: FieldValue.increment(1) });
+    } catch {
+      // missing user doc (or transient) -- the notification itself is saved
+    }
+    return true;
   } catch (err) {
     console.warn('[Notifications] failed to create notification:', err.message);
+    return false;
   }
 };
 
 // meta is deliberately a minimal, non-secret projection -- never a raw share
 // token, invite token, or webhook payload -- just enough for the bell UI to
 // display/group by (mirrors Phase 19's audit-log meta discipline).
+//
+// Mobile Phase 6: while PUSH_NOTIFICATIONS_ENABLED=true, the notification is
+// written together with a durable push outbox job (services/pushService.js
+// delivers it from a lease-based worker -- never in the caller's path). When
+// disabled, this is exactly the original write. Required lazily to avoid a
+// require cycle (pushService reads NOTIFICATION_TYPES from this module).
 const notifyUser = async (db, uid, type, data = {}, opts = {}) => {
   const { title, body, link } = buildNotification(type, data);
+  let outboxJob = null;
+  try {
+    const push = require('../services/pushService');
+    if (push.isPushEnabled()) outboxJob = (notificationId) => push.buildOutboxJob(notificationId, uid, type, data);
+  } catch {
+    outboxJob = null; // push must never affect the notification
+  }
   return createNotification(db, {
     uid,
     type,
@@ -168,6 +231,7 @@ const notifyUser = async (db, uid, type, data = {}, opts = {}) => {
     link,
     meta: { reportId: data.reportId || null, claimNumber: data.claimNumber || null },
     dedupeKey: opts.dedupeKey || null,
+    outboxJob,
   });
 };
 

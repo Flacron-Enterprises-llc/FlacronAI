@@ -63,7 +63,10 @@ What is never refundable:
 - Subscription fees for time already used, even if you did not generate reports during that period.
 - Fees for a plan downgrade (you retain access to the higher tier until the end of the paid period).
 - Fees when you voluntarily cancel mid-cycle.
-- Fees when your account is terminated for violating the Terms of Service or Acceptable Use Policy.`,
+- Fees when your account is terminated for violating the Terms of Service or Acceptable Use Policy.
+
+Purchases in the mobile apps:
+Subscriptions purchased in the FlacronAI iOS or Android app are billed by Apple (App Store) or Google (Google Play). Manage or cancel them in your App Store or Google Play subscription settings; refund requests for these purchases are handled by Apple or Google under their own policies. Deleting your FlacronAI account does not cancel an App Store or Google Play subscription.`,
   },
   {
     id: 'payment-failures',
@@ -83,15 +86,7 @@ If payment fails and your subscription is canceled, we do not pursue collection 
   {
     id: 'free-trial',
     title: '6. Free Trial Terms',
-    content: `[CLIENT TO CONFIRM: Does FlacronAI offer a free trial? If yes, specify duration, features, and billing behavior.]
-
-If a free trial is offered:
-- The trial period and included features are specified on the Pricing page at the time of signup.
-- You may cancel at any time during the trial without being charged.
-- If you do not cancel before the trial ends, your subscription begins and you are charged for the first billing cycle.
-- Trials are limited to one per user and require a valid payment method on file.
-
-If NO free trial is offered, this section is not applicable and can be removed.`,
+    content: `FlacronAI does not currently offer a free trial. The Starter plan is free.`,
   },
   {
     id: 'enterprise-plans',

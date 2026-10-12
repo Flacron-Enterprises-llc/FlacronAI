@@ -16,10 +16,35 @@
  * sub-document routes. Add typed wrappers for these only when a phase actually needs the
  * screen that calls them.
  */
+import { File } from 'expo-file-system';
+
 import { apiRequest, apiRequestBinary, type BinaryResponse } from './client';
 import type { QueryParams } from '@/types/api';
 
-export type ReportStatus = 'processing' | 'draft' | 'finalized' | 'completed' | 'approved' | 'archived';
+/** Every value `reports/{id}.status` takes server-side: `processing` while the background
+ * pipeline runs, `failed` when it errors (with `pipelineError` set — recover via
+ * `retryAnalysis`), `draft` awaiting review, `finalized` once approved (`completed`/`approved`
+ * are legacy reviewed values the backend still treats as reviewed), `archived` when hidden. */
+export type ReportStatus = 'processing' | 'failed' | 'draft' | 'finalized' | 'completed' | 'approved' | 'archived';
+
+/** Statuses the backend treats as already human-reviewed (`REVIEWED_STATUSES`,
+ * backend/utils/watermarkPolicy.js). */
+export const REVIEWED_STATUSES: readonly ReportStatus[] = ['finalized', 'approved', 'completed'];
+
+export type ReportAccess = 'owner' | 'review' | 'comment' | 'view';
+
+/** `report.reviewRequest` as written by `POST /:id/request-review` and updated by
+ * `/approve`/`/review-response`. */
+export interface ReviewRequest {
+  reviewerUid: string;
+  reviewerEmail?: string | null;
+  requestedBy?: string;
+  requestedByEmail?: string | null;
+  requestedAt?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'changes_requested' | string;
+  notes?: string | null;
+  respondedAt?: string | null;
+}
 
 /** A photo attached to a report/draft, as returned inline on the report doc itself (list/
  * detail responses) — a different, smaller shape than `ReportPhoto` from
@@ -30,6 +55,10 @@ export interface ReportPhotoRecord {
   fileName?: string;
   status?: 'uploaded' | 'failed' | 'duplicate' | string;
   analysisStatus?: string;
+  /** Set on a photo `POST /generate` demoted to `failed` because the plan's photo capacity
+   * was exceeded at commit time — it was never analyzed. */
+  capacityRejected?: boolean;
+  error?: string;
   [key: string]: unknown;
 }
 
@@ -64,6 +93,9 @@ export interface Report {
   qualityScore?: number | null;
   pipelineError?: string | null;
   status: ReportStatus;
+  /** `true` while a regenerate is in flight — approval/export are rejected server-side. */
+  regenerating?: boolean;
+  reviewRequest?: ReviewRequest | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   createdAt: string;
@@ -129,8 +161,24 @@ export interface RNFile {
   type: string;
 }
 
+/**
+ * Expo SDK 57 replaces the global `fetch` with `expo/fetch`, whose multipart encoder does NOT
+ * accept React Native's `{ uri, name, type }` file parts — it throws "Unsupported FormDataPart
+ * implementation" before anything is sent, which surfaced as "Unable to reach the server" on
+ * every photo upload (found on the Phase 10 cloud Android emulator + iOS simulator). The encoder
+ * accepts any part exposing `bytes()`, taking the multipart filename/content-type from the part's
+ * own `name`/`type`, so the local file is read through expo-file-system at send time.
+ */
+export function toUploadPart(file: RNFile): { name: string; type: string; bytes: () => Promise<Uint8Array> } {
+  return {
+    name: file.name,
+    type: file.type,
+    bytes: async () => new File(file.uri).bytes(),
+  };
+}
+
 function appendFile(form: FormData, field: string, file: RNFile): void {
-  form.append(field, file as unknown as Blob);
+  form.append(field, toUploadPart(file) as unknown as Blob);
 }
 
 export interface GenerateReportFields {
@@ -163,12 +211,28 @@ export interface GenerateReportFields {
   [key: string]: string | undefined;
 }
 
+/** One staging result. `POST /photos/stage` answers 201 for every processed file, including
+ * ones it rejected — `status: 'failed'` (with a human-readable `error`, e.g. "File is not a
+ * valid image") is a real outcome of a successful HTTP call, never an upload success. */
 export interface StagedPhotoRecord {
   id: string;
   fileName?: string;
   status: 'uploaded' | 'failed' | 'duplicate';
+  error?: string;
   contentHash?: string;
   [key: string]: unknown;
+}
+
+/** `GET /reports/photos/capacity` — the caller's plan photo limit (PlanConfig), and how much of
+ * it the given draft already uses. `effectiveCapacity`/`remaining` are `null` when unlimited. */
+export interface PhotoCapacity {
+  success: true;
+  plan?: string;
+  effectiveCapacity: number | null;
+  unlimited: boolean;
+  used: number;
+  remaining: number | null;
+  uploadAllowed: boolean;
 }
 
 export interface ReportPhoto {
@@ -242,6 +306,7 @@ export interface ApprovalSignature {
 }
 
 const REPORTS_BASE = '/reports';
+export const EXPORT_TIMEOUT_MS = 120000;
 
 export const reportsApi = {
   getDashboardSummary: () =>
@@ -254,7 +319,7 @@ export const reportsApi = {
     apiRequest<ListReportsResult>(REPORTS_BASE, { params: params as QueryParams }),
 
   get: (id: string) =>
-    apiRequest<{ success: true; report: Report; myAccess: 'owner' | 'review' | 'comment' | 'view' }>(
+    apiRequest<{ success: true; report: Report; myAccess: ReportAccess }>(
       `${REPORTS_BASE}/${encodeURIComponent(id)}`
     ),
 
@@ -314,6 +379,11 @@ export const reportsApi = {
       { method: 'POST', multipart: form, idempotent: true, timeoutMs: 30000 }
     );
   },
+
+  /** Plan photo capacity for the wizard's Photos step (Phase 44 PlanConfig) — the staging
+   * route enforces the same limit and rejects with `MAX_PHOTOS` (plus `limit`/`used`). */
+  getPhotoCapacity: (draftId?: string) =>
+    apiRequest<PhotoCapacity>(`${REPORTS_BASE}/photos/capacity`, { params: draftId ? { draftId } : undefined }),
 
   /** Resumes the wizard's photo list after an app relaunch mid-session. Returns an empty
    * array (never a 404) if the draft doesn't exist or belongs to another account. */
@@ -391,7 +461,7 @@ export const reportsApi = {
 
   /** Only the reviewer named on the report's pending review request may call this. */
   submitReviewResponse: (id: string, decision: 'rejected' | 'changes_requested', notes?: string) =>
-    apiRequest<{ success: true; message: string; reviewRequest: unknown }>(
+    apiRequest<{ success: true; message: string; reviewRequest: ReviewRequest }>(
       `${REPORTS_BASE}/${encodeURIComponent(id)}/review-response`,
       { method: 'POST', body: { decision, notes } }
     ),
@@ -408,6 +478,9 @@ export const reportsApi = {
     apiRequest<ExportResult>(`${REPORTS_BASE}/${encodeURIComponent(id)}/export`, {
       method: 'POST',
       body: options,
+      // Rendering a PDF/DOCX with every photo embedded routinely takes far longer than the
+      // client's 20s default.
+      timeoutMs: EXPORT_TIMEOUT_MS,
     }),
 
   /** Proxied private bytes — never a public URL. Pass the `filename` from
@@ -415,6 +488,7 @@ export const reportsApi = {
   downloadExport: (id: string, file: string, inline = false): Promise<BinaryResponse> =>
     apiRequestBinary(`${REPORTS_BASE}/${encodeURIComponent(id)}/download`, {
       params: { file, ...(inline ? { inline: true } : {}) },
+      timeoutMs: EXPORT_TIMEOUT_MS,
     }),
 
   /** Downloads one of the wizard's uploaded supporting documents (PDF/DOC/DOCX/TXT) — not

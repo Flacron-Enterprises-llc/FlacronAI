@@ -46,8 +46,9 @@ export function PropertyStep({ fields, setField }: StepProps) {
       ) : (
         <ChoiceChips
           label="Property type"
-          value={fields.propertyType || 'Single-Family Home'}
+          value={fields.propertyType || ''}
           options={PROPERTY_TYPES}
+          allowDeselect
           onChange={(v) => setField('propertyType', v)}
         />
       )}

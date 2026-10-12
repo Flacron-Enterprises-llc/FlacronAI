@@ -1,0 +1,48 @@
+# Template — copy to mobile/.eas/workflows/ and set build_id (see ../README.md). Manual run only.
+name: E2E Android (nested-virtualization emulator)
+jobs:
+  maestro_android:
+    name: Maestro on Android emulator
+    runs_on: linux-medium-nested-virtualization
+    steps:
+      - uses: eas/checkout
+      - uses: eas/download_build
+        id: download
+        with:
+          build_id: REPLACE_WITH_E2E_ANDROID_BUILD_ID
+          extensions: [apk]
+      - name: Install Maestro
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+      - name: Start Android emulator
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/emulator:$SDK/platform-tools:$PATH"
+          IMG="system-images;android-34;default;x86_64"
+          (yes || true) | sdkmanager --install "$IMG" "emulator" "platform-tools" | tail -3
+          echo "no" | avdmanager create avd -n e2e -k "$IMG" --force
+          nohup emulator -avd e2e -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect > "$HOME/emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break; sleep 5; done
+      - name: Install APK and run Maestro flows
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+          export PATH="$HOME/.maestro/bin:$SDK/platform-tools:$PATH"
+          adb install -r "${{ steps.download.outputs.artifact_path }}"
+          cd "$(dirname "$(find . -maxdepth 3 -type d -name .maestro | head -1)")"
+          R="$HOME/e2e-results"; mkdir -p "$R"; status=0
+          for FLOW in .maestro/01-login-report-approve-export.yaml .maestro/02-isolation-profile-delete.yaml; do
+            NAME=$(basename "$FLOW" .yaml)
+            maestro test "$FLOW" --format junit --output "$R/$NAME.xml" --test-output-dir "$R/$NAME" || status=1
+          done
+          mv ./*.png "$R"/ 2>/dev/null || true
+          adb logcat -d -v time > "$R/logcat-full.txt" 2>/dev/null || true
+          echo $status > "$R/exit_code"
+      - uses: eas/upload_artifact
+        if: ${{ always() }}
+        with:
+          path: |
+            /home/expo/e2e-results
+            /home/expo/.maestro/tests
+      - name: Fail if any flow failed
+        run: exit $(cat "$HOME/e2e-results/exit_code" 2>/dev/null || echo 1)

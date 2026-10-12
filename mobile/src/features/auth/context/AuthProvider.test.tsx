@@ -273,3 +273,45 @@ describe('AuthProvider — MFA assertion wiring (2026-09-08 fix)', () => {
     expect(mockClearMfaAssertion).toHaveBeenCalled();
   });
 });
+
+describe('AuthProvider — account isolation across session changes (Phase 9)', () => {
+  function ProfileProbe() {
+    const { status, userProfile } = useAuth();
+    return (
+      <>
+        <Text testID="status">{status}</Text>
+        <Text testID="profile">{userProfile?.uid ?? 'none'}</Text>
+      </>
+    );
+  }
+
+  it("a late profile response from the previous account is discarded, never shown for the new one", async () => {
+    let resolveA: (v: unknown) => void = () => {};
+    mockGetProfile
+      .mockImplementationOnce(() => new Promise((r) => (resolveA = r)))
+      .mockResolvedValueOnce({ user: { uid: 'uB', email: 'b@example.com', tier: 'starter' } });
+    const { getByTestId } = await render(
+      <AuthProvider>
+        <ProfileProbe />
+      </AuthProvider>
+    );
+
+    // Account A's restore is still waiting on its profile...
+    let pendingA: Promise<void> | void = undefined;
+    await act(async () => {
+      pendingA = capturedAuthStateCallback?.({ uid: 'uA', email: 'a@example.com', emailVerified: true, providerData: [{ providerId: 'password' }] });
+      await Promise.resolve();
+    });
+    // ...when the user signs out and account B signs in.
+    await signOutFake();
+    await signInFakeUser({ uid: 'uB', email: 'b@example.com' });
+    expect(getByTestId('profile').props.children).toBe('uB');
+
+    await act(async () => {
+      resolveA({ user: { uid: 'uA', email: 'a@example.com', tier: 'agency' } });
+      await pendingA;
+    });
+    expect(getByTestId('profile').props.children).toBe('uB');
+    expect(getByTestId('status').props.children).toBe('authenticated');
+  });
+});

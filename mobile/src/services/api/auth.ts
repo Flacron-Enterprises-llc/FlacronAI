@@ -42,4 +42,20 @@ export const authApi = {
 
   mfaVerify: (code: string) =>
     apiRequest<MfaVerifyResult>('/auth/mfa/verify', { method: 'POST', body: { code } }),
+
+  /** Phase 8 — TOTP enrolment (same endpoints as web Settings). `qrCode` is a data-URL
+   * PNG; `secret` is the base32 key for manual entry. */
+  mfaSetup: () => apiRequest<{ success: true; secret: string; qrCode: string }>('/auth/mfa/setup', { method: 'POST' }),
+
+  /** Returns one-time recovery codes (shown once) and a fresh MFA session assertion. */
+  mfaVerifySetup: (code: string) =>
+    apiRequest<{ success: true; message: string; recoveryCodes: string[]; mfaAssertion?: string }>(
+      '/auth/mfa/verify-setup',
+      { method: 'POST', body: { code } }
+    ),
+
+  /** Disables MFA with a current authenticator or recovery code (works for every sign-in
+   * provider; the password variant needs server config and is web-only). */
+  mfaDisable: (code: string) =>
+    apiRequest<{ success: true; message: string }>('/auth/mfa/disable', { method: 'POST', body: { code } }),
 };

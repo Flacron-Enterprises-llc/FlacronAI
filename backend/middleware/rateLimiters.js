@@ -150,7 +150,61 @@ const planConfigWriteLimiter = rateLimit({
   keyGenerator: (req) => req.user?.uid || req.ip,
 });
 
+// Mobile Phase 6. Push device-token register/unregister -- called a handful of
+// times per app launch/sign-out, so a modest per-user budget stops a buggy or
+// hostile client from churning token ownership without affecting real use.
+const pushDeviceLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many device registration requests, please slow down',
+      code: 'PUSH_DEVICE_RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
+// Mobile Phase 6. Unauthenticated binding revocation (proof = the random
+// bindingId) -- per-IP, generous enough for an app flushing a small queue of
+// pending revocations, tight enough to make guessing pointless on top of the
+// 122-bit random id.
+const pushRevokeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests, please slow down',
+      code: 'PUSH_DEVICE_RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
+});
+
+// Mobile Phase 7. Store purchase verify/restore + account-token calls. A
+// restore verifies a handful of purchases at once; this bounds a buggy or
+// hostile client hammering the stores' APIs through us.
+const storeBillingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many billing requests, please slow down',
+      code: 'BILLING_RATE_LIMITED',
+      request_id: req.requestId,
+    });
+  },
+  keyGenerator: (req) => req.user?.uid || req.ip,
+});
+
 module.exports = {
+  storeBillingLimiter,
+  pushDeviceLimiter,
+  pushRevokeLimiter,
   aiLimiter,
   profileLimiter,
   pricingLimiter,

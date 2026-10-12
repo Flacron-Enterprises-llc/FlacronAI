@@ -2,6 +2,36 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { getAuth, getFirestore, FieldValue } = require('../config/firebase');
 const { isAtLeastTier, getTier, hasTierFeature } = require('../config/tiers');
+const { resolveEffectiveTier, needsTierReconcile, reconcileUserTier } = require('../utils/entitlements');
+
+// Mobile Phase 7: the request's tier comes from the shared entitlement
+// calculation (utils/entitlements.js). For accounts no source-aware write has
+// touched this is exactly `userData.tier || 'starter'`. When the stored `tier`
+// disagrees with its sources (e.g. a store subscription lapsed and the store
+// notification is late), the request already gets the computed tier and the
+// stored value is corrected in the background.
+// Mobile Phase 8: a self-deleted account leaves a server-only tombstone
+// (deletedAccounts/{uid}). Only consulted when the user doc is missing (brand-new
+// accounts and deleted ones -- rare), so ordinary requests pay no extra read. A
+// still-unexpired ID token of a deleted account is refused instead of silently
+// running with an empty profile (and possibly recreating data under that uid).
+const isDeletedAccount = async (db, uid, userDoc) => {
+  if (userDoc.exists) return false;
+  const tomb = await db.collection('deletedAccounts').doc(uid).get();
+  return tomb.exists;
+};
+const ACCOUNT_DELETED_BODY = { success: false, error: 'This account has been deleted', code: 'ACCOUNT_DELETED' };
+
+const requestTier = (uid, userData) => {
+  if (needsTierReconcile(userData)) {
+    try {
+      reconcileUserTier(getFirestore(), uid).catch(() => {});
+    } catch {
+      // best effort -- the computed tier below is already correct for this request
+    }
+  }
+  return resolveEffectiveTier(userData);
+};
 const { normalizeApiKeyScopes } = require('../config/apiScopes');
 const { hasCapability } = require('../utils/orgRoles');
 const { MFA_ASSERTION_HEADER, verifyMfaAssertion, isMfaEnforcementEnabled } = require('../utils/mfaAssertion');
@@ -152,15 +182,18 @@ const RECENT_AUTH_CLOCK_SKEW_SECONDS = 30;
 // has an existing secure path available -- sign in through Firebase (as
 // the UI already requires to reach Settings) to obtain a real ID token --
 // rather than this middleware trusting an unverifiable claim of recency.
-const requireRecentAuth = (req, res, next) => {
+// Same check as requireRecentAuth, as a predicate (Mobile Phase 8: account
+// deletion accepts recent re-authentication for any sign-in provider).
+const isRecentAuth = (req) => {
   const authTime = req.mfaContext?.authTime;
   const nowSeconds = Math.floor(Date.now() / 1000);
+  if (typeof authTime !== 'number' || !Number.isFinite(authTime)) return false;
+  if (authTime > nowSeconds + RECENT_AUTH_CLOCK_SKEW_SECONDS) return false;
+  return nowSeconds - authTime <= RECENT_AUTH_WINDOW_SECONDS + RECENT_AUTH_CLOCK_SKEW_SECONDS;
+};
 
-  const isMissingOrMalformed = typeof authTime !== 'number' || !Number.isFinite(authTime);
-  const isInTheFuture = !isMissingOrMalformed && authTime > nowSeconds + RECENT_AUTH_CLOCK_SKEW_SECONDS;
-  const isStale = !isMissingOrMalformed && nowSeconds - authTime > RECENT_AUTH_WINDOW_SECONDS + RECENT_AUTH_CLOCK_SKEW_SECONDS;
-
-  if (isMissingOrMalformed || isInTheFuture || isStale) {
+const requireRecentAuth = (req, res, next) => {
+  if (!isRecentAuth(req)) {
     return res.status(403).json({
       success: false,
       error: 'Please sign in again to confirm it\'s you before changing your password',
@@ -210,6 +243,7 @@ const authenticateToken = async (req, res, next) => {
         const db = getFirestore();
         const userDoc = await db.collection('users').doc(decodedJwt.uid).get();
         const userData = userDoc.exists ? userDoc.data() : {};
+        if (await isDeletedAccount(db, decodedJwt.uid, userDoc)) return res.status(401).json(ACCOUNT_DELETED_BODY);
 
         // tokenVersion is bumped on logout/password-change to revoke all
         // previously issued custom JWTs (they're otherwise stateless for 7 days).
@@ -223,9 +257,18 @@ const authenticateToken = async (req, res, next) => {
         req.user = {
           uid: decodedJwt.uid,
           email: decodedJwt.email,
-          tier: userData.tier || 'starter',
           displayName: userData.displayName || '',
           ...userData,
+          tier: requestTier(decodedJwt.uid, userData),
+        };
+        // Session timing for features that bind state to a sign-in session
+        // (Mobile Phase 6 push device bindings). Off req.user for the same
+        // reason as req.mfaContext below.
+        req.sessionContext = {
+          kind: 'jwt',
+          authTime: decodedJwt.iat,
+          issuedAt: decodedJwt.iat,
+          tokenVersion: decodedJwt.tokenVersion || 0,
         };
         return next();
       } catch (jwtErr) {
@@ -251,6 +294,7 @@ const authenticateToken = async (req, res, next) => {
       const db = getFirestore();
       const userDoc = await db.collection('users').doc(decoded.uid).get();
       const userData = userDoc.exists ? userDoc.data() : {};
+      if (await isDeletedAccount(db, decoded.uid, userDoc)) return res.status(401).json(ACCOUNT_DELETED_BODY);
 
       if (isTeamMembershipSuspended(userData)) {
         return res.status(403).json({ success: false, error: 'Your team access has been suspended', code: 'TEAM_ACCESS_SUSPENDED' });
@@ -316,14 +360,20 @@ const authenticateToken = async (req, res, next) => {
       req.user = {
         uid: decoded.uid,
         email: decoded.email,
-        tier: userData.tier || 'starter',
         displayName: userData.displayName || decoded.name || '',
         ...userData,
+        tier: requestTier(decoded.uid, userData),
       };
       // Kept off req.user deliberately -- req.user is spread into many API
       // response bodies verbatim, and this is request-scoped MFA-assertion
       // context, not profile data.
       req.mfaContext = { authTime: decoded.auth_time, tokenVersion: userData.tokenVersion || 0 };
+      req.sessionContext = {
+        kind: 'firebase',
+        authTime: decoded.auth_time || decoded.iat,
+        issuedAt: decoded.iat,
+        tokenVersion: userData.tokenVersion || 0,
+      };
       return next();
     } catch (lookupErr) {
       console.error('Auth middleware profile lookup error:', lookupErr);
@@ -368,9 +418,9 @@ const authenticateApiKey = async (req, res, next) => {
     req.user = {
       uid: keyData.userId,
       email: userData.email || '',
-      tier: userData.tier || 'starter',
       displayName: userData.displayName || '',
       ...userData,
+      tier: requestTier(keyData.userId, userData),
     };
     req.apiKey = {
       id: keyDoc.id,
@@ -415,7 +465,7 @@ const optionalAuth = async (req, res, next) => {
     const userData = userDoc.exists ? userDoc.data() : {};
     req.user = isTeamMembershipSuspended(userData)
       ? null
-      : { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+      : { uid: decoded.uid, email: decoded.email, ...userData, tier: requestTier(decoded.uid, userData) };
   } catch {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -425,7 +475,7 @@ const optionalAuth = async (req, res, next) => {
       if ((decoded.tokenVersion || 0) !== (userData.tokenVersion || 0) || isTeamMembershipSuspended(userData)) {
         req.user = null;
       } else {
-        req.user = { uid: decoded.uid, email: decoded.email, tier: userData.tier || 'starter', ...userData };
+        req.user = { uid: decoded.uid, email: decoded.email, ...userData, tier: requestTier(decoded.uid, userData) };
       }
     } catch {
       req.user = null;
@@ -564,6 +614,8 @@ const trackApiUsage = (req, res, next) => {
 };
 
 module.exports = {
+  isDeletedAccount,
+  isRecentAuth,
   authenticateToken,
   authenticateApiKey,
   authenticateAny,
