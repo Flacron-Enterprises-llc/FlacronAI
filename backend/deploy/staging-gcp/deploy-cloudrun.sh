@@ -9,6 +9,9 @@ GCLOUD="${GCLOUD:-gcloud}"
 PROJECT="flacronai-staging-qa"; REGION="us-central1"; SERVICE="flacronai-staging-api"
 RUNTIME_SA="staging-api@${PROJECT}.iam.gserviceaccount.com"
 ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-8}"
+# Flacron Enterprises LLC Default workspace (public ID). Needed because the staging key is a
+# personal key not scoped to a workspace; see backend/config/anthropic.js.
+ANTHROPIC_WORKSPACE_ID="${ANTHROPIC_WORKSPACE_ID:-wrkspc_01D4FayqjbuFp69h9229gA8x}"
 # Stripe SANDBOX (test-mode) price IDs — public identifiers, FlacronAI products tagged
 # app_id=flacronai. Amounts match frontend/src/data/plans.js + backend/config/tiers.js
 # (Professional $39.99/mo, Agency $99.99/mo). Annual + Enterprise intentionally unset on staging.
@@ -33,7 +36,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
   --min-instances 0 --max-instances 1 --concurrency 40 --timeout 600 \
   --set-secrets "/secrets/app.env=backend-env:latest" \
   --command node --args="--env-file=/secrets/app.env,server.js" \
-  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,PUSH_NOTIFICATIONS_ENABLED=false,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL},${STRIPE_PRICES}${EXTRA_ENV:+,$EXTRA_ENV}" \
+  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,PUSH_NOTIFICATIONS_ENABLED=false,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL},ANTHROPIC_WORKSPACE_ID=${ANTHROPIC_WORKSPACE_ID},${STRIPE_PRICES}${EXTRA_ENV:+,$EXTRA_ENV}" \
   --labels "env=staging,app=flacronai" \
   --quiet
 
