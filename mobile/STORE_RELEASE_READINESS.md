@@ -327,18 +327,25 @@ submission key, **no iOS credentials at all** (no Apple team, push key, certific
   behind the Expo push token). CI writes it from the `qa-android` secret `GOOGLE_SERVICES_JSON_QA_B64`;
   the QA guard fails the build unless it is the staging project's file for this package
   (`qaBuild.fcmConfigured` is stamped into the APK). Nothing committed.
-- Outstanding (owner action — the automated session was not permitted to create service accounts/keys):
-  1. Create a staging-only sender and upload it to EAS:
-     `gcloud iam service-accounts create expo-fcm-sender --project flacronai-staging-qa` →
-     grant `roles/firebasecloudmessaging.admin` on `flacronai-staging-qa` only → create one JSON key into a
-     temp folder → `cd mobile && npx eas-cli credentials -p android` → *Google Service Account* →
-     *FCM V1* → upload → **delete the local key file**.
-  2. Then enable sending on staging: `PUSH_NOTIFICATIONS_ENABLED=true` via `set-staging-secret.js` +
-     `staging-gcp/sync-secret.sh`. Rebuild the QA APK (workflow_dispatch).
+- **Done 2026-10-12 (authorized):** service account `expo-fcm-sender@flacronai-staging-qa`, single role
+  `roles/firebasecloudmessaging.admin` on the staging project only; one JSON key uploaded straight to EAS
+  as the FCM V1 key for `com.flacronenterprises.flacronai` (local copy deleted; never in repo/logs).
+  Staging sending enabled (`PUSH_NOTIFICATIONS_ENABLED=true` in the staging secret; `deploy-cloudrun.sh`
+  no longer forces it off). Rebuilt QA APK: App Distribution release `03hc2qep8422o` (source c13e632, APK SHA-256 `a7ee1311…2daf1f`, company cert, `qaBuild.fcmConfigured: true`, secret scan clean); previous release `1me660bgkjtbg` kept.
+- **How credentials are selected for the GitHub-built APK:** EAS Build is not involved. The device gets
+  its FCM token from the embedded staging `google-services.json`; the Expo push token is minted for the
+  EAS project in `extra.eas.projectId`; Expo's push service then sends using the FCM V1 key stored on
+  that project's Android credentials for the package. Build profiles do not matter.
+- **Verified on staging (API level, 2 disposable accounts, fake Expo token — not a device):** 16/16 —
+  `deliveryEnabled: true`; 401 without auth; malformed token 400; register → bound to A, token never
+  echoed; sign-out revoke → re-register with the revoked binding 409 `PUSH_BINDING_REVOKED`; account
+  switch → device bound to B only; A cannot unregister B's device; B unregister removes it; accounts
+  deleted. Mobile push unit tests 105/105, backend push tests 38/38. **Real delivery NOT yet tested**
+  (needs a phone).
 - **Business note:** EAS keeps ONE FCM V1 key per Android package. Production (same package,
-  Firebase `flacronai-c8dab`) currently has none; when production push is configured, its key replaces
-  the staging one unless staging moves to a separate Expo project or direct FCM sending. Decide before
-  the production launch.
+  Firebase `flacronai-c8dab`) had none, so production behaviour is unchanged. When production push is
+  configured, its key would replace the staging one; before the production launch choose either a
+  separate EAS project for QA builds (free) or replacing the key at launch (QA push then stops).
 - iOS push: blocked — no Apple team/APNs key in EAS (see access list).
 
 **Google sign-in (Android, staging) — blocked on a console step (no public API for it):**
@@ -348,8 +355,11 @@ project has no organization and no consent screen yet. Owner steps in `flacronai
    email = company address; keep **Testing** status; add test user `yasirshaikh55888@gmail.com`.
 2. Firebase Console → Authentication → Sign-in method → **Google** → Enable (auto-creates the web OAuth
    client).
-3. Firebase Console → Project settings → Android app → remove + re-add SHA-1 `f0ab780b…` (Firebase then
-   creates the Android OAuth client for `com.flacronenterprises.flacronai`).
+3. Keep the registered SHAs (verified: `f0ab780b…` SHA-1 / `87974bb7…` SHA-256 = the EAS company key that
+   CI signs with). Check whether an Android OAuth client now exists (re-download `google-services.json`
+   → `oauth_client` with `client_type: 1` and `certificate_hash` `f0ab780b…`). Only if missing: Google Auth
+   Platform → Clients → Create → Android, package `com.flacronenterprises.flacronai`, SHA-1
+   `F0:AB:78:0B:36:AA:57:15:2C:38:AB:A4:9C:97:07:C5:56:3A:16:C9`. Do not remove existing SHAs.
 4. Put the web client ID (`93799061110-….apps.googleusercontent.com`) in `eas.json` `qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
    (the guard accepts only staging client IDs) and rebuild. Production OAuth clients are untouched.
 

@@ -186,6 +186,11 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-12] — QA Android push enabled on staging
+- Staging-only FCM sender SA (`roles/firebasecloudmessaging.admin`, staging project only) → FCM V1 key in EAS (local key deleted). Staging push sending on (secret flag; `deploy-cloudrun.sh` no longer hard-codes it off — that override was why the first enable didn't take).
+- Staging API push test 16/16 (registration, binding, revocation, account switch, cross-account unregister no-op). Real device delivery still pending. QA APK rebuilt with staging `google-services.json`.
+- Google sign-in still needs the console steps (no browser tool in this session); store access unverified. See `mobile/STORE_RELEASE_READINESS.md` §10.4.
+
 ### [2026-10-12] — QA push/Google/store audit; FCM config for the QA build
 - Audited access + credentials (details: `mobile/STORE_RELEASE_READINESS.md` §10.4). Company cert SHA-1/256 already on the staging Firebase Android app; EAS has no FCM V1 key, no Play/ASC keys, no iOS credentials.
 - QA build can now embed the staging `google-services.json` (CI secret `GOOGLE_SERVICES_JSON_QA_B64`, set); `qaProfileGuard` rejects non-staging files and non-staging Google web client IDs (9 guard tests pass; `expo config` verified with the real staging file).
