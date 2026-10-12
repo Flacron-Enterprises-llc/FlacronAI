@@ -36,7 +36,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
   --min-instances 0 --max-instances 1 --concurrency 40 --timeout 600 \
   --set-secrets "/secrets/app.env=backend-env:latest" \
   --command node --args="--env-file=/secrets/app.env,server.js" \
-  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,PUSH_NOTIFICATIONS_ENABLED=false,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL},ANTHROPIC_WORKSPACE_ID=${ANTHROPIC_WORKSPACE_ID},${STRIPE_PRICES}${EXTRA_ENV:+,$EXTRA_ENV}" \
+  --set-env-vars "NODE_ENV=production,TRUST_PROXY_HOPS=1,FRONTEND_URL=https://flacronai.com,STORE_BILLING_ACCEPT_SANDBOX=true,ANTHROPIC_MODEL=${ANTHROPIC_MODEL},ANTHROPIC_WORKSPACE_ID=${ANTHROPIC_WORKSPACE_ID},${STRIPE_PRICES}${EXTRA_ENV:+,$EXTRA_ENV}" \
   --labels "env=staging,app=flacronai" \
   --quiet
 

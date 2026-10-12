@@ -46,7 +46,7 @@ approved tester signs up in the QA app: `bash backend/deploy/staging-gcp/verify-
 - Incomplete account deletions are finished by the sweeper ~30 s after an instance starts and
   every 5 min while it runs; with no traffic they wait until the next request starts an instance.
   An always-on fix (Cloud Scheduler ping or min-instances 1) was deliberately not added.
-- Push outbox worker is disabled on staging (`PUSH_NOTIFICATIONS_ENABLED=false`).
+- Push sending on staging follows `PUSH_NOTIFICATIONS_ENABLED` in the staging secret (absent = off; enabled 2026-10-12, FCM V1 key `expo-fcm-sender@flacronai-staging-qa` in EAS).
 
 ## Deploy / test settings
 ```bash
