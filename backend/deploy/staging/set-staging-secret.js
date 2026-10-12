@@ -25,13 +25,18 @@ function hidden(prompt) {
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
-    const on = (ch) => {
-      if (ch === '\r' || ch === '\n') {
-        process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.off('data', on);
-        process.stdout.write('\n'); resolve(v.trim());
-      } else if (ch === '\u0003') process.exit(1);
-      else if (ch === '\u007f' || ch === '\b') v = v.slice(0, -1);
-      else v += ch;
+    // A paste can arrive as ONE multi-character chunk, so walk it char by char. Raw mode
+    // means Ctrl+V does NOT paste (it sends \u0016) — every other control character is
+    // dropped instead of being stored as the "value" (the 2026-10-12 placeholder bug).
+    const on = (chunk) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') {
+          process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.off('data', on);
+          process.stdout.write('\n'); resolve(v.trim()); return;
+        } else if (ch === '\u0003') process.exit(1);
+        else if (ch === '\u007f' || ch === '\b') v = v.slice(0, -1);
+        else if (ch >= ' ') v += ch;
+      }
     };
     process.stdin.on('data', on);
   });
@@ -46,6 +51,7 @@ const readStdin = () => fs.readFileSync(0, 'utf8').trim();
   catch (e) { if (/ResourceNotFound/.test(String(e.stderr))) exists = false; else throw new Error('cannot read secret (access?)', { cause: e }); }
 
   const next = { ...current };
+  const supplied = new Set();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--firebase-sa') {
@@ -56,13 +62,24 @@ const readStdin = () => fs.readFileSync(0, 'utf8').trim();
         FIREBASE_PRIVATE_KEY_ID: sa.private_key_id, FIREBASE_PRIVATE_KEY: sa.private_key,
         FIREBASE_STORAGE_BUCKET: next.FIREBASE_STORAGE_BUCKET || `${sa.project_id}.firebasestorage.app`,
       });
-    } else if (a === '--key') { const k = argv[++i]; next[k] = await hidden(`${k} (hidden): `); }
-    else if (a === '--stdin-key') { next[argv[++i]] = readStdin(); }
+    } else if (a === '--key') { const k = argv[++i]; next[k] = await hidden(`${k} (hidden): `); supplied.add(k); }
+    else if (a === '--stdin-key') { const k = argv[++i]; next[k] = readStdin(); supplied.add(k); }
     else if (a === '--set') { const [k, ...v] = argv[++i].split('='); next[k] = v.join('='); }
     else throw new Error(`unknown arg ${a}`);
   }
   if (!next.JWT_SECRET) next.JWT_SECRET = crypto.randomBytes(48).toString('base64url');
   if (/^sk_live_|^rk_live_/.test(next.STRIPE_SECRET_KEY || '')) throw new Error('refusing: live Stripe key — staging is sandbox only');
+  // Validate formats BEFORE writing: presence alone accepted a 1-character control code.
+  const FORMATS = {
+    ANTHROPIC_API_KEY: /^sk-ant-[\w-]{20,}$/,
+    STRIPE_SECRET_KEY: /^(sk|rk)_test_\w{20,}$/,
+    STRIPE_WEBHOOK_SECRET: /^whsec_\w{20,}$/,
+  };
+  for (const [k, re] of Object.entries(FORMATS)) {
+    if (!supplied.has(k) && next[k] && !re.test(String(next[k]))) { delete next[k]; console.log(`dropping previously stored malformed ${k}`); }
+  }
+  const bad = Object.entries(FORMATS).filter(([k, re]) => next[k] && !re.test(String(next[k]))).map(([k]) => k);
+  if (bad.length) throw new Error(`refusing to save: malformed ${bad.join(', ')} (nothing was written). Paste with right-click, or pipe it: Get-Clipboard | node set-staging-secret.js --stdin-key NAME`);
 
   const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fas-')), 's.json');
   fs.writeFileSync(tmp, JSON.stringify(next), { mode: 0o600 });
@@ -76,6 +93,6 @@ const readStdin = () => fs.readFileSync(0, 'utf8').trim();
   const required = ['FIREBASE_PROJECT_ID', 'FIREBASE_STORAGE_BUCKET', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY', 'FIREBASE_API_KEY',
     'ANTHROPIC_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'JWT_SECRET', 'ADMIN_EMAIL'];
   console.log(`${exists ? 'updated' : 'created'} ${NAME}. keys present: ${Object.keys(next).sort().join(', ')}`);
-  const missing = required.filter((k) => !next[k]);
+  const missing = required.filter((k) => !next[k] || String(next[k]).length < 2);
   console.log(missing.length ? `still missing: ${missing.join(', ')}` : 'all required keys present');
 })().catch((e) => { console.error(String(e.message || e)); process.exit(1); });
