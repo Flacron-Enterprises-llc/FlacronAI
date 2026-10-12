@@ -24,6 +24,8 @@ const FIELDS = {
   STRIPE_WEBHOOK_SECRET: { secret: true, valid: (v) => /^whsec_\w{20,}$/.test(v) },
   JWT_SECRET: { secret: true, valid: (v) => v.length >= 32 },
   ADMIN_EMAIL: { secret: false, valid: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) },
+  // Expo push sending on staging (FCM V1 credentials live in EAS, not here).
+  PUSH_NOTIFICATIONS_ENABLED: { secret: false, valid: (v) => v === 'true' || v === 'false' },
   FIREBASE_API_KEY: { secret: false, valid: (v) => /^AIza[\w-]{35}$/.test(v) },
   FIREBASE_STORAGE_BUCKET: { secret: false, valid: (v) => v === `${STAGING_PROJECT}.firebasestorage.app` },
   FIREBASE_PROJECT_ID: { secret: false, sa: true, valid: (v) => v === STAGING_PROJECT },
