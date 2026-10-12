@@ -13,6 +13,7 @@ URL: `https://flacronai-staging-api-93799061110.us-central1.run.app/api/v1`
 | Billing | instance-based (`--no-cpu-throttling`) | AI pipelines keep running after the HTTP response |
 | Scale | min 0, max 1 instance, 1 vCPU / 2 GiB | No idle cost; caps worst-case spend; single owner for timers |
 | Secrets | Secret Manager `backend-env` (dotenv) mounted at `/secrets/app.env`, `node --env-file` | One active version = inside the free tier |
+| Anthropic | personal key not scoped to a workspace → `ANTHROPIC_WORKSPACE_ID` (org Default workspace) sent as `anthropic-workspace-id` | Required for identity-linked keys; omitted for workspace-scoped keys |
 | Runtime identity | `staging-api@flacronai-staging-qa.iam.gserviceaccount.com` | Only `secretAccessor` on `backend-env` |
 | Stripe | company **sandbox** only; FlacronAI products tagged `app_id=flacronai`; price IDs in `deploy-cloudrun.sh` | Professional $39.99 / Agency $99.99 monthly (= `frontend/src/data/plans.js`). Annual + Enterprise not configured |
 | Webhook | `we_1UPLFoKFLhrvSzkgTH4oAhOY` → `/api/v1/payment/webhook` | Shared sandbox: events from other Flacron products also arrive and are ignored |

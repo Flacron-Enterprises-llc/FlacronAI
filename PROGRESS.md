@@ -186,6 +186,10 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-12] — Staging AI verified (workspace header)
+- Client key is a personal key not scoped to a workspace: per the official auth docs it needs `anthropic-workspace-id`. `backend/config/anthropic.js` now sends it from `ANTHROPIC_WORKSPACE_ID` (staging = org Default workspace); test added.
+- Staging (API-level): real AI draft → approval (signature enforced) → finalized → clean PDF download; real instance kill mid-generation → retryable, concurrent retry 409, only unfinished work redone. Estimated AI spend ≈ $1 (4 single-photo Opus 4.8 runs; usage report not yet populated).
+
 ### [2026-10-12] — QA handover: secret-handling fix, Stripe sandbox billing, staging recovery checks, AWS staging removed
 - **Fixed:** `set-staging-secret.js` allowlists field names, refuses secrets as CLI arguments, never prints unknown names/values (a mistyped argument had printed the Stripe sandbox key); malformed field removed from the AWS secret; 9 regression tests (`backend/test/staging-secret-script.test.js`). Added `staging-gcp/sync-secret.sh` (AWS → Secret Manager, redeploy, retire old versions).
 - **Billing:** FlacronAI-tagged sandbox prices (Professional $39.99, Agency $99.99 monthly — match `frontend/src/data/plans.js`) wired into staging; webhook repointed to Cloud Run.

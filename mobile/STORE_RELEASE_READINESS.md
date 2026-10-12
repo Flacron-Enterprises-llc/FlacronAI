@@ -281,10 +281,12 @@ max 1 instance, CPU always allocated (background AI pipelines). Scripts + limits
 - **Account deletion** cancels the disposable subscription in Stripe (`canceled`) and removes reports, Firestore user doc and Storage objects; old token rejected.
 - **Deletion cleanup recovery:** a deletion that stopped after the Stripe step (stale tombstone) is finished by the sweeper (reports + Storage removed, login 401).
 
+- **Real AI (Claude Opus 4.8, 2026-10-12):** draft generated from a staged photo (~85 s, cautious wording, no hard verdicts) → approval blocked without a full signature, approved with one → `finalized` → clean PDF export (no draft watermark) downloaded with auth (401 without).
+- **Interrupted generation (real instance kill via a new Cloud Run revision mid-run):** run flagged "interrupted — Retry"; concurrent Retries → one 200, one 409; retry redid only the unfinished generation step (photo analysis not repeated) and produced the draft.
+
 **Blocked / not yet verified:**
-- **AI draft generation → review/approval of real content → final PDF**: the stored Anthropic key is a user-scoped key (`sk-ant-usr-…`) that requires an `anthropic-workspace-id`; a workspace-scoped API key is needed (kept out of staging until then).
-- Stripe sandbox secret key was exposed in a local terminal and needs rotating (shared company sandbox — coordinate with the other Flacron products).
-- True instance kill during a long AI run (needs the AI key); everything on a physical device; push (FCM/APNs + Expo token); store purchases; Google sign-in (off in the QA build); camera, tablets, accessibility; annual/Enterprise billing (not configured on staging).
+- Stripe sandbox secret key (shared company sandbox) was exposed in a local terminal and needs rotating (shared company sandbox — coordinate with the other Flacron products).
+- Everything on a physical device; push (FCM/APNs + Expo token); store purchases; Google sign-in (off in the QA build); camera, tablets, accessibility; annual/Enterprise billing (not configured on staging).
 
 **Install (testers):** accept the Firebase App Distribution email invite on the Android phone → follow
 the link (sign in with the invited Google account) → download FlacronAI → allow "Install unknown apps"
