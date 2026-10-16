@@ -109,8 +109,8 @@ resource "ibm_code_engine_app" "api" {
   scale_min_instances           = var.api_min_scale
   scale_max_instances           = var.api_max_scale
   scale_concurrency             = 50
+  scale_concurrency_target      = 40
   scale_request_timeout         = 300
-  scale_initial_instances       = 1
 
   dynamic "run_env_variables" {
     for_each = var.plain_env
@@ -140,7 +140,7 @@ resource "ibm_code_engine_app" "api" {
     type              = "http"
     path              = "/health"
     port              = 3000
-    initial_delay     = 60
+    initial_delay     = 10 # CE maximum; interval x threshold gives startup slack
     interval          = 30
     timeout           = 5
     failure_threshold = 3

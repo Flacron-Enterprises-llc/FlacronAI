@@ -1,5 +1,7 @@
 # FlacronAI — Multi-cloud Deployment Plan
 
+> **2026-10-17 update:** the owner chose **production directly, no staging**. Decisions applied: D1/D2/D3 → all clouds use the production Firebase, Stripe and SES (Stripe webhook stays registered on AWS only; the Firestore state is shared, so a checkout started on any cloud is processed once). D6 → Azure Storage state. D8 → all three serve production on their own URLs; `flacronai.com` DNS stays on AWS. Current status lives in `progress.md`; the S1–S5 staging stages below are superseded.
+
 > Target end state: `push main → CI tests → { AWS (existing, untouched), Azure, IBM }` — independent jobs, same Git SHA, separate config/secrets/infra.
 
 ## Pipeline shape

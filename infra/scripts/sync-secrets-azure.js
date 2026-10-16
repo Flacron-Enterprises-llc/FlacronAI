@@ -21,7 +21,8 @@ for (const [k, v] of Object.entries(sensitive)) {
   fs.writeFileSync(tmp, v, { mode: 0o600 });
   try {
     execFileSync(az, ['keyvault', 'secret', 'set', '--vault-name', vault, '--name', name, '--file', tmp, '--encoding', 'utf-8', '--output', 'none'],
-      { stdio: ['ignore', 'ignore', 'pipe'] });
+      // Windows can only launch az.cmd through a shell; all args are fixed values.
+      { stdio: ['ignore', 'ignore', 'pipe'], shell: process.platform === 'win32' });
     n++;
   } finally { fs.rmSync(tmp, { force: true }); }
 }

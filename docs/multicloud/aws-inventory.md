@@ -72,4 +72,4 @@
 | A5 | Low | TG health check `/`, no container health check, log retention infinite, no alarms. | `/health`, 30–90 day retention, 5xx/unhealthy-host alarms. |
 | A6 | Low | ECR tags mutable + `:latest` pushed. | Immutable tags. |
 
-These are outside this task's mandate (AWS must not be modified). They're listed so the owner can approve them separately.
+**Status 2026-10-17 (owner approved fixing these):** A1 fixed in `deploy-backend.yml` (live after merge) · A2 ✅ done · A3 task role attached, static keys removed after merge · A4 test gate ✅ (branch protection: owner decision) · A5 ✅ done · A6 after merge. Also found and fixed two live bugs: **SES key invalid** (all email failing) and **`FIREBASE_API_KEY` missing** (login/MFA/account deletion). See `progress.md`.

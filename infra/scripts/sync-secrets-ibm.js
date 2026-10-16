@@ -37,7 +37,7 @@ try {
 const plainEnv = {
   ...plain,
   NODE_ENV: 'production',
-  PORT: '3000',
+  // PORT is reserved by Knative; Code Engine injects it from image_port (3000).
   FRONTEND_URL: webUrl,
   CORS_ADDITIONAL_ORIGINS: webUrl,
   DEPLOY_PLATFORM: 'ibm',

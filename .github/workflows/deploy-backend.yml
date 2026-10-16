@@ -7,6 +7,7 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
+      - ".github/workflows/backend-pr-validation.yml"
 
   workflow_dispatch:
 
@@ -18,32 +19,52 @@ concurrency:
   group: flacronai-backend-production
   cancel-in-progress: false
 
+env:
+  CLUSTER: flacronai-production-cluster
+  SERVICE: flacronai-backend-service
+  TASK_FAMILY: flacronai-backend
+  CONTAINER: flacronai-backend
+  HEALTH_URL: https://api.flacronai.com/health
+
 jobs:
+  # Same suite as PR validation (lint, tests, Docker build + container /health).
+  # A failing test means nothing is built or deployed.
+  test:
+    name: Backend tests (deploy gate)
+    uses: ./.github/workflows/backend-pr-validation.yml
+
   build-and-push:
     name: Build, push, and deploy backend
+    needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    environment:
+      name: aws-production
+      url: https://api.flacronai.com/health
 
     steps:
       # --- SLACK NOTIFICATION: DEPLOYMENT STARTED ---
       # for a mid-run "started" ping. A plain webhook POST does the job.
       - name: Send Slack Notification - Deployment Started
+        continue-on-error: true
         run: |
           curl -sf -X POST -H 'Content-type: application/json' \
             --data "$(cat <<EOF
           {
-            "text": "🚀 *FlacronAI Backend Deploy — STARTED*\n*App / Repo:* <https://github.com/${{ github.repository }}|${{ github.repository }}>\n*Status:* 🟡 Deployment In Progress...\n*Branch:* \`${{ github.ref_name }}\`\n*Triggered by:* @${{ github.actor }}\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Live Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>"
+            "text": "🚀 *FlacronAI Backend Deploy (AWS) — STARTED*\n*App / Repo:* <https://github.com/${{ github.repository }}|${{ github.repository }}>\n*Status:* 🟡 Deployment In Progress...\n*Branch:* \`${{ github.ref_name }}\`\n*Triggered by:* @${{ github.actor }}\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Live Logs:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run Logs>"
           }
           EOF
           )" \
             "${{ secrets.SLACK_WEBHOOK_URL }}"
-            
+
       # --- BUILD & DEPLOYMENT STEPS ---
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -52,54 +73,102 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # Immutable tag = Git SHA. No ":latest" -- every deploy references an
+      # exact build, so rollback is just redeploying an older SHA.
       - name: Build and push Docker image
+        id: build
         working-directory: ./backend
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build \
-            --platform linux/amd64 \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
-            .
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Image $IMAGE already exists (re-run) -- skipping build."
+          else
+            docker build \
+              --platform linux/amd64 \
+              --build-arg GIT_SHA="$IMAGE_TAG" \
+              -t "$IMAGE" \
+              .
+            docker push "$IMAGE"
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Image: $IMAGE"
 
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
-
-          echo "Pushed image:"
-          echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
-      - name: Deploy new image to ECS
+      # Start from the task definition that is actually running (it carries the
+      # Secrets Manager references, task role and health check) and swap only
+      # the image -- this registers a new revision on every deploy.
+      - name: Download running task definition
         run: |
-          aws ecs update-service \
-            --cluster flacronai-production-cluster \
-            --service flacronai-backend-service \
-            --force-new-deployment
+          TD_ARN=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current: $TD_ARN"
+          echo "PREVIOUS_TD=$TD_ARN" >> "$GITHUB_ENV"
+          aws ecs describe-task-definition --task-definition "$TD_ARN" \
+            --query taskDefinition > task-definition.json
 
-          aws ecs wait services-stable \
-            --cluster flacronai-production-cluster \
-            --services flacronai-backend-service
+      - name: Render task definition with new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1.9.1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER }}
+          image: ${{ steps.build.outputs.image }}
+
+      # The service has the ECS deployment circuit breaker with automatic
+      # rollback enabled: if the new tasks fail health checks, ECS returns to
+      # the previous revision and this step fails.
+      - name: Deploy new revision to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a00d4d57ac0de1a99b39fe469f3d898d38717c2b # v2.6.4
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ env.SERVICE }}
+          cluster: ${{ env.CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+
+      - name: Verify production is serving this commit
+        run: |
+          for i in $(seq 1 30); do
+            body=$(curl -fsS "$HEALTH_URL" || true)
+            echo "attempt $i: $body"
+            if echo "$body" | grep -q "\"version\":\"${GITHUB_SHA}\""; then
+              echo "AWS is serving ${GITHUB_SHA}"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::AWS /health does not report ${GITHUB_SHA}"
+          exit 1
+
+      - name: Roll back to previous task definition
+        if: failure() && env.PREVIOUS_TD != ''
+        run: |
+          echo "Rolling back to $PREVIOUS_TD"
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$PREVIOUS_TD" >/dev/null
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
 
       - name: Verify ECS service
+        if: always()
         run: |
           aws ecs describe-services \
-            --cluster flacronai-production-cluster \
-            --services flacronai-backend-service \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
             --query "services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}" \
             --output table
 
       # --- SLACK NOTIFICATION: DEPLOYMENT FINISHED (SUCCESS / FAILURE) ---
       - name: Send Slack Notification - Deployment Finished
         if: always()
-        uses: ravsamhq/notify-slack-action@v2
+        continue-on-error: true
+        uses: ravsamhq/notify-slack-action@be814b201e233b2dc673608aa46e5447c8ab13f2 # 2.5.0
         with:
           status: ${{ job.status }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          notification_title: "FlacronAI Backend Deploy — ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
+          notification_title: "FlacronAI Backend Deploy (AWS) — ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
           message_format: |
             *App / Repo:* <{repo_url}|{repo}>
             *Status:* ${{ job.status == 'success' && '🟢 SUCCESS' || '🔴 FAILED' }}
@@ -111,4 +180,3 @@ jobs:
           notify_when: "success,failure"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
