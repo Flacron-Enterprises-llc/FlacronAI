@@ -33,6 +33,9 @@
 5. **DNS (optional, for branded URLs)**: at the `dns-parking.com` registrar, CNAMEs for e.g. `azure.flacronai.com` / `ibm.flacronai.com`, then bind in SWA/CE + add to Firebase authorized domains + CORS.
 6. **Stripe/AI keys**: `STRIPE_PRICE_PHOTOS_*` env vars are used by code but not set anywhere — photo add-on checkout cannot work on any cloud until the owner supplies the Stripe price IDs.
 
+**Dependencies** ✅ (2026-10-17): a new `sharp` advisory (GHSA-wq5f-xc86-pv6w) was failing the existing PR gate. Lockfile fixed: sharp 0.35.5, proxy-addr (critical), @fastify/busboy; backend 1272 tests pass. PR #31 checks green. Azure/IBM currently run `5c5682c` (before this fix); the merge deploys the fixed build everywhere.
+**Open security item**: `firebase-admin` → 14 (node-forge HIGH advisory) is a major upgrade, so it needs its own reviewed PR.
+
 ## Next steps after merge (me / next session)
 - Watch the first runs: `deploy-backend.yml` (AWS) and `deploy-multicloud.yml` (Azure+IBM) must all report the merge SHA in `/health`.
 - A3 part 2: once AWS runs the new image, register a revision without `AWS_ACCESS_KEY_ID/SECRET` secrets (task role takes over), then delete IAM user `flacronai-ses-sender-aws`.
