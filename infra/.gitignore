@@ -1,0 +1,7 @@
+.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
+crash.log
+# generated from AWS by scripts/multicloud/*.js -- holds runtime config, not committed
+*.generated.auto.tfvars.json
