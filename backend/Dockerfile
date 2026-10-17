@@ -7,6 +7,14 @@ FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea41952009
 
 WORKDIR /app
 
+# Apply Debian security updates published after the pinned base image was
+# built (e.g. perl-base CVE-2026-13221 / -42496 / -8376, fixed in deb12u4).
+# The CI image scan fails the deploy on any fixable CRITICAL.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV PORT=3000
 
