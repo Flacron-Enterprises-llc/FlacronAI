@@ -1,5 +1,15 @@
 # FlacronAI — Multi-cloud Test Results
 
+> **Update 2026-10-17 (pipeline era):** release `a48b5f7` was deployed by GitHub Actions to AWS, Azure and IBM from one push, and all three `/health` endpoints report it. Proven live since the bootstrap below:
+> - failed scan blocks deploy (PR #31)
+> - Azure rollback + roll-forward via `rollback_sha`
+> - IBM failed-deploy auto-recovery
+> - SES via ECS task role (simulator MessageId `010001a148a9bb9d…`)
+> - ACR managed-identity pull (forced revision `idpull1` Healthy)
+> - Azure CI identity working (OIDC deploy succeeded)
+>
+> Details in `progress.md`. The table below is the original bootstrap evidence for commit `5c5682c`.
+
 > Evidence log. ✅ = verified by a real request/command (date, command noted). ⏳ = pending (reason given).
 > Release under test: commit `5c5682c` (origin/main `ef46186` + multicloud changes), image digest
 > `sha256:525cb1bbf1c061af2d676f815b9531bbff8136a7977dd8d3cb2943a2a35cc759` — **identical in ACR and ICR** (`crane digest`).
