@@ -33,6 +33,7 @@ class FakeFirestore {
       get: async () => fs._directChildrenSnapshot(basePath),
       orderBy: (field, dir = 'asc') => fs._query(basePath).orderBy(field, dir),
       limit: (n) => fs._query(basePath).limit(n),
+      where: (field, op, value) => fs._query(basePath).where(field, op, value),
       // Phase 48: auto-id create, matching real Firestore's collection().add()
       // (used by services/auditLogService.js). Equivalent to
       // .doc().set(data) but returns the created doc reference, like the
@@ -47,8 +48,14 @@ class FakeFirestore {
 
   _query(basePath) {
     const fs = this;
-    const state = { orderByField: null, dir: 'asc', limitN: null };
+    const state = { orderByField: null, dir: 'asc', limitN: null, filters: [] };
     const api = {
+      // Equality filters only (all the billing ledger / user lookups need).
+      where(field, op, value) {
+        if (op !== '==') throw new Error(`FakeFirestore: unsupported where operator ${op}`);
+        state.filters.push([field, value]);
+        return api;
+      },
       orderBy(field, dir = 'asc') {
         state.orderByField = field;
         state.dir = dir;
@@ -60,7 +67,7 @@ class FakeFirestore {
       },
       async get() {
         const snap = await fs._directChildrenSnapshot(basePath);
-        let docs = snap.docs;
+        let docs = snap.docs.filter((d) => state.filters.every(([f, v]) => d.data()?.[f] === v));
         if (state.orderByField) {
           docs = [...docs].sort((a, b) => {
             const av = a.data()[state.orderByField];
@@ -70,7 +77,7 @@ class FakeFirestore {
           });
         }
         if (state.limitN) docs = docs.slice(0, state.limitN);
-        return { docs, empty: docs.length === 0 };
+        return { docs: docs.map((d) => ({ ...d, ref: fs._doc(`${basePath}/${d.id}`) })), empty: docs.length === 0, size: docs.length };
       },
     };
     return api;
@@ -96,11 +103,17 @@ class FakeFirestore {
       collection: (name) => fs._collection(`${path}/${name}`),
       get: async () => {
         const entry = fs.store.get(path);
-        return { exists: !!entry, data: () => entry?.data, id: path.split('/').pop() };
+        return { exists: !!entry, data: () => entry?.data, id: path.split('/').pop(), ref: fs._doc(path) };
       },
-      set: async (data) => {
+      // Real Firestore create(): fails if the document already exists.
+      create: async (data) => {
+        if (fs.store.has(path)) throw Object.assign(new Error(`FakeFirestore: ${path} already exists`), { code: 6 });
+        fs.store.set(path, { version: 1, data });
+      },
+      set: async (data, options = {}) => {
         const prev = fs.store.get(path);
-        fs.store.set(path, { version: prev ? prev.version + 1 : 1, data });
+        const next = options.merge && prev ? { ...prev.data, ...data } : data;
+        fs.store.set(path, { version: prev ? prev.version + 1 : 1, data: next });
       },
       update: async (patch) => {
         const prev = fs.store.get(path);

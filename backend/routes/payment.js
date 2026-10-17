@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// Network retries are safe: stripe-node sends an idempotency key with every
+// retried POST, so a transient failure can never create a duplicate charge.
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY, { maxNetworkRetries: 2 });
 const { getFirestore } = require('../config/firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { sendPaymentFailedEmail } = require('../services/emailService');
@@ -33,8 +35,82 @@ const {
   toSanitizedPurchase,
 } = require('../utils/photoAddOnPurchases');
 const { getPlanConfig, resolvePlanContext, PLAN_IDS, UNLIMITED } = require('../config/planConfig');
+const {
+  APP_ID,
+  STRIPE_LIVEMODE,
+  appMetadata,
+  appIdFrom,
+  classifyAppId,
+  describeKeyConfig,
+} = require('../config/stripeApp');
+const ledger = require('../services/billingLedger');
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
+
+{
+  const { appId, mode, warnings } = describeKeyConfig();
+  console.log(`💳 Stripe: app_id=${appId}, mode=${mode}`);
+  warnings.forEach((w) => console.warn(`⚠️  Stripe: ${w}`));
+}
+
+const isMissing = (err) => err?.code === 'resource_missing' || err?.statusCode === 404;
+
+// Ids stored on a user doc may belong to a previous Stripe account (FlacronAI
+// moved to the shared Flacron Enterprises account). A missing object is
+// treated as absent instead of failing the request.
+const retrieveOrNull = async (fn, id) => {
+  if (!id) return null;
+  try {
+    return await fn(id);
+  } catch (err) {
+    if (isMissing(err)) return null;
+    throw err;
+  }
+};
+
+// Standard metadata for this user's Stripe objects. `uid` is kept for
+// backward compatibility with objects created before the standard.
+const userMetadata = (uid, extra = {}) => appMetadata({ internal_user_id: uid, uid, ...extra });
+
+// A Price may only be sold if it is ours: active, tagged with our app_id and
+// in the same mode as the key. Cached briefly (Prices are immutable).
+const priceOwnershipCache = new Map();
+const PRICE_CACHE_MS = 10 * 60 * 1000;
+const assertPriceIsOurs = async (priceId) => {
+  const hit = priceOwnershipCache.get(priceId);
+  if (hit && hit.expires > Date.now()) return hit.ok;
+  const price = await retrieveOrNull((id) => stripe.prices.retrieve(id), priceId);
+  const ok = !!price && price.active && appIdFrom(price) === APP_ID && price.livemode === STRIPE_LIVEMODE;
+  if (!ok) {
+    console.error(`Stripe price ${priceId} rejected: ${price ? `active=${price.active} app_id=${appIdFrom(price)} livemode=${price.livemode}` : 'not found'}`);
+  }
+  priceOwnershipCache.set(priceId, { ok, expires: Date.now() + PRICE_CACHE_MS });
+  return ok;
+};
+
+// Reuse the user's customer only if it is ours (or untagged legacy, which is
+// adopted and stamped). Never reuse another app's customer.
+const getOrCreateCustomer = async (db, uid, email, userData) => {
+  const existing = await retrieveOrNull((id) => stripe.customers.retrieve(id), userData.stripeCustomerId);
+  if (existing && !existing.deleted) {
+    const cls = classifyAppId(existing);
+    if (cls === 'match') return existing.id;
+    if (cls === 'missing') {
+      const stamped = await stripe.customers.update(existing.id, { metadata: userMetadata(uid) });
+      await ledger.recordCustomer(db, stamped, { internalUserId: uid });
+      return existing.id;
+    }
+    console.warn(`Customer ${existing.id} belongs to app ${appIdFrom(existing)} -- creating a ${APP_ID} customer instead`);
+  }
+  const customer = await stripe.customers.create({
+    email,
+    name: userData.displayName || '',
+    metadata: userMetadata(uid),
+  });
+  await db.collection('users').doc(uid).update({ stripeCustomerId: customer.id });
+  await ledger.recordCustomer(db, customer, { internalUserId: uid });
+  return customer.id;
+};
 
 const getSubscriptionTierKey = subscription =>
   getTierKeyFromStripePriceId(subscription.items?.data?.[0]?.price?.id);
@@ -55,33 +131,19 @@ const persistSubscription = async (userRef, subscription, tierKey = getSubscript
   return tier;
 };
 
-// Phase 45: refund/dispute webhook events carry a `payment_intent` id, not
-// our own `checkoutIntentId` directly -- retrieve the PaymentIntent
-// server-side (its metadata was set at checkout-session creation via
-// `payment_intent_data.metadata`) to recover it. Never guesses/derives it
-// from anything client- or metadata-only on the refund/dispute object
-// itself. Returns null (safe no-op upstream) if it isn't one of our intents
-// or Stripe says the PaymentIntent doesn't exist. Any OTHER lookup failure
-// (network/5xx/rate limit) is rethrown so the webhook returns 500 without
-// recording the event as processed -- Stripe then retries, instead of a
-// refund/dispute being silently dropped and the pack keeping its capacity.
-const resolveCheckoutIntentIdFromPaymentIntent = async paymentIntentId => {
-  if (!paymentIntentId) return null;
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    return paymentIntent.metadata?.checkoutIntentId || null;
-  } catch (err) {
-    console.error('Failed to resolve checkout intent from payment intent:', err.message);
-    if (err?.code === 'resource_missing') return null;
-    throw err;
-  }
-};
-
 const findActiveSubscription = async customerId => {
   if (!customerId) return null;
-  const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 });
+  let subscriptions;
+  try {
+    subscriptions = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 });
+  } catch (err) {
+    if (isMissing(err)) return null;
+    throw err;
+  }
   return subscriptions.data
     .filter(subscription => ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status))
+    // Only this app's subscriptions (untagged legacy ones still count).
+    .filter(subscription => classifyAppId(subscription) !== 'mismatch')
     .sort((a, b) => b.created - a.created)[0] || null;
 };
 
@@ -95,26 +157,18 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
   }
 
   try {
+    if (!(await assertPriceIsOurs(priceId))) {
+      return res.status(503).json({ success: false, error: 'This plan is not available right now.', code: 'PRICE_NOT_CONFIGURED' });
+    }
+
     const db = getFirestore();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const userData = userDoc.data() || {};
 
-    // Get or create Stripe customer
-    let customerId = userData.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.user.email,
-        name: userData.displayName || '',
-        metadata: { uid: req.user.uid },
-      });
-      customerId = customer.id;
-      await db.collection('users').doc(req.user.uid).update({ stripeCustomerId: customerId });
-    }
+    const customerId = await getOrCreateCustomer(db, req.user.uid, req.user.email, userData);
 
-    let existingSubscription = null;
-    if (userData.stripeSubscriptionId) {
-      existingSubscription = await stripe.subscriptions.retrieve(userData.stripeSubscriptionId);
-    }
+    let existingSubscription = await retrieveOrNull((id) => stripe.subscriptions.retrieve(id), userData.stripeSubscriptionId);
+    if (existingSubscription && classifyAppId(existingSubscription) === 'mismatch') existingSubscription = null;
     if (!existingSubscription || !ACTIVE_SUBSCRIPTION_STATUSES.has(existingSubscription.status)) {
       existingSubscription = await findActiveSubscription(customerId);
     }
@@ -139,7 +193,7 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
         const updatedSubscription = await stripe.subscriptions.update(existingSubscription.id, {
           cancel_at_period_end: false,
           items: [{ id: existingSubscription.items.data[0].id, price: priceId }],
-          metadata: { uid: req.user.uid, tier },
+          metadata: userMetadata(req.user.uid, { tier, plan: requestedTier }),
           proration_behavior: 'always_invoice',
           payment_behavior: 'error_if_incomplete',
           expand: ['latest_invoice.payment_intent'],
@@ -149,6 +203,7 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
         if (effectiveTierKey === tier) {
           await persistSubscription(db.collection('users').doc(req.user.uid), updatedSubscription, tier);
         }
+        await ledger.recordSubscription(db, updatedSubscription, { plan: requestedTier, internalUserId: req.user.uid });
 
         return res.json({
           success: true,
@@ -161,11 +216,13 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
       const schedule = existingSubscription.schedule
         ? await stripe.subscriptionSchedules.retrieve(existingSubscription.schedule)
         : await stripe.subscriptionSchedules.create({ from_subscription: existingSubscription.id });
+      const scheduleMetadata = userMetadata(req.user.uid, { tier, plan: requestedTier });
       const currentPhase = schedule.phases.find(phase => phase.end_date === existingSubscription.current_period_end)
         || schedule.phases[0];
 
       await stripe.subscriptionSchedules.update(schedule.id, {
         end_behavior: 'release',
+        metadata: scheduleMetadata,
         phases: [
           {
             start_date: currentPhase.start_date,
@@ -175,7 +232,7 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
           {
             start_date: existingSubscription.current_period_end,
             items: [{ price: priceId, quantity: 1 }],
-            metadata: { uid: req.user.uid, tier },
+            metadata: scheduleMetadata,
           },
         ],
       });
@@ -189,15 +246,17 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
       });
     }
 
+    const checkoutMetadata = userMetadata(req.user.uid, { tier, plan: getBaseTier(tier) });
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
+      client_reference_id: req.user.uid,
       payment_method_types: ['card'],
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${process.env.FRONTEND_URL}/dashboard?upgrade=success&tier=${tier}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/pricing?cancelled=true`,
-      metadata: { uid: req.user.uid, tier },
-      subscription_data: { metadata: { uid: req.user.uid, tier } },
+      metadata: checkoutMetadata,
+      subscription_data: { metadata: checkoutMetadata },
     });
 
     return res.json({ success: true, sessionId: session.id, url: session.url });
@@ -318,7 +377,7 @@ router.post('/photo-pack-checkout', authenticateToken, photoAddOnCheckoutLimiter
 
     const mode = resolveStripeMode();
     const priceId = getPackPriceId(pack, mode);
-    if (!priceId) {
+    if (!priceId || !(await assertPriceIsOurs(priceId))) {
       return res.status(503).json({
         success: false,
         error: 'Photo capacity add-ons are not currently configured.',
@@ -344,16 +403,19 @@ router.post('/photo-pack-checkout', authenticateToken, photoAddOnCheckoutLimiter
 
     let session;
     try {
+      const customerId = await getOrCreateCustomer(db, req.user.uid, req.user.email, ownerData);
+      const packMetadata = userMetadata(req.user.uid, { checkoutIntentId: intent.id, reportId, product: 'photo_pack', packId: pack.id });
       session = await stripe.checkout.sessions.create(
         {
           mode: 'payment',
           payment_method_types: ['card'],
-          ...(ownerData.stripeCustomerId ? { customer: ownerData.stripeCustomerId } : { customer_email: req.user.email }),
+          customer: customerId,
+          client_reference_id: req.user.uid,
           line_items: [{ price: priceId, quantity: 1 }],
           success_url: successUrl,
           cancel_url: cancelUrl,
-          metadata: { checkoutIntentId: intent.id, reportId, schemaVersion: '1' },
-          payment_intent_data: { metadata: { checkoutIntentId: intent.id, reportId } },
+          metadata: { ...packMetadata, schemaVersion: '1' },
+          payment_intent_data: { metadata: packMetadata },
         },
         // Protects against stripe-node's own automatic network-error retry
         // creating a second Checkout Session for the same stored intent.
@@ -412,6 +474,137 @@ router.post('/photo-pack-checkout/:intentId/sync', authenticateToken, async (req
 });
 
 // POST /api/payment/webhook
+//
+// Centralized Stripe standard: every event is (1) signature-verified,
+// (2) deduplicated on its event id (stripe_events), (3) checked for mode and
+// (4) attributed to an app_id from the Stripe object itself or a fresh read of
+// its parent (subscription / PaymentIntent / invoice). Only events that carry
+// OUR app_id are applied. Mismatched or untagged events are logged and
+// recorded in stripe_events, and acknowledged with 200 so Stripe does not retry
+// them -- arriving on this URL is never treated as proof of ownership.
+
+// Events this app applies; anything else is acknowledged and logged as 'ignored'.
+const HANDLED_EVENTS = new Set([
+  'checkout.session.completed',
+  'checkout.session.expired',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+  'invoice.paid',
+  'invoice.payment_failed',
+  'payment_intent.payment_failed',
+  'charge.refunded',
+  'refund.created',
+  'refund.updated',
+  'refund.failed',
+  'charge.dispute.created',
+  'charge.dispute.closed',
+]);
+
+const idOf = (v) => (v && typeof v === 'object' ? v.id : v) || null;
+
+// Resolve the app_id owning a PaymentIntent: its own metadata, or (for
+// subscription invoices, whose PaymentIntents Checkout cannot tag) the
+// subscription behind its invoice.
+const appIdForPaymentIntent = async (paymentIntentId) => {
+  const pi = await retrieveOrNull((id) => stripe.paymentIntents.retrieve(id), paymentIntentId);
+  if (!pi) return { pi: null, appId: null };
+  if (appIdFrom(pi)) return { pi, appId: appIdFrom(pi) };
+  if (pi.invoice) {
+    const inv = await retrieveOrNull((id) => stripe.invoices.retrieve(id), idOf(pi.invoice));
+    const subId = idOf(inv?.subscription);
+    const sub = subId ? await retrieveOrNull((id) => stripe.subscriptions.retrieve(id), subId) : null;
+    return { pi, appId: appIdFrom(inv) || appIdFrom(sub) };
+  }
+  return { pi, appId: null };
+};
+
+// Returns { appId, context } for an event (appId null = untagged).
+const attributeEvent = async (event) => {
+  const obj = event.data.object || {};
+  switch (event.type) {
+    case 'checkout.session.completed':
+    case 'checkout.session.expired':
+      return { appId: appIdFrom(obj), context: {} };
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      return { appId: appIdFrom(obj), context: {} };
+    case 'invoice.paid':
+    case 'invoice.payment_failed': {
+      const subId = idOf(obj.subscription);
+      const sub = subId ? await retrieveOrNull((id) => stripe.subscriptions.retrieve(id), subId) : null;
+      return { appId: appIdFrom(obj) || appIdFrom(sub) || appIdFrom(obj.subscription_details), context: { subscription: sub } };
+    }
+    case 'payment_intent.payment_failed': {
+      // Subscription-invoice PaymentIntents are untagged; attribute via the invoice.
+      if (appIdFrom(obj) || !obj.invoice) return { appId: appIdFrom(obj), context: { paymentIntent: obj } };
+      const { appId } = await appIdForPaymentIntent(obj.id);
+      return { appId, context: { paymentIntent: obj } };
+    }
+    case 'charge.refunded':
+    case 'charge.dispute.created':
+    case 'charge.dispute.closed':
+    case 'refund.created':
+    case 'refund.updated':
+    case 'refund.failed': {
+      const { pi, appId } = await appIdForPaymentIntent(idOf(obj.payment_intent));
+      return { appId, context: { paymentIntent: pi } };
+    }
+    default:
+      return { appId: null, context: {} };
+  }
+};
+
+// Ledger: a subscription invoice's payment. Stamps app_id on the invoice's
+// PaymentIntent (Checkout cannot) so every PaymentIntent is attributable.
+const ledgerInvoicePayment = async (db, invoice, status) => {
+  await ledger.recordInvoice(db, invoice);
+  const piId = idOf(invoice.payment_intent);
+  if (!piId) return; // $0 invoice (trial/coupon) -- no payment to record
+  let pi = await retrieveOrNull((id) => stripe.paymentIntents.retrieve(id), piId);
+  if (!pi) return;
+  if (!appIdFrom(pi)) {
+    try {
+      pi = await stripe.paymentIntents.update(pi.id, { metadata: appMetadata(pi.metadata?.internal_user_id ? { internal_user_id: pi.metadata.internal_user_id } : {}) });
+    } catch (err) {
+      console.warn(`Could not stamp app_id on ${pi.id}: ${err.message}`);
+    }
+  }
+  await ledger.recordPayment(db, {
+    paymentIntent: pi,
+    invoice,
+    status,
+    kind: 'subscription',
+    failureMessage: status === 'failed' ? (pi.last_payment_error?.message || 'payment failed') : null,
+  });
+};
+
+const ledgerRefundsForPaymentIntent = async (db, paymentIntentId) => {
+  if (!paymentIntentId) return;
+  const refunds = await stripe.refunds.list({ payment_intent: paymentIntentId, limit: 100 });
+  let refunded = 0;
+  for (const r of refunds.data) {
+    await ledger.recordRefund(db, r, { paymentId: paymentIntentId });
+    if (r.status === 'succeeded') refunded += r.amount;
+  }
+  if (await ledger.getPayment(db, paymentIntentId)) {
+    await ledger.setPaymentRefundedAmount(db, paymentIntentId, refunded);
+  }
+};
+
+const syncUserSubscription = async (db, sub) => {
+  let snapshot = await db.collection('users').where('stripeSubscriptionId', '==', sub.id).limit(1).get();
+  if (snapshot.empty && (sub.metadata?.internal_user_id || sub.metadata?.uid)) {
+    const userDoc = await db.collection('users').doc(sub.metadata.internal_user_id || sub.metadata.uid).get();
+    snapshot = userDoc.exists ? { empty: false, docs: [userDoc] } : snapshot;
+  }
+  if (!snapshot.empty) {
+    const tierKey = getSubscriptionTierKey(sub) || sub.metadata?.tier;
+    await persistSubscription(snapshot.docs[0].ref, sub, tierKey);
+  }
+};
+
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -425,22 +618,45 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   const db = getFirestore();
 
-  // Idempotency: skip events already processed
-  const processedRef = db.collection('processedWebhooks').doc(event.id);
-  const alreadyProcessed = await processedRef.get();
-  if (alreadyProcessed.exists) {
-    return res.json({ received: true });
+  // Idempotency: every processed event id is stored; redeliveries are no-ops.
+  // (processedWebhooks is the pre-standard store, still honoured.)
+  const [seen, legacySeen] = await Promise.all([
+    ledger.getEvent(db, event.id),
+    db.collection('processedWebhooks').doc(event.id).get(),
+  ]);
+  if (seen || legacySeen.exists) {
+    return res.json({ received: true, duplicate: true });
+  }
+
+  // A test event must never touch live data, and vice versa.
+  if (typeof event.livemode === 'boolean' && event.livemode !== STRIPE_LIVEMODE) {
+    console.warn(`[stripe webhook] mode mismatch: event ${event.id} livemode=${event.livemode}, key livemode=${STRIPE_LIVEMODE}`);
+    await ledger.recordEvent(db, event, { outcome: 'mode_mismatch' });
+    return res.json({ received: true, ignored: 'mode_mismatch' });
+  }
+
+  if (!HANDLED_EVENTS.has(event.type)) {
+    await ledger.recordEvent(db, event, { outcome: 'ignored' });
+    return res.json({ received: true, ignored: 'unhandled_type' });
   }
 
   try {
+    const { appId, context } = await attributeEvent(event);
+    if (appId !== APP_ID) {
+      const outcome = appId ? 'app_mismatch' : 'unattributed';
+      const log = appId ? console.warn : console.info;
+      log('[stripe webhook] app_id rejected', { eventId: event.id, type: event.type, expected: APP_ID, received: appId });
+      await ledger.recordEvent(db, event, { outcome, attributedAppId: appId });
+      return res.json({ received: true, ignored: outcome });
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
         // Phase 45: a report-specific photo add-on is a `mode: 'payment'`
         // Checkout Session carrying our own opaque `checkoutIntentId` --
-        // fully additive, and mutually exclusive with the existing
-        // `mode: 'subscription'` tier-upgrade path below (a subscription
-        // session never sets this field, so that path is untouched).
+        // fully additive, and mutually exclusive with the `mode:
+        // 'subscription'` tier-upgrade path below.
         const checkoutIntentId = session.metadata?.checkoutIntentId;
         if (checkoutIntentId) {
           const result = await fulfillCheckoutIntent(db, checkoutIntentId, {
@@ -451,82 +667,53 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           if (!result.fulfilled && !result.alreadyFulfilled) {
             console.error(`Photo add-on fulfillment rejected for intent ${checkoutIntentId}: ${result.reason}`);
           }
+          if (session.payment_intent && session.payment_status === 'paid') {
+            const pi = await retrieveOrNull((id) => stripe.paymentIntents.retrieve(id), idOf(session.payment_intent));
+            if (pi) await ledger.recordPayment(db, { paymentIntent: pi, status: 'succeeded', kind: 'one_time' });
+          }
           break;
         }
 
-        const uid = session.metadata?.uid;
+        const uid = session.metadata?.internal_user_id || session.metadata?.uid;
         const tier = getBaseTier(session.metadata?.tier); // strip _annual suffix
-        if (uid && tier) {
+        if (uid && tier && session.subscription) {
           const userRef = db.collection('users').doc(uid);
           const [userDoc, subscription] = await Promise.all([
             userRef.get(),
-            stripe.subscriptions.retrieve(session.subscription),
+            stripe.subscriptions.retrieve(idOf(session.subscription)),
           ]);
           const previousCreatedAt = userDoc.data()?.stripeSubscriptionCreatedAt || 0;
           if (subscription.created >= previousCreatedAt) {
             await persistSubscription(userRef, subscription, session.metadata?.tier);
             console.log(`✅ User ${uid} upgraded to ${tier}`);
           }
+          await ledger.recordSubscription(db, subscription, { plan: tier, internalUserId: uid });
         }
         break;
       }
 
       // Phase 45: the Checkout Session's own 24h expiry -- grants nothing.
       case 'checkout.session.expired': {
-        const session = event.data.object;
-        const checkoutIntentId = session.metadata?.checkoutIntentId;
-        if (checkoutIntentId) {
-          await markExpired(db, checkoutIntentId, { eventId: event.id });
-        }
+        const checkoutIntentId = event.data.object.metadata?.checkoutIntentId;
+        if (checkoutIntentId) await markExpired(db, checkoutIntentId, { eventId: event.id });
         break;
       }
 
-      // Phase 45: refund of a report-specific photo add-on charge. The
-      // Charge event carries `payment_intent` directly; the PaymentIntent's
-      // own metadata (set at checkout-session creation) is retrieved
-      // server-side to locate the trusted intent doc -- never trusted from
-      // the charge object's own (unset) metadata.
-      case 'charge.refunded': {
-        const charge = event.data.object;
-        const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(charge.payment_intent);
-        if (checkoutIntentId) {
-          const fullyRefunded = charge.amount_refunded >= charge.amount;
-          await applyRefund(db, checkoutIntentId, {
-            eventId: event.id,
-            amountRefundedCents: charge.amount_refunded,
-            fullyRefunded,
-          });
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        await syncUserSubscription(db, sub);
+        if (event.type === 'customer.subscription.created') {
+          // Customer count must include customers created outside our endpoint.
+          const customer = await retrieveOrNull((id) => stripe.customers.retrieve(id), idOf(sub.customer));
+          if (customer && !customer.deleted) await ledger.recordCustomer(db, customer);
         }
-        break;
-      }
-
-      case 'charge.dispute.created': {
-        const dispute = event.data.object;
-        const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(dispute.payment_intent);
-        if (checkoutIntentId) {
-          await applyDisputeCreated(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id });
-        }
-        break;
-      }
-
-      // Real Stripe event names only -- there is no `charge.dispute.won`/
-      // `charge.dispute.lost`. The outcome is `dispute.status` ('won' |
-      // 'lost' | 'warning_closed'/etc.) on the single `charge.dispute.closed`
-      // event; only 'won'/'lost' are actionable capacity outcomes here.
-      case 'charge.dispute.closed': {
-        const dispute = event.data.object;
-        if (dispute.status === 'won' || dispute.status === 'lost') {
-          const checkoutIntentId = await resolveCheckoutIntentIdFromPaymentIntent(dispute.payment_intent);
-          if (checkoutIntentId) {
-            await applyDisputeClosed(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id, outcome: dispute.status });
-          }
-        }
+        await ledger.recordSubscription(db, sub, { plan: getBaseTier(getSubscriptionTierKey(sub) || sub.metadata?.tier) });
         break;
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object;
-        const customer = subscription.customer;
         const snapshot = await db.collection('users').where('stripeSubscriptionId', '==', subscription.id).limit(1).get();
         if (!snapshot.empty) {
           await snapshot.docs[0].ref.update({
@@ -536,25 +723,34 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             updatedAt: new Date().toISOString(),
           });
         } else {
-          console.log(`Ignored deletion of non-current subscription ${subscription.id} for customer ${customer}`);
+          console.log(`Ignored deletion of non-current subscription ${subscription.id} for customer ${subscription.customer}`);
+        }
+        await ledger.recordSubscription(db, subscription, { plan: getBaseTier(getSubscriptionTierKey(subscription) || subscription.metadata?.tier) });
+        break;
+      }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object;
+        await ledgerInvoicePayment(db, invoice, 'succeeded');
+        if (context.subscription) {
+          await ledger.recordSubscription(db, context.subscription, {
+            plan: getBaseTier(getSubscriptionTierKey(context.subscription) || context.subscription.metadata?.tier),
+          });
         }
         break;
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
-        const snapshot = await db.collection('users').where('stripeCustomerId', '==', invoice.customer).limit(1).get();
+        // A failed payment never grants or keeps paid access by itself and is
+        // stored as 'failed' (never revenue).
+        await ledgerInvoicePayment(db, invoice, 'failed');
+        const snapshot = await db.collection('users').where('stripeCustomerId', '==', idOf(invoice.customer)).limit(1).get();
         if (!snapshot.empty) {
           const userData = snapshot.docs[0].data();
           // Phase 18 (Notifications): gated by 'billing' (defaults enabled).
           if (isNotificationEnabled(userData.notifications, 'billing')) {
             sendPaymentFailedEmail(userData.email, userData.displayName).catch(() => {});
-          }
-          // Phase 20: in-app bell entry, same gate. dedupeKey guards against a
-          // redelivered webhook double-firing (Stripe's own `processedWebhooks`
-          // idempotency check upstream already prevents most of this, but a
-          // deterministic id here is cheap defense-in-depth).
-          if (isNotificationEnabled(userData.notifications, 'billing')) {
             notifyUser(db, snapshot.docs[0].id, NOTIFICATION_TYPES.SUBSCRIPTION_ISSUE, {}, {
               dedupeKey: `sub_issue_${invoice.id}`,
             }).catch(() => {});
@@ -564,28 +760,84 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         break;
       }
 
-      case 'customer.subscription.updated': {
-        const sub = event.data.object;
-        let snapshot = await db.collection('users').where('stripeSubscriptionId', '==', sub.id).limit(1).get();
-        if (snapshot.empty && sub.metadata?.uid) {
-          const userDoc = await db.collection('users').doc(sub.metadata.uid).get();
-          snapshot = userDoc.exists ? { empty: false, docs: [userDoc] } : snapshot;
+      // One-time payments (photo packs) that fail; subscription invoice
+      // failures arrive as invoice.payment_failed instead.
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object;
+        if (!pi.invoice) await ledger.recordPayment(db, { paymentIntent: pi, status: 'failed', kind: 'one_time' });
+        break;
+      }
+
+      // Phase 45: refund of a report-specific photo add-on charge (capacity
+      // reversal), plus the ledger refund rows for any of our payments.
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        const checkoutIntentId = context.paymentIntent?.metadata?.checkoutIntentId || null;
+        if (checkoutIntentId) {
+          await applyRefund(db, checkoutIntentId, {
+            eventId: event.id,
+            amountRefundedCents: charge.amount_refunded,
+            fullyRefunded: charge.amount_refunded >= charge.amount,
+          });
         }
-        if (!snapshot.empty) {
-          const tierKey = getSubscriptionTierKey(sub) || sub.metadata?.tier;
-          await persistSubscription(snapshot.docs[0].ref, sub, tierKey);
+        await ledgerRefundsForPaymentIntent(db, idOf(charge.payment_intent));
+        break;
+      }
+
+      case 'refund.created':
+      case 'refund.updated':
+      case 'refund.failed': {
+        await ledgerRefundsForPaymentIntent(db, idOf(event.data.object.payment_intent));
+        break;
+      }
+
+      case 'charge.dispute.created': {
+        const dispute = event.data.object;
+        const checkoutIntentId = context.paymentIntent?.metadata?.checkoutIntentId || null;
+        if (checkoutIntentId) {
+          await applyDisputeCreated(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id });
+        }
+        break;
+      }
+
+      // Real Stripe event names only -- there is no `charge.dispute.won`/
+      // `charge.dispute.lost`. The outcome is `dispute.status` on the single
+      // `charge.dispute.closed` event; only 'won'/'lost' are actionable.
+      case 'charge.dispute.closed': {
+        const dispute = event.data.object;
+        const checkoutIntentId = context.paymentIntent?.metadata?.checkoutIntentId || null;
+        if (checkoutIntentId && (dispute.status === 'won' || dispute.status === 'lost')) {
+          await applyDisputeClosed(db, checkoutIntentId, { eventId: event.id, disputeId: dispute.id, outcome: dispute.status });
         }
         break;
       }
     }
 
-    // Mark event as processed
-    await processedRef.set({ type: event.type, processedAt: new Date().toISOString() });
-
+    // Recorded only after successful processing: a failure returns 500 and
+    // Stripe retries the event.
+    await ledger.recordEvent(db, event, { outcome: 'processed', attributedAppId: appId });
     return res.json({ received: true });
   } catch (err) {
     console.error('Webhook processing error:', err);
     return res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// GET /api/payment/admin/revenue?application_id=flacron-ai|all&livemode=true|false
+// Revenue report from the billing ledger (failed/incomplete payments are never
+// revenue; amounts in minor units, per currency). Admin only.
+router.get('/admin/revenue', authenticateToken, async (req, res) => {
+  if (!req.user || req.user.email !== process.env.ADMIN_EMAIL) {
+    return res.status(403).json({ success: false, error: 'Admin access required', code: 'ADMIN_REQUIRED' });
+  }
+  try {
+    const applicationId = String(req.query.application_id || APP_ID);
+    const livemode = req.query.livemode === undefined ? STRIPE_LIVEMODE : req.query.livemode === 'true';
+    const report = await ledger.buildRevenueReport(getFirestore(), { applicationId, livemode });
+    return res.json({ success: true, report });
+  } catch (err) {
+    console.error('Revenue report error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to build revenue report', code: 'REPORT_ERROR' });
   }
 });
 
@@ -596,10 +848,8 @@ router.get('/current-subscription', authenticateToken, async (req, res) => {
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const userData = userDoc.data() || {};
 
-    let subscription = null;
-    if (userData.stripeSubscriptionId) {
-      subscription = await stripe.subscriptions.retrieve(userData.stripeSubscriptionId);
-    }
+    let subscription = await retrieveOrNull((id) => stripe.subscriptions.retrieve(id), userData.stripeSubscriptionId);
+    if (subscription && classifyAppId(subscription) === 'mismatch') subscription = null;
     if (!subscription || !ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status)) {
       subscription = await findActiveSubscription(userData.stripeCustomerId);
       if (subscription) {
@@ -668,7 +918,13 @@ router.get('/invoices', authenticateToken, async (req, res) => {
 
     if (!stripeCustomerId) return res.json({ success: true, invoices: [] });
 
-    const invoices = await stripe.invoices.list({ customer: stripeCustomerId, limit: 24 });
+    let invoices;
+    try {
+      invoices = await stripe.invoices.list({ customer: stripeCustomerId, limit: 24 });
+    } catch (err) {
+      if (isMissing(err)) return res.json({ success: true, invoices: [] }); // customer from a previous Stripe account
+      throw err;
+    }
     return res.json({
       success: true,
       invoices: invoices.data.map(inv => ({
@@ -697,7 +953,14 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, error: 'No active subscription', code: 'NO_SUBSCRIPTION' });
     }
 
-    const updated = await stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: true });
+    let updated;
+    try {
+      updated = await stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: true });
+    } catch (err) {
+      if (!isMissing(err)) throw err;
+      return res.status(404).json({ success: false, error: 'No active subscription', code: 'NO_SUBSCRIPTION' });
+    }
+    await ledger.recordSubscription(db, updated, { internalUserId: req.user.uid });
 
     await db.collection('users').doc(req.user.uid).update({
       subscriptionStatus: 'cancelling',
