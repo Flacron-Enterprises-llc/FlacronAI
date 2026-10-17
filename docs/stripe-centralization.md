@@ -11,7 +11,7 @@ The implementation mirrors EnergyVerse (`flacron-energy`) and BTOS (`being-tchit
 | Own Products/Prices: "FlacronAI - Professional/Agency/Enterprise" (monthly + annual) and "FlacronAI - Photo Pack +25/50/100/250", with `app_id` on Product **and** Price and stable lookup keys `flacron_ai_*` | `backend/scripts/stripe-sync-catalog.js` (idempotent; `--dry-run`, `--verify`) |
 | `app_id` + `internal_user_id` metadata on Customer, Checkout Session, `subscription_data`, `payment_intent_data`, subscription updates, subscription schedules; invoice PaymentIntents stamped after payment | `backend/routes/payment.js` |
 | A Price is sold only if it is active, tagged `flacron-ai` and in the key's mode | `assertPriceIsOurs` |
-| Own webhook endpoint `https://api.flacronai.com/api/payment/webhook` (api_version `2023-10-16`, metadata `app_id=flacron-ai`) with its own secret | Stripe Dashboard → Webhooks |
+| Own webhook endpoint `we_1URUDXKFLhrvSzkgdOHiW9pk` → `https://api.flacronai.com/api/payment/webhook` (14 events, metadata `app_id=flacron-ai`) with its own secret. It uses the account default API version `2020-08-27`, like the other apps: Stripe allows only 3 distinct live endpoint versions per account. Azure/IBM checkouts deliver here too, since all clouds share the Firestore ledger. | Stripe Dashboard → Webhooks |
 | Webhook: signature verified → event id deduplicated → mode checked → `app_id` attributed from the object or a fresh read of its subscription/PaymentIntent/invoice. **Mismatch or missing = logged, recorded, not applied.** | `routes/payment.js` webhook |
 | Ledger in Firestore with `application_id` on every row: `stripe_events`, `billing_customers`, `billing_subscriptions`, `billing_invoices`, `billing_payments`, `billing_refunds`. Same names and fields as EnergyVerse. Server-only. | `backend/services/billingLedger.js` |
 | Revenue report (gross, refunds, net, payments ok/failed, active/cancelled subs, MRR/ARR, customers); per app or `all`; failed/pending payments never revenue; test rows excluded from live reports | `GET /api/payment/admin/revenue?application_id=flacron-ai|all&livemode=` (admin) |
@@ -23,6 +23,26 @@ The implementation mirrors EnergyVerse (`flacron-energy`) and BTOS (`being-tchit
   - renewal, failed renewal (`past_due`, no access), partial refund, cancellation
   - foreign-app isolation, duplicate, forged signature
   - ledger gross/refunds/net equal to Stripe's own charges
+
+## Production status (2026-10-17)
+| | AWS | Azure | IBM |
+|---|---|---|---|
+| Code `36d6765` (standard) | ✅ | ✅ | ✅ |
+| Live config (rk_live key, new webhook secret, `APP_ID`, live prices) | ✅ task def `:12` | ✅ Key Vault + revision `0000001` | ⏳ needs IBM CLI re-login (sessions are interactive), then `infra/scripts/sync-secrets-ibm.js` + `terraform apply` in `infra/ibm`. Until then IBM checkout returns "plan not available": old prices fail the ownership check, so nothing is mis-charged. |
+| Live verification, no charge (`verify-live-prod`) | ✅ 7/7 | ✅ 7/7 | ⏳ |
+
+The live verification creates a real live Checkout Session via the production API and checks app_id on the session, customer and price ($39.99/mo, live). It then expires the session unpaid and confirms Stripe delivered the signed `checkout.session.expired` to the live endpoint, which was attributed to `flacron-ai`, processed, and written to the ledger. A temporary user and customer are cleaned up afterwards.
+
+**Live catalog** (`stripe-sync-catalog.js --verify` OK). Old pre-standard live FlacronAI products (6, zero subscriptions) are archived, and the old endpoint pointing at `https://flacronai.com` is disabled.
+
+| Price | Live ID |
+|---|---|
+| Professional monthly / annual | `price_1URTe9KFLhrvSzkgyZuRLXea` / `price_1URTeAKFLhrvSzkglFCa0tLZ` |
+| Agency monthly / annual | `price_1URTeHKFLhrvSzkgkLJJCZL8` / `price_1URTeIKFLhrvSzkg6MOmzuGI` |
+| Enterprise monthly / annual | `price_1URTeQKFLhrvSzkgSUBAmccK` / `price_1URTeRKFLhrvSzkgCQzElDxh` |
+| Photo packs 25/50/100/250 | `price_1URTeUKFLhrvSzkgxfpIFDik` / `price_1URTefKFLhrvSzkg1IDHqk3i` / `price_1URTenKFLhrvSzkgRuz5QzUe` / `price_1URTeqKFLhrvSzkgxyAKaj5x` |
+
+Photo add-ons are priced and ready. They stay hidden until an admin turns on "add-ons enabled" in the plan configuration (product decision).
 
 ## Legacy note
 Before 2026-10-17, production used a test key from a different Stripe account ("Being Tchitaka"). Stripe ids stored on user docs from that account are treated as absent (`retrieveOrNull`), so checkout keeps working. 12 users hold paid tiers obtained through test-mode purchases; changing them is an owner decision.
