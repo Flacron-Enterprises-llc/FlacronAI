@@ -28,8 +28,10 @@ The implementation mirrors EnergyVerse (`flacron-energy`) and BTOS (`being-tchit
 | | AWS | Azure | IBM |
 |---|---|---|---|
 | Code `36d6765` (standard) | ✅ | ✅ | ✅ |
-| Live config (rk_live key, new webhook secret, `APP_ID`, live prices) | ✅ task def `:12` | ✅ Key Vault + revision `0000001` | ⏳ needs IBM CLI re-login (sessions are interactive), then `infra/scripts/sync-secrets-ibm.js` + `terraform apply` in `infra/ibm`. Until then IBM checkout returns "plan not available": old prices fail the ownership check, so nothing is mis-charged. |
-| Live verification, no charge (`verify-live-prod`) | ✅ 7/7 | ✅ 7/7 | ⏳ |
+| Live config (rk_live key, new webhook secret, `APP_ID`, live prices) | ✅ task def `:12` | ✅ Key Vault + revision `0000001` | ✅ CE secret + revision `00006` |
+| Live verification, no charge (`verify-live-prod`) | ✅ 7/7 | ✅ 7/7 | ✅ 7/7 |
+
+IBM rollback test: deferred to the next release. The only older IBM image predates the standard, and rolling back to it with the live key would let a few minutes of checkouts be created without `app_id`. Rollback is proven on Azure, and IBM's failed-deploy recovery is proven.
 
 The live verification creates a real live Checkout Session via the production API and checks app_id on the session, customer and price ($39.99/mo, live). It then expires the session unpaid and confirms Stripe delivered the signed `checkout.session.expired` to the live endpoint, which was attributed to `flacron-ai`, processed, and written to the ledger. A temporary user and customer are cleaned up afterwards.
 
