@@ -21,6 +21,11 @@ RUN mkdir -p /app/uploads \
 
 USER node
 
+# Git commit this image was built from; reported by GET /health so every
+# cloud (AWS, Azure, IBM) can be verified to run the same release.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 EXPOSE 3000
 
 CMD ["node", "server.js"]

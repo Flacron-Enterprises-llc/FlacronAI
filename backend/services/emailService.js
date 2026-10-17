@@ -12,18 +12,27 @@ const FRONTEND_URL = process.env.FRONTEND_URL    || 'http://localhost:5173';
 const BRAND  = '#FD4403';
 const NAVY   = '#002A64';
 
-// Lazy SES client — returns null when creds are absent so sends degrade gracefully
+// Lazy SES client — returns null when creds are absent so sends degrade gracefully.
+// Static keys are used when set (Azure / IBM hosts). On AWS ECS, set
+// SES_USE_DEFAULT_CREDENTIALS=true to use the task role via the SDK's default
+// credential chain instead of long-lived keys.
 let _client = null;
 const getClient = () => {
   if (_client) return _client;
-  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) return null;
-  _client = new SESClient({
-    region: REGION,
-    credentials: {
-      accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    },
-  });
+  const hasStaticKeys = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+  if (hasStaticKeys) {
+    _client = new SESClient({
+      region: REGION,
+      credentials: {
+        accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    });
+  } else if (process.env.SES_USE_DEFAULT_CREDENTIALS === 'true') {
+    _client = new SESClient({ region: REGION });
+  } else {
+    return null;
+  }
   return _client;
 };
 

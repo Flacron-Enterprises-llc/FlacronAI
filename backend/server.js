@@ -26,6 +26,12 @@ const allowedOrigins = [
   'https://flacronai.vercel.app',
   'https://flacronai.com',
   'https://www.flacronai.com',
+  // Per-deployment frontends (Azure Static Web Apps, IBM Code Engine, ...),
+  // comma-separated, set in that host's runtime config.
+  ...(process.env.CORS_ADDITIONAL_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
 ];
 
 app.use(cors({
@@ -154,6 +160,10 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
+    // Git commit of the running image (set at deploy time) -- lets CI verify
+    // AWS, Azure and IBM are all serving the same release.
+    version: process.env.GIT_SHA || 'unknown',
+    platform: process.env.DEPLOY_PLATFORM || 'unknown',
   });
 });
 

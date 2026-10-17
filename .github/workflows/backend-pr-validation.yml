@@ -10,13 +10,18 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/backend-pr-validation.yml"
+  # Also the required test gate for every production deploy workflow
+  # (deploy-backend.yml for AWS, deploy-multicloud.yml for Azure + IBM).
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-pr-validation-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # PRs cancel superseded runs; deploy-gate calls are keyed per run and never
+  # cancel each other.
+  group: backend-validation-${{ github.event.pull_request.number || github.run_id }}-${{ github.workflow }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
