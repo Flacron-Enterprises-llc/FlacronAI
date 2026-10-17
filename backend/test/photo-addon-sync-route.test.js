@@ -53,8 +53,14 @@ function makeFakeStripe(overrides = {}) {
     },
     subscriptions: { list: async () => ({ data: [] }), retrieve: async () => ({}), update: async () => ({}) },
     subscriptionSchedules: {},
-    customers: { create: async () => ({ id: 'cus_fake' }) },
-    invoices: { list: async () => ({ data: [] }) },
+    prices: { retrieve: async (id) => ({ id, active: true, livemode: false, metadata: { app_id: 'flacron-ai' } }) },
+    customers: {
+      create: async (params = {}) => ({ id: 'cus_fake', metadata: params.metadata || {} }),
+      retrieve: async (id) => ({ id, metadata: { app_id: 'flacron-ai' } }),
+      update: async (id, params = {}) => ({ id, metadata: params.metadata || {} }),
+    },
+    refunds: { list: async () => ({ data: [] }) },
+    invoices: { list: async () => ({ data: [] }), retrieve: async (id) => ({ id }) },
   };
 }
 

@@ -80,8 +80,10 @@ const CATALOGUE = Object.freeze([
 // reality: Stripe's own key prefix is the only thing that actually
 // determines which mode a secret key operates in. Defaults to 'test'
 // whenever the key is absent/malformed -- never silently "live".
+// Restricted keys (rk_live_/rk_test_, the company standard) encode the mode
+// exactly like secret keys do.
 const resolveStripeMode = (secretKey = process.env.STRIPE_SECRET_KEY) =>
-  typeof secretKey === 'string' && secretKey.startsWith('sk_live_') ? 'live' : 'test';
+  typeof secretKey === 'string' && /^(sk|rk)_live_/.test(secretKey) ? 'live' : 'test';
 
 const isPositiveInteger = (v) => Number.isInteger(v) && v > 0;
 

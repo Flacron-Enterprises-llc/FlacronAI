@@ -33,7 +33,7 @@ function makeFakeStripe(overrides = {}) {
     paymentIntents: {
       retrieve: async (id) => {
         calls.paymentIntentsRetrieve.push(id);
-        return overrides.paymentIntentRetrieveResult ? overrides.paymentIntentRetrieveResult(id) : { id, metadata: {} };
+        return overrides.paymentIntentRetrieveResult ? overrides.paymentIntentRetrieveResult(id) : { id, metadata: { app_id: 'flacron-ai' } };
       },
     },
     webhooks: {
@@ -48,8 +48,14 @@ function makeFakeStripe(overrides = {}) {
     },
     subscriptions: { list: async () => ({ data: [] }), retrieve: overrides.subscriptionsRetrieve || (async () => ({ id: 'sub_1', status: 'active', created: 1700000000, customer: 'cus_1', cancel_at_period_end: false, items: { data: [{ price: { id: 'price_professional' } }] } })) },
     subscriptionSchedules: {},
-    customers: { create: async () => ({ id: 'cus_fake' }) },
-    invoices: { list: async () => ({ data: [] }) },
+    prices: { retrieve: async (id) => ({ id, active: true, livemode: false, metadata: { app_id: 'flacron-ai' } }) },
+    customers: {
+      create: async (params = {}) => ({ id: 'cus_fake', metadata: params.metadata || {} }),
+      retrieve: async (id) => ({ id, metadata: { app_id: 'flacron-ai' } }),
+      update: async (id, params = {}) => ({ id, metadata: params.metadata || {} }),
+    },
+    refunds: { list: async () => ({ data: [] }) },
+    invoices: { list: async () => ({ data: [] }), retrieve: async (id) => ({ id }) },
   };
 }
 
@@ -149,7 +155,7 @@ const checkoutCompletedEvent = (overrides = {}) => ({
       amount_total: 499,
       payment_status: 'paid',
       payment_intent: 'pi_1',
-      metadata: { checkoutIntentId: 'intent-1', reportId: 'report-1' },
+      metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1', reportId: 'report-1' },
       ...overrides,
     },
   },
@@ -205,7 +211,7 @@ test('webhook: existing subscription checkout.session.completed path is complete
     const { res } = await postWebhook(base, {
       id: 'evt_sub_1',
       type: 'checkout.session.completed',
-      data: { object: { id: 'cs_sub', mode: 'subscription', metadata: { uid: 'uid-sub', tier: 'professional' }, subscription: 'sub_1' } },
+      data: { object: { id: 'cs_sub', mode: 'subscription', metadata: { app_id: 'flacron-ai', uid: 'uid-sub', tier: 'professional' }, subscription: 'sub_1' } },
     });
     assert.equal(res.status, 200);
     const user = (await db.collection('users').doc('uid-sub').get()).data();
@@ -219,7 +225,7 @@ test('webhook: checkout.session.expired grants nothing', async () => {
     const { res } = await postWebhook(base, {
       id: 'evt_exp_1',
       type: 'checkout.session.expired',
-      data: { object: { id: 'cs_test_1', metadata: { checkoutIntentId: 'intent-1' } } },
+      data: { object: { id: 'cs_test_1', metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1' } } },
     });
     assert.equal(res.status, 200);
     const intent = (await db.collection('photoAddOnPurchases').doc('intent-1').get()).data();
@@ -233,7 +239,7 @@ test('webhook: charge.refunded (full) revokes capacity via a PaymentIntent metad
   const { router, db } = installFakes({
     reportsSeed: { 'report-1': seedReport() },
     purchasesSeed: { 'intent-1': seedIntent({ status: 'fulfilled', stripePaymentIntentId: 'pi_1', fulfillment: { fulfilledAt: '2026-09-19T00:00:00.000Z' } }) },
-    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { checkoutIntentId: 'intent-1' } }) },
+    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1' } }) },
   });
   // Pre-seed the report as already granted (simulating the earlier fulfillment).
   db.store.set('reports/report-1', { version: 1, data: { ...seedReport(), purchasedPhotoCapacity: 25, photoAddOnCapacityGrantedFor: ['intent-1'] } });
@@ -273,7 +279,7 @@ test('webhook: charge.refunded returns 500 and is NOT marked processed when the 
       data: { object: { id: 'ch_1', payment_intent: 'pi_1', amount: 499, amount_refunded: 499 } },
     });
     assert.equal(res.status, 500);
-    const processed = await db.collection('processedWebhooks').doc('evt_refund_transient').get();
+    const processed = await db.collection('stripe_events').doc('evt_refund_transient').get();
     assert.equal(processed.exists, false);
     const report = (await db.collection('reports').doc('report-1').get()).data();
     assert.equal(report.purchasedPhotoCapacity, 25);
@@ -299,7 +305,7 @@ test('webhook: charge.refunded for a PaymentIntent Stripe reports as missing is 
       data: { object: { id: 'ch_x', payment_intent: 'pi_unknown', amount: 499, amount_refunded: 499 } },
     });
     assert.equal(res.status, 200);
-    const processed = await db.collection('processedWebhooks').doc('evt_refund_missing').get();
+    const processed = await db.collection('stripe_events').doc('evt_refund_missing').get();
     assert.equal(processed.exists, true);
   });
 });
@@ -307,7 +313,7 @@ test('webhook: charge.refunded for a PaymentIntent Stripe reports as missing is 
 test('webhook: charge.refunded (partial) flags for manual review without changing capacity', async () => {
   const { router, db } = installFakes({
     purchasesSeed: { 'intent-1': seedIntent({ status: 'fulfilled', stripePaymentIntentId: 'pi_1' }) },
-    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { checkoutIntentId: 'intent-1' } }) },
+    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1' } }) },
   });
   db.store.set('reports/report-1', { version: 1, data: { ...seedReport(), purchasedPhotoCapacity: 25, photoAddOnCapacityGrantedFor: ['intent-1'] } });
 
@@ -328,7 +334,7 @@ test('webhook: charge.refunded (partial) flags for manual review without changin
 test('webhook: charge.dispute.created suspends, charge.dispute.closed(won) restores exactly once', async () => {
   const { router, db } = installFakes({
     purchasesSeed: { 'intent-1': seedIntent({ status: 'fulfilled', stripePaymentIntentId: 'pi_1' }) },
-    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { checkoutIntentId: 'intent-1' } }) },
+    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1' } }) },
   });
   db.store.set('reports/report-1', { version: 1, data: { ...seedReport(), purchasedPhotoCapacity: 25, photoAddOnCapacityGrantedFor: ['intent-1'] } });
 
@@ -351,7 +357,7 @@ test('webhook: charge.dispute.created suspends, charge.dispute.closed(won) resto
 test('webhook: charge.dispute.closed(lost) keeps the revocation', async () => {
   const { router, db } = installFakes({
     purchasesSeed: { 'intent-1': seedIntent({ status: 'fulfilled', stripePaymentIntentId: 'pi_1' }) },
-    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { checkoutIntentId: 'intent-1' } }) },
+    stripeOverrides: { paymentIntentRetrieveResult: () => ({ id: 'pi_1', metadata: { app_id: 'flacron-ai', checkoutIntentId: 'intent-1' } }) },
   });
   db.store.set('reports/report-1', { version: 1, data: { ...seedReport(), purchasedPhotoCapacity: 25, photoAddOnCapacityGrantedFor: ['intent-1'] } });
 
