@@ -1,45 +1,57 @@
 # FlacronAI Multi-cloud — Progress Log
 
-> Resume here. Work happens in git worktree `E:\freelancing projects\FlacronAI-multicloud`, branch `multicloud/azure-ibm` (from `origin/main` @ `ef46186`).
+> Resume here. Infra/CI work happens in git worktree `E:\freelancing projects\FlacronAI-multicloud` (branch off `origin/main`).
 > The original checkout `E:\freelancing projects\FlacronAI` (branch `flacron/improvements`) holds the owner's stale uncommitted local work. **Don't use or modify it.** GitHub `main` is the source of truth (owner, 2026-10-16).
-> Owner decision 2026-10-17: **production on all three clouds (no staging), fix the AWS findings, list the admin permissions needed.**
+> Owner decision 2026-10-17: **production on all three clouds (no staging), fix the AWS findings.**
 
-## Status: Azure + IBM PRODUCTION LIVE (manual bootstrap, commit `5c5682c`) · AWS fixed · CI/CD written, waiting on PR merge + Azure admin
+## Status (2026-10-17): ✅ LIVE ON AWS + AZURE + IBM, AUTO-DEPLOYED FROM `main`
+
+One push to `main` → tests → AWS, Azure, IBM deploy the same commit independently. Release `a48b5f7` (merge of PR #32) is running on all three, deployed entirely by the pipelines:
+
+| Cloud | Frontend | API | Pipeline |
+|---|---|---|---|
+| AWS | https://flacronai.com | https://api.flacronai.com | `deploy-backend.yml` + Amplify |
+| Azure | https://calm-ground-0fce9b20f.3.azurestaticapps.net | https://ca-flacronai-api-prod.mangoglacier-8dbdc9b8.eastus.azurecontainerapps.io | `deploy-multicloud.yml` / Deploy Azure |
+| IBM | https://flacronai-web.2g1gauctre14.us-east.codeengine.appdomain.cloud | https://flacronai-api.2g1gauctre14.us-east.codeengine.appdomain.cloud | `deploy-multicloud.yml` / Deploy IBM Cloud |
+
+Check any cloud: `curl <API>/health` → `version` = deployed commit, `platform` = aws|azure|ibm.
+
+### Release history
+- PR #31 (`3ce7716`): multicloud pipelines + AWS fixes. AWS + Amplify deployed; **Azure/IBM correctly blocked by the Trivy gate** (3 CRITICAL perl CVEs in the Debian base image).
+- PR #32 (`a48b5f7`): `apt-get upgrade` in `backend/Dockerfile` (perl-base deb12u4, verified in the image). All three clouds deployed ✅.
 
 ### Done
-**AWS (production, account 482881544977)**
-- A2 ✅ 11 plaintext secrets → Secrets Manager `flacronai/production/app`; task def `:6` → `:7`.
-- **Bug fixed** ✅ `FIREBASE_API_KEY` was missing in prod (login/MFA/account-deletion returned `CONFIG_ERROR`); added.
-- **Bug fixed** ✅ production SES key was **invalid** (all transactional email failing). New send-only IAM user `flacronai-ses-sender-aws`, verified via SES simulator.
-- A5 ✅ ALB TG health check `/` → `/health` (enables restart when Firebase auth wedges); ECS container health check; log retention 90 d; SNS topic `flacronai-production-alerts` + alarms (unhealthy hosts, 5xx, no running tasks).
-- A3 (part 1) ✅ task role `flacronai-backend-task-role` (SES send on flacronenterprises.com only) attached in `:7` with `SES_USE_DEFAULT_CREDENTIALS=true`.
-- A1 ✅ (code) `deploy-backend.yml` now gates on tests, builds immutable SHA tag, registers a new task-def revision per deploy, verifies `/health` version, auto-rollback. Deploy role got `RegisterTaskDefinition`/`DescribeTaskDefinition` + `PassRole` (2 ECS roles only); OIDC trust also accepts `environment:aws-production`.
-- Rollback points: task defs `:5` (original), `:6`, `:7`.
+**AWS (account 482881544977)**
+- A1 ✅ live: every deploy registers a new task-def revision (`:8` was created automatically by the pipeline), test gate, `/health` version check, auto-rollback.
+- A2 ✅ secrets in Secrets Manager `flacronai/production/app` (no static AWS keys left in it).
+- A3 ✅ SES via task role `flacronai-backend-task-role` (revision `:9`, no static keys). **Proven** with a one-off ECS task using `:9` → SES simulator (`MessageId=010001a148a9bb9d…`). Interim IAM user `flacronai-ses-sender-aws` deleted.
+- A4 ✅ deploys gated on tests (branch protection on `main` = owner decision).
+- A5 ✅ `/health` ALB check, container health check, 90-day logs, SNS topic `flacronai-production-alerts` + 3 alarms.
+- A6 ✅ ECR `flacronai-backend` tags IMMUTABLE.
+- Bugs fixed: `FIREBASE_API_KEY` missing (login/MFA/account deletion broken); **SES key invalid: logs show 55 failed / 0 sent emails in the 30 days before the fix.**
 
-**Azure (sub bce797d8…, rg `rg-flacronai-prod`, eastus)** — Terraform `infra/azure` (state: `stflacronaitfstate/tfstate/azure/production.tfstate`)
-- ACR `acrflacronai` (admin off, pull via repo-scoped token), Key Vault `kv-flacronai-prod` (access-policy mode, purge protection), UAMI, Log Analytics, Container Apps env + `ca-flacronai-api-prod` (1 vCPU/2Gi, min 1/max 3, probes), Static Web App `swa-flacronai-prod` (Standard), Entra app `gh-flacronai-deploy-prod` + federated credential (`environment:azure-production`).
+**Azure** (rg `rg-flacronai-prod`, Terraform `infra/azure`): Container Apps API, Static Web App, ACR (pull via managed identity, verified with a forced new revision), Key Vault, Log Analytics. CI app `gh-flacronai-deploy-prod` (OIDC) with AcrPush + Contributor on the container app + SWA only. Rodrigue granted "RBAC Administrator" at subscription scope (2026-10-17).
 
-**IBM (account 70ccc4b0…, RG `FlacronAI`, us-east)** — Terraform `infra/ibm` (state: same storage account, `ibm/production.tfstate`)
-- CE project `flacronai-prod`: apps `flacronai-api` (1 vCPU/4G, min 1/max 3) + `flacronai-web` (nginx, min 1); ICR namespace `flacronai` (retention 20); service ID `flacronai-ce-puller` (Reader on namespace); `flacronai-deployer` got CE Writer on the project + ICR Writer on the namespace. Tested: positive + negative.
+**IBM** (RG `FlacronAI`, Terraform `infra/ibm`): Code Engine project `flacronai-prod` (api + web), ICR namespace `flacronai`. CI service ID `flacronai-deployer` scoped to that project + namespace (tested positive/negative).
 
-**GitHub**: environments `aws-production`, `azure-production`, `ibm-production` (main only); env variables set; `IBM_CLOUD_API_KEY` secret (new key `github-actions-ibm-production-20261017`).
-**Firebase**: Azure + IBM frontend hosts added to Auth authorized domains.
+## Validation evidence
+- Same commit on all clouds via `/health` ✅ · frontends 200 + deep links ✅ · CORS ✅ · Firebase auth ✅
+- **Failed build cannot deploy** ✅ proven live (PR #31: scan failed → Azure/IBM skipped, still serving the previous release)
+- **Rollback** ✅ Azure: `rollback_sha=5c5682c` → served `5c5682c`, then `rollback_sha=a48b5f7` → back, healthy throughout. ✅ IBM failure path: a deploy whose image was missing failed, CE kept serving the healthy revision, and the workflow's rollback step ran. ⏳ IBM roll-back-to-previous-SHA: needs a second image in ICR (see below). AWS: circuit breaker with rollback + explicit rollback step.
 
-## ⛔ Needs someone else (admin / owner) — LIST FOR THE ADMIN
-1. **Azure Owner** (`rodrigue@FlacronEnterprises.onmicrosoft.com`) runs `infra/azure/admin-role-assignments.sh` — 4 role assignments, each scoped to one FlacronAI resource (AcrPush + Contributor on the container app + Contributor on the SWA for the CI app; AcrPull for the API identity). Until then the Azure CI job fails (IBM/AWS unaffected); the live Azure deployment keeps running.
-2. **Google Cloud (Firebase project `flacronai-c8dab`) owner**: if `VITE_GOOGLE_MAPS_BROWSER_KEY` is HTTP-referrer-restricted, add `calm-ground-0fce9b20f.3.azurestaticapps.net/*` and `flacronai-web.2g1gauctre14.us-east.codeengine.appdomain.cloud/*`.
-3. **Repo owner**: review + merge the PR from `multicloud/azure-ibm` → `main` (merging triggers all three pipelines).
-4. **Alerts**: subscribe an on-call email to SNS topic `flacronai-production-alerts` (subscription needs the recipient to confirm).
-5. **DNS (optional, for branded URLs)**: at the `dns-parking.com` registrar, CNAMEs for e.g. `azure.flacronai.com` / `ibm.flacronai.com`, then bind in SWA/CE + add to Firebase authorized domains + CORS.
-6. **Stripe/AI keys**: `STRIPE_PRICE_PHOTOS_*` env vars are used by code but not set anywhere — photo add-on checkout cannot work on any cloud until the owner supplies the Stripe price IDs.
+## ⚠️ Lessons learned
+- `ibmcloud cr image-rm <repo>:<tag>` deletes the **manifest**, i.e. every tag on that digest. That's how ICR lost `5c5682c` (it shared a digest with a test tag). To drop one tag, use `ibmcloud cr image-untag` (or `crane`), never `image-rm`.
 
-**Dependencies** ✅ (2026-10-17): a new `sharp` advisory (GHSA-wq5f-xc86-pv6w) was failing the existing PR gate. Lockfile fixed: sharp 0.35.5, proxy-addr (critical), @fastify/busboy; backend 1272 tests pass. PR #31 checks green. Azure/IBM currently run `5c5682c` (before this fix); the merge deploys the fixed build everywhere.
-**Open security item**: `firebase-admin` → 14 (node-forge HIGH advisory) is a major upgrade, so it needs its own reviewed PR.
+## ⛔ Owner / admin actions
+1. **Rodrigue**: the RBAC Administrator grant has **no condition**, so it can assign any role (including Owner). Recommend adding the "only these roles to service principals" condition (message drafted 2026-10-17).
+2. **Google Cloud owner**: if the Maps browser key is referrer-restricted, add the Azure + IBM frontend hosts.
+3. **Alerts**: subscribe an on-call email to SNS `flacronai-production-alerts`.
+4. **Stripe**: `STRIPE_PRICE_PHOTOS_*` not set on any cloud, so photo add-on checkout can't work until the price IDs are supplied.
+5. Optional DNS (`azure.flacronai.com` / `ibm.flacronai.com`) at the dns-parking.com registrar.
+6. Old IBM key `FlacronAi API` (ApiKey-5badffe7…, 2026-01) on `flacronai-deployer`: delete if nobody uses it.
 
-## Next steps after merge (me / next session)
-- Watch the first runs: `deploy-backend.yml` (AWS) and `deploy-multicloud.yml` (Azure+IBM) must all report the merge SHA in `/health`.
-- A3 part 2: once AWS runs the new image, register a revision without `AWS_ACCESS_KEY_ID/SECRET` secrets (task role takes over), then delete IAM user `flacronai-ses-sender-aws`.
-- A6: set ECR `flacronai-backend` tag immutability to IMMUTABLE (new workflow no longer pushes `:latest`).
-- Old IBM key `FlacronAi API` (ApiKey-5badffe7…, 2026-01) on `flacronai-deployer`: owner decides whether to delete (unknown holder).
-- Rotation (90 d): ACR pull token, IBM puller key, IBM CI key, SES multicloud key.
-- Human E2E: test account login (email + Google), report generation with photos, Stripe test-clock/real-card purchase + refund on each cloud.
+## Next (me / next session)
+- IBM rollback test: after the next real release (two images in ICR), run *Deploy FlacronAI (Azure + IBM)* with `target=ibm`, `rollback_sha=<previous>`, then roll forward.
+- Human E2E on each cloud: login (email + Google), report generation with photos, Stripe purchase + refund.
+- `firebase-admin` 14 upgrade (node-forge HIGH advisory) in its own PR.
+- 90-day rotation: ACR pull token (now unused: identity pull), IBM puller key, IBM CI key (`IBM_CLOUD_API_KEY`), SES multicloud key.
