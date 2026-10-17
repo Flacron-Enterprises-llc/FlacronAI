@@ -37,9 +37,9 @@ variable "deploy_app" {
 }
 
 variable "acr_pull_with_identity" {
-  description = "true once an Owner has granted AcrPull to the app identity (admin-role-assignments.sh); false uses a pull-only ACR token."
+  description = "true: pull with the app's managed identity (AcrPull granted 2026-10-17). false: fall back to the pull-only ACR token."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "api_cpu" {
