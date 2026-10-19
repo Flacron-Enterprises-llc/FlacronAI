@@ -40,6 +40,28 @@
 
 ## 1. Current Status
 
+> **HANDOVER — 2026-10-19 (mobile paused for web work).**
+> - **Implemented (PR #30, branch `qa/android-qa-apk`, head `eda1d76`):** Phases 1–10 — Expo app foundation,
+>   env config, full auth (email/Google/MFA), typed API layer, native dashboard + 5-step generate wizard,
+>   report review/approve/finalize, authenticated export/share, push (backend + app, flag-gated), IAP
+>   (`expo-iap`, store setup pending), account screens incl. deletion, store-readiness docs; Cloud Run
+>   staging + Android QA APK pipeline (GitHub Actions → Firebase App Distribution).
+> - **Verified:** cloud Android 34 + iOS simulator — sign-in → wizard → photo upload → AI draft → approve →
+>   finalize → PDF export/share, account isolation, profile save (STORE_RELEASE_READINESS §10.1); real
+>   Claude draft on staging (cautious wording; approval blocked without signature); staging push enabled.
+> - **Status:** QA APK release `03hc2qep8422o` on App Distribution (`qa-testers`). Staging =
+>   Cloud Run `flacronai-staging-api` (project `flacronai-staging-qa`). **PR #30 OPEN, NOT merged, GitHub
+>   reports CONFLICTING** — merging deploys prod; do not merge without client approval.
+> - **Main moved on (PRs #31–#36, 2026-10-17, other dev):** multicloud AWS/Azure/IBM pipelines + Stripe
+>   centralization (`app_id=flacron-ai`, billing ledger, new live webhook). Rebasing/merging main into
+>   PR #30 conflicts in `backend/routes/payment.js` and `backend/test/helpers/fakeFirestore.js`; also
+>   touches `.env.example`, `server.js`, `package-lock.json` (auto-merge). Staging Stripe sandbox config
+>   must be re-checked against the new `app_id` standard after integration.
+> - **Remaining:** resolve conflicts with main; device QA of submitted deletion, push delivery, camera,
+>   offline, tablets/a11y; Google sign-in (staging OAuth consent screen — console step); store purchases
+>   (App Store Connect/Play products, sandbox testers); iOS creds/APNs in EAS; roll exposed Stripe sandbox
+>   key; workspace-scoped Anthropic key for staging; store submission (needs approval).
+
 - **2026-10-08 — Phase 10: IN PROGRESS (not complete).** Cloud devices (Android 34 emulator + iOS
   simulator) passed sign-in → upload → AI draft → review → approve → export/share + isolation on BOTH
   platforms after fixing a real upload defect (Expo SDK 57 `expo/fetch` rejects RN `{uri}` parts). Profile
