@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { auth } from '../config/firebase.js';
 import { clearMfaAssertion, getMfaAssertion, notifyMfaRequired } from './mfaAssertion.js';
+import { getOfferHandoff, trackFeatureUsed, trackGrowthEvent } from '../lib/growthEngine.js';
 
 // Re-exported for existing call sites (AuthContext.jsx, MfaGate.jsx, Settings.jsx) --
 // the actual implementation lives in ./mfaAssertion.js (dependency-free, so it can be
@@ -139,6 +140,12 @@ export const authAPI = {
   mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
 };
 
+// Growth Engine adoption signal, sent only once the request succeeded.
+const usedFeature = (feature, properties) => (res) => {
+  trackFeatureUsed(feature, properties);
+  return res;
+};
+
 export const reportsAPI = {
   // Longer timeout than the client default: analyzing up to 100 photos (batched
   // vision calls) plus report generation can take well over 2 minutes.
@@ -150,7 +157,7 @@ export const reportsAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 300000,
       onUploadProgress,
-    }),
+    }).then(usedFeature('report_generated')),
   getAll: (params) => api.get('/reports', { params }),
   getDashboardSummary: () => api.get('/reports/dashboard-summary'),
   getOne: (id) => api.get(`/reports/${id}`),
@@ -162,12 +169,12 @@ export const reportsAPI = {
   // Review Photo Documentation) -- distinct from suggestSection above, which
   // now also backs the "Regenerate Section" instructed-rewrite workflow.
   assistSection: (id, data) => api.post(`/reports/${id}/sections/assist`, data),
-  approve: (id, data) => api.post(`/reports/${id}/approve`, data),
+  approve: (id, data) => api.post(`/reports/${id}/approve`, data).then(usedFeature('report_finalized')),
   versions: (id) => api.get(`/reports/${id}/versions`),
   listTemplates: () => api.get('/reports/templates'),
   saveTemplate: (data) => api.post('/reports/templates', data),
   deleteTemplate: (id) => api.delete(`/reports/templates/${id}`),
-  share: (id) => api.post(`/reports/${id}/share`),
+  share: (id) => api.post(`/reports/${id}/share`).then(usedFeature('report_shared')),
   revokeShare: (id) => api.delete(`/reports/${id}/share`),
   getShared: (token) => api.get(`/reports/shared/${token}`),
   // Phase 19 (Sharing Permissions, Expiry, Comments & Review Requests)
@@ -260,7 +267,7 @@ export const reportsAPI = {
     api.post(`/reports/${id}/property-lookup/intelligence`, data, { signal }),
   getPropertyIntelligence: (id) => api.get(`/reports/${id}/property-lookup/intelligence`),
   applyPropertyIntelligence: (id, data) => api.put(`/reports/${id}/property-intelligence`, data),
-  export: (id, data) => api.post(`/reports/${id}/export`, data),
+  export: (id, data) => api.post(`/reports/${id}/export`, data).then(usedFeature('report_exported', { format: data?.format })),
   getDownloadUrl: (id, filename) =>
     `${api.defaults.baseURL}/reports/${id}/download?file=${filename}`,
   download: (id, filename) =>
@@ -358,10 +365,19 @@ export const usersAPI = {
   // Phase 21 (Onboarding Flow)
   saveOnboardingStep: (data) => api.post('/users/onboarding/step', data),
   completeOnboarding: (data) => api.post('/users/onboarding/complete', data),
+  // Interactive app tour: { status: 'completed'|'skipped', source, version, lastStepId, stepsViewed, totalSteps }
+  saveProductTour: (data) => api.post('/users/product-tour', data),
 };
 
 export const paymentAPI = {
-  createCheckout: (tier) => api.post('/payment/create-checkout-session', { tier }),
+  // Carries a Growth Engine offer (code + fcge_ref) from the link the visitor came in on.
+  createCheckout: (tier) => {
+    const offer = getOfferHandoff();
+    return api.post('/payment/create-checkout-session', { tier, ...offer }).then((res) => {
+      if (res.data?.url) trackGrowthEvent('checkout_started', { plan: tier, ...(offer.promoCode ? { code: offer.promoCode } : {}) });
+      return res;
+    });
+  },
   confirmCheckout: (sessionId) => api.post('/payment/confirm-checkout', { sessionId }),
   getSubscription: () => api.get('/payment/current-subscription'),
   getInvoices: () => api.get('/payment/invoices'),

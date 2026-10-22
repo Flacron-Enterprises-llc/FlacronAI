@@ -44,6 +44,7 @@ const {
   describeKeyConfig,
 } = require('../config/stripeApp');
 const ledger = require('../services/billingLedger');
+const { resolveCheckoutDiscount, funnelMetadata, isDiscountRejection } = require('../utils/growthEngineFunnel');
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
@@ -246,8 +247,15 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
       });
     }
 
-    const checkoutMetadata = userMetadata(req.user.uid, { tier, plan: getBaseTier(tier) });
-    const session = await stripe.checkout.sessions.create({
+    // Growth Engine offers: an offer code from the funnel link is applied up
+    // front when it is ours; otherwise buyers can still enter one on Stripe.
+    const { options: discountOptions, appliedCode } = await resolveCheckoutDiscount(stripe, req.body.promoCode, APP_ID);
+    const checkoutMetadata = userMetadata(req.user.uid, {
+      tier,
+      plan: getBaseTier(tier),
+      ...funnelMetadata({ fcgeRef: req.body.fcgeRef, appliedCode }),
+    });
+    const sessionParams = {
       customer: customerId,
       client_reference_id: req.user.uid,
       payment_method_types: ['card'],
@@ -257,7 +265,20 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
       cancel_url: `${process.env.FRONTEND_URL}/pricing?cancelled=true`,
       metadata: checkoutMetadata,
       subscription_data: { metadata: checkoutMetadata },
-    });
+    };
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({ ...sessionParams, ...discountOptions });
+    } catch (err) {
+      if (!discountOptions.discounts || !isDiscountRejection(err)) throw err;
+      const { promo_code: _rejected, ...metadata } = checkoutMetadata;
+      session = await stripe.checkout.sessions.create({
+        ...sessionParams,
+        metadata,
+        subscription_data: { metadata },
+        allow_promotion_codes: true,
+      });
+    }
 
     return res.json({ success: true, sessionId: session.id, url: session.url });
   } catch (err) {

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import Seo from '../components/Seo.jsx';
 import { ORGANIZATION_JSONLD } from '../data/structuredData.js';
 import ConsentCheckbox, { buildConsent } from '../components/ConsentCheckbox.jsx';
+import { identifyGrowthUser, trackGrowthEvent } from '../lib/growthEngine.js';
 
 const SUBJECTS = [
   'General Inquiry',
@@ -42,6 +43,10 @@ export default function Contact() {
     setLoading(true);
     try {
       await salesAPI.contact({ ...form, consent: buildConsent(false) });
+      if (form.subject === 'Enterprise Sales') {
+        identifyGrowthUser({ email: form.email.trim().toLowerCase(), name: form.name });
+        trackGrowthEvent('demo_requested', { topic: 'enterprise' });
+      }
       setSuccess(true);
       setConsent(false);
     } catch {

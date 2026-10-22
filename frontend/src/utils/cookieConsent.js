@@ -13,7 +13,9 @@ export const COOKIE_CONSENT_KEY = 'flacron_cookie_consent';
 // Bump this whenever the cookie categories or policy materially change. A stored
 // consent with an older version is treated as "not yet decided" so the banner
 // re-appears and we re-collect consent. Keep in sync with the Cookies Policy date.
-export const COOKIE_POLICY_VERSION = '2026-03-01';
+// 2026-10-22: analytics now includes the Flacron Growth Engine (usage linked to
+// your account once signed in, plus the support chat), so earlier choices are re-asked.
+export const COOKIE_POLICY_VERSION = '2026-10-22';
 
 // Event other components can listen for to react to consent changes (e.g. the
 // banner closing, analytics booting). Also used by the footer link to open the
@@ -34,7 +36,7 @@ export const COOKIE_CATEGORIES = [
     label: 'Analytics',
     required: false,
     description:
-      'Help us understand how the platform is used so we can improve it. Anonymized; no ad targeting.',
+      'Help us understand how the platform is used so we can improve it and send relevant product emails, and enable the in-app support chat (Flacron Growth Engine, our own platform). Once you sign in, usage is linked to your account. No ad targeting.',
   },
   {
     id: 'preferences',

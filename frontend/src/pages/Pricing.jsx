@@ -339,6 +339,7 @@ export default function Pricing() {
                   </div>
                   <button
                     onClick={() => handleCheckout(plan.id)}
+                    data-fcge-upgrade={plan.id === 'starter' ? undefined : plan.id}
                     disabled={loadingTier === plan.id || (currentTier === plan.id)}
                     className={`w-full py-2.5 rounded-xl font-semibold text-sm text-gray-900 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                       plan.id === 'starter' ? 'bg-gray-100 hover:bg-gray-100' :

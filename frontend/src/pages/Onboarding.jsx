@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { usersAPI, teamsAPI } from '../services/api.js';
 import { ONBOARDING_USER_TYPES, ONBOARDING_VOLUMES, ONBOARDING_LAST_STEP } from '../utils/onboarding.js';
 import Seo from '../components/Seo.jsx';
+import { trackGrowthEvent } from '../lib/growthEngine.js';
 
 // Phase 21 (Onboarding Flow). Step numbering is fixed (0-4) regardless of
 // team-invite eligibility -- the step ITSELF (3) is simply omitted from the
@@ -164,6 +165,7 @@ const Onboarding = () => {
     setError(null);
     try {
       await usersAPI.completeOnboarding({});
+      trackGrowthEvent('onboarding_completed');
       await refreshProfile();
       // Dashboard.jsx reads this the same way it already reads ?openReport=
       // -- clears the query param and opens the generate wizard directly.
