@@ -69,7 +69,7 @@ test('buildMoldStaticSections renders Report Information / Insured Information /
 | Named Insured | Priya Nair |
 | Property Address | 58 Cedar Hollow Drive, Cedar Park, TX 78613 |
 | Date of Discovery | 2024-07-19 |
-| Report Type | Preliminary Visual Assessment — AI-assisted draft |
+| Report Type | Preliminary Visual Assessment — Super Intelligence-assisted draft |
 | Report Date | ${reportDate} |`
   );
 

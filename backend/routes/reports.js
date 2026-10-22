@@ -4380,7 +4380,7 @@ router.post(
   // line-item entry via PUT /:id/canonical-estimate is unaffected.
   requireTierFeature(
     'aiPricing',
-    'AI pricing suggestions are available on Professional plans and above. You can still enter prices manually.'
+    'Super Intelligence pricing suggestions are available on Professional plans and above. You can still enter prices manually.'
   ),
   pricingLimiter,
   async (req, res) => {

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import TierBadge from './TierBadge';
+import { useTour } from '../tour/TourContext.jsx';
 
 const TIER_LIMITS = { starter: 5, professional: 50, agency: 200, enterprise: -1 };
 
@@ -16,9 +17,13 @@ const TIER_LIMITS = { starter: 5, professional: 50, agency: 200, enterprise: -1 
 // without a full navigation -- every other page falls back to routing to
 // /dashboard for those tab-only items since they have no dedicated route.
 const DashboardSidebar = ({ activeId, onSelectView }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const { user, userProfile, tier, reportsRemaining } = useAuth();
+  // On mobile the sidebar is off-canvas; the app tour slides it in while it
+  // points at something in here, so every step highlights the real control.
+  const { step: tourStep } = useTour();
+  const sidebarOpen = menuOpen || tourStep?.surface === 'sidebar';
 
   const tierLimit = TIER_LIMITS[tier] ?? 1;
   const usedThisMonth = userProfile?.reportsThisMonth || 0;
@@ -41,7 +46,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
   ];
 
   const handleSelect = (link) => {
-    setSidebarOpen(false);
+    setMenuOpen(false);
     if (link.href) {
       navigate(link.href);
     } else if (onSelectView) {
@@ -58,7 +63,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
           type="button"
           aria-label="Close dashboard navigation"
           className="fixed inset-0 top-16 z-40 bg-black/35 backdrop-blur-[1px] md:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setMenuOpen(false)}
         />
       )}
 
@@ -74,7 +79,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
           </p>
           <button
             type="button"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => setMenuOpen(false)}
             className="rounded-xl border border-gray-200 bg-bg p-2 text-gray-600 shadow-sm"
             aria-label="Close dashboard navigation"
           >
@@ -83,7 +88,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
         </div>
 
         {/* Profile Card */}
-        <div className="shrink-0 rounded-2xl overflow-hidden border border-gray-200 bg-bg">
+        <div data-tour="usage-card" className="shrink-0 rounded-2xl overflow-hidden border border-gray-200 bg-bg">
           {/* Banner */}
           <div className="h-16 relative bg-gradient-to-br from-brand-500 via-brand-400 to-amber-400">
             <div className="absolute inset-0 opacity-20"
@@ -151,6 +156,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
         <nav className="shrink-0 flex flex-col gap-0.5">
           {navLinks.map(link => (
             <button key={link.id}
+              data-tour={`nav-${link.id}`}
               onClick={() => handleSelect(link)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 activeId === link.id
@@ -170,7 +176,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
             <p className="text-[10px] text-gray-500 leading-relaxed mb-3">
               Starter plan: {tierLimit} report/mo with watermark. Upgrade for more.
             </p>
-            <button onClick={() => navigate('/pricing')}
+            <button onClick={() => navigate('/pricing')} data-fcge-upgrade="any"
               className="w-full bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
               <Star className="w-3 h-3" /> Upgrade Plan
             </button>
@@ -179,7 +185,7 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
         {tier === 'professional' && (
           <div className="shrink-0 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
             <p className="text-[10px] font-semibold text-blue-700 mb-2">Professional Plan</p>
-            <button onClick={() => navigate('/pricing')}
+            <button onClick={() => navigate('/pricing')} data-fcge-upgrade="agency"
               className="w-full border border-blue-200 text-blue-600 hover:bg-blue-100 text-xs font-medium py-1.5 rounded-lg transition-colors">
               View Agency Plan
             </button>
@@ -190,7 +196,8 @@ const DashboardSidebar = ({ activeId, onSelectView }) => {
       {/* Mobile: floating trigger to reopen the sidebar */}
       <button
         type="button"
-        onClick={() => setSidebarOpen(true)}
+        data-tour="sidebar-toggle"
+        onClick={() => setMenuOpen(true)}
         className="fixed bottom-5 left-4 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-700 text-white shadow-lg shadow-navy-900/20 md:hidden"
         aria-label="Open dashboard navigation"
         aria-expanded={sidebarOpen}

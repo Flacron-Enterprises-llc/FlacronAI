@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users, Search, Image as ImageIcon, Sun, Moon } from 'lucide-react';
+import { Menu, X, Zap, ChevronDown, LogOut, Settings, Users, Search, Image as ImageIcon, Sun, Moon, HelpCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import TierBadge from './TierBadge.jsx';
 import NotificationBell from './NotificationBell.jsx';
+import { startProductTour } from '../tour/tourEvents.js';
 
 // Phase 20: a visible trigger for GlobalSearch (mounted once near the app
 // root -- see App.jsx) since it can't be opened by CMD/CTRL+K discovery
@@ -197,6 +198,7 @@ const Navbar = ({
             {showAsSignedIn ? (
               <div className="relative" ref={userMenuRef}>
                 <button
+                  data-tour="account-menu"
                   onClick={() => setUserMenuOpen(p => !p)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors"
                 >
@@ -238,6 +240,14 @@ const Navbar = ({
                           <Settings className="w-4 h-4 text-gray-400" />
                           Settings
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => { setUserMenuOpen(false); startProductTour(); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <HelpCircle className="w-4 h-4 text-gray-400" />
+                          Replay app tour
+                        </button>
                       </div>
                       <div className="border-t border-gray-200 py-1">
                         <button
@@ -277,6 +287,7 @@ const Navbar = ({
               </>
             )}
             <button
+              data-tour="mobile-menu"
               className="p-2 text-gray-600 hover:text-gray-900"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
@@ -364,6 +375,14 @@ const Navbar = ({
                     <Link to="/dashboard" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Dashboard</Link>
                     <Link to="/photos" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Photo Library</Link>
                     <Link to="/settings" className="block px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">Settings</Link>
+                    <button
+                      type="button"
+                      onClick={() => { setMobileOpen(false); startProductTour(); }}
+                      className="w-full text-left px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm flex items-center gap-2"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                      Replay app tour
+                    </button>
                     <button
                       onClick={logout}
                       className="w-full text-left px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm flex items-center gap-2"

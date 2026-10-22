@@ -51,7 +51,7 @@ export function OverviewTab({ report }: { report: Report }) {
             Draft content
           </ThemedText>
           <ThemedText variant="caption" color="muted" style={styles.disclaimer}>
-            AI-generated draft for licensed-adjuster review — not a final professional determination.
+            Super Intelligence draft for licensed-adjuster review — not a final professional determination.
           </ThemedText>
           <View style={[styles.card, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.card }]}>
             <ThemedText variant="body">{report.content || 'No content yet.'}</ThemedText>

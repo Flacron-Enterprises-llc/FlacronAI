@@ -310,7 +310,7 @@ test('buildEstimateContent renders the line item table, totals row, and revision
   assert.match(content, /## REVISION HISTORY/);
   assert.match(content, /Rev\. 0 \| 2024-03-26 \| Initial estimate created \| \$20,871\.13/);
   // Golden Rule #2: explicit AI-never-computes-dollars disclosure present.
-  assert.match(content, /FlacronAI's AI does not generate, calculate, or determine any dollar amount/);
+  assert.match(content, /FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount/);
   assert.match(content, /Not a final report until reviewed and approved by a licensed adjuster/);
 });
 

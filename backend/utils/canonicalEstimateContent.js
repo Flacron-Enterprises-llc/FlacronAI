@@ -179,7 +179,7 @@ const buildSection7DetailMarkdown = (estimate, { reportStatus } = {}) => {
       .join('\n')}`
   );
   parts.push(
-    "*Overhead & profit is calculated on direct cost and is not automatically included in the sales-tax taxable basis under the current calculation rules. Every figure above is computed by the server from the line items entered in the estimate editor -- FlacronAI's AI does not generate, calculate, or determine any dollar amount in this breakdown.*"
+    "*Overhead & profit is calculated on direct cost and is not automatically included in the sales-tax taxable basis under the current calculation rules. Every figure above is computed by the server from the line items entered in the estimate editor -- FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount in this breakdown.*"
   );
 
   return parts.join('\n\n');

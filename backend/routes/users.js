@@ -27,6 +27,7 @@ const {
   isValidOnboardingStep,
   ONBOARDING_LAST_STEP,
 } = require('../utils/onboarding');
+const { buildTourUpdate } = require('../utils/productTour');
 
 const logoUpload = multer({
   storage: multer.memoryStorage(),
@@ -256,6 +257,25 @@ router.post('/onboarding/complete', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[Onboarding] complete error for uid', req.user?.uid, ':', err.message);
     return res.status(500).json({ success: false, error: 'Failed to complete onboarding', code: 'ONBOARDING_COMPLETE_ERROR' });
+  }
+});
+
+// POST /api/users/product-tour — records that the caller finished or skipped
+// the interactive app tour, so the dashboard doesn't start it by itself again
+// (Help -> "Replay app tour" still can). Own doc only, like onboarding above.
+router.post('/product-tour', authenticateToken, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('users').doc(req.user.uid);
+    const doc = await ref.get();
+    const result = buildTourUpdate(req.body, doc.exists ? doc.data().productTour : undefined);
+    if (result.error) return res.status(400).json({ success: false, error: result.error, code: result.code });
+
+    await ref.set({ productTour: result.productTour, updatedAt: new Date().toISOString() }, { merge: true });
+    return res.json({ success: true, productTour: result.productTour });
+  } catch (err) {
+    console.error('[ProductTour] update error for uid', req.user?.uid, ':', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to save tour progress', code: 'PRODUCT_TOUR_ERROR' });
   }
 });
 

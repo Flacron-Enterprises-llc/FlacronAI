@@ -595,7 +595,7 @@ export default function SectionedReportEditor({ reportId, value, onChange, disab
           <p className="text-xs text-gray-400">Missing standard sections: {availableDefaults.join(', ')}</p>
         )}
       </div>
-      <p className="text-xs text-gray-500">AI proposals stay separate until you Apply/Approve them. Applied edits still require Save Changes and final human approval.</p>
+      <p className="text-xs text-gray-500">Super Intelligence proposals stay separate until you Apply/Approve them. Applied edits still require Save Changes and final human approval.</p>
     </div>
   );
 }

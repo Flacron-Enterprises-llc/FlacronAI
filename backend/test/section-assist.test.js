@@ -78,7 +78,7 @@ test('check_consistency includes the full report content for cross-section compa
     fullContent: '## SECTION 3: PROPERTY INFO\nA distinctive marker string XYZ123',
   });
   assert.match(prompt, /XYZ123/);
-  assert.match(prompt, /AI Review Notes — Consistency Check:/);
+  assert.match(prompt, /Super Intelligence Review Notes — Consistency Check:/);
 });
 
 test('review_photos includes the per-photo documentation summary', () => {
@@ -89,7 +89,7 @@ test('review_photos includes the per-photo documentation summary', () => {
     photosSummary: '1. [approved] Interior - Kitchen — Water Damage: staining visible',
   });
   assert.match(prompt, /Interior - Kitchen/);
-  assert.match(prompt, /AI Review Notes — Photo Documentation:/);
+  assert.match(prompt, /Super Intelligence Review Notes — Photo Documentation:/);
 });
 
 test('an unknown action throws rather than silently falling through', () => {

@@ -52,7 +52,7 @@ ${rows}
 |  |  |  |  | ${taxLabel} | ${formatMoney(totals.tax)} |
 |  |  |  |  | TOTAL ESTIMATE (Draft) | ${formatMoney(totals.grandTotal)} |
 
-*Pricing shown reflects the quantities, unit rates, and percentages entered by the preparing adjuster/estimator. FlacronAI's AI does not generate, calculate, or determine any dollar amount in this estimate -- every total above is computed automatically from the entered inputs. This estimate does not constitute a coverage determination.*`;
+*Pricing shown reflects the quantities, unit rates, and percentages entered by the preparing adjuster/estimator. FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount in this estimate -- every total above is computed automatically from the entered inputs. This estimate does not constitute a coverage determination.*`;
 };
 
 const depreciationSection = ({ depreciationSchedule }) => {
@@ -94,7 +94,7 @@ const signOffSection = () => `## ADJUSTER REVIEW & SIGN-OFF
 
 Reviewed & approved by (licensed adjuster / estimator): ______________________
 
-*This is an AI-assisted DRAFT repair estimate. Every dollar amount above is calculated automatically, in code, from the quantities, rates, and percentages entered above -- FlacronAI's AI does not generate, calculate, or determine any dollar amount anywhere in this document. Not a final report until reviewed and approved by a licensed adjuster.*`;
+*This is a Super Intelligence-assisted DRAFT repair estimate. Every dollar amount above is calculated automatically, in code, from the quantities, rates, and percentages entered above -- FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount anywhere in this document. Not a final report until reviewed and approved by a licensed adjuster.*`;
 
 // Assembles the full markdown `content` string for a Repair Estimate report
 // document. `computed` is the object returned by

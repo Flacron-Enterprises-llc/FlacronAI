@@ -12,6 +12,7 @@ import Seo from '../components/Seo.jsx';
 import useEscapeToClose from '../hooks/useEscapeToClose';
 import { getAdminEmail } from '../utils/adminEmail.js';
 import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
+import { identifyGrowthUser, trackGrowthEvent } from '../lib/growthEngine.js';
 
 // Version of the Terms + Privacy Policy a user agrees to at sign-up. Matches the
 // "Last updated" date shown on both /terms-of-service and /privacy-policy. Bump
@@ -173,6 +174,7 @@ const Auth = () => {
     // Small delay to ensure Firebase has synced
     await new Promise(r => setTimeout(r, 500));
     if (auth.currentUser?.emailVerified) {
+      trackGrowthEvent('email_verified');
       await handlePostAuth();
     } else {
       setAuthState('verifying');
@@ -194,7 +196,9 @@ const Auth = () => {
         const lastName = form.lastName.trim();
         const company = form.company.trim();
         const displayName = `${firstName} ${lastName}`.trim();
-        await register(form.email, form.password, displayName);
+        const registered = await register(form.email, form.password, displayName);
+        identifyGrowthUser({ id: registered.user.uid, email: form.email.trim().toLowerCase(), name: displayName, firstName, lastName, company });
+        trackGrowthEvent('user_registered', { method: 'email', plan: pendingPlan || 'starter' });
         toast.success('Account created! Please verify your email.');
         // Record the Terms + Privacy acceptance server-side (auditable). The auth
         // user now exists, so the request carries a valid token. Non-blocking —
@@ -249,6 +253,8 @@ const Auth = () => {
       // Privacy acceptance for first-time users (auditable), regardless of which
       // tab they used. Non-blocking.
       if (getAdditionalUserInfo(result)?.isNewUser) {
+        identifyGrowthUser({ id: result.user.uid, email: result.user.email, name: result.user.displayName });
+        trackGrowthEvent('user_registered', { method: 'google', plan: pendingPlan || 'starter' });
         usersAPI.recordRegistrationConsent(REGISTRATION_POLICY_VERSION).catch((err) => {
           console.error('Failed to record registration consent:', err?.response?.data || err.message);
         });

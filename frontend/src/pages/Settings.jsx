@@ -6,7 +6,7 @@ import {
   User, Lock, Key, Bell, CreditCard, Eye, EyeOff, Plus,
   Trash2, Copy, Check, AlertTriangle, ExternalLink, Download, X,
   Shield, ShieldCheck, RefreshCw, Mail, History, MapPin, Monitor,
-  Building2, Palette, Database, Info,
+  Building2, Palette, Database, Info, LifeBuoy, PlayCircle, MessageCircle, BookOpen,
 } from 'lucide-react';
 import {
   reauthenticateWithCredential,
@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { usersAPI, paymentAPI, authAPI, reportsAPI, clearMfaAssertion } from '../services/api';
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
+import { startProductTour } from '../tour/tourEvents.js';
 
 // Phase 18 (Settings Completion): the spec's 7-tab structure (Profile/
 // Organization/Branding/Notifications/Security/Data/API), plus the
@@ -36,6 +37,7 @@ const TABS = [
   { id: 'data', label: 'Data', icon: Database },
   { id: 'api-keys', label: 'API', icon: Key },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'help', label: 'Help', icon: LifeBuoy },
 ];
 
 function KeyModal({ apiKey, onClose }) {
@@ -650,6 +652,51 @@ export default function Settings() {
                       {profileLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       {profileLoading ? 'Saving...' : 'Save Changes'}
                     </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Help Tab: replay the interactive app tour, plus where to get answers */}
+              {activeTab === 'help' && (
+                <motion.div key="help" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
+                  <div className="card p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="w-11 h-11 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
+                        <PlayCircle className="w-5 h-5 text-brand-500" />
+                      </div>
+                      <div className="flex-1">
+                        <h2 className="text-lg font-semibold text-gray-900">App tour</h2>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                          A one-minute, step-by-step walkthrough of the dashboard, tailored to your plan and role.
+                          {userProfile?.productTour?.completedAt && (
+                            <> You finished it on {new Date(userProfile.productTour.completedAt).toLocaleDateString()}.</>
+                          )}
+                        </p>
+                      </div>
+                      <button type="button" onClick={startProductTour} className="btn-primary inline-flex items-center justify-center gap-2 shrink-0">
+                        <PlayCircle className="w-4 h-4" />
+                        Replay app tour
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Get help</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <a href="/faqs" className="flex items-start gap-3 rounded-xl border border-gray-200 p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors">
+                        <BookOpen className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-900">FAQs</span>
+                          <span className="block text-xs text-gray-500 mt-0.5">Plans, reports, exports and data security.</span>
+                        </span>
+                      </a>
+                      <a href="/contact" className="flex items-start gap-3 rounded-xl border border-gray-200 p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors">
+                        <MessageCircle className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-900">Contact support</span>
+                          <span className="block text-xs text-gray-500 mt-0.5">Or chat with us from the bubble in the corner (shown when analytics cookies are allowed).</span>
+                        </span>
+                      </a>
+                    </div>
                   </div>
                 </motion.div>
               )}

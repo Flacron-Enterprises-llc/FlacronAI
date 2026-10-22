@@ -908,7 +908,7 @@ const FLOOD_NARRATIVE_KEYS = [
 // fully represent federal NFIP requirements, and is not an official coverage
 // or claim determination.
 const NFIP_FIXED_DISCLAIMER =
-  'This is an AI-drafted inspection document for a flood (NFIP) loss. It does not fully represent all National Flood Insurance Program (NFIP) federal claims-handling requirements and is not an official coverage or claim determination -- coverage and claim determinations under the NFIP policy are made by the carrier in accordance with the Standard Flood Insurance Policy and applicable federal guidance.';
+  'This is an inspection document drafted by Super Intelligence for a flood (NFIP) loss. It does not fully represent all National Flood Insurance Program (NFIP) federal claims-handling requirements and is not an official coverage or claim determination -- coverage and claim determinations under the NFIP policy are made by the carrier in accordance with the Standard Flood Insurance Policy and applicable federal guidance.';
 
 const FLOOD_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
 - Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
@@ -1226,7 +1226,7 @@ const THEFT_NARRATIVE_KEYS = [
 // what items existed, were stolen, or their value -- that is established
 // solely by the insured's contents inventory and the police report.
 const THEFT_FIXED_DISCLAIMER =
-  "This is an AI-drafted inspection document for a theft/burglary loss. It documents visible structural entry-point damage only. Whether specific items existed prior to the loss, were stolen, and their value are not determined by this draft -- those are established solely by the insured's itemized contents inventory and the police incident report, as confirmed by the reviewing adjuster.";
+  "This is an inspection document drafted by Super Intelligence for a theft/burglary loss. It documents visible structural entry-point damage only. Whether specific items existed prior to the loss, were stolen, and their value are not determined by this draft -- those are established solely by the insured's itemized contents inventory and the police incident report, as confirmed by the reviewing adjuster.";
 
 const THEFT_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
 - Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
@@ -1711,7 +1711,7 @@ const assembleVehicleReport = (staticSections, narrative, imageAnalysis, photoCo
 
   return `# VEHICLE DAMAGE INSPECTION REPORT
 
-> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. This is an AI-drafted inspection document for a vehicle damage claim. It documents visible panel conditions only, based on the photos provided. This draft does not determine repairability, total-loss status, coverage, or final repair costs -- those determinations are made by a licensed auto damage appraiser and the carrier's total-loss evaluation process.
+> Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. This is an inspection document drafted by Super Intelligence for a vehicle damage claim. It documents visible panel conditions only, based on the photos provided. This draft does not determine repairability, total-loss status, coverage, or final repair costs -- those determinations are made by a licensed auto damage appraiser and the carrier's total-loss evaluation process.
 
 ${staticSections.insuredInfo}
 
@@ -1812,7 +1812,7 @@ const MOLD_NARRATIVE_KEYS = ['visualObservations', 'recommendedNextSteps'];
 // generated Mold supplement regardless of what the AI narrative says.
 const MOLD_SCOPE_NOTICE = `## SECTION 4: IMPORTANT NOTICE — SCOPE OF THIS REPORT
 
-**This is a preliminary AI-drafted visual observation. It is NOT a certified mold assessment.** It is intended to flag the need for professional evaluation and to help the adjuster route the claim appropriately. It does NOT include:
+**This is a preliminary visual observation drafted by Super Intelligence. It is NOT a certified mold assessment.** It is intended to flag the need for professional evaluation and to help the adjuster route the claim appropriately. It does NOT include:
 
 - Species identification (e.g., Stachybotrys, Aspergillus, Penicillium) — visual appearance alone cannot determine mold species.
 - Air quality or surface sampling results, or any determination of health risk or habitability.
@@ -1822,7 +1822,7 @@ const MOLD_SCOPE_NOTICE = `## SECTION 4: IMPORTANT NOTICE — SCOPE OF THIS REPO
 These determinations require a certified mold assessor licensed in the applicable jurisdiction, and/or the reviewing adjuster and carrier. This report's role is limited to flagging visible conditions for professional follow-up.`;
 
 const MOLD_AI_DISCLOSURE =
-  "AI DISCLOSURE: This report was generated by the Flacron Engine, FlacronAI's automated drafting engine. It is a preliminary visual observation, not a certified mold assessment. Every AI-drafted observation in this document is subject to review by a licensed adjuster and a certified mold assessor before any remediation is authorized.";
+  "SUPER INTELLIGENCE DISCLOSURE: This report was generated by the Flacron Engine, FlacronAI's automated drafting engine. It is a preliminary visual observation, not a certified mold assessment. Every observation drafted by Super Intelligence in this document is subject to review by a licensed adjuster and a certified mold assessor before any remediation is authorized.";
 
 const MOLD_LANGUAGE_RULES = `CRITICAL LANGUAGE & SCOPE RULES (follow in every section):
 - Use cautious, observational language: "appears", "may indicate", "is consistent with", "the adjuster should verify", "subject to confirmation". Never state conclusions as established fact.
@@ -1942,7 +1942,7 @@ const buildMoldStaticSections = (reportData) => {
 | Named Insured | ${insuredName} |
 | Property Address | ${propertyAddress} |
 | Date of Discovery | ${dateOfDiscovery} |
-| Report Type | Preliminary Visual Assessment — AI-assisted draft |
+| Report Type | Preliminary Visual Assessment — Super Intelligence-assisted draft |
 | Report Date | ${reportDate} |`;
 
   const insuredInfo = `## SECTION 2: INSURED INFORMATION
@@ -1980,7 +1980,7 @@ const assembleMoldReport = (staticSections, narrative, imageAnalysis, photoCount
 
   return `# MOLD ASSESSMENT — PRELIMINARY REPORT
 
-> DRAFT — PENDING ADJUSTER & ASSESSOR REVIEW. Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. AI-drafted observations only — not a certified mold assessment.
+> DRAFT — PENDING ADJUSTER & ASSESSOR REVIEW. Prepared with the FLACRON ENGINE for review and approval by a licensed insurance adjuster. Observations drafted by Super Intelligence only — not a certified mold assessment.
 
 ${staticSections.reportInfo}
 
@@ -2690,11 +2690,11 @@ const buildAssistPrompt = ({
     case 'rewrite_professional':
       return `${header}\nRewrite this section entirely in a more formal, professional insurance-industry tone and structure, keeping all existing facts. Return only the rewritten section body, no heading or commentary.\n${SHARED_ASSIST_RULES}`;
     case 'check_consistency':
-      return `${header}\nFULL DRAFT REPORT (for cross-section comparison only):\n${(fullContent || '').slice(0, 6000)}\n\nCompare this section against the rest of the draft report above and identify any factual inconsistencies (e.g. a date, address, or damage description that doesn't match what's stated elsewhere). Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "AI Review Notes — Consistency Check:" that lists each inconsistency found (or states "No inconsistencies were identified between this section and the rest of the draft." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
+      return `${header}\nFULL DRAFT REPORT (for cross-section comparison only):\n${(fullContent || '').slice(0, 6000)}\n\nCompare this section against the rest of the draft report above and identify any factual inconsistencies (e.g. a date, address, or damage description that doesn't match what's stated elsewhere). Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "Super Intelligence Review Notes — Consistency Check:" that lists each inconsistency found (or states "No inconsistencies were identified between this section and the rest of the draft." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
     case 'check_missing_info':
-      return `${header}\nReview this section for information a licensed adjuster would typically expect but that appears missing or incomplete (e.g. a measurement, an affected material, a date). Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "AI Review Notes — Missing Information:" that lists what appears missing (or states "No obviously missing information was identified in this section." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
+      return `${header}\nReview this section for information a licensed adjuster would typically expect but that appears missing or incomplete (e.g. a measurement, an affected material, a date). Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "Super Intelligence Review Notes — Missing Information:" that lists what appears missing (or states "No obviously missing information was identified in this section." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
     case 'review_photos':
-      return `${header}\nPER-PHOTO DOCUMENTATION STATE (from the reviewer's photo review):\n${photosSummary || '(no photo review data available for this report)'}\n\nReview this section against the photo documentation state above and identify gaps -- e.g. damage mentioned in the text with no supporting photo, or reviewed/approved photo observations not reflected in this section's narrative. Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "AI Review Notes — Photo Documentation:" listing gaps found (or stating "Photo documentation appears consistent with this section." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
+      return `${header}\nPER-PHOTO DOCUMENTATION STATE (from the reviewer's photo review):\n${photosSummary || '(no photo review data available for this report)'}\n\nReview this section against the photo documentation state above and identify gaps -- e.g. damage mentioned in the text with no supporting photo, or reviewed/approved photo observations not reflected in this section's narrative. Return the ORIGINAL section text UNCHANGED, followed by a new final paragraph starting exactly with "Super Intelligence Review Notes — Photo Documentation:" listing gaps found (or stating "Photo documentation appears consistent with this section." if none). Return only the section body plus that appended note, no heading or extra commentary.\n${SHARED_ASSIST_RULES}`;
     default:
       throw new Error(`Unknown section assist action: ${action}`);
   }

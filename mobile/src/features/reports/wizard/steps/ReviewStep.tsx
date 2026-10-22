@@ -27,7 +27,7 @@ export function ReviewStep({ fields, readyPhotoCount, submitError }: ReviewStepP
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
       <ThemedText variant="body" color="muted" style={styles.intro}>
-        Review before generating. FlacronAI will produce an AI-assisted draft — a licensed adjuster must review and approve it before
+        Review before generating. FlacronAI will produce a Super Intelligence-assisted draft — a licensed adjuster must review and approve it before
         it counts as final.
       </ThemedText>
 

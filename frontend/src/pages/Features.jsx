@@ -27,7 +27,7 @@ const FEATURE_SECTIONS = [
     desc: 'Upload damage photos per report — capacity scales with your plan, up to unlimited on Enterprise. Each one is analyzed for visible conditions and made available for structured, per-photo review.',
     bullets: [
       'Location, category, severity, and observation per photo',
-      'Accept, edit, exclude, or add a note to any AI-flagged observation',
+      'Accept, edit, exclude, or add a note to any observation flagged by Super Intelligence',
       'Original photo preserved untouched alongside an optimized display copy and thumbnail',
     ],
     link: { to: '/photo-analysis', label: 'See the full photo analysis workflow' },
@@ -130,7 +130,7 @@ export default function Features() {
     <div className="min-h-screen bg-bg">
       <Seo
         title="Features — FlacronAI"
-        description="Automated report drafting, full-photo-set analysis, a rich-text editor with AI writing assistance, templates, CRM, white-label, a developer API, analytics, and server-enforced security."
+        description="Automated report drafting, full-photo-set analysis, a rich-text editor with Super Intelligence writing assistance, templates, CRM, white-label, a developer API, analytics, and server-enforced security."
         path="/features"
       />
       <Navbar />

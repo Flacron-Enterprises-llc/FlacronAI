@@ -6,6 +6,8 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import CookieConsent from './components/CookieConsent.jsx';
+import GrowthEngineTracker from './components/GrowthEngineTracker.jsx';
+import { TourProvider } from './tour/TourContext.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -13,8 +15,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <App />
+          <TourProvider>
+            <App />
+          </TourProvider>
           <CookieConsent />
+          <GrowthEngineTracker />
           <Toaster
             position="top-right"
             containerStyle={{ top: 84, zIndex: 9999 }}
