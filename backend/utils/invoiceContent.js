@@ -69,7 +69,7 @@ const totalsSection = ({ totals, taxRatePercent }) => `## INVOICE TOTALS
 | Payments Received (see history below) | (${formatMoney(totals.paymentsReceivedTotal)}) |
 | **TOTAL DUE** | **${formatMoney(totals.balanceDue)}** |
 
-*FlacronAI's AI does not generate, calculate, or determine any dollar amount in this invoice -- every figure above is computed automatically, in code, from the linked Repair Estimate's reused line items and the payment/tax data entered above.*`;
+*FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount in this invoice -- every figure above is computed automatically, in code, from the linked Repair Estimate's reused line items and the payment/tax data entered above.*`;
 
 const paymentHistorySection = ({ paymentHistory }) => {
   if (!paymentHistory.length) {
@@ -117,7 +117,7 @@ const signOffSection = () => `## ADJUSTER REVIEW & SIGN-OFF
 
 Reviewed & approved by (licensed adjuster / authorized reviewer): ______________________
 
-*This is an AI-assisted DRAFT invoice. Every dollar amount above is calculated automatically, in code, from the linked Repair Estimate's reused line items and the payment/tax/change-order data entered above -- FlacronAI's AI does not generate, calculate, or determine any dollar amount anywhere in this document. This is not a request for payment until reviewed and approved. Not a final document until reviewed and approved by a licensed adjuster.*`;
+*This is a Super Intelligence-assisted DRAFT invoice. Every dollar amount above is calculated automatically, in code, from the linked Repair Estimate's reused line items and the payment/tax/change-order data entered above -- FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount anywhere in this document. This is not a request for payment until reviewed and approved. Not a final document until reviewed and approved by a licensed adjuster.*`;
 
 // Assembles the full markdown `content` string for an Invoice report
 // document. `computed` is the object returned by

@@ -19,7 +19,7 @@ const WORKFLOW = [
   {
     icon: Eye,
     title: 'Review every finding',
-    desc: 'Nothing reaches the draft unreviewed. Accept, edit, or exclude any AI-flagged observation, or add your own note — photo by photo, in a dedicated review UI.',
+    desc: 'Nothing reaches the draft unreviewed. Accept, edit, or exclude any observation flagged by Super Intelligence, or add your own note — photo by photo, in a dedicated review UI.',
   },
   {
     icon: Layers,

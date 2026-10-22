@@ -383,7 +383,7 @@ const steps = [
   { num: '01', title: 'Add Claim & Property Details', desc: 'Enter claim, property, and loss information — policy number, insured details, and inspection notes.' },
   { num: '02', title: 'Upload Inspection Photos', desc: 'Add damage photos plus supporting documents — your plan\'s photo allowance applies. Uploads are validated and organized automatically.' },
   { num: '03', title: 'The FLACRON ENGINE Drafts It', desc: 'Submitted photos and documentation are analyzed in the background and assembled into a structured draft.' },
-  { num: '04', title: 'Review Every Observation', desc: 'Accept, edit, or exclude each AI-flagged observation, photo by photo, before it becomes part of the report.' },
+  { num: '04', title: 'Review Every Observation', desc: 'Accept, edit, or exclude each observation flagged by Super Intelligence, photo by photo, before it becomes part of the report.' },
   { num: '05', title: 'Edit in the Report Editor', desc: 'Refine language, reorder sections, and use FLACRON ENGINE writing assistance in a full rich-text editor.' },
   { num: '06', title: 'Approve & Export', desc: 'A qualified reviewer signs off, then exports to PDF, DOCX, or HTML — or shares a secure link.' },
 ];

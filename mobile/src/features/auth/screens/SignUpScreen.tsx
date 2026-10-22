@@ -122,7 +122,7 @@ export function SignUpScreen() {
       <View style={styles.header}>
         <ThemedText variant="heading">Create your account</ThemedText>
         <ThemedText variant="body" color="muted" style={styles.subtitle}>
-          Start generating AI-assisted inspection reports
+          Start generating inspection reports with Super Intelligence
         </ThemedText>
       </View>
 

@@ -101,7 +101,7 @@ export const classifyPriceSuggestionsError = (err) => {
   if (data?.code === 'FEATURE_NOT_IN_PLAN') {
     return {
       kind: 'not_in_plan',
-      message: data.error || 'AI pricing suggestions are not included in your plan. You can still enter prices manually.',
+      message: data.error || 'Super Intelligence pricing suggestions are not included in your plan. You can still enter prices manually.',
     };
   }
   if (data?.code === 'REPORT_FINALIZED') {

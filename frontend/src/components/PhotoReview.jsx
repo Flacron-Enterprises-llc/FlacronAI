@@ -250,7 +250,7 @@ export function PhotoAnalysisPanel({
         <>
           <div>
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> AI-Suggested Observation
+              <Sparkles className="w-3 h-3 shrink-0" /> Suggested by Super Intelligence
             </p>
             <p className="text-xs text-gray-500 italic">{photo.analysis.observation}</p>
           </div>

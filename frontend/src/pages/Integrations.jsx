@@ -35,7 +35,7 @@ const COMING_SOON = [
 ];
 
 const EVENT_META = {
-  'report.generated': { label: 'Report Generated', desc: 'A new AI-drafted report was created and is awaiting review.' },
+  'report.generated': { label: 'Report Generated', desc: 'A new report drafted by Super Intelligence was created and is awaiting review.' },
   'report.finalized': { label: 'Report Finalized', desc: 'A report was reviewed and approved by a licensed adjuster.' },
 };
 const eventLabel = (event) => EVENT_META[event]?.label
