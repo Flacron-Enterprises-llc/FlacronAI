@@ -53,15 +53,16 @@ export function SocialSignInButtons({ onGoogle, onApple, loading = false }: Soci
 
       <PrimaryButton
         variant="secondary"
-        label={googleConfigured ? 'Continue with Google' : 'Google (setup required)'}
+        label={googleConfigured ? 'Continue with Google' : 'Google (not enabled in this build)'}
         onPress={onGoogle}
         disabled={!googleConfigured || loading}
         loading={loading}
       />
       {!googleConfigured && (
         <ThemedText variant="caption" color="muted" style={styles.note}>
-          Google Sign-In requires an EAS development build and a configured OAuth client —
-          not available in Expo Go yet.
+          Google sign-in has not been configured for this build yet. Please sign in with your
+          email and password. (Google sign-in needs a native app build — it does not work in
+          Expo Go.)
         </ThemedText>
       )}
 
