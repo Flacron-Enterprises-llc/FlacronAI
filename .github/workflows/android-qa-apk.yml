@@ -180,7 +180,7 @@ jobs:
         env:
           EXTRA_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
-          NOTES="FlacronAI QA build ${GITHUB_SHA::7} (1.1.0 / ${QA_VERSION_CODE}). Sign in with your FlacronAI website account (email/password or Google). QA data is separate: staging backend + staging Firebase; nothing you do here changes your website account.
+          NOTES="FlacronAI QA build ${GITHUB_SHA::7} (1.1.0 / ${QA_VERSION_CODE}). Sign in with your FlacronAI website email and password (plus your authenticator code if you use two-factor); Google sign-in is not available in this build. QA data is separate: staging backend + staging Firebase; nothing you do here changes your website account.
           SHA-256: ${APK_SHA256}
           ${EXTRA_NOTES}"
           # firebase-tools prints a tokenized, unauthenticated APK download URL. Workflow logs
