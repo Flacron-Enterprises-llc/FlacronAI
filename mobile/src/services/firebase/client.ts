@@ -43,9 +43,10 @@ let auth: Auth | null = null;
 function getApp(): FirebaseApp {
   if (app) return app;
   // Re-use an already-initialized app if one exists (Fast Refresh in dev can otherwise
-  // throw "Firebase App named '[DEFAULT]' already exists").
-  const existing = getApps();
-  app = existing.length > 0 ? existing[0] : initializeApp(getFirebaseConfig());
+  // throw "Firebase App named '[DEFAULT]' already exists"). Only the DEFAULT app: the
+  // QA identity app (identityClient.ts) is a different, named app.
+  const existing = getApps().find((a) => a.name === '[DEFAULT]');
+  app = existing ?? initializeApp(getFirebaseConfig());
   return app;
 }
 

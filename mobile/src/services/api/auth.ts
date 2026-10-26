@@ -58,4 +58,13 @@ export const authApi = {
    * provider; the password variant needs server config and is web-only). */
   mfaDisable: (code: string) =>
     apiRequest<{ success: true; message: string }>('/auth/mfa/disable', { method: 'POST', body: { code } }),
+
+  /** QA federation: production ID token (+ production MFA code) -> staging custom token.
+   * Unauthenticated by design (there is no staging session yet). */
+  federatedExchange: (idToken: string, mfaCode?: string) =>
+    apiRequest<{ success: true; customToken: string; expiresIn: number; mfaVerified: boolean }>('/auth/federated/exchange', {
+      method: 'POST',
+      body: mfaCode ? { idToken, mfaCode } : { idToken },
+      skipAuth: true,
+    }),
 };

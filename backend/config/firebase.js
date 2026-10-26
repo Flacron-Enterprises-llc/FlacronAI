@@ -72,18 +72,22 @@ const initFirebase = () => {
   return firebaseApp;
 };
 
+// A named app (e.g. services/federatedIdentity.js's verification-only identity app)
+// must not count as the default app being initialized.
+const hasDefaultApp = () => admin.apps.some((a) => a && a.name === '[DEFAULT]');
+
 const getFirestore = () => {
-  if (!admin.apps.length) initFirebase();
+  if (!hasDefaultApp()) initFirebase();
   return admin.firestore();
 };
 
 const getAuth = () => {
-  if (!admin.apps.length) initFirebase();
+  if (!hasDefaultApp()) initFirebase();
   return admin.auth();
 };
 
 const getBucket = () => {
-  if (!admin.apps.length) initFirebase();
+  if (!hasDefaultApp()) initFirebase();
   return admin.storage().bucket();
 };
 

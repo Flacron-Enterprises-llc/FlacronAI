@@ -18,12 +18,15 @@ const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV;
 // values are stamped into `extra.qaBuild`, which ships inside the APK's embedded app
 // config so the final artifact can be checked too.
 const QA_BUILD = process.env.FLACRON_BUILD_PROFILE === 'qa' ? assertQaBuildEnv(process.env) : undefined;
+// QA builds: 1.1.x = production-account sign-in (QA federation). The workflow passes an
+// ever-increasing QA_VERSION_CODE so each distributed APK has a distinct build number.
+const QA_VERSION_CODE = QA_BUILD ? Number(process.env.QA_VERSION_CODE) || 2 : undefined;
 
 const config: ExpoConfig = {
   name: 'FlacronAI',
   slug: 'flacronai',
   owner: 'flacron-enterprises-llc',
-  version: '1.0.0',
+  version: QA_BUILD ? '1.1.0' : '1.0.0',
   scheme: 'flacronai',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
@@ -49,6 +52,7 @@ const config: ExpoConfig = {
 
   android: {
     package: 'com.flacronenterprises.flacronai',
+    ...(QA_VERSION_CODE ? { versionCode: QA_VERSION_CODE } : {}),
     adaptiveIcon: {
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundColor: '#FFFFFF',

@@ -114,6 +114,17 @@ function notifyMfaRequired() {
   for (const listener of mfaRequiredListeners) listener();
 }
 
+// QA federation: AuthProvider registers how to re-exchange the production sign-in for a
+// fresh staging session. Used once when the backend reports the staging session expired.
+type SessionRefresher = () => Promise<boolean>;
+let federatedSessionRefresher: SessionRefresher | null = null;
+export function setFederatedSessionRefresher(refresher: SessionRefresher): () => void {
+  federatedSessionRefresher = refresher;
+  return () => {
+    if (federatedSessionRefresher === refresher) federatedSessionRefresher = null;
+  };
+}
+
 /** Query-string serialization shared by every resource client — skips `undefined`/`null`
  * entirely rather than sending them as the literal string "undefined"/"null". */
 export function buildQueryString(params?: QueryParams): string {
@@ -226,6 +237,10 @@ const AUTH_FATAL_CODES = new Set([
   'CONFIG_ERROR',
   'INVALID_CREDENTIALS',
   'INVALID_PASSWORD',
+  // QA federation: the staging session could not be renewed from the production sign-in.
+  'FEDERATED_SESSION_EXPIRED',
+  'FEDERATED_SESSION_INVALID',
+  'FEDERATED_LOGIN_DISABLED',
 ]);
 const TRANSIENT_CODES = new Set(['AUTH_VERIFY_UNAVAILABLE', 'PROFILE_LOOKUP_FAILED']);
 const PERMISSION_CODES = new Set([
@@ -392,7 +407,16 @@ async function performAttempt<T>(path: string, options: RequestOptions): Promise
   // Phase 3; applies regardless of method, since this completes the SAME logical request
   // with a corrected credential rather than retrying due to transience.
   if (response.status === 401 && !options.skipAuth) {
-    const freshHeader = await getAuthHeader(true).catch(() => null);
+    // A federated staging session past its max age: re-exchange first (the force
+    // refresh below would only re-mint a token with the same expired `fedAt`).
+    let refreshedFederated = false;
+    if (federatedSessionRefresher) {
+      const peeked = (await response.clone().json().catch(() => null)) as { code?: string } | null;
+      if (peeked?.code === 'FEDERATED_SESSION_EXPIRED') {
+        refreshedFederated = await federatedSessionRefresher().catch(() => false);
+      }
+    }
+    const freshHeader = await getAuthHeader(!refreshedFederated).catch(() => null);
     if (freshHeader) {
       try {
         response = await doFetch(path, options, freshHeader);

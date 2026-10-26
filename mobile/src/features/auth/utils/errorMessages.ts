@@ -56,6 +56,8 @@ export function getAuthErrorMessage(err: unknown): string {
 
   const fbErr = err as FirebaseLikeError;
   if (fbErr?.code && FIREBASE_MESSAGES[fbErr.code]) return FIREBASE_MESSAGES[fbErr.code];
+  // QA federation (federatedLogin.ts): already user-facing.
+  if (fbErr?.code?.startsWith('auth/federated-') && fbErr.message) return fbErr.message;
 
   return 'Something went wrong. Please try again.';
 }

@@ -1,17 +1,26 @@
 const crypto = require('crypto');
-const { STAGING, STAGING_API_KEY_SHA256, qaBuildProblems, assertQaBuildEnv } = require('./qaProfileGuard');
+const {
+  STAGING,
+  STAGING_API_KEY_SHA256,
+  IDENTITY,
+  IDENTITY_API_KEY_SHA256,
+  IDENTITY_GOOGLE_WEB_CLIENT,
+  qaBuildProblems,
+  assertQaBuildEnv,
+} = require('./qaProfileGuard');
 const eas = require('../eas.json');
 
 const KEY = 'test-staging-key';
+const IDENTITY_KEY = 'test-identity-key';
 const hash = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-// The guard compares the key by hash; unit tests pass the hash of a known test key.
+// The guard compares the keys by hash; unit tests pass the hashes of known test keys.
 function envWith(overrides = {}) {
-  return { ...STAGING, EXPO_PUBLIC_FIREBASE_API_KEY: KEY, ...overrides };
+  return { ...STAGING, EXPO_PUBLIC_FIREBASE_API_KEY: KEY, ...IDENTITY, EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY: IDENTITY_KEY, ...overrides };
 }
 describe('qaProfileGuard', () => {
   const realHash = STAGING_API_KEY_SHA256;
-  const problemsFor = (env) => qaBuildProblems(env, hash(KEY));
+  const problemsFor = (env) => qaBuildProblems(env, hash(KEY), hash(IDENTITY_KEY));
 
   it('rejects the shared preview (production) Firebase values', () => {
     const problems = problemsFor(
@@ -36,14 +45,33 @@ describe('qaProfileGuard', () => {
     expect(problems).toMatch(/FIREBASE_API_KEY is not the flacronai-staging-qa/);
     expect(problems).toMatch(/E2E_RUNTIME_CONFIG must be empty/);
     expect(problems).toMatch(/AUTH_EMULATOR_URL must be empty/);
-    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID is not a flacronai-staging-qa OAuth client/);
+    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID is not the identity project's Google web client/);
   });
 
-  it('accepts a staging Google web client and rejects the production one', () => {
-    expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '93799061110-abc123.apps.googleusercontent.com' }))).toEqual([]);
-    expect(
-      problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '773892679617-abc123.apps.googleusercontent.com' })).join()
-    ).toMatch(/not a flacronai-staging-qa OAuth client/);
+  it('QA federation: accepts only the pinned identity Google web client', () => {
+    expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: IDENTITY_GOOGLE_WEB_CLIENT }))).toEqual([]);
+    for (const other of ['93799061110-abc123.apps.googleusercontent.com', '773892679617-abc123.apps.googleusercontent.com']) {
+      expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: other })).join()).toMatch(/identity project's Google web client/);
+    }
+  });
+
+  it('QA federation: identity settings must be the pinned production identity values', () => {
+    const problems = problemsFor(
+      envWith({
+        EXPO_PUBLIC_IDENTITY_FIREBASE_PROJECT_ID: 'flacronai-staging-qa',
+        EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY: 'other-key',
+      })
+    ).join(' | ');
+    expect(problems).toMatch(/IDENTITY_FIREBASE_PROJECT_ID/);
+    expect(problems).toMatch(/IDENTITY_FIREBASE_API_KEY is not the flacronai-c8dab web API key/);
+    expect(problemsFor(envWith({ EXPO_PUBLIC_IDENTITY_FIREBASE_APP_ID: undefined })).join()).toMatch(/IDENTITY_FIREBASE_APP_ID/);
+  });
+
+  it('QA federation: production identifiers are allowed ONLY in identity settings', () => {
+    expect(problemsFor(envWith({ EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: 'flacronai-c8dab.firebasestorage.app' })).join()).toMatch(
+      /references production/
+    );
+    expect(problemsFor(envWith({ EXPO_PUBLIC_SOMETHING_ELSE: 'flacronai-c8dab' })).join()).toMatch(/SOMETHING_ELSE references production/);
   });
 
   describe('google-services.json', () => {
@@ -85,13 +113,15 @@ describe('qaProfileGuard', () => {
     expect(() => assertQaBuildEnv({})).toThrow(/QA build guard failed/);
   });
 
-  it('eas.json qa profile carries exactly the staging values and enables the guard', () => {
+  it('eas.json qa profile: staging data values + pinned identity values, guard enabled', () => {
     const qa = eas.build.qa;
     expect(qa.env.FLACRON_BUILD_PROFILE).toBe('qa');
     for (const [name, value] of Object.entries(STAGING)) expect(qa.env[name]).toBe(value);
     expect(hash(qa.env.EXPO_PUBLIC_FIREBASE_API_KEY)).toBe(realHash);
     expect(qa.env.EXPO_PUBLIC_E2E_RUNTIME_CONFIG).toBeUndefined();
-    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID === '' || /^93799061110-/.test(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)).toBe(true);
+    for (const [name, value] of Object.entries(IDENTITY)) expect(qa.env[name]).toBe(value);
+    expect(hash(qa.env.EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY)).toBe(IDENTITY_API_KEY_SHA256);
+    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).toBe(IDENTITY_GOOGLE_WEB_CLIENT);
     expect(qa.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID).toBe('');
   });
 

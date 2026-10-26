@@ -4,14 +4,28 @@
 // Checks: APK signing block present; embedded app config carries extra.qaBuild with the
 // staging values (stamped by app.config.ts only after qaProfileGuard passed); the
 // embedded JS bundle (Hermes bytecode, no Metro needed) contains the staging Firebase
-// project + staging API host and none of the production Firebase identifiers, tunnel
-// hosts or test-credential names. Exits 1 on any failure.
+// project + staging API host, the identity-only production project (QA federation), and
+// none of production's DATA identifiers (API host, storage bucket, Android/iOS app),
+// tunnel hosts or test-credential names. Exits 1 on any failure.
 const fs = require('fs');
 const zlib = require('zlib');
-const { STAGING } = require('./qaProfileGuard');
+const { STAGING, IDENTITY } = require('./qaProfileGuard');
 
-const FORBIDDEN = ['flacronai-c8dab', '773892679617', 'trycloudflare', 'E2E_PASSWORD', 'e2e-runtime-override-enabled'];
-const REQUIRED = [STAGING.EXPO_PUBLIC_FIREBASE_PROJECT_ID, new URL(STAGING.EXPO_PUBLIC_API_BASE_URL).host];
+const FORBIDDEN = [
+  'api.flacronai.com',
+  'flacronai-c8dab.firebasestorage.app',
+  'flacronai-c8dab.appspot.com',
+  '1:773892679617:android:',
+  '1:773892679617:ios:',
+  'trycloudflare',
+  'E2E_PASSWORD',
+  'e2e-runtime-override-enabled',
+];
+const REQUIRED = [
+  STAGING.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  new URL(STAGING.EXPO_PUBLIC_API_BASE_URL).host,
+  IDENTITY.EXPO_PUBLIC_IDENTITY_FIREBASE_PROJECT_ID,
+];
 
 // Minimal ZIP reader (central directory) — APKs are ZIP files.
 function readZipEntries(buf, wanted) {
@@ -65,7 +79,8 @@ function verifyArtifact({ apk, appConfig, bundle }) {
       if (qa.firebaseProjectId !== STAGING.EXPO_PUBLIC_FIREBASE_PROJECT_ID) problems.push(`qaBuild.firebaseProjectId=${qa.firebaseProjectId}`);
       if (qa.apiBaseUrl !== STAGING.EXPO_PUBLIC_API_BASE_URL) problems.push(`qaBuild.apiBaseUrl=${qa.apiBaseUrl}`);
       if (qa.e2eRuntimeConfig !== false) problems.push('qaBuild.e2eRuntimeConfig is not false');
-      checks.push(`embedded config: ${qa.firebaseProjectId} / ${qa.apiBaseUrl}`);
+      if (qa.identityProjectId !== IDENTITY.EXPO_PUBLIC_IDENTITY_FIREBASE_PROJECT_ID) problems.push(`qaBuild.identityProjectId=${qa.identityProjectId}`);
+      checks.push(`embedded config: data ${qa.firebaseProjectId} / ${qa.apiBaseUrl}; identity ${qa.identityProjectId}`);
     }
   }
   if (!bundle) problems.push('embedded JS bundle (assets/index.android.bundle) missing');

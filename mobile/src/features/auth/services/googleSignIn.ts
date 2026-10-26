@@ -43,6 +43,19 @@ export async function signInWithGoogle(): Promise<GoogleSignInOutcome> {
   return { status: 'success', credential };
 }
 
+/** Forgets the device's Google account selection so the next Google sign-in shows the
+ * account chooser (sign-out / account switching). Never throws; no-op if unconfigured. */
+export async function signOutOfGoogle(): Promise<void> {
+  if (!isGoogleSignInConfigured()) return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    await GoogleSignin.signOut();
+  } catch {
+    // Not signed in to Google / module unavailable: nothing to forget.
+  }
+}
+
 /** Phase 8: the Google sheet + Firebase credential only (no sign-in) — reused to
  * re-authenticate the CURRENT user before sensitive actions. */
 export async function getGoogleCredential(): Promise<GoogleCredentialOutcome> {

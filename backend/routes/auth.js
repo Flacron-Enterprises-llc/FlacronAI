@@ -11,6 +11,7 @@ const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const { body, validationResult } = require('express-validator');
 const { recordAuditLog } = require('../services/auditLogService');
+const { blockFederatedSession, isFederatedStagingEmail, exchangeForStagingSession } = require('../services/federatedIdentity');
 const { sendNewDeviceLoginAlert } = require('../services/emailService');
 const { PASSWORD_REQUIREMENTS_MESSAGE, isStrongPassword } = require('../utils/passwordPolicy');
 const { issueMfaAssertion } = require('../utils/mfaAssertion');
@@ -271,7 +272,7 @@ router.post('/mfa/login-verify', mfaLimiter, [
 });
 
 // POST /api/auth/mfa/setup — start enrollment; returns a QR code + the raw secret.
-router.post('/mfa/setup', authenticateToken, async (req, res) => {
+router.post('/mfa/setup', authenticateToken, blockFederatedSession, async (req, res) => {
   try {
     const secret = speakeasy.generateSecret({ name: `FlacronAI (${req.user.email})`, length: 20 });
     await getFirestore().collection('users').doc(req.user.uid).update({ mfaPendingSecret: secret.base32 });
@@ -284,7 +285,7 @@ router.post('/mfa/setup', authenticateToken, async (req, res) => {
 });
 
 // POST /api/auth/mfa/verify-setup — confirm the enrollment code and turn MFA on.
-router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
+router.post('/mfa/verify-setup', authenticateToken, blockFederatedSession, mfaLimiter, [
   body('code').isLength({ min: 6, max: 8 }),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -322,7 +323,7 @@ router.post('/mfa/verify-setup', authenticateToken, mfaLimiter, [
 });
 
 // POST /api/auth/mfa/disable
-router.post('/mfa/disable', authenticateToken, mfaLimiter, [
+router.post('/mfa/disable', authenticateToken, blockFederatedSession, mfaLimiter, [
   body('password').optional().isString().notEmpty(),
   body('code').optional().isLength({ min: 6, max: 17 }),
   body().custom(value => {
@@ -510,6 +511,10 @@ router.post('/forgot-password', authLimiter, [body('email').isEmail().normalizeE
     return res.status(400).json({ success: false, errors: errors.mapped() });
   }
   try {
+    // A QA federation shadow has no staging password and must never get one.
+    if (await isFederatedStagingEmail(getAuth(), req.body.email)) {
+      return res.json({ success: true, message: 'If that email exists, a reset link was sent' });
+    }
     const link = await getAuth().generatePasswordResetLink(req.body.email);
     const { sendPasswordResetEmail } = require('../services/emailService');
     await sendPasswordResetEmail(req.body.email, link);
@@ -518,6 +523,36 @@ router.post('/forgot-password', authLimiter, [body('email').isEmail().normalizeE
     // Don't reveal if email exists
     console.error('[forgot-password] Failed to generate or send reset email:', err.message);
     return res.json({ success: true, message: 'If that email exists, a reset link was sent' });
+  }
+});
+
+// POST /api/auth/federated/exchange — QA federation (staging API only; see
+// services/federatedIdentity.js). Body: { idToken: <production Firebase ID token>,
+// mfaCode?: <production TOTP/recovery code> }. Returns a STAGING custom token.
+router.post('/federated/exchange', authLimiter, [
+  body('idToken').isString().isLength({ min: 20, max: 8192 }),
+  body('mfaCode').optional().isString().isLength({ min: 6, max: 17 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
+  try {
+    const result = await exchangeForStagingSession(
+      { idToken: req.body.idToken, mfaCode: req.body.mfaCode },
+      { db: getFirestore(), stagingAuth: getAuth() }
+    );
+    if (result.audit) {
+      recordAuditLog({
+        actorUid: result.audit.uid,
+        actorEmail: result.audit.email,
+        action: 'federated_login',
+        meta: { provider: result.audit.provider, mfaVerified: result.audit.mfaVerified },
+        req,
+      });
+    }
+    return res.status(result.status).json(result.body);
+  } catch (err) {
+    console.error('[federated] exchange error:', err.message);
+    return res.status(500).json({ success: false, error: 'Sign-in failed, please try again', code: 'FEDERATED_EXCHANGE_ERROR' });
   }
 });
 
@@ -570,7 +605,7 @@ router.post('/send-verification', authLimiter, authenticateToken, async (req, re
 // / PUT /users/change-password is what Settings.jsx uses), but it is a live,
 // reachable route on the same authenticateToken contract, so leaving it
 // unprotected would be a real bypass of the exact gap this fix closes.
-router.post('/change-password', authenticateToken, requireRecentAuth, [
+router.post('/change-password', authenticateToken, blockFederatedSession, requireRecentAuth, [
   body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);

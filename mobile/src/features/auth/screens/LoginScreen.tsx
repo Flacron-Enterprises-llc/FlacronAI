@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { BrandMark } from '@/components/BrandMark';
 import { ScreenContainer } from '@/components/ScreenContainer';
@@ -15,6 +15,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { FormError } from '../components/FormError';
 import { SocialSignInButtons } from '../components/SocialSignInButtons';
 import { AuthFormScroll } from '../components/AuthFormScroll';
+import { WEBSITE_LOGIN_URL, WEBSITE_SIGNUP_URL, isFederatedLoginEnabled } from '@/config/identityConfig';
 
 /**
  * Email/password login. Verified users continue into the app automatically once
@@ -25,6 +26,9 @@ import { AuthFormScroll } from '../components/AuthFormScroll';
 export function LoginScreen() {
   const theme = useTheme();
   const { login, loginWithGoogle, loginWithApple } = useAuth();
+  // QA federation: sign in with the FlacronAI website account; accounts and passwords
+  // are managed on the website.
+  const federated = isFederatedLoginEnabled();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<LoginValidationErrors>({});
@@ -84,8 +88,13 @@ export function LoginScreen() {
           Welcome back
         </ThemedText>
         <ThemedText variant="body" color="muted" style={styles.subtitle}>
-          Sign in to your FlacronAI account
+          {federated ? 'Sign in with your FlacronAI website account' : 'Sign in to your FlacronAI account'}
         </ThemedText>
+        {federated && (
+          <ThemedText variant="caption" color="muted" style={styles.subtitle}>
+            QA test app: reports and data you create here are kept separately from the website.
+          </ThemedText>
+        )}
       </View>
 
       <FormError message={generalError} />
@@ -116,13 +125,26 @@ export function LoginScreen() {
         placeholder="••••••••••••"
       />
 
-      <Link href="/forgot-password" asChild>
-        <Pressable style={styles.forgotLink} accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+      {federated ? (
+        <Pressable
+          style={styles.forgotLink}
+          accessibilityRole="link"
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          onPress={() => Linking.openURL(WEBSITE_LOGIN_URL)}
+        >
           <ThemedText variant="caption" color="primary">
-            Forgot password?
+            Forgot password? Reset it on flacronai.com
           </ThemedText>
         </Pressable>
-      </Link>
+      ) : (
+        <Link href="/forgot-password" asChild>
+          <Pressable style={styles.forgotLink} accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+            <ThemedText variant="caption" color="primary">
+              Forgot password?
+            </ThemedText>
+          </Pressable>
+        </Link>
+      )}
 
       <PrimaryButton label="Sign in" onPress={handleSubmit} loading={loading} disabled={socialLoading} />
 
@@ -132,13 +154,21 @@ export function LoginScreen() {
         <ThemedText variant="body" color="muted">
           Don&apos;t have an account?{' '}
         </ThemedText>
-        <Link href="/signup" asChild>
-          <Pressable accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+        {federated ? (
+          <Pressable accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} onPress={() => Linking.openURL(WEBSITE_SIGNUP_URL)}>
             <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
-              Sign up
+              Sign up on flacronai.com
             </ThemedText>
           </Pressable>
-        </Link>
+        ) : (
+          <Link href="/signup" asChild>
+            <Pressable accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+              <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
+                Sign up
+              </ThemedText>
+            </Pressable>
+          </Link>
+        )}
       </View>
     </AuthFormScroll>
     </ScreenContainer>

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { getAuth, getFirestore, FieldValue } = require('../config/firebase');
 const { isAtLeastTier, getTier, hasTierFeature } = require('../config/tiers');
 const { resolveEffectiveTier, needsTierReconcile, reconcileUserTier } = require('../utils/entitlements');
+const { federatedSessionProblem } = require('../services/federatedIdentity');
 
 // Mobile Phase 7: the request's tier comes from the shared entitlement
 // calculation (utils/entitlements.js). For accounts no source-aware write has
@@ -300,6 +301,17 @@ const authenticateToken = async (req, res, next) => {
         return res.status(403).json({ success: false, error: 'Your team access has been suspended', code: 'TEAM_ACCESS_SUSPENDED' });
       }
 
+      // QA federation (services/federatedIdentity.js): a staging session minted from
+      // a production sign-in is only valid as an exchange-issued custom-token
+      // session, for at most FEDERATED_SESSION_MAX_AGE after that exchange.
+      const federated = decoded.federated === true;
+      if (federated) {
+        const problem = federatedSessionProblem(decoded);
+        if (problem) {
+          return res.status(401).json({ success: false, error: 'Your QA session needs to be refreshed. Please sign in again.', code: problem });
+        }
+      }
+
       // Password-change session revocation for already-issued Firebase ID
       // tokens (2026-09-08 fix, rollout-safety-corrected): getAuth().
       // revokeRefreshTokens() alone only blocks *future* silent refreshes,
@@ -367,12 +379,16 @@ const authenticateToken = async (req, res, next) => {
       // Kept off req.user deliberately -- req.user is spread into many API
       // response bodies verbatim, and this is request-scoped MFA-assertion
       // context, not profile data.
-      req.mfaContext = { authTime: decoded.auth_time, tokenVersion: userData.tokenVersion || 0 };
+      // A federated session's "recent sign-in" is the PRODUCTION sign-in it was
+      // exchanged from, so re-auth gated actions (account deletion) need a fresh
+      // production sign-in, not just a routine re-exchange.
+      req.mfaContext = { authTime: federated ? decoded.prodAuthTime : decoded.auth_time, tokenVersion: userData.tokenVersion || 0 };
       req.sessionContext = {
         kind: 'firebase',
         authTime: decoded.auth_time || decoded.iat,
         issuedAt: decoded.iat,
         tokenVersion: userData.tokenVersion || 0,
+        ...(federated ? { federated: true } : {}),
       };
       return next();
     } catch (lookupErr) {
@@ -463,7 +479,7 @@ const optionalAuth = async (req, res, next) => {
     const db = getFirestore();
     const userDoc = await db.collection('users').doc(decoded.uid).get();
     const userData = userDoc.exists ? userDoc.data() : {};
-    req.user = isTeamMembershipSuspended(userData)
+    req.user = isTeamMembershipSuspended(userData) || (decoded.federated === true && federatedSessionProblem(decoded))
       ? null
       : { uid: decoded.uid, email: decoded.email, ...userData, tier: requestTier(decoded.uid, userData) };
   } catch {

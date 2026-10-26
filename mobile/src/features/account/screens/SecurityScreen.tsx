@@ -18,6 +18,7 @@ import { ApiRequestError } from '@/types/api';
 import { AccountScaffold, Card, Notice } from '../components/AccountScaffold';
 import { ReauthPanel } from '../components/ReauthPanel';
 import { signInMethodsOf, type SignInMethod } from '../reauth';
+import { WEBSITE_LOGIN_URL } from '@/config/identityConfig';
 
 const METHOD_LABEL: Record<SignInMethod, string> = { password: 'Email & password', google: 'Google', apple: 'Apple' };
 
@@ -233,8 +234,24 @@ function TwoFactorSection() {
 }
 
 export function SecurityScreen() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, isFederated } = useAuth();
   const methods = signInMethodsOf(firebaseUser);
+  if (isFederated) {
+    // QA federation: sign-in, password and two-factor belong to the website account.
+    return (
+      <AccountScaffold title="Sign-in & security">
+        <Card>
+          <ThemedText variant="body">
+            This QA app signs in with your FlacronAI website account. Change your password or two-factor
+            authentication on flacronai.com; the change applies here the next time you sign in (and within an
+            hour for an open session).
+          </ThemedText>
+          <View style={styles.gap} />
+          <PrimaryButton variant="secondary" label="Open flacronai.com" onPress={() => Linking.openURL(WEBSITE_LOGIN_URL)} />
+        </Card>
+      </AccountScaffold>
+    );
+  }
   return (
     <AccountScaffold title="Sign-in & security">
       <Card>

@@ -18,6 +18,7 @@ const { sendWelcomeEmail } = require('../services/emailService');
 const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
 const { purgeAccountData } = require('../services/accountDeletionCleanup');
 const { recordAuditLog } = require('../services/auditLogService');
+const { blockFederatedSession } = require('../services/federatedIdentity');
 const { cancelStripeBillingForDeletion } = require('../services/stripeAccountCancellation');
 const { acquireDeletionLock, releaseDeletionLock } = require('../utils/accountDeletionLock');
 const { body, validationResult } = require('express-validator');
@@ -646,7 +647,7 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 // middleware/auth.js for exactly what it checks and why. Runs AFTER
 // authenticateToken (needs req.mfaContext, which only that middleware sets)
 // and BEFORE the request body is ever touched.
-router.put('/change-password', authenticateToken, requireRecentAuth, [
+router.put('/change-password', authenticateToken, blockFederatedSession, requireRecentAuth, [
   body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -795,6 +796,11 @@ router.delete('/account', authenticateToken, [
   let leaseHeld = false;
 
   try {
+    // QA federation shadows have no staging password: they confirm with a fresh
+    // production sign-in (recent prodAuthTime) + confirmation instead.
+    if (password && req.sessionContext?.federated) {
+      return res.status(400).json({ success: false, error: 'Confirm by signing in again, then delete.', code: 'CONFIRMATION_REQUIRED' });
+    }
     if (password) {
       const firebaseApiKey = process.env.FIREBASE_API_KEY;
       if (!firebaseApiKey) {

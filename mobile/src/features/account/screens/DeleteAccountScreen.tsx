@@ -53,7 +53,7 @@ function Checkbox({ checked, onToggle, label }: { checked: boolean; onToggle: ()
 }
 
 export function DeleteAccountScreen() {
-  const { logout } = useAuth();
+  const { logout, isFederated } = useAuth();
   const billing = useBilling();
   const [ack, setAck] = useState(false);
   const [typed, setTyped] = useState('');
@@ -92,6 +92,12 @@ export function DeleteAccountScreen() {
 
   return (
     <AccountScaffold title="Delete account">
+      {isFederated && (
+        <Notice
+          tone="info"
+          text="This deletes only your QA test account: the reports, photos and data you created in this QA app. Your FlacronAI website account, its data and any website subscription are not affected."
+        />
+      )}
       <Card>
         <ThemedText variant="subtitle" style={styles.title}>
           This permanently deletes:

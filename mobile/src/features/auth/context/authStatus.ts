@@ -9,6 +9,9 @@ export interface AuthStatusInput {
   emailVerified: boolean;
   isSocialProvider: boolean;
   mfaVerified: boolean;
+  /** QA federation: production password/Google accepted, production MFA code still owed
+   * (there is no staging session yet). */
+  federatedMfaPending?: boolean;
 }
 
 /**
@@ -24,7 +27,7 @@ export interface AuthStatusInput {
  */
 export function computeAuthStatus(input: AuthStatusInput): AuthStatus {
   if (input.loading) return 'loading';
-  if (!input.hasFirebaseUser) return 'signed-out';
+  if (!input.hasFirebaseUser) return input.federatedMfaPending ? 'needs-mfa' : 'signed-out';
   // A blocking profile fetch is in flight (e.g. right after a fresh sign-in) — keep the
   // splash/loading state rather than briefly showing the "Account data unavailable" retry
   // screen, which is reserved for a genuine failure (profileError set) below.
