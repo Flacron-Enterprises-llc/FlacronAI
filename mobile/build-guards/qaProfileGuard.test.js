@@ -4,7 +4,6 @@ const {
   STAGING_API_KEY_SHA256,
   IDENTITY,
   IDENTITY_API_KEY_SHA256,
-  IDENTITY_GOOGLE_WEB_CLIENT,
   qaBuildProblems,
   assertQaBuildEnv,
 } = require('./qaProfileGuard');
@@ -45,13 +44,13 @@ describe('qaProfileGuard', () => {
     expect(problems).toMatch(/FIREBASE_API_KEY is not the flacronai-staging-qa/);
     expect(problems).toMatch(/E2E_RUNTIME_CONFIG must be empty/);
     expect(problems).toMatch(/AUTH_EMULATOR_URL must be empty/);
-    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID is not the identity project's Google web client/);
+    expect(problems).toMatch(/GOOGLE_WEB_CLIENT_ID must be empty in the federated QA build/);
   });
 
-  it('QA federation: accepts only the pinned identity Google web client', () => {
-    expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: IDENTITY_GOOGLE_WEB_CLIENT }))).toEqual([]);
-    for (const other of ['93799061110-abc123.apps.googleusercontent.com', '773892679617-abc123.apps.googleusercontent.com']) {
-      expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: other })).join()).toMatch(/identity project's Google web client/);
+  it('QA federation: Google sign-in must stay off (any Google web client is rejected)', () => {
+    expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '' }))).toEqual([]);
+    for (const client of ['93799061110-abc123.apps.googleusercontent.com', '773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com']) {
+      expect(problemsFor(envWith({ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: client })).join()).toMatch(/must be empty in the federated QA build/);
     }
   });
 
@@ -121,7 +120,7 @@ describe('qaProfileGuard', () => {
     expect(qa.env.EXPO_PUBLIC_E2E_RUNTIME_CONFIG).toBeUndefined();
     for (const [name, value] of Object.entries(IDENTITY)) expect(qa.env[name]).toBe(value);
     expect(hash(qa.env.EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY)).toBe(IDENTITY_API_KEY_SHA256);
-    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).toBe(IDENTITY_GOOGLE_WEB_CLIENT);
+    expect(qa.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).toBe('');
     expect(qa.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID).toBe('');
   });
 

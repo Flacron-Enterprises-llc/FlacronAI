@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { isGoogleSignInConfigured } from '../services/googleSignIn';
 import { isAppleSignInAvailable } from '../services/appleSignIn';
+import { isFederatedLoginEnabled } from '@/config/identityConfig';
 import { PrimaryButton } from './PrimaryButton';
 
 interface SocialSignInButtonsProps {
@@ -60,9 +61,9 @@ export function SocialSignInButtons({ onGoogle, onApple, loading = false }: Soci
       />
       {!googleConfigured && (
         <ThemedText variant="caption" color="muted" style={styles.note}>
-          Google sign-in has not been configured for this build yet. Please sign in with your
-          email and password. (Google sign-in needs a native app build — it does not work in
-          Expo Go.)
+          {isFederatedLoginEnabled()
+            ? 'Google sign-in is not available in this QA build. Sign in with your FlacronAI website email and password.'
+            : 'Google sign-in has not been configured for this build yet. Please sign in with your email and password. (Google sign-in needs a native app build — it does not work in Expo Go.)'}
         </ThemedText>
       )}
 

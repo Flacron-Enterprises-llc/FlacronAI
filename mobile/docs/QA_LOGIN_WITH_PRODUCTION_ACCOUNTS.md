@@ -15,7 +15,7 @@ Pending:
   accounts. It needs an approved test account or a tester on a device.
 - **New APK:** needs the `qa-android` GitHub environment and the staging Workload Identity provider to allow
   `qa/web-mobile-combined`.
-- **Physical-device checks:** Google account picker, cancel, switch account, sign-out.
+- **Physical-device checks:** install, email/password sign-in, MFA step, sign-out, account switching.
 
 How it works now: the user signs in with their FlacronAI website account in the QA app, which uses the production
 project for identity only. `POST /auth/federated/exchange` verifies the token and lets production check MFA and
@@ -26,8 +26,10 @@ Actual limitations:
 - A production password change or sign-out-everywhere ends QA access at the next renewal, within 1 hour, not instantly.
 - A production ID token issued before such a change is still accepted until it expires (up to 1 hour), because
   staging has no production credential to check revocation.
-- A first-time Google user briefly gets a production Auth record. The app deletes it at once; if that deletion
-  fails (e.g. offline), a bare record with no data remains.
+- **Google sign-in is disabled in this release.** Against the production identity project, Firebase creates a
+  production account for any unknown Google user, and only a production change (a blocking function or disabling
+  sign-up) could prevent that. Deleting it afterwards would still be a production side effect, so the QA app has no
+  federated Google path at all, and the build guard rejects any Google client ID.
 
 The sections below are the original diagnosis and proposal.
 

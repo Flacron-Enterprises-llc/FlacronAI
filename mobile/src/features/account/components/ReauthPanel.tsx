@@ -12,7 +12,7 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useAuth } from '@/features/auth/context/AuthProvider';
 import { reauthenticate, reauthMethodFor, signInMethodsOf } from '../reauth';
 import { AuthTextInput } from '@/features/auth/components/AuthTextInput';
-import { identityMethods, reauthenticateIdentity } from '@/features/auth/services/federatedLogin';
+import { identityHasPassword, reauthenticateIdentity } from '@/features/auth/services/federatedLogin';
 import { getAuthErrorMessage } from '@/features/auth/utils/errorMessages';
 import { Notice } from './AccountScaffold';
 
@@ -23,27 +23,24 @@ export function ReauthPanel(props: ReauthPanelProps) {
   return isFederated ? <FederatedReauthPanel {...props} /> : <StagingReauthPanel {...props} />;
 }
 
-/** QA federation: confirm with the FlacronAI WEBSITE account (fresh production sign-in,
+/** QA federation: confirm with the FlacronAI WEBSITE password (fresh production sign-in,
  * plus its MFA code when enabled), which re-issues the QA session. */
 function FederatedReauthPanel({ actionLabel, onConfirmed, disabled = false }: ReauthPanelProps) {
-  const methods = identityMethods();
-  const method = methods.includes('password') ? 'password' : methods.includes('google') ? 'google' : null;
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [mfaStep, setMfaStep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!method) {
-    return <Notice tone="info" text="Sign out and sign in again with your FlacronAI website account, then try again." />;
+  if (!identityHasPassword()) {
+    return <Notice tone="info" text="Sign out and sign in again with your FlacronAI website email and password, then try again." />;
   }
 
   const confirm = async () => {
     setBusy(true);
     setError(null);
     try {
-      const outcome = await reauthenticateIdentity(method, mfaStep ? { mfaCode: code.trim() } : { password });
-      if (outcome === 'cancelled') return;
+      const outcome = await reauthenticateIdentity(mfaStep ? { mfaCode: code.trim() } : { password });
       if (outcome === 'mfa_required') {
         setMfaStep(true);
         return;
@@ -73,7 +70,7 @@ function FederatedReauthPanel({ actionLabel, onConfirmed, disabled = false }: Re
           textContentType="oneTimeCode"
           placeholder="123456"
         />
-      ) : method === 'password' ? (
+      ) : (
         <PasswordInput
           label="FlacronAI password"
           value={password}
@@ -82,16 +79,12 @@ function FederatedReauthPanel({ actionLabel, onConfirmed, disabled = false }: Re
           textContentType="password"
           accessibilityLabel="FlacronAI password"
         />
-      ) : (
-        <ThemedText variant="caption" color="muted" style={{ marginBottom: 12 }}>
-          You’ll be asked to sign in with Google again.
-        </ThemedText>
       )}
       <PrimaryButton
-        label={mfaStep ? `Verify & ${actionLabel.toLowerCase()}` : method === 'password' ? actionLabel : `Confirm with Google & ${actionLabel.toLowerCase()}`}
+        label={mfaStep ? `Verify & ${actionLabel.toLowerCase()}` : actionLabel}
         onPress={confirm}
         loading={busy}
-        disabled={disabled || (mfaStep ? code.trim().length < 6 : method === 'password' && !password)}
+        disabled={disabled || (mfaStep ? code.trim().length < 6 : !password)}
       />
     </View>
   );

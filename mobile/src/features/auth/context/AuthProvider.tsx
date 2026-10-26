@@ -53,8 +53,8 @@ import { signInWithGoogle, signOutOfGoogle } from '../services/googleSignIn';
 import { signInWithApple } from '../services/appleSignIn';
 import {
   FederatedSignInError,
+  GOOGLE_UNAVAILABLE_MESSAGE,
   exchangeToStaging,
-  signInToIdentityWithGoogle,
   signInToIdentityWithPassword,
   signOutIdentity,
   stagingSessionClaims,
@@ -410,19 +410,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const loginWithGoogle = useCallback(async () => {
     setMfaVerified(false);
     await clearMfaAssertion();
-    if (isFederatedLoginEnabled()) {
-      setFederatedMfaPending(false);
-      const status = await signInToIdentityWithGoogle();
-      if (status === 'cancelled') return 'cancelled';
-      await finishFederatedSignIn();
-      return 'success';
-    }
+    // QA federation: never Google -- it would create production accounts for unknown users.
+    if (isFederatedLoginEnabled()) throw new FederatedSignInError('auth/federated-google-unavailable', GOOGLE_UNAVAILABLE_MESSAGE);
     const outcome = await signInWithGoogle();
     if (outcome.status === 'success') {
       authApi.verify().catch(() => {});
     }
     return outcome.status;
-  }, [finishFederatedSignIn]);
+  }, []);
 
   const loginWithApple = useCallback(async () => {
     setMfaVerified(false);

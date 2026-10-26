@@ -17,6 +17,8 @@ const FORBIDDEN = [
   'flacronai-c8dab.appspot.com',
   '1:773892679617:android:',
   '1:773892679617:ios:',
+  // Production OAuth client IDs: Google sign-in stays off in the federated QA build.
+  '773892679617-',
   'trycloudflare',
   'E2E_PASSWORD',
   'e2e-runtime-override-enabled',

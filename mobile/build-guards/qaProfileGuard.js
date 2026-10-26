@@ -9,8 +9,7 @@
 //
 // QA federation (2026-10-26, approved design): existing FlacronAI WEBSITE accounts sign
 // in to the QA app. The production project is used ONLY to prove identity
-// (EXPO_PUBLIC_IDENTITY_FIREBASE_* + the Google web client, all public identifiers,
-// pinned exactly below); every data setting (API, Firebase project/bucket/app, FCM
+// (EXPO_PUBLIC_IDENTITY_FIREBASE_*, public identifiers, pinned exactly below); every data setting (API, Firebase project/bucket/app, FCM
 // google-services.json) must still be staging. The staging backend exchanges the
 // production sign-in for a staging session (backend/services/federatedIdentity.js).
 const crypto = require('crypto');
@@ -34,11 +33,8 @@ const IDENTITY = Object.freeze({
   EXPO_PUBLIC_IDENTITY_FIREBASE_APP_ID: '1:773892679617:web:daa3f6b5e3774501957140',
 });
 const IDENTITY_API_KEY_SHA256 = '99fb6c1845cbee6d452518a49d9112c4006f6a6253fae77f2e057836cea2b6a7';
-// The identity project's Google web client (Firebase Auth's google.com provider). Its
-// Android OAuth clients already cover this package + the company signing key.
-const IDENTITY_GOOGLE_WEB_CLIENT = '773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com';
 // The only variables that may carry production identifiers.
-const IDENTITY_VARS = new Set([...Object.keys(IDENTITY), 'EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY', 'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID']);
+const IDENTITY_VARS = new Set([...Object.keys(IDENTITY), 'EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY']);
 // Must be absent/empty in the handover build.
 const MUST_BE_EMPTY = [
   'EXPO_PUBLIC_E2E_RUNTIME_CONFIG',
@@ -87,9 +83,11 @@ function qaBuildProblems(env, expectedKeySha256 = STAGING_API_KEY_SHA256, expect
   if (crypto.createHash('sha256').update(identityKey).digest('hex') !== expectedIdentityKeySha256) {
     problems.push('EXPO_PUBLIC_IDENTITY_FIREBASE_API_KEY is not the flacronai-c8dab web API key');
   }
-  const webClient = env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  if (webClient && webClient !== IDENTITY_GOOGLE_WEB_CLIENT) {
-    problems.push("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not the identity project's Google web client");
+  // Google sign-in stays OFF in a federated QA build: against the production identity
+  // project, Firebase would create a production account for any unknown Google user, and
+  // that cannot be prevented without production changes.
+  if (env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+    problems.push('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID must be empty in the federated QA build (Google sign-in could create production accounts)');
   }
   problems.push(...googleServicesProblems(env.GOOGLE_SERVICES_JSON));
   for (const [name, value] of Object.entries(env)) {
@@ -123,7 +121,6 @@ module.exports = {
   STAGING_API_KEY_SHA256,
   IDENTITY,
   IDENTITY_API_KEY_SHA256,
-  IDENTITY_GOOGLE_WEB_CLIENT,
   qaBuildProblems,
   assertQaBuildEnv,
   googleServicesProblems,

@@ -3,13 +3,8 @@
  * and the native Google module mocked — no real project, account or network.
  */
 import { ApiRequestError } from '@/types/api';
-import {
-  exchangeToStaging,
-  identityMethods,
-  reauthenticateIdentity,
-  signInToIdentityWithGoogle,
-  stagingSessionClaims,
-} from './federatedLogin';
+import * as federated from './federatedLogin';
+import { exchangeToStaging, identityHasPassword, reauthenticateIdentity, signOutIdentity, stagingSessionClaims } from './federatedLogin';
 
 const identityAuth: { currentUser: unknown } = { currentUser: null };
 const stagingAuth = { currentUser: null };
@@ -18,8 +13,8 @@ jest.mock('firebase/auth', () => ({
   signInWithCustomToken: jest.fn(async () => ({})),
   signInWithEmailAndPassword: jest.fn(async () => ({})),
   signInWithCredential: jest.fn(),
-  getAdditionalUserInfo: jest.fn(),
-  deleteUser: jest.fn(async () => {}),
+  createUserWithEmailAndPassword: jest.fn(),
+  deleteUser: jest.fn(),
   signOut: jest.fn(async () => {}),
   reauthenticateWithCredential: jest.fn(async () => ({})),
   EmailAuthProvider: { credential: (email: string, password: string) => ({ email, password, providerId: 'password' }) },
@@ -75,31 +70,18 @@ describe('exchangeToStaging', () => {
   });
 });
 
-describe('signInToIdentityWithGoogle', () => {
-  it('cancelling the account chooser signs in to nothing', async () => {
-    mockGoogle.getGoogleCredential.mockResolvedValueOnce({ status: 'cancelled' });
-    await expect(signInToIdentityWithGoogle()).resolves.toBe('cancelled');
-    expect(mockFirebase.signInWithCredential).not.toHaveBeenCalled();
-  });
-
-  it('an existing website account signs in to the identity project', async () => {
-    mockGoogle.getGoogleCredential.mockResolvedValueOnce({ status: 'success', credential: { providerId: 'google.com' } });
-    mockFirebase.signInWithCredential.mockResolvedValueOnce({ user: { uid: 'u1' } });
-    mockFirebase.getAdditionalUserInfo.mockReturnValueOnce({ isNewUser: false });
-    await expect(signInToIdentityWithGoogle()).resolves.toBe('success');
-    expect(mockFirebase.signInWithCredential).toHaveBeenCalledWith(identityAuth, { providerId: 'google.com' });
+describe('no production account can be created or changed from the QA app', () => {
+  it('offers no Google path and never calls create/delete/credential sign-in on production', async () => {
+    expect(Object.keys(federated).some((k) => /google/i.test(k) && k !== 'GOOGLE_UNAVAILABLE_MESSAGE')).toBe(false);
+    identityAuth.currentUser = prodUser();
+    mockExchange.mockResolvedValue({ success: true, customToken: 'c', expiresIn: 3600, mfaVerified: false });
+    await exchangeToStaging();
+    await reauthenticateIdentity({ password: 'pw' });
+    await signOutIdentity();
+    expect(mockFirebase.createUserWithEmailAndPassword).not.toHaveBeenCalled();
     expect(mockFirebase.deleteUser).not.toHaveBeenCalled();
-  });
-
-  it('rolls back a production account that a first-time Google sign-in just created', async () => {
-    const created = { uid: 'brand-new' };
-    mockGoogle.getGoogleCredential.mockResolvedValueOnce({ status: 'success', credential: { providerId: 'google.com' } });
-    mockFirebase.signInWithCredential.mockResolvedValueOnce({ user: created });
-    mockFirebase.getAdditionalUserInfo.mockReturnValueOnce({ isNewUser: true });
-    await expect(signInToIdentityWithGoogle()).rejects.toMatchObject({ code: 'auth/federated-no-account' });
-    expect(mockFirebase.deleteUser).toHaveBeenCalledWith(created);
-    expect(mockFirebase.signOut).toHaveBeenCalledWith(identityAuth);
-    expect(mockGoogle.signOutOfGoogle).toHaveBeenCalled();
+    expect(mockFirebase.signInWithCredential).not.toHaveBeenCalled();
+    expect(mockGoogle.getGoogleCredential).not.toHaveBeenCalled();
   });
 });
 
@@ -108,7 +90,7 @@ describe('reauthenticateIdentity (account deletion)', () => {
     const user = prodUser();
     identityAuth.currentUser = user;
     mockExchange.mockResolvedValueOnce({ success: true, customToken: 'c2', expiresIn: 3600, mfaVerified: false });
-    await expect(reauthenticateIdentity('password', { password: 'pw' })).resolves.toBe('ok');
+    await expect(reauthenticateIdentity({ password: 'pw' })).resolves.toBe('ok');
     expect(mockFirebase.reauthenticateWithCredential).toHaveBeenCalledWith(user, { email: 'user@example.com', password: 'pw', providerId: 'password' });
     expect(user.getIdToken).toHaveBeenCalledWith(true);
   });
@@ -116,26 +98,25 @@ describe('reauthenticateIdentity (account deletion)', () => {
   it('asks for production MFA for the new sign-in; the code step does not re-prompt the password', async () => {
     identityAuth.currentUser = prodUser();
     mockExchange.mockRejectedValueOnce(new ApiRequestError('code', { status: 401, code: 'FEDERATED_MFA_REQUIRED' }));
-    await expect(reauthenticateIdentity('password', { password: 'pw' })).resolves.toBe('mfa_required');
+    await expect(reauthenticateIdentity({ password: 'pw' })).resolves.toBe('mfa_required');
     mockExchange.mockResolvedValueOnce({ success: true, customToken: 'c3', expiresIn: 3600, mfaVerified: true });
     mockFirebase.reauthenticateWithCredential.mockClear();
-    await expect(reauthenticateIdentity('password', { mfaCode: '654321' })).resolves.toBe('ok');
+    await expect(reauthenticateIdentity({ mfaCode: '654321' })).resolves.toBe('ok');
     expect(mockFirebase.reauthenticateWithCredential).not.toHaveBeenCalled();
     expect(mockExchange).toHaveBeenLastCalledWith('fresh-prod-token', '654321');
   });
 
-  it('Google re-auth can be cancelled', async () => {
-    identityAuth.currentUser = prodUser(['google.com']);
-    mockGoogle.getGoogleCredential.mockResolvedValueOnce({ status: 'cancelled' });
-    await expect(reauthenticateIdentity('google')).resolves.toBe('cancelled');
-    expect(mockExchange).not.toHaveBeenCalled();
+  it('requires the password', async () => {
+    identityAuth.currentUser = prodUser();
+    await expect(reauthenticateIdentity({})).rejects.toMatchObject({ code: 'auth/federated-missing-password' });
   });
 });
 
 describe('helpers', () => {
-  it('identityMethods lists password / Google providers of the production identity', () => {
-    expect(identityMethods(prodUser(['google.com', 'password']) as never)).toEqual(['google', 'password']);
-    expect(identityMethods(null)).toEqual([]);
+  it('identityHasPassword reflects the production identity providers', () => {
+    expect(identityHasPassword(prodUser(['password']) as never)).toBe(true);
+    expect(identityHasPassword(prodUser(['google.com']) as never)).toBe(false);
+    expect(identityHasPassword(null)).toBe(false);
   });
 
   it('stagingSessionClaims reads the federation claims of the staging session', async () => {

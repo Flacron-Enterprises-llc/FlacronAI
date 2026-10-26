@@ -65,7 +65,7 @@
         "EXPO_PUBLIC_IDENTITY_FIREBASE_AUTH_DOMAIN": "flacronai-c8dab.firebaseapp.com",
         "EXPO_PUBLIC_IDENTITY_FIREBASE_PROJECT_ID": "flacronai-c8dab",
         "EXPO_PUBLIC_IDENTITY_FIREBASE_APP_ID": "1:773892679617:web:daa3f6b5e3774501957140",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
         "FLACRON_BUILD_PROFILE": "qa"
       }
