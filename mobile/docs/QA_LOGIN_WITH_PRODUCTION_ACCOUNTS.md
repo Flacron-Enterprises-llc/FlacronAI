@@ -1,7 +1,35 @@
-# QA APK login: diagnosis and proposal for production sign-in
+# QA APK login: diagnosis and production sign-in (QA federation)
 
-Status: **proposal, not implemented** (2026-10-26). Nothing in production auth, cloud configuration or user
-accounts has been changed. Implementation needs approval: a staging backend deploy and a new QA APK.
+Status (2026-10-26): **approved design implemented.** The token exchange (§3) is in the code (commit `9566676`
+on `integration/web-mobile-combined`) and deployed to the staging API (Cloud Run revision
+`flacronai-staging-api-00014-x9g`; rollback: `00012-fzl`). The QA APK workflow builds from `qa/web-mobile-combined`
+(commit `2935138`). No production configuration, user account or credential was changed.
+
+Verified:
+- **Unit and route tests:** backend 1437/0 (12 federation tests), mobile 527/0 (12 federation-flow tests plus guard tests).
+- **Live staging-only checks:** 8/8. The endpoint is live, rejects garbage and staging-audience tokens, leaves
+  native staging sessions working, and deletes its disposable account afterwards.
+
+Pending:
+- **Live check with a real production sign-in:** the run was blocked because it would create disposable production
+  accounts. It needs an approved test account or a tester on a device.
+- **New APK:** needs the `qa-android` GitHub environment and the staging Workload Identity provider to allow
+  `qa/web-mobile-combined`.
+- **Physical-device checks:** Google account picker, cancel, switch account, sign-out.
+
+How it works now: the user signs in with their FlacronAI website account in the QA app, which uses the production
+project for identity only. `POST /auth/federated/exchange` verifies the token and lets production check MFA and
+revocation, then returns a 1-hour staging session for a passwordless staging copy of the account. Everything else
+stays in staging.
+
+Actual limitations:
+- A production password change or sign-out-everywhere ends QA access at the next renewal, within 1 hour, not instantly.
+- A production ID token issued before such a change is still accepted until it expires (up to 1 hour), because
+  staging has no production credential to check revocation.
+- A first-time Google user briefly gets a production Auth record. The app deletes it at once; if that deletion
+  fails (e.g. offline), a bare record with no data remains.
+
+The sections below are the original diagnosis and proposal.
 
 ## 1. Confirmed cause of "Invalid email or password"
 

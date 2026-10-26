@@ -40,6 +40,10 @@
 
 ## 1. Current Status
 
+> **QA LOGIN — 2026-10-26.** The QA app now signs in with FlacronAI website accounts (QA federation); all data
+> stays in staging. See `mobile/docs/QA_LOGIN_WITH_PRODUCTION_ACCOUNTS.md` and `PROGRESS.md` 2026-10-26.
+> Staging API is deployed; a new APK is waiting on the `qa-android` environment and Workload Identity branch allowance.
+>
 > **COMBINED WORKSPACE — 2026-10-26.** Main (web, `0e98bed`) and this branch (`8d5872a`) are merged on the LOCAL
 > branch `integration/web-mobile-combined` — the single folder for web and mobile from now on (root `CLAUDE.md` §0a).
 > The `payment.js` / `fakeFirestore.js` conflicts listed below are resolved there; all backend, frontend and mobile
