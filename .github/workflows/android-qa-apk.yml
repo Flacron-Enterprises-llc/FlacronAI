@@ -1,9 +1,16 @@
 name: Android QA APK (staging)
 
-# Builds the signed, standalone QA APK of the whole mobile app against STAGING only
+# Builds the signed, standalone QA APK of the whole mobile app against STAGING data only
 # (Firebase flacronai-staging-qa + the Cloud Run staging API) and uploads it to Firebase
-# App Distribution. Never deploys anything, never touches production, never publishes
+# App Distribution. Never deploys anything, never changes production, never publishes
 # to a store.
+#
+# Sign-in (QA federation, 2026-10-26): testers use their existing FlacronAI website
+# account. The production project is used only to prove identity (pinned public
+# identifiers, see mobile/build-guards/qaProfileGuard.js); the staging API exchanges that
+# sign-in for a staging session, so every report, file, bill and notification stays in
+# staging. Builds run from qa/web-mobile-combined (web + mobile integration branch);
+# qa/android-qa-apk stays allowed for rollback.
 #
 # The repository is PUBLIC: the APK is deliberately NOT uploaded as a workflow artifact
 # (artifacts of public repos are downloadable by anyone). Testers get it only through
@@ -13,6 +20,7 @@ name: Android QA APK (staging)
 on:
   push:
     branches:
+      - qa/web-mobile-combined
       - qa/android-qa-apk
     paths:
       - "mobile/**"
@@ -56,7 +64,10 @@ jobs:
       - name: Refuse to run outside the QA branch
         working-directory: .
         run: |
-          [ "$GITHUB_REF" = "refs/heads/qa/android-qa-apk" ] || { echo "QA builds run only from qa/android-qa-apk"; exit 1; }
+          case "$GITHUB_REF" in
+            refs/heads/qa/web-mobile-combined|refs/heads/qa/android-qa-apk) ;;
+            *) echo "QA builds run only from qa/web-mobile-combined or qa/android-qa-apk"; exit 1 ;;
+          esac
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,7 +93,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Load the `qa` profile env from eas.json (staging values only)
+      - name: Load the `qa` profile env from eas.json (staging data + pinned identity values)
         run: |
           node -e '
             const env = require("./eas.json").build.qa.env;
@@ -90,6 +101,8 @@ jobs:
             require("fs").appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
             console.log("loaded:", Object.keys(env).join(", "));
           '
+          # Distinct, ever-increasing Android build number for every distributed APK.
+          echo "QA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       - name: Write staging google-services.json (FCM, optional)
         env:
@@ -167,7 +180,7 @@ jobs:
         env:
           EXTRA_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
-          NOTES="FlacronAI QA build ${GITHUB_SHA::7} (staging backend + staging Firebase; NOT production).
+          NOTES="FlacronAI QA build ${GITHUB_SHA::7} (1.1.0 / ${QA_VERSION_CODE}). Sign in with your FlacronAI website account (email/password or Google). QA data is separate: staging backend + staging Firebase; nothing you do here changes your website account.
           SHA-256: ${APK_SHA256}
           ${EXTRA_NOTES}"
           # firebase-tools prints a tokenized, unauthenticated APK download URL. Workflow logs
@@ -193,6 +206,7 @@ jobs:
             echo "### Android QA APK"
             echo "- Source commit: \`${GITHUB_SHA}\`"
             echo "- APK SHA-256: \`${APK_SHA256:-not built}\`"
-            echo "- Backend: staging Cloud Run; Firebase: flacronai-staging-qa"
+            echo "- Backend: staging Cloud Run; data Firebase: flacronai-staging-qa; sign-in identity: flacronai-c8dab (federated, identity only)"
+            echo "- Version: 1.1.0 (${QA_VERSION_CODE:-n/a})"
             echo "- Distribution: Firebase App Distribution group \`qa-testers\` (APK intentionally not attached here — public repo)"
           } >> "$GITHUB_STEP_SUMMARY"
