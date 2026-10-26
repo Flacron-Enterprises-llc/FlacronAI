@@ -377,3 +377,22 @@ test('removeStagedPhoto: concurrent delete + append for the same draft never sil
   const ids = db.store.get('reportDrafts/rm5').data.photos.map((p) => p.id).sort();
   assert.deepEqual(ids, ['p1', 'p2'], 'p0 removed, p1 untouched, p2 added -- neither operation was lost to a lost-update race');
 });
+
+// Mobile Phase 10: POST /generate no longer deletes a claimed draft (the delete
+// reopened the duplicate window -- a resubmit then created a second, photo-less
+// report). A claimed draft must therefore also refuse new photos, or a late stage
+// request would silently "reopen" it.
+test('appendStagedPhoto: a claimed (already-generated) draft refuses new photos and stays claimed', async () => {
+  const db = new FakeFirestore();
+  await appendStagedPhoto(db, { draftId: 'd9', uid: 'u1', record: makeRecord('p0'), maxPhotos: 100 });
+  await claimDraftPhotos(db, { draftId: 'd9', uid: 'u1' });
+  await assert.rejects(
+    appendStagedPhoto(db, { draftId: 'd9', uid: 'u1', record: makeRecord('p1'), maxPhotos: 100 }),
+    (err) => err.code === 'DRAFT_ALREADY_USED'
+  );
+  const draft = db.store.get('reportDrafts/d9').data;
+  assert.equal(draft.claimed, true);
+  assert.deepEqual(draft.photos.map((p) => p.id), ['p0']);
+  const again = await claimDraftPhotos(db, { draftId: 'd9', uid: 'u1' });
+  assert.equal(again.alreadyClaimed, true, 'a resubmit is still recognised as a duplicate');
+});

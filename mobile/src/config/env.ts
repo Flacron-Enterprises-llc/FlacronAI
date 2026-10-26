@@ -30,6 +30,8 @@
  * README documents the exact value for each target.
  */
 
+import { getE2EEndpoints } from './e2eOverride';
+
 export type AppEnv = 'development' | 'preview' | 'production';
 
 const VALID_APP_ENVS: readonly AppEnv[] = ['development', 'preview', 'production'];
@@ -136,12 +138,12 @@ export function getAppEnv(): AppEnv {
  * preview / production:
  * - No fallback of any kind. Throws on a missing value, an unparseable URL, a
  *   placeholder-shaped value, a non-HTTPS URL, or a localhost/emulator/private-LAN host —
- *   none of those can ever be a real, publicly reachable production/preview origin. The
- *   real backend origin has not been confirmed in this repository as of Phase 2
- *   (`flacronai.com` was directly verified on 2026-09-08 to be Vercel's static frontend,
- *   not a reverse-proxied backend — see MOBILE_DEVELOPMENT_PHASES.md §10 item 1) — a
- *   real, confirmed HTTPS value must be supplied explicitly via an EAS environment
- *   variable before a preview/production build can use this function without throwing.
+ *   none of those can ever be a real, publicly reachable production/preview origin.
+ *   2026-10-05: the production origin was confirmed as `https://api.flacronai.com`
+ *   (`GET /health` → `{"environment":"production"}`; `flacronai.com` itself is Vercel's
+ *   static frontend) and is set for the `production` profile in eas.json. `preview` still
+ *   has no value on purpose (whether testers should hit production is a decision — see
+ *   MOBILE_DEVELOPMENT_PHASES.md §10 item 1), so a preview build throws until one is set.
  */
 export function getApiBaseUrl(): string {
   const appEnv = getAppEnv();
@@ -149,6 +151,9 @@ export function getApiBaseUrl(): string {
   const hasRaw = !!raw && raw.trim().length > 0;
 
   if (appEnv === 'development') {
+    // Phase 10 e2e test build only: endpoint supplied at launch (see e2eRuntimeConfig.ts).
+    const e2e = getE2EEndpoints();
+    if (e2e) return `${e2e.apiOrigin}/api/v1`;
     if (!hasRaw) {
       // Documented, restricted fallback — see the development JSDoc block above and
       // mobile/README.md "Running on different targets". Not valid for every device.

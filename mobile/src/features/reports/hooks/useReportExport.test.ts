@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react-native';
 
 import { ApiRequestError } from '@/types/api';
-import { useReportExport } from './useReportExport';
+import { exportFileName, useReportExport } from './useReportExport';
 
 const mockExportReport = jest.fn();
 const mockDownloadExport = jest.fn();
@@ -136,5 +136,24 @@ describe('useReportExport — server/offline errors surface the client\'s own sa
 
     expect(outcome).toEqual({ status: 'error', message: 'Your session has expired. Please sign in again.' });
     expect(mockDownloadExport).not.toHaveBeenCalled();
+  });
+});
+
+describe('useReportExport — file naming and slow exports', () => {
+  it('never uses a server-supplied filename as a path', () => {
+    expect(exportFileName('../../etc/passwd', 'pdf')).not.toMatch(/\//);
+    expect(exportFileName('CLM-1 report.pdf', 'pdf')).toBe('CLM-1_report.pdf');
+    expect(exportFileName('', 'docx')).toBe('report.docx');
+    expect(exportFileName('report', 'html')).toBe('report.html');
+  });
+
+  it('maps an export timeout to a clear, retryable message', async () => {
+    mockExportReport.mockRejectedValueOnce(new ApiRequestError('The request timed out.', { category: 'timeout', retryable: true }));
+    const { result } = await renderHook(() => useReportExport('r1'));
+    let outcome: Awaited<ReturnType<typeof result.current.exportAndShare>> | undefined;
+    await act(async () => {
+      outcome = await result.current.exportAndShare({ format: 'pdf' });
+    });
+    expect(outcome).toMatchObject({ status: 'error', message: expect.stringMatching(/longer than expected/) });
   });
 });

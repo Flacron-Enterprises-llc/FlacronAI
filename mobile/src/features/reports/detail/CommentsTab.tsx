@@ -8,12 +8,12 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useReportComments } from '../hooks/useReportComments';
 import { LoadingState, StateMessage } from '../components/StateMessage';
 
-export function CommentsTab({ reportId }: { reportId: string }) {
+export function CommentsTab({ reportId, canComment }: { reportId: string; canComment: boolean }) {
   const theme = useTheme();
-  const { comments, loading, error, posting, retry, addComment, setResolved } = useReportComments(reportId);
+  const { comments, loading, error, actionError, clearActionError, posting, retry, addComment, setResolved } = useReportComments(reportId);
   const [draft, setDraft] = useState('');
 
-  if (loading) return <LoadingState label="Loading comments…" />;
+  if (loading && comments.length === 0) return <LoadingState label="Loading comments…" />;
   if (error && comments.length === 0) return <StateMessage title="Could not load comments" description={error} onRetry={retry} />;
 
   const handleSend = async () => {
@@ -43,11 +43,19 @@ export function CommentsTab({ reportId }: { reportId: string }) {
               ]}
             >
               <ThemedText variant="body">{comment.body}</ThemedText>
-              <Pressable onPress={() => setResolved(comment.id, !comment.resolved)} style={styles.resolveBtn}>
-                <ThemedText variant="caption" style={{ color: comment.resolved ? theme.colors.success : theme.colors.muted }}>
-                  {comment.resolved ? '✓ Resolved' : 'Mark resolved'}
-                </ThemedText>
-              </Pressable>
+              {canComment ? (
+                <Pressable onPress={() => setResolved(comment.id, !comment.resolved)} style={styles.resolveBtn} accessibilityRole="button">
+                  <ThemedText variant="caption" style={{ color: comment.resolved ? theme.colors.success : theme.colors.muted }}>
+                    {comment.resolved ? '✓ Resolved' : 'Mark resolved'}
+                  </ThemedText>
+                </Pressable>
+              ) : (
+                comment.resolved && (
+                  <ThemedText variant="caption" style={[styles.resolveBtn, { color: theme.colors.success }]}>
+                    ✓ Resolved
+                  </ThemedText>
+                )
+              )}
             </View>
             {repliesFor(comment.id).map((reply) => (
               <View
@@ -61,12 +69,31 @@ export function CommentsTab({ reportId }: { reportId: string }) {
         ))}
       </ScrollView>
 
-      <View style={styles.composer}>
-        <View style={styles.composerInput}>
-          <AuthTextInput label="Add a comment" value={draft} onChangeText={setDraft} placeholder="Type a comment…" />
+      {/* Post/resolve failures show here; the comment list above stays as it was. */}
+      {!!actionError && (
+        <Pressable
+          onPress={clearActionError}
+          accessibilityRole="button"
+          style={[styles.banner, { backgroundColor: theme.colors.error + '1A', borderRadius: theme.radii.btn }]}
+        >
+          <ThemedText variant="caption" style={{ color: theme.colors.error }}>
+            {actionError} Tap to dismiss.
+          </ThemedText>
+        </Pressable>
+      )}
+
+      {canComment ? (
+        <View style={styles.composer}>
+          <View style={styles.composerInput}>
+            <AuthTextInput label="Add a comment" value={draft} onChangeText={setDraft} placeholder="Type a comment…" />
+          </View>
+          <PrimaryButton label="Send" onPress={handleSend} loading={posting} disabled={!draft.trim()} />
         </View>
-        <PrimaryButton label="Send" onPress={handleSend} loading={posting} disabled={!draft.trim()} />
-      </View>
+      ) : (
+        <ThemedText variant="caption" color="muted" style={styles.composer}>
+          You have view-only access, so you can’t add comments.
+        </ThemedText>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -96,6 +123,10 @@ const styles = StyleSheet.create({
   },
   composer: {
     paddingTop: 8,
+  },
+  banner: {
+    padding: 10,
+    marginTop: 8,
   },
   composerInput: {
     marginBottom: 4,

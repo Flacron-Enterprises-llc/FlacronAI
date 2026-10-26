@@ -67,9 +67,10 @@ We do not use advertising cookies or share data with advertising networks. You c
     content: `We retain your data for as long as your account is active and for a reasonable period thereafter.
 
 - **Active accounts:** Data is retained for the full duration of your account's active status.
-- **After account closure:** Account data is retained for 90 days after account closure to allow for recovery requests, then deleted from primary systems within 180 days. Backups may retain data for an additional 90 days.
-- **Reports:** Generated reports are retained until explicitly deleted by you, or for 3 years if you do not delete them, subject to your plan's storage limits.
-- **Photos:** Uploaded photos are stored for 90 days after report generation, then automatically purged unless explicitly saved.
+- **After account deletion:** Account deletion permanently removes your profile, reports, photos, exports and other account content from our active systems. Deleted accounts cannot be recovered. If any cleanup step fails, our system retries it automatically. Certain records are retained as described below.
+- **Reports:** Generated reports are retained until you delete them or delete your account. Deleting a report first moves it to Archived; permanently deleting it removes the report together with its photos, supporting documents, comments and version history. Exported PDF/DOCX files are removed when you delete your account.
+- **Photos:** Uploaded photos are retained with their report and are removed when the report is permanently deleted or your account is deleted.
+- **Records retained after account deletion:** billing and invoice records (see Payment records), security audit logs, messages you sent through our contact or sales forms, and a minimal record that the account was deleted, which prevents it from being recreated or re-linked to a purchase.
 - **Payment records:** Billing and invoice records are retained for 7 years to meet tax and legal obligations.
 - **Deletion requests:** You may request immediate deletion of your account and associated data at any time. See Section 7 for your rights.`,
   },

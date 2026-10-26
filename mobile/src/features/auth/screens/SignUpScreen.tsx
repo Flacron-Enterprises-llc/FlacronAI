@@ -220,7 +220,7 @@ export function SignUpScreen() {
           Already have an account?{' '}
         </ThemedText>
         <Link href="/login" asChild>
-          <Pressable>
+          <Pressable accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
             <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
               Sign in
             </ThemedText>

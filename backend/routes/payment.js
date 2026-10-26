@@ -45,6 +45,14 @@ const {
 } = require('../config/stripeApp');
 const ledger = require('../services/billingLedger');
 const { resolveCheckoutDiscount, funnelMetadata, isDiscountRejection } = require('../utils/growthEngineFunnel');
+// Mobile Phase 7: Stripe writes only the Stripe source fields; `tier` is
+// recomputed transactionally from every source (utils/entitlements.js), so a
+// Stripe event never erases an App Store / Google Play, admin or team grant.
+const { applyEntitlementSources } = require('../utils/entitlements');
+// Account deletion: no checkout / plan change / webhook may (re)activate billing
+// while an account is being deleted or after it was deleted.
+const { isLockActive, billingBlockState, ACCOUNT_DELETION_BLOCKED_BODY } = require('../utils/accountDeletionLock');
+const { cancelSubscriptionForDeletedAccount } = require('../services/stripeAccountCancellation');
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
@@ -120,16 +128,65 @@ const persistSubscription = async (userRef, subscription, tierKey = getSubscript
   const tier = getBaseTier(tierKey);
   if (!tierKey || !TIER_ORDER.includes(tier)) return null;
 
-  await userRef.update({
-    tier,
-    stripeSubscriptionId: subscription.id,
-    stripeCustomerId: subscription.customer,
-    subscriptionStatus: subscription.cancel_at_period_end ? 'cancelling' : subscription.status,
-    stripeSubscriptionCreatedAt: subscription.created,
-    updatedAt: new Date().toISOString(),
+  const db = getFirestore();
+  const written = await applyEntitlementSources(db, userRef.id, async (user, tx) => {
+    // Never grant to an account that is being / has been deleted.
+    if (isLockActive(user)) return null;
+    if ((await tx.get(db.collection('deletedAccounts').doc(userRef.id))).exists) return null;
+    // Out-of-order protection: an older subscription never replaces a newer
+    // current one (late webhook for a superseded subscription).
+    if (
+      user.stripeSubscriptionId &&
+      user.stripeSubscriptionId !== subscription.id &&
+      Number(user.stripeSubscriptionCreatedAt || 0) > Number(subscription.created || 0)
+    ) {
+      return null;
+    }
+    return {
+      stripeTier: tier,
+      stripeSubscriptionId: subscription.id,
+      stripeCustomerId: subscription.customer,
+      subscriptionStatus: subscription.cancel_at_period_end ? 'cancelling' : subscription.status,
+      stripeSubscriptionCreatedAt: subscription.created,
+      updatedAt: new Date().toISOString(),
+    };
   });
 
-  return tier;
+  return written === null ? null : tier;
+};
+
+// The user's CURRENT Stripe subscription ended: clear only the Stripe source.
+// Re-checked inside the transaction, so a late event for an old subscription
+// can't end a newer one.
+const endSubscription = (db, uid, subscriptionId, status) =>
+  applyEntitlementSources(db, uid, (user) =>
+    user.stripeSubscriptionId === subscriptionId
+      ? {
+          stripeTier: 'starter',
+          subscriptionStatus: status,
+          stripeSubscriptionId: null,
+          updatedAt: new Date().toISOString(),
+        }
+      : null
+  );
+
+// Webhook guard for an event that would grant a subscription to `uid`:
+// deletion in progress -> throw so the webhook returns 500 and Stripe redelivers
+// after the deletion settles; account deleted -> cancel the subscription (no
+// refund / proration) and grant nothing. Returns true when the caller must stop.
+const stopForDeletedAccount = async (db, uid, subscriptionId) => {
+  const state = await billingBlockState(db, uid);
+  if (state === 'ok') return false;
+  if (state === 'locked') throw new Error('Account deletion in progress; retry later');
+  if (subscriptionId) await cancelSubscriptionForDeletedAccount(uid, subscriptionId, { stripe });
+  console.log(`Cancelled subscription ${subscriptionId} created/updated for deleted account ${uid}`);
+  return true;
+};
+
+const rejectIfDeleting = async (req, res) => {
+  if ((await billingBlockState(getFirestore(), req.user.uid)) === 'ok') return false;
+  res.status(409).json(ACCOUNT_DELETION_BLOCKED_BODY);
+  return true;
 };
 
 const findActiveSubscription = async customerId => {
@@ -158,6 +215,7 @@ router.post('/create-checkout-session', authenticateToken, async (req, res) => {
   }
 
   try {
+    if (await rejectIfDeleting(req, res)) return;
     if (!(await assertPriceIsOurs(priceId))) {
       return res.status(503).json({ success: false, error: 'This plan is not available right now.', code: 'PRICE_NOT_CONFIGURED' });
     }
@@ -372,6 +430,7 @@ router.post('/photo-pack-checkout', authenticateToken, photoAddOnCheckoutLimiter
     if (!reportId || !packId) {
       return res.status(400).json({ success: false, error: 'reportId and packId are required', code: 'INVALID_REQUEST' });
     }
+    if (await rejectIfDeleting(req, res)) return;
 
     const db = getFirestore();
     const ownerDoc = await db.collection('users').doc(req.user.uid).get();
@@ -615,14 +674,24 @@ const ledgerRefundsForPaymentIntent = async (db, paymentIntentId) => {
 };
 
 const syncUserSubscription = async (db, sub) => {
+  // A subscription that is no longer active only ends the Stripe source of
+  // its current owner; it never grants.
+  if (!ACTIVE_SUBSCRIPTION_STATUSES.has(sub.status)) {
+    const current = await db.collection('users').where('stripeSubscriptionId', '==', sub.id).limit(1).get();
+    if (!current.empty) await endSubscription(db, current.docs[0].id, sub.id, sub.status);
+    return;
+  }
   let snapshot = await db.collection('users').where('stripeSubscriptionId', '==', sub.id).limit(1).get();
-  if (snapshot.empty && (sub.metadata?.internal_user_id || sub.metadata?.uid)) {
-    const userDoc = await db.collection('users').doc(sub.metadata.internal_user_id || sub.metadata.uid).get();
+  const metadataUid = sub.metadata?.internal_user_id || sub.metadata?.uid;
+  const ownerUid = snapshot.empty ? metadataUid : snapshot.docs[0].id;
+  if (ownerUid && (await stopForDeletedAccount(db, ownerUid, sub.id))) return;
+  if (snapshot.empty && metadataUid) {
+    const userDoc = await db.collection('users').doc(metadataUid).get();
     snapshot = userDoc.exists ? { empty: false, docs: [userDoc] } : snapshot;
   }
   if (!snapshot.empty) {
     const tierKey = getSubscriptionTierKey(sub) || sub.metadata?.tier;
-    await persistSubscription(snapshot.docs[0].ref, sub, tierKey);
+    await persistSubscription(db.collection('users').doc(snapshot.docs[0].id), sub, tierKey);
   }
 };
 
@@ -697,6 +766,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
         const uid = session.metadata?.internal_user_id || session.metadata?.uid;
         const tier = getBaseTier(session.metadata?.tier); // strip _annual suffix
+        if (uid && session.subscription && (await stopForDeletedAccount(db, uid, idOf(session.subscription)))) break;
         if (uid && tier && session.subscription) {
           const userRef = db.collection('users').doc(uid);
           const [userDoc, subscription] = await Promise.all([
@@ -722,7 +792,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
-        const sub = event.data.object;
+        // Webhooks can arrive late / out of order: an update acts on the
+        // subscription's CURRENT state from Stripe, never the event snapshot,
+        // so a stale "active" event can't re-grant a subscription that ended.
+        const sub = event.type === 'customer.subscription.updated'
+          ? await stripe.subscriptions.retrieve(event.data.object.id)
+          : event.data.object;
         await syncUserSubscription(db, sub);
         if (event.type === 'customer.subscription.created') {
           // Customer count must include customers created outside our endpoint.
@@ -737,12 +812,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         const subscription = event.data.object;
         const snapshot = await db.collection('users').where('stripeSubscriptionId', '==', subscription.id).limit(1).get();
         if (!snapshot.empty) {
-          await snapshot.docs[0].ref.update({
-            tier: 'starter',
-            subscriptionStatus: 'cancelled',
-            stripeSubscriptionId: null,
-            updatedAt: new Date().toISOString(),
-          });
+          await endSubscription(db, snapshot.docs[0].id, subscription.id, 'cancelled');
         } else {
           console.log(`Ignored deletion of non-current subscription ${subscription.id} for customer ${subscription.customer}`);
         }
@@ -918,6 +988,7 @@ router.post('/confirm-checkout', authenticateToken, async (req, res) => {
       return res.status(409).json({ success: false, error: 'Checkout payment is not complete', code: 'PAYMENT_PENDING' });
     }
 
+    if (await rejectIfDeleting(req, res)) return;
     const subscription = session.subscription;
     const tierKey = session.metadata?.tier || getSubscriptionTierKey(subscription);
     const userRef = getFirestore().collection('users').doc(req.user.uid);

@@ -27,6 +27,13 @@ const appendStagedPhoto = async (db, { draftId, uid, record, maxPhotos, nowIso =
   const ref = db.collection('reportDrafts').doc(draftId);
   return db.runTransaction(async (tx) => {
     const freshDoc = await tx.get(ref);
+    // Mobile Phase 10: a draft already used by POST /generate stays claimed (it is
+    // no longer deleted); never let a late stage request reopen it.
+    if (freshDoc.exists && freshDoc.data().claimed) {
+      const err = new Error('Draft already used to create a report');
+      err.code = 'DRAFT_ALREADY_USED';
+      throw err;
+    }
     const freshPhotos = freshDoc.exists ? freshDoc.data().photos || [] : [];
     // Phase 44 usage-counting rule: only a genuinely 'uploaded' photo
     // consumes a capacity unit -- a 'failed' (corrupt file) or 'duplicate'

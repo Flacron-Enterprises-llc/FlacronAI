@@ -6,6 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
 const { recordAuditLog } = require('../services/auditLogService');
+const { applyEntitlementSources } = require('../utils/entitlements');
 
 // Stripe — instantiated once at module level
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -346,12 +347,20 @@ router.put('/admin/update-tier', authenticateToken, requireAdmin, [
     const db = getFirestore();
 
     const userRecord = await getAuth().getUserByEmail(req.body.email);
-    await db.collection('users').doc(userRecord.uid).update({
-      tier: req.body.tier,
-      updatedAt: new Date().toISOString(),
+    // Mobile Phase 7: the admin grant is its own source (`adminTier`), so later
+    // Stripe / App Store / Google Play events never erase it. Effective tier =
+    // highest source (utils/entitlements.js); 'starter' clears the grant and
+    // can't remove a plan the user pays for.
+    const nowIso = new Date().toISOString();
+    const effectiveTier = await applyEntitlementSources(db, userRecord.uid, () => ({
+      adminTier: req.body.tier === 'starter' ? null : req.body.tier,
+      updatedAt: nowIso,
       adminUpdated: true,
-      adminUpdatedAt: new Date().toISOString(),
-    });
+      adminUpdatedAt: nowIso,
+    }));
+    if (effectiveTier === null) {
+      return res.status(404).json({ success: false, error: 'User not found', code: 'USER_NOT_FOUND' });
+    }
 
     recordAuditLog({
       actorUid: req.user.uid,
@@ -359,11 +368,12 @@ router.put('/admin/update-tier', authenticateToken, requireAdmin, [
       action: 'admin_tier_update',
       targetType: 'user',
       targetId: userRecord.uid,
-      meta: { targetEmail: req.body.email, newTier: req.body.tier },
+      meta: { targetEmail: req.body.email, newTier: req.body.tier, effectiveTier },
       req,
     });
 
-    return res.json({ success: true, message: `User ${req.body.email} updated to ${req.body.tier} tier` });
+    const note = effectiveTier !== req.body.tier ? ` (effective tier is ${effectiveTier} because of the user's own subscription or team plan)` : '';
+    return res.json({ success: true, effectiveTier, message: `User ${req.body.email} updated to ${req.body.tier} tier${note}` });
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
       return res.status(404).json({ success: false, error: 'User not found', code: 'USER_NOT_FOUND' });

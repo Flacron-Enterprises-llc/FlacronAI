@@ -66,7 +66,8 @@ export type KnownAuthErrorCode =
  *   `EXPORT_IN_PROGRESS`). Never retried automatically — the caller must decide.
  * - `permission` — HTTP 403 for a real authorization decision that isn't an auth/account
  *   failure (`INSUFFICIENT_TIER`, `API_ACCESS_DENIED`, `TEAM_PERMISSION_DENIED`,
- *   `API_SCOPE_REQUIRED`, `SHARE_PERMISSION_DENIED`, etc.). Never retried.
+ *   `API_SCOPE_REQUIRED`, `SHARE_PERMISSION_DENIED`, `FEATURE_NOT_IN_PLAN`, etc.), and any
+ *   403 whose code isn't a known auth-fatal one. Never retried.
  * - `not_found` — HTTP 404. Never retried.
  * - `unknown` — anything not classified above. Treated as non-retryable by default (safer
  *   than guessing it's transient).

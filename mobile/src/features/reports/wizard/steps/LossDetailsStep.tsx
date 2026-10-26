@@ -35,7 +35,13 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
         maxLength={10}
         error={invalid ? 'Use the YYYY-MM-DD format' : undefined}
       />
-      <Pressable onPress={() => onChange(todayIso())} style={styles.todayLink}>
+      <Pressable
+        onPress={() => onChange(todayIso())}
+        style={styles.todayLink}
+        accessibilityRole="button"
+        accessibilityLabel={`Use today's date for ${label}`}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+      >
         <ThemedText variant="caption" style={{ color: theme.colors.primary }}>
           Use today&apos;s date
         </ThemedText>
@@ -47,25 +53,28 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
 export function LossDetailsStep({ fields, setField }: StepProps) {
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
-      <ChoiceChips label="Loss type *" value={fields.lossType || 'Water Damage'} options={LOSS_TYPES} onChange={(v) => setField('lossType', v)} />
+      <ChoiceChips label="Loss type *" value={fields.lossType || ''} options={LOSS_TYPES} onChange={(v) => setField('lossType', v)} />
       <DateField label="Date of loss *" value={fields.lossDate || ''} onChange={(v) => setField('lossDate', v)} />
       <DateField label="Inspection date" value={fields.inspectionDate || ''} onChange={(v) => setField('inspectionDate', v)} />
       <ChoiceChips
         label="Inspection type"
-        value={fields.inspectionType || 'Interior & Exterior'}
+        value={fields.inspectionType || ''}
         options={INSPECTION_TYPES}
+        allowDeselect
         onChange={(v) => setField('inspectionType', v)}
       />
       <ChoiceChips
         label="Weather conditions"
-        value={fields.weatherConditions || 'Clear/Sunny'}
+        value={fields.weatherConditions || ''}
         options={WEATHER_CONDITIONS}
+        allowDeselect
         onChange={(v) => setField('weatherConditions', v)}
       />
       <ChoiceChips
         label="Occupancy status"
-        value={fields.occupancyStatus || 'Occupied'}
+        value={fields.occupancyStatus || ''}
         options={OCCUPANCY_STATUSES}
+        allowDeselect
         onChange={(v) => setField('occupancyStatus', v)}
       />
       <AuthTextInput

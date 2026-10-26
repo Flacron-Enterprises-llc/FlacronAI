@@ -1,32 +1,23 @@
 import { Image } from 'expo-image';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { reportsApi } from '@/services/api/reports';
-import { useAuthenticatedPhoto } from '@/features/photos/hooks/useAuthenticatedPhoto';
-import type { WizardPhoto } from '../wizardTypes';
+import { AuthenticatedThumb } from '@/features/photos/components/AuthenticatedThumb';
+import { draftPhotoCacheScope } from '../useReportWizard';
+import { isRetryablePhoto } from '../wizardReducer';
+import type { PhotoFailureReason, WizardPhoto } from '../wizardTypes';
 
 const SIZE = 96;
 
-/** A local `uri` is available immediately for anything picked this session (camera/library
- * both return a `file://` URI). A photo resumed after an app relaunch (see
- * `useReportWizard.ts`'s HYDRATE effect) only has a `serverId`, no local file — for that case
- * alone, fetch its thumbnail through the same authenticated path the report-detail screen
- * uses. */
-function RemoteThumb({ draftId, photoId }: { draftId: string; photoId: string }) {
-  const { uri, loading } = useAuthenticatedPhoto(`staged-${draftId}-${photoId}`, () =>
-    reportsApi.getStagedPhotoImage(draftId, photoId, 'thumbnail')
-  );
-  if (loading || !uri) {
-    return (
-      <View style={[styles.thumb, styles.center]}>
-        <ActivityIndicator size="small" />
-      </View>
-    );
-  }
-  return <Image source={{ uri }} style={styles.thumb} contentFit="cover" />;
-}
+const FAILURE_LABEL: Record<PhotoFailureReason, string> = {
+  network: 'Upload failed',
+  rejected: 'Rejected',
+  capacity: 'Plan limit',
+  unsupported: 'Unsupported',
+  'too-large': 'Too large',
+};
 
 interface WizardPhotoTileProps {
   photo: WizardPhoto;
@@ -35,15 +26,49 @@ interface WizardPhotoTileProps {
   onRetry: () => void;
 }
 
+/** A local `uri` is available immediately for anything picked this session (camera/library
+ * both return a `file://` URI). A photo resumed after an app relaunch (see
+ * `useReportWizard.ts`'s HYDRATE effect) only has a `serverId`, no local file — for that case
+ * alone, fetch its thumbnail through the same authenticated path the report-detail screen
+ * uses. */
 export function WizardPhotoTile({ photo, draftId, onRemove, onRetry }: WizardPhotoTileProps) {
   const theme = useTheme();
+  const retryable = isRetryablePhoto(photo);
+
+  const explain = () => {
+    if (photo.status === 'failed') {
+      Alert.alert(
+        'This photo won’t be included',
+        photo.error || 'This photo could not be uploaded.',
+        retryable
+          ? [
+              { text: 'Remove', style: 'destructive', onPress: onRemove },
+              { text: 'Retry', onPress: onRetry },
+            ]
+          : [
+              { text: 'Keep for now', style: 'cancel' },
+              { text: 'Remove', style: 'destructive', onPress: onRemove },
+            ]
+      );
+    } else if (photo.status === 'duplicate') {
+      Alert.alert('Duplicate photo', 'This is the same image as a photo already on this report, so it isn’t added twice.', [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: onRemove },
+      ]);
+    }
+  };
 
   return (
     <View style={[styles.wrap, { borderRadius: theme.radii.card, borderColor: theme.colors.border }]}>
       {photo.uri ? (
         <Image source={{ uri: photo.uri }} style={styles.thumb} contentFit="cover" />
       ) : photo.serverId ? (
-        <RemoteThumb draftId={draftId} photoId={photo.serverId} />
+        <AuthenticatedThumb
+          scope={draftPhotoCacheScope(draftId)}
+          cacheKey={photo.serverId}
+          fetcher={() => reportsApi.getStagedPhotoImage(draftId, photo.serverId as string, 'thumbnail')}
+          style={styles.thumb}
+        />
       ) : (
         <View style={[styles.thumb, styles.center]} />
       )}
@@ -55,24 +80,34 @@ export function WizardPhotoTile({ photo, draftId, onRemove, onRetry }: WizardPho
       )}
 
       {photo.status === 'failed' && (
-        <View style={[styles.overlay, { backgroundColor: theme.colors.error + 'DD' }]}>
+        <Pressable
+          onPress={explain}
+          accessibilityRole="button"
+          accessibilityLabel={`${FAILURE_LABEL[photo.failureReason ?? 'network']}. ${photo.error ?? ''} Tap for options.`}
+          style={[styles.overlay, { backgroundColor: theme.colors.error + 'DD' }]}
+        >
           <ThemedText variant="caption" style={styles.overlayText}>
-            Failed
+            {FAILURE_LABEL[photo.failureReason ?? 'network']}
           </ThemedText>
-          <Pressable onPress={onRetry} accessibilityRole="button" accessibilityLabel="Retry photo upload" style={styles.retryBtn}>
+          <View style={styles.retryBtn}>
             <ThemedText variant="caption" style={styles.overlayText}>
-              Retry
+              {retryable ? 'Retry…' : 'Details'}
             </ThemedText>
-          </Pressable>
-        </View>
+          </View>
+        </Pressable>
       )}
 
       {photo.status === 'duplicate' && (
-        <View style={[styles.badge, { backgroundColor: theme.colors.warning }]}>
+        <Pressable
+          onPress={explain}
+          accessibilityRole="button"
+          accessibilityLabel="Duplicate photo, not added twice. Tap for details."
+          style={[styles.badge, { backgroundColor: theme.colors.warning }]}
+        >
           <ThemedText variant="caption" style={styles.badgeText}>
             Duplicate
           </ThemedText>
-        </View>
+        </Pressable>
       )}
 
       <Pressable

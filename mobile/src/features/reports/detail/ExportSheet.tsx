@@ -7,7 +7,7 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { FormError } from '@/features/auth/components/FormError';
 import type { ExportFormat } from '@/services/api/reports';
 import { ChoiceChips } from '../wizard/components/ChoiceChips';
-import { useReportExport } from '../hooks/useReportExport';
+import { TEMP_FILE_NOTICE, useReportExport } from '../hooks/useReportExport';
 
 const FORMATS: readonly ExportFormat[] = ['pdf', 'docx', 'html'];
 
@@ -29,7 +29,9 @@ export function ExportSheet({ visible, reportId, onClose }: ExportSheetProps) {
     const outcome = await exportAndShare({ format, includeImages: true, includeCoverPage: true });
     if (outcome.status === 'shared') onClose();
     else if (outcome.status === 'saved-only' || outcome.status === 'share-failed') {
-      setNotice(outcome.status === 'saved-only' ? outcome.reason : `Saved on-device, but sharing didn't complete: ${outcome.message}`);
+      setNotice(
+        outcome.status === 'saved-only' ? outcome.reason : `Sharing didn’t complete (${outcome.message}). ${TEMP_FILE_NOTICE}`
+      );
     }
   };
 
@@ -47,6 +49,10 @@ export function ExportSheet({ visible, reportId, onClose }: ExportSheetProps) {
           </ThemedText>
 
           <ChoiceChips label="Format" value={format} options={FORMATS} onChange={(v) => setFormat(v as ExportFormat)} />
+          <ThemedText variant="caption" color="muted" style={styles.notice}>
+            Exports can take up to a couple of minutes for reports with many photos. When the share sheet opens, choose where to save
+            or send the file.
+          </ThemedText>
 
           <FormError message={error} />
           {!!notice && (

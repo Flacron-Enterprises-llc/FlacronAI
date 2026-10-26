@@ -12,6 +12,15 @@ export type WizardFields = Record<string, string>;
 
 export type PhotoStatus = 'uploading' | 'uploaded' | 'duplicate' | 'failed';
 
+/** Why a photo didn't make it in — drives the tile's message and whether Retry is offered.
+ * - `network`: the request itself failed (offline/timeout/5xx) — retrying can succeed.
+ * - `rejected`: the server processed it and refused it (`status: 'failed'` on a 201 — corrupt
+ *   or disguised file); re-sending the same bytes cannot succeed.
+ * - `capacity`: the plan's photo limit (`MAX_PHOTOS`) — retry only after removing a photo.
+ * - `unsupported`: refused on-device before upload (format the AI can't analyze, e.g. HEIC).
+ * - `too-large`: refused on-device before upload (over the server's 10 MB per-file limit). */
+export type PhotoFailureReason = 'network' | 'rejected' | 'capacity' | 'unsupported' | 'too-large';
+
 export interface WizardPhoto {
   /** Client-generated, stable for the life of this picked photo — used as the React list key
    * and to correlate an in-flight upload with its eventual result, independent of whether the
@@ -19,10 +28,13 @@ export interface WizardPhoto {
   localId: string;
   uri: string;
   fileName: string;
+  mimeType?: string;
   status: PhotoStatus;
-  /** Set once `stagePhoto` resolves successfully (status 'uploaded' or 'duplicate'). */
+  /** The staged record's id. Set for 'uploaded'/'duplicate', and for a server-'rejected' photo
+   * (the server keeps a failed record on the draft, so Remove must delete it there too). */
   serverId?: string;
   error?: string;
+  failureReason?: PhotoFailureReason;
 }
 
 export interface WizardState {

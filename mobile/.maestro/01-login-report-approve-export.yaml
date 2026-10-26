@@ -1,0 +1,155 @@
+appId: com.flacronenterprises.flacronai
+name: Login, create report with library photo, generate, approve, export
+---
+- addMedia:
+    - "assets/demo-roof.jpg"
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+# Launch-time test endpoints (e2e build only; filled in right before each run).
+- stopApp
+- openLink: "${E2E_CONFIG_LINK}"
+# iOS asks "Open in FlacronAI?" for custom-scheme links.
+- tapOn:
+    text: "Open"
+    optional: true
+- takeScreenshot: 01-login
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: "adjuster.demo@example.test"
+      PASSWORD: "${E2E_PASSWORD_A}"
+- takeScreenshot: 02-dashboard
+- tapOn: ".*New report"
+- extendedWaitUntil:
+    visible: "Step 1 of 5.*"
+    timeout: 20000
+- tapOn: "e.g. CLM-2026-00123"
+- inputText: "DEMO-1001"
+- tapOn: "e.g. Jordan Rivera"
+- inputText: "Demo Insured"
+- tapOn: "name@example.com"
+- inputText: "insured@example.test"
+- pressKey: Enter
+- takeScreenshot: 03-wizard-claim
+- tapOn: "Next"
+- tapOn: "123 Main St, Springfield, IL"
+- inputText: "100 Demo Street, Springfield, IL 62701"
+- pressKey: Enter
+- tapOn: "Next"
+- tapOn: "Wind"
+- tapOn: "Use today.s date for Date of loss.*"
+- takeScreenshot: 04-wizard-loss
+- tapOn: "Next"
+- extendedWaitUntil:
+    visible: "Choose from library"
+    timeout: 15000
+- tapOn: "Choose from library"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "Photo taken.*"
+          timeout: 20000
+      - tapOn:
+          text: "Photo taken.*"
+          index: 0
+      - tapOn:
+          text: "(Add|Done|Select).*"
+          optional: true
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      # PHPicker multi-select sheet (seen on the cloud simulator): first cell = the demo photo,
+      # then the check-mark button top-right.
+      - extendedWaitUntil:
+          visible: "Select Photos|Photos"
+          timeout: 20000
+      - tapOn:
+          point: "16%,30%"
+      - tapOn:
+          point: "90%,16%"
+- extendedWaitUntil:
+    visible: "1 photo uploaded.*|1 of .* photos uploaded.*"
+    timeout: 60000
+- takeScreenshot: 05-wizard-photo-uploaded
+- tapOn: "Next"
+- extendedWaitUntil:
+    visible: "Review before generating.*"
+    timeout: 15000
+- takeScreenshot: 06-wizard-review
+- tapOn: "Generate report"
+- extendedWaitUntil:
+    visible: "Processing|Draft.*needs review"
+    timeout: 60000
+- takeScreenshot: 07-report-processing
+- extendedWaitUntil:
+    visible: "Draft.*needs review"
+    timeout: 300000
+- takeScreenshot: 08-report-draft
+- tapOn: "Approve & finalize"
+- scrollUntilVisible:
+    element: "Full name.*"
+- tapOn:
+    below: "Full name.*"
+    index: 0
+- inputText: "Demo Adjuster"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "License number.*"
+- tapOn:
+    below: "License number.*"
+    index: 0
+- inputText: "DEMO-0000"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "License state.*"
+- tapOn:
+    below: "License state.*"
+    index: 0
+- inputText: "IL"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Company / firm.*"
+- tapOn:
+    below: "Company / firm.*"
+    index: 0
+- inputText: "Demo Adjusting LLC"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "I have reviewed this report and confirm it is ready to finalize."
+- tapOn: "I have reviewed this report and confirm it is ready to finalize."
+- takeScreenshot: 09-approval-sheet
+- tapOn:
+    text: "Approve"
+    index: 0
+- extendedWaitUntil:
+    visible: "Finalized|Approved"
+    timeout: 60000
+- takeScreenshot: 10-report-finalized
+- tapOn: "Export"
+- extendedWaitUntil:
+    visible: "Export & share"
+    timeout: 15000
+- takeScreenshot: 11-export-sheet
+- tapOn: "Export & share"
+- waitForAnimationToEnd:
+    timeout: 60000
+- takeScreenshot: 12-share-sheet
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Close"
+          optional: true
+- tapOn: "Photos"
+- takeScreenshot: 13-report-photos-tab

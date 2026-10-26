@@ -8,8 +8,10 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useAuth } from '@/features/auth/context/AuthProvider';
 import { useDashboardSummary } from '../hooks/useDashboardSummary';
 import { useReportsList } from '../hooks/useReportsList';
+import { useRefreshOnFocus } from '../reportsEvents';
 import { ReportCard } from '../components/ReportCard';
 import { StateMessage } from '../components/StateMessage';
+import { NotificationPrimerCard } from '@/features/push/components/NotificationPrimerCard';
 
 function SummaryCard({ label, value }: { label: string; value: string | number }) {
   const theme = useTheme();
@@ -44,6 +46,9 @@ export function DashboardScreen() {
     summary.refresh();
     recent.refresh();
   };
+  // Returning from the wizard or a report detail refreshes only if something changed (or the
+  // data is stale) — never a refetch on every tab switch.
+  useRefreshOnFocus(onRefresh);
 
   return (
     <ScreenContainer>
@@ -54,6 +59,8 @@ export function DashboardScreen() {
         <ThemedText variant="heading" style={styles.greeting}>
           Welcome, {displayName}
         </ThemedText>
+
+        <NotificationPrimerCard />
 
         <View style={styles.newReportWrap}>
           <PrimaryButton label="+ New report" onPress={() => router.push('/report/new')} />

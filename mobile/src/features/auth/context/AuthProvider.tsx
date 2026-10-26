@@ -41,6 +41,9 @@ import { authApi } from '@/services/api/auth';
 import { usersApi } from '@/services/api/users';
 import { subscribeToMfaRequired } from '@/services/api/client';
 import { clearMfaAssertion, setMfaAssertion } from '@/services/mfaAssertionStorage';
+import { prepareLocalDataForUser, wipeLocalUserData } from '@/services/localData/userDataLifecycle';
+import { runSignOutTasks } from '../signOutTasks';
+import { clearPendingReport } from '@/features/navigation/pendingDeepLink';
 import { isFirebaseConfigured } from '@/config/firebaseConfig';
 import type { AuthStatus, UserProfile } from '../types';
 import { computeAuthStatus } from './authStatus';
@@ -101,10 +104,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const autoRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRetryAttempt = useRef(0);
+  // Bumped on every Firebase auth-state change. A profile response that started under an
+  // earlier session (sign-out / account switch) is discarded instead of being shown for the
+  // new one (Phase 9 hardening: account isolation).
+  const authGeneration = useRef(0);
 
   const fetchUserProfile = useCallback(
     async (opts: { block?: boolean; retries?: number } = {}): Promise<UserProfile | null> => {
       const { block = false, retries = 0 } = opts;
+      const generation = authGeneration.current;
+      const stale = () => generation !== authGeneration.current;
       if (block) {
         setProfileLoading(true);
         setProfileError(null);
@@ -115,16 +124,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
         for (let attempt = 0; attempt <= retries; attempt += 1) {
           try {
             const res = await usersApi.getProfile();
+            if (stale()) return null;
             setUserProfile(res.user);
             setProfileError(null);
             return res.user;
           } catch (err) {
+            if (stale()) return null;
             lastError = err;
             if (attempt < retries) {
               await wait(600 * (attempt + 1));
             }
           }
         }
+        if (stale()) return null;
         console.error('fetchUserProfile error:', lastError instanceof Error ? lastError.message : lastError);
         setUserProfile(null);
         setProfileError('We could not load your account data. Please try again.');
@@ -148,10 +160,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const timeout = setTimeout(() => setLoading(false), 10000);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       clearTimeout(timeout);
+      const generation = ++authGeneration.current;
       setFirebaseUser(user);
       setEmailVerified(user?.emailVerified ?? false);
       if (user) {
         setUserProfile(null);
+        // A different account than last time on this device: drop the previous account's
+        // drafts/cached files before anything of theirs could be shown.
+        await prepareLocalDataForUser(user.uid);
+        if (generation !== authGeneration.current) return;
         await fetchUserProfile({ block: true, retries: 2 });
       } else {
         // Signed out (or no session restored): drop any stale MFA state -- a fresh
@@ -164,7 +181,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setMfaVerified(false);
         await clearMfaAssertion();
       }
-      setLoading(false);
+      // A newer auth event owns the loading state now.
+      if (generation === authGeneration.current) setLoading(false);
     });
 
     return () => {
@@ -262,6 +280,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     // Local-only, matching web exactly — see file header for why the backend
     // POST /auth/logout call that used to be here was removed (2026-09-08
     // rollout-safety correction).
+    // Pre-sign-out work (push-token removal) runs while the session still authenticates;
+    // bounded and error-swallowing, so it can never block or fail Sign Out.
+    await runSignOutTasks();
     await signOut(getFirebaseAuth());
     setFirebaseUser(null);
     setUserProfile(null);
@@ -269,6 +290,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setEmailVerified(false);
     setMfaVerified(false);
     await clearMfaAssertion();
+    // Nothing from this account (wizard drafts, cached photos, exported files, a pending
+    // report link) stays on the device after an explicit Sign Out.
+    clearPendingReport();
+    await wipeLocalUserData();
   }, []);
 
   const reloadUser = useCallback(async () => {

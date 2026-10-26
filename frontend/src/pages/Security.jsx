@@ -162,7 +162,7 @@ You may delete your account at any time from Settings → Security → Delete Ac
 - Your Stripe customer record (if any) is retained for billing and tax compliance but is disassociated from your user ID.
 
 Logs and audit trails:
-Audit logs (login events, security actions, admin actions) are retained for 90 days after the event. Logs are stored in Firestore and are accessible only to platform administrators.
+Audit logs (login events, security actions, admin actions) are stored in Firestore, are accessible only to platform administrators, and are kept after account deletion for security purposes.
 
 Legal holds:
 If your data is subject to a legal hold, preservation order, or active investigation, we may retain data beyond the periods described here as required by law.`,

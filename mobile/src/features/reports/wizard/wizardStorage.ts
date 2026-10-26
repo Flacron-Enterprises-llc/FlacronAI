@@ -9,26 +9,35 @@
  * photo list could (e.g. an upload that finished server-side after the app was killed
  * mid-request). AsyncStorage, not SecureStore: this is inspection-report form text, not a
  * credential (mirrors the distinction `services/README.md` draws for `mfaAssertionStorage.ts`).
+ *
+ * Namespaced by the signed-in uid (`userScopedKey`) so a draft — claim numbers, insured names,
+ * addresses — can never be resumed by a different account on the same device; see
+ * `services/localData/userDataLifecycle.ts` for the matching sign-out/account-change cleanup.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { userScopedKey } from '@/services/localData/userDataLifecycle';
 import type { PersistedWizardDraft, WizardFields, WizardStep } from './wizardTypes';
 
-const DRAFT_KEY = 'flac_report_wizard_draft_v1';
+const DRAFT_NAME = 'report_wizard_draft_v2';
 
-export async function saveWizardDraft(draftId: string, step: WizardStep, fields: WizardFields): Promise<void> {
+export function wizardDraftKey(uid: string): string {
+  return userScopedKey(uid, DRAFT_NAME);
+}
+
+export async function saveWizardDraft(uid: string, draftId: string, step: WizardStep, fields: WizardFields): Promise<void> {
   try {
     const payload: PersistedWizardDraft = { draftId, step, fields, savedAt: new Date().toISOString() };
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    await AsyncStorage.setItem(wizardDraftKey(uid), JSON.stringify(payload));
   } catch {
     // Best-effort — losing the persisted draft only means a relaunch starts fresh, never a
     // crash or a silently-corrupted in-memory state.
   }
 }
 
-export async function loadWizardDraft(): Promise<PersistedWizardDraft | null> {
+export async function loadWizardDraft(uid: string): Promise<PersistedWizardDraft | null> {
   try {
-    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    const raw = await AsyncStorage.getItem(wizardDraftKey(uid));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedWizardDraft>;
     if (!parsed || typeof parsed.draftId !== 'string' || !parsed.draftId) return null;
@@ -43,9 +52,9 @@ export async function loadWizardDraft(): Promise<PersistedWizardDraft | null> {
   }
 }
 
-export async function clearWizardDraft(): Promise<void> {
+export async function clearWizardDraft(uid: string): Promise<void> {
   try {
-    await AsyncStorage.removeItem(DRAFT_KEY);
+    await AsyncStorage.removeItem(wizardDraftKey(uid));
   } catch {
     // Nothing to do — see saveWizardDraft.
   }

@@ -117,7 +117,7 @@ export function LoginScreen() {
       />
 
       <Link href="/forgot-password" asChild>
-        <Pressable style={styles.forgotLink}>
+        <Pressable style={styles.forgotLink} accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
           <ThemedText variant="caption" color="primary">
             Forgot password?
           </ThemedText>
@@ -133,7 +133,7 @@ export function LoginScreen() {
           Don&apos;t have an account?{' '}
         </ThemedText>
         <Link href="/signup" asChild>
-          <Pressable>
+          <Pressable accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
             <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
               Sign up
             </ThemedText>
