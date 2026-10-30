@@ -40,6 +40,10 @@
 
 ## 1. Current Status
 
+> **WEB PARITY PASS — 2026-10-30.** Mobile dashboard, reports, review, export, settings, analytics, notifications and
+> tour now follow the web app. Checklist + evidence + follow-ups: `mobile/docs/WEB_MOBILE_PARITY.md`. Static checks
+> only (tsc, lint, Jest 535/535, Android/iOS bundle export); device QA needs the next QA APK. Local commits only.
+>
 > **QA LOGIN — 2026-10-26.** The QA app now signs in with FlacronAI website accounts (QA federation); all data
 > stays in staging. See `mobile/docs/QA_LOGIN_WITH_PRODUCTION_ACCOUNTS.md` and `PROGRESS.md` 2026-10-26.
 > Staging API is deployed; a new APK is waiting on the `qa-android` environment and Workload Identity branch allowance.

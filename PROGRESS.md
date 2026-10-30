@@ -186,6 +186,15 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-30] — Mobile app aligned with the web product (parity pass)
+- Local branch `integration/web-mobile-combined`, baseline `b3a2176`; recovery branch `checkpoint/pre-mobile-parity-2026-10-30`. Commits `fec4a3a`, `c1ce230`, `cbf4d00`, `1a6ee0f` (+ this docs commit). Not pushed, no PR, nothing deployed or distributed. PR #30 is already in history (merge `9f15606`); not re-merged.
+- Full checklist, evidence and follow-ups: `mobile/docs/WEB_MOBILE_PARITY.md`.
+- Mobile now follows the web dashboard: tabs Dashboard / My Reports / Generate / More; web home view (usage card, four metrics, recent reports, Shared With You, FLACRON ENGINE panel, Starter banner, notification bell); notification inbox; Analytics; Usage & Billing with invoices; saved templates; product tour shared with the web (`POST /users/product-tour`); formatted report body; live analysis progress; draft editing; web export options with plan-locked formats; share links; owner menu (duplicate/archive/restore/delete); full photo review (edit/note/area/include); comment replies; report search + filters; Settings sections with email preferences, login history, data export, delete archived; extra wizard fields (inspection time, inspector, contact, Recommendations).
+- Bug fixed: excluded photos could never be re-included on mobile (`review.excluded` vs the backend's `review.status`).
+- Web: signed-in routes set `noindex, nofollow` while mounted; Vitest guards robots.txt coverage of every protected route.
+- No backend, billing (Stripe centralization, ledger, app_id checks, webhooks), store or cloud/deploy file changed. Added dependency: `@expo/vector-icons@^15.0.2` (SDK-57 version, JS + font only).
+- Tests: mobile tsc/lint clean, Jest 535/535, Android + iOS bundle export OK; web Vitest 356/356 (with each file's documented env), `vite build` OK. **No emulator/device testing** — needs the next QA APK (approval required to push and build).
+
 ### [2026-10-26] — QA APK: sign in with website accounts (QA federation)
 - Cause of the client's "Invalid email or password": the QA APK (release `03hc2qep8422o`, commit `c13e632`) signs in only to staging Firebase, where `admin@flacronenterprises.com` does not exist. It was not a wrong password. No tester allowlist exists; App Distribution only controls downloads.
 - Implemented the approved design (`mobile/docs/QA_LOGIN_WITH_PRODUCTION_ACCOUNTS.md`): the app signs in to the production project for identity only, and `POST /auth/federated/exchange` on the staging API verifies the token (signature, issuer, audience, expiry, verified email). Production checks MFA and revocation through its own API using the user's token. The app gets a 1-hour staging session for a passwordless staging copy of the account. No production credential is in staging. Profiles, reports, files, billing, notifications and roles stay in staging, and production admin rights are never copied. QA deletion removes only the staging copy. QA password, MFA and reset changes are blocked and point to flacronai.com.
