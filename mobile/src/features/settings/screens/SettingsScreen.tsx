@@ -1,8 +1,11 @@
+import type React from 'react';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ScreenContainer } from '@/components/ScreenContainer';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { ThemedText } from '@/components/ThemedText';
+import { Card, ProgressBar, TierBadge } from '@/components/ui';
 import { useTheme } from '@/theme';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useAuth } from '@/features/auth/context/AuthProvider';
@@ -10,105 +13,117 @@ import { useProfile } from '../hooks/useProfile';
 import { StateMessage } from '@/features/reports/components/StateMessage';
 import { NotificationSettingsCard } from '@/features/push/components/NotificationSettingsCard';
 import { SettingsRow } from '@/features/account/components/SettingsRow';
-
-const TIER_LABELS: Record<string, string> = {
-  starter: 'Starter',
-  professional: 'Professional',
-  agency: 'Agency',
-  enterprise: 'Enterprise',
-};
+import { EmailNotificationsCard } from '../components/EmailNotificationsCard';
+import { DataControlsCard } from '../components/DataControlsCard';
 
 /**
- * Settings hub (Phase 8): plan summary, account screens (profile, subscription, sign-in &
- * security), notifications, legal & support, sign out and account deletion.
+ * Settings, organised like the web Settings tabs: Profile, Billing, Security, Notifications, Data, Help, and the
+ * danger zone. Plan and usage always come from `GET /users/usage` (Golden Rule #4).
  */
 export function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { firebaseUser, userProfile, logout } = useAuth();
   const { usage, usageLoading, usageError, retryUsage } = useProfile();
-  const cardStyle = [styles.card, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.card }];
+  const unlimited = usage?.reportsLimit === -1;
+  const percent = usage && !unlimited && usage.reportsLimit > 0 ? Math.min(100, (usage.reportsThisMonth / usage.reportsLimit) * 100) : 0;
 
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.column}>
-          <ThemedText variant="heading" accessibilityRole="header" style={styles.heading}>
-            Settings
-          </ThemedText>
+          <ScreenHeader title="Settings" />
 
-          <View style={cardStyle}>
-            <ThemedText variant="caption" color="muted">
-              Signed in as
-            </ThemedText>
-            <ThemedText variant="body" style={styles.email}>
-              {userProfile?.displayName ? `${userProfile.displayName} · ` : ''}
-              {firebaseUser?.email}
-            </ThemedText>
-
-            <ThemedText variant="caption" color="muted" style={styles.spaced}>
-              Plan
-            </ThemedText>
+          <Card style={styles.block}>
+            <View style={styles.planRow}>
+              <View style={styles.flex}>
+                <ThemedText variant="body" numberOfLines={1} style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
+                  {userProfile?.displayName || firebaseUser?.email}
+                </ThemedText>
+                <ThemedText variant="caption" color="muted" numberOfLines={1}>
+                  {firebaseUser?.email}
+                </ThemedText>
+              </View>
+              <TierBadge tier={usage?.tier} />
+            </View>
             {usageLoading ? (
-              <ThemedText variant="body">Loading…</ThemedText>
+              <ThemedText variant="caption" color="muted">
+                Loading plan…
+              </ThemedText>
             ) : usageError ? (
               <StateMessage title="Could not load plan usage" description={usageError} onRetry={retryUsage} />
-            ) : (
+            ) : usage ? (
               <>
-                {/* Never imply a plan the server didn't report (Golden Rule #4). */}
-                <ThemedText variant="body">
-                  {(usage?.tier && TIER_LABELS[usage.tier]) || usage?.tierName || 'Plan unavailable'}
-                </ThemedText>
                 <ThemedText variant="caption" color="muted" style={styles.usage}>
-                  {usage?.reportsThisMonth ?? 0} of {usage && usage.reportsLimit === -1 ? 'unlimited' : (usage?.reportsLimit ?? 0)} reports
-                  used this month
+                  {usage.reportsThisMonth} of {unlimited ? 'unlimited' : usage.reportsLimit} reports used this month
                 </ThemedText>
+                <ProgressBar percent={unlimited ? 100 : percent} color={unlimited ? theme.colors.success : undefined} height={6} />
               </>
-            )}
-          </View>
+            ) : null}
+          </Card>
 
-          <ThemedText variant="subtitle" accessibilityRole="header" style={styles.sectionTitle}>
-            Account
-          </ThemedText>
-          <View style={cardStyle}>
-            <SettingsRow label="Profile" detail="Name, company, phone, address" onPress={() => router.push('/account/profile')} />
-            <SettingsRow label="Subscription" detail="Plan, billing and purchases" onPress={() => router.push('/subscription')} />
-            <SettingsRow label="Sign-in & security" detail="Password and two-factor authentication" onPress={() => router.push('/account/security')} />
-          </View>
+          <Section title="Account">
+            <SettingsRow icon="user" label="Profile" detail="Name, company, phone, address" onPress={() => router.push('/account/profile')} />
+            <SettingsRow icon="star" label="Subscription" detail="Plan, store purchases and restore" onPress={() => router.push('/subscription')} />
+            <SettingsRow icon="credit-card" label="Usage & Billing" detail="Usage meter and invoices" onPress={() => router.push('/billing')} />
+          </Section>
 
-          <ThemedText variant="subtitle" accessibilityRole="header" style={styles.sectionTitle}>
-            Notifications
-          </ThemedText>
+          <Section title="Security">
+            <SettingsRow icon="lock" label="Sign-in & security" detail="Password and two-factor authentication" onPress={() => router.push('/account/security')} />
+            <SettingsRow icon="clock" label="Login history" detail="Recent sign-ins to your account" onPress={() => router.push('/account/login-history')} />
+          </Section>
+
+          <SectionTitle title="Push notifications" />
           <NotificationSettingsCard />
 
-          <ThemedText variant="subtitle" accessibilityRole="header" style={[styles.sectionTitle, styles.spacedLarge]}>
-            Help & legal
-          </ThemedText>
-          <View style={cardStyle}>
-            <SettingsRow label="Legal & support" detail="Policies, help, contact and app version" onPress={() => router.push('/account/legal')} />
-          </View>
+          <SectionTitle title="Email notifications" spaced />
+          <EmailNotificationsCard />
+
+          <SectionTitle title="Data" />
+          <DataControlsCard />
+
+          <Section title="Help & legal">
+            <SettingsRow icon="help-circle" label="Help, legal & contact" detail="FAQs, policies, support and app version" onPress={() => router.push('/account/legal')} />
+          </Section>
 
           <View style={styles.signOut}>
-            <PrimaryButton variant="secondary" label="Sign out" onPress={() => logout()} />
+            <PrimaryButton variant="secondary" icon="log-out" label="Sign out" onPress={() => logout()} />
           </View>
-          <View style={[cardStyle, styles.danger]}>
-            <SettingsRow label="Delete account" destructive detail="Permanently delete your account and data" onPress={() => router.push('/account/delete')} />
-          </View>
+          <Card style={[styles.danger, { borderColor: theme.colors.error + '4D' }]}>
+            <SettingsRow icon="trash-2" label="Delete account" destructive detail="Permanently delete your account and data" onPress={() => router.push('/account/delete')} />
+          </Card>
         </View>
       </ScrollView>
     </ScreenContainer>
   );
 }
 
+function SectionTitle({ title, spaced }: { title: string; spaced?: boolean }) {
+  return (
+    <ThemedText variant="subtitle" accessibilityRole="header" style={[styles.sectionTitle, spaced && styles.spaced]}>
+      {title}
+    </ThemedText>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <>
+      <SectionTitle title={title} />
+      <Card style={[styles.block, styles.rows]}>{children}</Card>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   column: { width: '100%', maxWidth: 640, alignSelf: 'center' },
-  heading: { marginBottom: 16 },
-  card: { borderWidth: StyleSheet.hairlineWidth * 2, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 20 },
-  email: { marginTop: 2 },
-  spaced: { marginTop: 12 },
-  spacedLarge: { marginTop: 8 },
-  usage: { marginTop: 2 },
+  block: { marginBottom: 20 },
+  rows: { paddingVertical: 4 },
+  planRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  flex: { flex: 1 },
+  usage: { marginBottom: 6 },
   sectionTitle: { marginBottom: 8 },
+  spaced: { marginTop: 12 },
   signOut: { marginTop: 4, marginBottom: 16 },
-  danger: { marginBottom: 32 },
+  danger: { marginBottom: 32, paddingVertical: 4 },
 });

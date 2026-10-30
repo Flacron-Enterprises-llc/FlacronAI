@@ -1,8 +1,7 @@
 import type { ReportPhoto } from '@/services/api/reports';
+import { effectiveObservation } from './PhotosTab';
 
 jest.mock('@/features/photos/components/AuthenticatedThumb', () => ({ AuthenticatedThumb: () => null }));
-
-import { effectiveObservation } from './PhotosTab';
 
 const photo = (overrides: Partial<ReportPhoto>): ReportPhoto => ({
   id: 'p1',
