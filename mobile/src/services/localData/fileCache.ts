@@ -28,11 +28,12 @@ function photoRoot(): Directory {
   return new Directory(Paths.cache, PHOTO_CACHE_DIR_NAME);
 }
 
-function deleteDirectory(dir: Directory): void {
+function deleteDirectory(dir: () => Directory): void {
   try {
-    if (dir.exists) dir.delete();
+    const d = dir();
+    if (d.exists) d.delete();
   } catch {
-    // Best-effort — see file header.
+    // Best-effort — see file header. (Also covers platforms without a file system, e.g. the web preview build.)
   }
 }
 
@@ -48,11 +49,11 @@ export function writeCachedPhoto(scope: string, key: string, bytes: ArrayBuffer)
 }
 
 export function clearPhotoCacheScope(scope: string): void {
-  deleteDirectory(new Directory(photoRoot(), safePathSegment(scope, 'scope')));
+  deleteDirectory(() => new Directory(photoRoot(), safePathSegment(scope, 'scope')));
 }
 
 export function clearAllPhotoCache(): void {
-  deleteDirectory(photoRoot());
+  deleteDirectory(photoRoot);
 }
 
 export function exportDirectory(): Directory {
@@ -60,5 +61,5 @@ export function exportDirectory(): Directory {
 }
 
 export function clearExportFiles(): void {
-  deleteDirectory(exportDirectory());
+  deleteDirectory(exportDirectory);
 }

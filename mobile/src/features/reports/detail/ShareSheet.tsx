@@ -56,8 +56,11 @@ export function ShareSheet({ reportId, claimNumber, finalized, onClose }: Props)
     })();
   }, [load]);
 
+  // The server builds links from FRONTEND_URL; if that isn't configured it returns a bare path, which must never be
+  // shared as-is.
+  const absolute = (url: string) => (url.startsWith('/') ? `https://flacronai.com${url}` : url);
   const shareUrl = (url: string) =>
-    Share.share({ message: `FlacronAI report — claim ${claimNumber}: ${url}`, url }).catch(() => undefined);
+    Share.share({ message: `FlacronAI report — claim ${claimNumber}: ${absolute(url)}`, url: absolute(url) }).catch(() => undefined);
 
   const create = async () => {
     setBusy(true);
@@ -144,7 +147,7 @@ export function ShareSheet({ reportId, claimNumber, finalized, onClose }: Props)
                   </ThemedText>
                 </View>
                 <ThemedText variant="caption" color="muted" numberOfLines={1} style={styles.url}>
-                  {s.url}
+                  {absolute(s.url)}
                 </ThemedText>
                 <View style={styles.row}>
                   <View style={styles.fill}>
