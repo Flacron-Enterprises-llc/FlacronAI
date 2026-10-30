@@ -84,23 +84,40 @@ report, field inspection, PDF report. Data-collection answers: §6 below (after 
 > FlacronAI turns inspection documentation into professional draft reports.
 >
 > Enter claim details, field notes and damage photos — taken with your camera or picked from
-> your library — and FlacronAI organizes them into a structured draft report. A qualified
-> professional reviews, edits and approves every report before it is finalized; nothing
-> AI-generated is treated as a final determination.
+> your library — and FlacronAI's Super Intelligence organizes them into a structured draft report.
+> A qualified professional reviews, edits and approves every report before it is finalized;
+> nothing drafted by Super Intelligence is treated as a final determination.
 >
 > • Guided 5-step report creation: claim, property or vehicle, loss details, photos, review
 > • Photo uploads straight from the field, with clear status for each photo
-> • Review, comment on and approve reports, with version history
-> • Export finalized reports as PDF or DOCX and share them from your device
-> • Notifications when a report is ready or needs your attention
+> • Review every photo observation: accept, edit, exclude or add a note
+> • Edit the draft, comment, approve with your signature, and see version history
+> • Export reports as PDF (DOCX and HTML on paid plans) and share them from your device
+> • Secure share links with view, comment or review access
+> • Dashboard, analytics, saved templates and a notification inbox
 > • Secure sign-in with email, Google or Apple, plus optional two-factor authentication
 > • Manage your profile, security and subscription in the app; delete your account at any time
 >
 > Use the same FlacronAI account on the web at flacronai.com.
 
 Rules applied (Golden Rule #1/#2): no statistics, accuracy %, testimonials, partner names or
-compliance badges; AI described as drafting for human review only. Keywords / category
+compliance badges; Super Intelligence described as drafting for human review only (company
+terminology 2026-10-22; brand name FlacronAI unchanged). Keywords / category
 (suggest *Business* or *Productivity*) / age rating questionnaire: **DECISION** (client).
+
+### Discoverability & deep links (recommendation, 2026-10-30 — not applied to any live listing)
+
+- Keep the listing title "FlacronAI" and the same short description on both stores; use the web's
+  plain-language feature names (Generate Report, My Reports, Usage & Billing) in screenshots.
+- Screenshot set (phone + tablet): Dashboard, Generate Report wizard, report preview, photo review,
+  export options, notifications. Capture from the next QA build with staging demo data only.
+- The app only registers the `flacronai://` scheme today. Verified links (`https://flacronai.com/...`
+  opening the app) need Android App Links (`intentFilters` with `autoVerify` + a
+  `/.well-known/assetlinks.json` holding the EAS signing-key SHA-256) and iOS Universal Links
+  (`associatedDomains` + `apple-app-site-association`). Both need the store signing fingerprints and a
+  production web deploy, so they are listed as a client decision, not implemented.
+- Web pages that are sign-in only are `noindex` (robots.txt + per-route meta); the public pages already
+  carry canonical/OG/JSON-LD via `<Seo>`.
 
 ## 4. URLs & contacts
 
