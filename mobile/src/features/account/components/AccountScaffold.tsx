@@ -2,36 +2,21 @@
  * Phase 8 — shared layout for account/info screens: back button, heading, keyboard-aware scroll,
  * and a centered max-width column so forms stay readable on tablets.
  */
-import { useRouter } from 'expo-router';
 import type { PropsWithChildren } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ScreenContainer } from '@/components/ScreenContainer';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { AuthFormScroll } from '@/features/auth/components/AuthFormScroll';
 
 export function AccountScaffold({ title, children }: PropsWithChildren<{ title: string }>) {
-  const theme = useTheme();
-  const router = useRouter();
   return (
     <ScreenContainer>
       <AuthFormScroll>
         <View style={styles.column}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={() => router.back()}
-            hitSlop={8}
-            style={styles.back}
-          >
-            <ThemedText variant="body" style={{ color: theme.colors.primary }}>
-              ‹ Back
-            </ThemedText>
-          </Pressable>
-          <ThemedText variant="heading" accessibilityRole="header" style={styles.heading}>
-            {title}
-          </ThemedText>
+          <ScreenHeader title={title} />
           {children}
         </View>
       </AuthFormScroll>
@@ -61,8 +46,6 @@ export function Notice({ tone, text }: { tone: 'success' | 'error' | 'info'; tex
 
 const styles = StyleSheet.create({
   column: { width: '100%', maxWidth: 640, alignSelf: 'center' },
-  back: { paddingVertical: 10, alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  heading: { marginBottom: 16 },
   card: { borderWidth: StyleSheet.hairlineWidth * 2, padding: 14, marginBottom: 20 },
   notice: { marginBottom: 12 },
 });

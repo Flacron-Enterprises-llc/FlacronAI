@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme';
+import { iconFont } from '@/components/ui/Icon';
 import { isFirebaseConfigured } from '@/config/firebaseConfig';
 import { getAppEnv } from '@/config/env';
 import { isE2ERuntimeConfigEnabled, loadE2EConfigFromLaunchUrl } from '@/config/e2eRuntimeConfig';
@@ -112,6 +113,7 @@ export default function RootLayout() {
     Inter_600SemiBold,
     SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
+    ...iconFont,
   });
 
   // Phase 10 e2e test build only: read launch-time endpoints before Firebase/API initialise.

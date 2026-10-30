@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, Mail, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,6 +25,19 @@ const ProtectedRoute = ({ children, requiredTier, skipOnboardingGate }) => {
   const navigate = useNavigate();
   const [resending, setResending] = useState(false);
   const [resendDone, setResendDone] = useState(false);
+
+  // Private app pages are never indexable. robots.txt already disallows them, but in this
+  // SPA the previous public page's `index, follow` tag would otherwise stay in the head.
+  // Public pages reset it through <Seo>.
+  useEffect(() => {
+    let el = document.head.querySelector('meta[name="robots"]');
+    if (!el) {
+      el = document.createElement('meta');
+      el.setAttribute('name', 'robots');
+      document.head.appendChild(el);
+    }
+    el.setAttribute('content', 'noindex, nofollow');
+  }, [location.pathname]);
 
   if (loading || (!!user && profileLoading)) {
     return <PageLoader />;

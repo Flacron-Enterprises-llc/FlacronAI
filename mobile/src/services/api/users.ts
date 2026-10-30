@@ -52,6 +52,33 @@ export interface DeleteAccountResult {
   stripeSubscriptionsCancelled?: number;
 }
 
+export interface LoginHistoryEntry {
+  id?: string;
+  action: 'login_success' | 'login_failed' | 'suspicious_login_new_device' | 'logout' | string;
+  ip?: string | null;
+  userAgent?: string | null;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
+  page: number;
+  totalPages: number;
+  limit: number;
+}
+
+/** Same enum values as `backend/utils/productTour.js`. */
+export interface ProductTourReport {
+  status: 'completed' | 'skipped';
+  source: 'auto' | 'replay';
+  version: number;
+  lastStepId?: string;
+  stepsViewed?: number;
+  totalSteps?: number;
+}
+
 export const usersApi = {
   getProfile: () => apiRequest<{ success: true; user: UserProfile }>('/users/profile'),
 
@@ -73,6 +100,17 @@ export const usersApi = {
    * (`GET /users/usage`) — the ONLY thing an entitlement-gated screen should trust,
    * never a cached `tier` string read once at login (Golden Rule #4). */
   getUsage: () => apiRequest<{ success: true; usage: UsageSummary }>('/users/usage'),
+
+  /** The caller's own sign-in events only (audit log), newest first. */
+  getLoginHistory: (page = 1, limit = 10) =>
+    apiRequest<{ success: true } & Paged<LoginHistoryEntry>>('/users/login-history', { params: { page, limit } }),
+
+  /** JSON copy of the caller's account data (profile + reports metadata). */
+  exportData: () => apiRequest<Record<string, unknown>>('/users/export-data'),
+
+  /** Records that the interactive tour was finished or skipped (shared with the web: one per user). */
+  recordProductTour: (report: ProductTourReport) =>
+    apiRequest<{ success: true; productTour: unknown }>('/users/product-tour', { method: 'POST', body: report }),
 
   /** Thin, explicitly-named wrapper over `updateProfile` for the one field a
    * notification-settings screen needs to change — kept separate so that call site reads

@@ -32,7 +32,7 @@ export const dark: ColorPalette = {
   background: '#0A0A0C', // --color-bg (dark)
   surface: '#131316', // --color-surface (dark)
   border: '#24242B', // --color-border (dark)
-  muted: '#A8B1BD', // gray-600 (dark)
+  muted: '#A8B0BD', // gray-600 (dark)
   success: '#22C55E',
   warning: '#F59E0B',
   error: '#EF4444',

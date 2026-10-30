@@ -9,11 +9,11 @@
  *   flow (App Store 3.1.1 / Google Play payments policy). Text only.
  * - Store subscribers manage/cancel through the store's own subscription settings.
  */
-import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ScreenContainer } from '@/components/ScreenContainer';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
@@ -217,8 +217,6 @@ const UNAVAILABLE_COPY: Partial<Record<ReturnType<typeof useBilling>['availabili
 };
 
 export function SubscriptionScreen() {
-  const theme = useTheme();
-  const router = useRouter();
   const { state, availability, restore, reload, supported, changeOffers, platform } = useBilling();
 
   let body: ReactNode;
@@ -278,14 +276,7 @@ export function SubscriptionScreen() {
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.back}>
-          <ThemedText variant="body" style={{ color: theme.colors.primary }}>
-            ‹ Back
-          </ThemedText>
-        </Pressable>
-        <ThemedText variant="heading" style={styles.heading}>
-          Subscription
-        </ThemedText>
+        <ScreenHeader title="Subscription" subtitle="Your plan, store purchases and billing" />
         <Notice />
         {body}
       </ScrollView>
@@ -294,8 +285,6 @@ export function SubscriptionScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { paddingVertical: 8, alignSelf: 'flex-start' },
-  heading: { marginBottom: 16 },
   sectionTitle: { marginBottom: 12 },
   card: { borderWidth: StyleSheet.hairlineWidth * 2, padding: 14, marginBottom: 16 },
   spaced: { marginTop: 10 },

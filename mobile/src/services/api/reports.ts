@@ -306,6 +306,40 @@ export interface ApprovalSignature {
 }
 
 const REPORTS_BASE = '/reports';
+/** `GET /reports/:id/analysis-status` (photoJobService.getAnalysisStatus). */
+export interface AnalysisStatus {
+  reportStatus: ReportStatus;
+  pipelineError: string | null;
+  totalPhotos: number;
+  analyzed: number;
+  needsAttention: number;
+  failed: number;
+  generation: { status: string; error?: string | null } | null;
+}
+
+/** `GET /reports/assigned-to-me` — reports another account shared with or sent for review to the caller. */
+export interface AssignedReport {
+  id: string;
+  claimNumber: string | null;
+  insuredName: string | null;
+  status: string | null;
+  updatedAt: string | null;
+  myPermission: ReportAccess | null;
+  reviewRequestStatus: string | null;
+}
+
+export type SharePermission = 'view' | 'comment' | 'review';
+export type ShareExpiry = '24h' | '7d' | '30d';
+
+export interface ReportShare {
+  id: string;
+  permission: SharePermission;
+  expiresAt: string | null;
+  createdAt: string | null;
+  url: string;
+  [key: string]: unknown;
+}
+
 export const EXPORT_TIMEOUT_MS = 120000;
 
 export const reportsApi = {
@@ -335,7 +369,48 @@ export const reportsApi = {
     }),
 
   getAnalysisStatus: (id: string) =>
-    apiRequest<{ success: true; [key: string]: unknown }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis-status`),
+    apiRequest<{ success: true } & AnalysisStatus>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis-status`),
+
+  listAssignedToMe: () => apiRequest<{ success: true; reports: AssignedReport[] }>(`${REPORTS_BASE}/assigned-to-me`),
+
+  /** Archive (default) or permanently delete (`permanent`) — owner only. Permanent deletion removes Storage objects. */
+  remove: (id: string, permanent = false) =>
+    apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      params: permanent ? { permanent: 'true' } : undefined,
+    }),
+
+  restore: (id: string) =>
+    apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+    }),
+
+  /** Copies claim/property fields into a new draft (no photos, no generated content). */
+  duplicate: (id: string) =>
+    apiRequest<{ success: true; report: Report }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+    }),
+
+  deleteAllArchived: () =>
+    apiRequest<{ success: true; deletedCount: number; message?: string }>(`${REPORTS_BASE}/archived/delete-all`, { method: 'POST' }),
+
+  listShares: (id: string) =>
+    apiRequest<{ success: true; shares: ReportShare[] }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/shares`),
+
+  /** A view link requires a finalized report (server: NOT_FINALIZED). */
+  createShare: (id: string, permission: SharePermission, expiresIn?: ShareExpiry) =>
+    apiRequest<{ success: true; url: string; [key: string]: unknown }>(
+      `${REPORTS_BASE}/${encodeURIComponent(id)}/shares`,
+      { method: 'POST', body: { permission, ...(expiresIn ? { expiresIn } : {}) } }
+    ),
+
+  revokeShare: (id: string, shareId: string) =>
+    shareId === 'legacy'
+      ? apiRequest<{ success: true }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/share`, { method: 'DELETE' })
+      : apiRequest<{ success: true }>(
+          `${REPORTS_BASE}/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`,
+          { method: 'DELETE' }
+        ),
 
   retryAnalysis: (id: string) =>
     apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis/retry`, {

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ScrollView } from 'react-native';
 
 import { AuthTextInput } from '@/features/auth/components/AuthTextInput';
@@ -12,13 +13,15 @@ function isValidEmail(value: string): boolean {
 interface StepProps {
   fields: WizardFields;
   setField: (key: string, value: string) => void;
+  header?: ReactNode;
 }
 
-export function ClaimInfoStep({ fields, setField }: StepProps) {
+export function ClaimInfoStep({ fields, setField, header }: StepProps) {
   const email = fields.insuredEmail || '';
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
+      {header}
       <AuthTextInput
         label="Claim number *"
         value={fields.claimNumber || ''}

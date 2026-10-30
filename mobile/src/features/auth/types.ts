@@ -30,6 +30,8 @@ export interface UserProfile {
   tier?: 'starter' | 'professional' | 'agency' | 'enterprise';
   mfaEnabled?: boolean;
   onboardingCompleted?: boolean;
+  /** Interactive app tour state shared with the web (`backend/utils/productTour.js`); absent = never seen. */
+  productTour?: { status?: 'completed' | 'skipped'; version?: number } | null;
   /** Legacy account-creation-time flag, distinct from the granular `notifications` object
    * below — an account that never called `PUT /users/profile` with `notifications` will
    * have this but not that (confirmed in `backend/routes/users.js`). */

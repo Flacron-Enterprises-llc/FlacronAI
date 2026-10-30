@@ -17,6 +17,8 @@ import { PhotosStep } from '../wizard/steps/PhotosStep';
 import { ReviewStep } from '../wizard/steps/ReviewStep';
 import { LoadingState, StateMessage } from '../components/StateMessage';
 import type { WizardStep } from '../wizard/wizardTypes';
+import { WizardTemplates } from '../wizard/components/WizardTemplates';
+import type { ReportTemplate } from '@/services/api/reports';
 
 const LAST_STEP: WizardStep = 5;
 
@@ -113,6 +115,12 @@ function GenerateWizard({ uid }: { uid: string }) {
     else handleClose();
   };
 
+  const applyTemplate = (t: ReportTemplate) => {
+    for (const [key, value] of Object.entries(t.fields ?? {})) {
+      if (typeof value === 'string') wizard.setField(key, value);
+    }
+  };
+
   const handleGenerate = async () => {
     await wizard.submit();
   };
@@ -126,7 +134,9 @@ function GenerateWizard({ uid }: { uid: string }) {
               Cancel
             </ThemedText>
           </Pressable>
-          <ThemedText variant="title">New report</ThemedText>
+          <ThemedText variant="title" accessibilityRole="header">
+            Generate Report
+          </ThemedText>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -153,7 +163,13 @@ function GenerateWizard({ uid }: { uid: string }) {
         )}
 
         <View style={styles.body}>
-          {state.step === 1 && <ClaimInfoStep fields={state.fields} setField={wizard.setField} />}
+          {state.step === 1 && (
+            <ClaimInfoStep
+              fields={state.fields}
+              setField={wizard.setField}
+              header={<WizardTemplates fields={state.fields} onApply={applyTemplate} />}
+            />
+          )}
           {state.step === 2 && <PropertyStep fields={state.fields} setField={wizard.setField} />}
           {state.step === 3 && <LossDetailsStep fields={state.fields} setField={wizard.setField} />}
           {state.step === 4 && (
