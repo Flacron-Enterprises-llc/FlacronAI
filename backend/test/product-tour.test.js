@@ -55,3 +55,12 @@ test('out-of-range counters are stored as null, not trusted', () => {
   assert.equal(productTour.stepsViewed, null);
   assert.equal(productTour.totalSteps, null);
 });
+
+test('web and mobile tours are tracked in separate user-doc fields', () => {
+  const { tourField } = require('../utils/productTour');
+  assert.deepEqual(tourField(undefined), { field: 'productTour' });
+  assert.deepEqual(tourField('web'), { field: 'productTour' });
+  assert.deepEqual(tourField('mobile'), { field: 'productTourMobile' });
+  assert.equal(tourField('desktop').code, 'INVALID_TOUR_PLATFORM');
+  assert.equal(tourField('__proto__').code, 'INVALID_TOUR_PLATFORM');
+});

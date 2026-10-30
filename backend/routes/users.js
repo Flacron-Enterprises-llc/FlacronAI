@@ -32,7 +32,7 @@ const {
   isValidOnboardingStep,
   ONBOARDING_LAST_STEP,
 } = require('../utils/onboarding');
-const { buildTourUpdate } = require('../utils/productTour');
+const { buildTourUpdate, tourField } = require('../utils/productTour');
 
 const logoUpload = multer({
   storage: multer.memoryStorage(),
@@ -287,12 +287,14 @@ router.post('/product-tour', authenticateToken, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('users').doc(req.user.uid);
+    const target = tourField(req.body?.platform);
+    if (target.error) return res.status(400).json({ success: false, error: target.error, code: target.code });
     const doc = await ref.get();
-    const result = buildTourUpdate(req.body, doc.exists ? doc.data().productTour : undefined);
+    const result = buildTourUpdate(req.body, doc.exists ? doc.data()[target.field] : undefined);
     if (result.error) return res.status(400).json({ success: false, error: result.error, code: result.code });
 
-    await ref.set({ productTour: result.productTour, updatedAt: new Date().toISOString() }, { merge: true });
-    return res.json({ success: true, productTour: result.productTour });
+    await ref.set({ [target.field]: result.productTour, updatedAt: new Date().toISOString() }, { merge: true });
+    return res.json({ success: true, productTour: result.productTour, field: target.field });
   } catch (err) {
     console.error('[ProductTour] update error for uid', req.user?.uid, ':', err.message);
     return res.status(500).json({ success: false, error: 'Failed to save tour progress', code: 'PRODUCT_TOUR_ERROR' });

@@ -8,6 +8,9 @@
 // the same small-duplication precedent as utils/onboarding.js.
 
 const TOUR_STATUSES = ['completed', 'skipped'];
+// The mobile app has its own tour (different screens/controls), so its state is kept in a separate field:
+// finishing one platform's tour must not stop the other from starting for a first-time user there.
+const TOUR_PLATFORMS = { web: 'productTour', mobile: 'productTourMobile' };
 const TOUR_SOURCES = ['auto', 'replay'];
 const STEP_ID = /^[a-z0-9-]{1,40}$/;
 
@@ -40,4 +43,13 @@ const buildTourUpdate = (body, existing, now = new Date()) => {
   return { productTour };
 };
 
-module.exports = { TOUR_STATUSES, TOUR_SOURCES, buildTourUpdate };
+// Which user-doc field a report targets. Missing platform = web (the original contract, unchanged).
+const tourField = (platform) => {
+  if (platform === undefined || platform === null) return { field: TOUR_PLATFORMS.web };
+  if (!Object.prototype.hasOwnProperty.call(TOUR_PLATFORMS, platform)) {
+    return { error: 'platform must be web or mobile', code: 'INVALID_TOUR_PLATFORM' };
+  }
+  return { field: TOUR_PLATFORMS[platform] };
+};
+
+module.exports = { TOUR_STATUSES, TOUR_SOURCES, TOUR_PLATFORMS, tourField, buildTourUpdate };
