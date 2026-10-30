@@ -263,6 +263,9 @@ export interface ReportComment {
   body: string;
   resolved?: boolean;
   parentId?: string | null;
+  authorName?: string | null;
+  authorEmail?: string | null;
+  createdAt?: string;
   [key: string]: unknown;
 }
 

@@ -15,6 +15,10 @@
  *   `reviewRequest` (`NOT_ASSIGNED_REVIEWER` / `REVIEW_ALREADY_RESOLVED` otherwise).
  * - Comment / resolve (`POST /:id/comments*`): `comment` or higher.
  * - Photo review (`PUT /:id/photos/:photoId/review`): owner or `review`.
+ * - Edit content (`PUT /:id`): owner or `review`; refused while `processing` / `regenerating` and once `finalized`
+ *   (`REPORT_FINALIZED`). Editing a legacy `approved`/`completed` report reopens it as a draft.
+ * - Share links, archive / restore / delete / duplicate (`/:id/shares`, `DELETE /:id`, `/:id/restore`,
+ *   `/:id/duplicate`): owner only; no new links for an `archived` report.
  *
  * An owner may still be refused by a team-role capability (`TEAM_PERMISSION_DENIED`) the client
  * can't see — that surfaces as the server's own message.
@@ -32,6 +36,11 @@ export interface ReportActions {
   canRespondToReview: boolean;
   canComment: boolean;
   canReviewPhotos: boolean;
+  canEdit: boolean;
+  /** Editing will reopen an approved (legacy) report as a draft. */
+  editReopens: boolean;
+  canShare: boolean;
+  isOwner: boolean;
 }
 
 export function isReviewedStatus(status: string | undefined): boolean {
@@ -53,6 +62,10 @@ export function getReportActions(report: Report | null, access: ReportAccess | n
     canRespondToReview: false,
     canComment: false,
     canReviewPhotos: false,
+    canEdit: false,
+    editReopens: false,
+    canShare: false,
+    isOwner: false,
   };
   if (!report || !access) return none;
 
@@ -91,5 +104,9 @@ export function getReportActions(report: Report | null, access: ReportAccess | n
     canRespondToReview: !!uid && pending && report.reviewRequest?.reviewerUid === uid,
     canComment: access !== 'view',
     canReviewPhotos: isOwner || access === 'review',
+    canEdit: mayApprove && !busy && hasContent && status !== 'finalized' && status !== 'archived' && status !== 'failed',
+    editReopens: status === 'approved' || status === 'completed',
+    canShare: isOwner && status !== 'archived' && !busy && status !== 'failed',
+    isOwner,
   };
 }

@@ -7,6 +7,9 @@ import { FormError } from '@/features/auth/components/FormError';
 import type { Report, ReportPhotoRecord } from '@/services/api/reports';
 import { hasStuckPhotos, type ReportActions } from '../reportActions';
 import { StatusBadge } from '../components/StatusBadge';
+import { ReportMarkdown } from '../markdown/ReportMarkdown';
+import { AnalysisProgress } from './AnalysisProgress';
+import { Icon } from '@/components/ui/Icon';
 
 /** Photos `POST /generate` stored on the report but never analyzed — plan-limit demotions
  * (`capacityRejected`) and any other `failed` record. Exported for tests. */
@@ -28,29 +31,70 @@ interface OverviewTabProps {
   actionError: string | null;
   onRetryAnalysis: () => void;
   onRespondToReview: () => void;
+  onEdit: () => void;
 }
 
 const FIELD_ROWS: [string, string][] = [
   ['claimNumber', 'Claim number'],
   ['insuredName', 'Insured'],
   ['propertyAddress', 'Property address'],
+  ['claimType', 'Claim type'],
   ['lossType', 'Loss type'],
   ['lossDate', 'Date of loss'],
   ['reportType', 'Report type'],
+  ['policyNumber', 'Policy number'],
+  ['insuranceCompany', 'Insurance company'],
+  ['inspectionDate', 'Inspection date'],
+  ['inspectorName', 'Inspector'],
+  ['templateName', 'Template'],
 ];
 
-export function OverviewTab({ report, actions, retryingAnalysis, actionError, onRetryAnalysis, onRespondToReview }: OverviewTabProps) {
+interface Signature {
+  name?: string;
+  title?: string;
+  licenseNumber?: string;
+  licenseState?: string;
+  company?: string;
+}
+
+export function OverviewTab({ report, actions, retryingAnalysis, actionError, onRetryAnalysis, onRespondToReview, onEdit }: OverviewTabProps) {
   const theme = useTheme();
   const excluded = excludedPhotos(report);
   const capacityExcluded = excluded.filter((p) => p.capacityRejected).length;
   const review = report.reviewRequest;
   const card = { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.card };
+  const signature = (report.signature ?? null) as Signature | null;
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <StatusBadge status={report.status} />
+        <ThemedText variant="caption" color="muted">
+          {report.imageCount ?? 0} photo{report.imageCount === 1 ? '' : 's'} · Updated {new Date(report.updatedAt || report.createdAt).toLocaleDateString()}
+        </ThemedText>
       </View>
+
+      {actions.isReviewed && (report.reviewedBy || signature?.name) ? (
+        <View style={[styles.card, card, { borderColor: theme.colors.success + '66' }]}>
+          <View style={styles.inline}>
+            <Icon name="check-circle" color={theme.colors.success} />
+            <ThemedText variant="body" style={{ color: theme.colors.success, fontFamily: theme.typography.fontFamily.bodySemiBold }}>
+              Approved{report.reviewedAt ? ` on ${new Date(String(report.reviewedAt)).toLocaleDateString()}` : ''}
+            </ThemedText>
+          </View>
+          <ThemedText variant="body" style={styles.cardTextTight}>
+            {signature?.name || report.reviewedBy}
+            {signature?.title ? `, ${signature.title}` : ''}
+          </ThemedText>
+          {signature?.licenseNumber ? (
+            <ThemedText variant="caption" color="muted">
+              License {signature.licenseNumber}
+              {signature.licenseState ? ` (${signature.licenseState})` : ''}
+              {signature.company ? ` · ${signature.company}` : ''}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
 
       {report.status === 'failed' && (
         <View style={[styles.card, card, { borderColor: theme.colors.error }]}>
@@ -129,20 +173,22 @@ export function OverviewTab({ report, actions, retryingAnalysis, actionError, on
       </View>
 
       {report.status === 'failed' ? null : report.status === 'processing' ? (
-        <ThemedText variant="body" color="muted" style={styles.processing}>
-          FlacronAI is still analyzing the uploaded photos and drafting this report. This usually takes a minute — this screen updates
-          automatically.
-        </ThemedText>
+        <AnalysisProgress reportId={report.id} />
       ) : (
         <>
-          <ThemedText variant="subtitle" style={styles.sectionTitle}>
-            Draft content
-          </ThemedText>
+          <View style={styles.contentHead}>
+            <ThemedText variant="subtitle" accessibilityRole="header" style={styles.flex}>
+              Report
+            </ThemedText>
+            {actions.canEdit ? (
+              <PrimaryButton variant="secondary" icon="edit-2" label="Edit" onPress={onEdit} />
+            ) : null}
+          </View>
           <ThemedText variant="caption" color="muted" style={styles.disclaimer}>
             Super Intelligence draft for licensed-adjuster review — not a final professional determination.
           </ThemedText>
-          <View style={[styles.card, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.card }]}>
-            <ThemedText variant="body">{report.content || 'No content yet.'}</ThemedText>
+          <View style={[styles.card, card, styles.paper, { backgroundColor: theme.colors.background }]}>
+            {report.content ? <ReportMarkdown content={report.content} /> : <ThemedText variant="body">No content yet.</ThemedText>}
           </View>
         </>
       )}
@@ -155,10 +201,20 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 12,
   },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTextTight: { marginTop: 6 },
+  contentHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  flex: { flex: 1 },
+  paper: { paddingVertical: 18 },
   card: {
-    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderWidth: 1,
     padding: 14,
     marginBottom: 16,
   },
@@ -171,12 +227,6 @@ const styles = StyleSheet.create({
   },
   rowValue: {
     marginTop: 2,
-  },
-  processing: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    marginBottom: 4,
   },
   disclaimer: {
     marginBottom: 10,

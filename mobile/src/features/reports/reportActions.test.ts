@@ -113,3 +113,39 @@ describe('getReportActions — review response, comments, photo review', () => {
     expect(getReportActions(report(), null, 'u').canComment).toBe(false);
   });
 });
+
+describe('getReportActions — edit / share / owner mirror PUT /:id and the owner-only routes', () => {
+  it('owner and review grantees may edit a draft; view/comment may not', () => {
+    expect(actionsFor(report(), 'owner').canEdit).toBe(true);
+    expect(actionsFor(report(), 'review', 'reviewer').canEdit).toBe(true);
+    expect(actionsFor(report(), 'comment', 'x').canEdit).toBe(false);
+    expect(actionsFor(report(), 'view', 'x').canEdit).toBe(false);
+  });
+
+  it('finalized, processing, regenerating, archived and failed reports are not editable', () => {
+    for (const r of [
+      report({ status: 'finalized' }),
+      report({ status: 'processing', content: null }),
+      report({ regenerating: true }),
+      report({ status: 'archived' }),
+      report({ status: 'failed', content: null }),
+    ]) {
+      expect(actionsFor(r, 'owner').canEdit).toBe(false);
+    }
+  });
+
+  it('editing a legacy approved/completed report is allowed but flagged as reopening it', () => {
+    const a = actionsFor(report({ status: 'approved' }), 'owner');
+    expect(a.canEdit).toBe(true);
+    expect(a.editReopens).toBe(true);
+    expect(actionsFor(report(), 'owner').editReopens).toBe(false);
+  });
+
+  it('share and manage actions are owner-only, and no new links for archived reports', () => {
+    expect(actionsFor(report(), 'owner').canShare).toBe(true);
+    expect(actionsFor(report(), 'owner').isOwner).toBe(true);
+    expect(actionsFor(report(), 'review', 'reviewer').canShare).toBe(false);
+    expect(actionsFor(report(), 'review', 'reviewer').isOwner).toBe(false);
+    expect(actionsFor(report({ status: 'archived' }), 'owner').canShare).toBe(false);
+  });
+});
