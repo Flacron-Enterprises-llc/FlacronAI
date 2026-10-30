@@ -15,6 +15,7 @@ import {
   type WizardState,
   type WizardStep,
 } from './wizardTypes';
+import type { WizardDocument } from './documents';
 
 export type WizardAction =
   | { type: 'HYDRATE'; draftId: string; step?: WizardStep; fields?: WizardFields }
@@ -26,6 +27,8 @@ export type WizardAction =
   | { type: 'PHOTO_FAILED'; localId: string; error: string; reason: PhotoFailureReason; serverId?: string }
   | { type: 'REMOVE_PHOTO'; localId: string }
   | { type: 'REPLACE_PHOTOS'; photos: WizardPhoto[] }
+  | { type: 'ADD_DOCUMENT'; document: WizardDocument }
+  | { type: 'REMOVE_DOCUMENT'; localId: string }
   | { type: 'SUBMIT_START' }
   | { type: 'SUBMIT_SUCCESS'; reportId: string }
   | { type: 'SUBMIT_FAILURE'; error: string }
@@ -37,6 +40,7 @@ export function createInitialWizardState(draftId: string): WizardState {
     draftId,
     fields: { ...DEFAULT_FIELDS },
     photos: [],
+    documents: [],
     submitting: false,
     submitError: null,
     submittedReportId: null,
@@ -98,6 +102,12 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case 'REPLACE_PHOTOS':
       return { ...state, photos: action.photos };
 
+    case 'ADD_DOCUMENT':
+      return { ...state, documents: [...state.documents, action.document] };
+
+    case 'REMOVE_DOCUMENT':
+      return { ...state, documents: state.documents.filter((d) => d.localId !== action.localId) };
+
     case 'SUBMIT_START':
       // Refuses to start a second submission while one is in flight, AND permanently once
       // this draft has already produced a report — the two conditions that together prevent
@@ -157,7 +167,7 @@ export function canSubmit(state: WizardState): boolean {
 /** True when nothing the user entered would be lost by leaving — every field still at its
  * default and no photos added. */
 export function isPristine(state: WizardState): boolean {
-  if (state.photos.length > 0) return false;
+  if (state.photos.length > 0 || state.documents.length > 0) return false;
   const keys = new Set([...Object.keys(state.fields), ...Object.keys(DEFAULT_FIELDS)]);
   for (const key of keys) {
     const value = (state.fields[key] ?? '').trim();

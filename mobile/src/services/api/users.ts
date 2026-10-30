@@ -71,6 +71,8 @@ export interface Paged<T> {
 
 /** Same enum values as `backend/utils/productTour.js`. */
 export interface ProductTourReport {
+  /** `mobile` stores completion in `productTourMobile` (separate from the web tour). */
+  platform?: 'web' | 'mobile';
   status: 'completed' | 'skipped';
   source: 'auto' | 'replay';
   version: number;

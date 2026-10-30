@@ -56,3 +56,13 @@ describe('pending report store', () => {
     expect(peekPendingReport()).toBeNull();
   });
 });
+
+describe('parseInviteTokenFromUrl', () => {
+  const { parseInviteTokenFromUrl } = jest.requireActual('./pendingDeepLink') as typeof import('./pendingDeepLink');
+  it('reads team invite tokens from scheme, Expo and path URLs', () => {
+    expect(parseInviteTokenFromUrl('flacronai://invite/3f2a9c1e-77aa-4b1c')).toBe('3f2a9c1e-77aa-4b1c');
+    expect(parseInviteTokenFromUrl('exp://10.0.0.2:8081/--/invite/abcdefgh12')).toBe('abcdefgh12');
+    expect(parseInviteTokenFromUrl('flacronai://report/abc')).toBeNull();
+    expect(parseInviteTokenFromUrl('flacronai://invite/x')).toBeNull();
+  });
+});

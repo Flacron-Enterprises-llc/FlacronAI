@@ -5,6 +5,7 @@ import { useTheme } from '@/theme';
 import type { WizardFields } from '../wizardTypes';
 
 interface ReviewStepProps {
+  documentCount?: number;
   fields: WizardFields;
   readyPhotoCount: number;
   uploadingCount: number;
@@ -29,7 +30,7 @@ const SUMMARY_ROWS: [string, string][] = [
   ['propertyType', 'Property type'],
 ];
 
-export function ReviewStep({ fields, readyPhotoCount, uploadingCount, notReadyCount, submitError }: ReviewStepProps) {
+export function ReviewStep({ fields, readyPhotoCount, uploadingCount, notReadyCount, submitError, documentCount = 0 }: ReviewStepProps) {
   const theme = useTheme();
 
   return (
@@ -67,6 +68,14 @@ export function ReviewStep({ fields, readyPhotoCount, uploadingCount, notReadyCo
               {notReadyCount} not included (failed or duplicate) — see the Photos step.
             </ThemedText>
           )}
+        </View>
+        <View style={styles.row}>
+          <ThemedText variant="caption" color="muted" style={styles.rowLabel}>
+            Supporting documents
+          </ThemedText>
+          <ThemedText variant="body" style={styles.rowValue}>
+            {documentCount === 0 ? 'None' : `${documentCount} attached`}
+          </ThemedText>
         </View>
       </View>
 

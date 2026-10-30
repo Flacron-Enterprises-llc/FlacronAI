@@ -1,3 +1,5 @@
+import type { WizardDocument } from './documents';
+
 /** Pure types for the generate-report wizard's state machine (see `wizardReducer.ts`). */
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5;
@@ -44,6 +46,8 @@ export interface WizardState {
   draftId: string;
   fields: WizardFields;
   photos: WizardPhoto[];
+  /** Supporting documents picked on this device; sent with Generate (not persisted across app restarts). */
+  documents: WizardDocument[];
   submitting: boolean;
   submitError: string | null;
   /** Once set, this draft is permanently spent — the reducer refuses any further SUBMIT_START

@@ -18,6 +18,7 @@ import { ReviewStep } from '../wizard/steps/ReviewStep';
 import { LoadingState, StateMessage } from '../components/StateMessage';
 import type { WizardStep } from '../wizard/wizardTypes';
 import { WizardTemplates } from '../wizard/components/WizardTemplates';
+import { SupportingDocuments } from '../wizard/components/SupportingDocuments';
 import type { ReportTemplate } from '@/services/api/reports';
 
 const LAST_STEP: WizardStep = 5;
@@ -181,6 +182,9 @@ function GenerateWizard({ uid }: { uid: string }) {
               onAdd={wizard.addPhotos}
               onRemove={wizard.removePhoto}
               onRetry={wizard.retryPhoto}
+              footer={
+                <SupportingDocuments documents={state.documents} onAdd={wizard.addDocument} onRemove={wizard.removeDocument} />
+              }
             />
           )}
           {state.step === 5 && (
@@ -190,6 +194,7 @@ function GenerateWizard({ uid }: { uid: string }) {
               uploadingCount={wizard.uploadingCount}
               notReadyCount={state.photos.length - wizard.readyPhotoCount - wizard.uploadingCount}
               submitError={state.submitError}
+              documentCount={state.documents.length}
             />
           )}
         </View>

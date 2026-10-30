@@ -11,6 +11,10 @@ import { useAuth } from '@/features/auth/context/AuthProvider';
 import { NotificationBell } from '@/features/notifications/components/NotificationBell';
 import { NotificationPrimerCard } from '@/features/push/components/NotificationPrimerCard';
 import { ProductTour } from '@/features/tour/ProductTour';
+import { useTourTarget } from '@/features/tour/tourTargets';
+import { useRef } from 'react';
+import type { View as RNView } from 'react-native';
+import { Icon as UiIcon } from '@/components/ui/Icon';
 import { reportsApi } from '@/services/api/reports';
 import { usersApi } from '@/services/api/users';
 import { useDashboardSummary } from '../hooks/useDashboardSummary';
@@ -68,9 +72,15 @@ export function DashboardScreen() {
   const shared = (assigned.data ?? []).slice(0, 5);
 
   const newReport = () => router.push('/report/new');
+  const screenRef = useRef<RNView>(null);
+  const generateRef = useTourTarget('generate-cta');
+  const usageRef = useTourTarget('usage-card');
+  const bellRef = useTourTarget('notification-bell');
+  const searchRef = useTourTarget('search-button');
 
   return (
     <ScreenContainer>
+      <View ref={screenRef} collapsable={false} style={styles.fill}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
@@ -85,14 +95,28 @@ export function DashboardScreen() {
                 Here&apos;s what&apos;s happening with your reports.
               </ThemedText>
             </View>
-            <NotificationBell />
+            <View ref={searchRef} collapsable={false}>
+              <Pressable
+                onPress={() => router.push('/search')}
+                accessibilityRole="button"
+                accessibilityLabel="Search"
+                hitSlop={8}
+                style={[styles.headerBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+              >
+                <UiIcon name="search" size={20} />
+              </Pressable>
+            </View>
+            <View ref={bellRef} collapsable={false}>
+              <NotificationBell />
+            </View>
           </View>
 
-          <View style={styles.cta}>
+          <View ref={generateRef} collapsable={false} style={styles.cta}>
             <PrimaryButton label="Generate Report" icon="zap" onPress={newReport} />
           </View>
 
           {/* Plan + usage (web mobile usage panel / sidebar card). */}
+          <View ref={usageRef} collapsable={false}>
           <Card style={styles.block}>
             <View style={styles.planRow}>
               <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
@@ -169,6 +193,7 @@ export function DashboardScreen() {
               </>
             )}
           </Card>
+          </View>
 
           {u?.features?.watermark ? (
             <Pressable
@@ -303,7 +328,8 @@ export function DashboardScreen() {
           </View>
         </View>
       </ScrollView>
-      <ProductTour />
+      </View>
+      <ProductTour screenRef={screenRef} />
     </ScreenContainer>
   );
 }
@@ -327,6 +353,8 @@ function EngineRow({ label, value, muted }: { label: string; value: string; mute
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  headerBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   column: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingBottom: 24 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   headerText: { flex: 1, minWidth: 0 },

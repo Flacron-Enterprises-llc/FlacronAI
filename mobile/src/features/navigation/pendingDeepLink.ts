@@ -15,6 +15,31 @@ import * as Linking from 'expo-linking';
 import { useEffect, useRef } from 'react';
 
 let pendingReportId: string | null = null;
+let pendingInviteToken: string | null = null;
+
+const INVITE_PATH = /(?:^|\/)invite\/([A-Za-z0-9_-]{8,128})\/?(?:[?#].*)?$/;
+
+/** Team invite links (`flacronai://invite/<token>`, the web's /invite/:token) — kept like report links so an invite
+ * opened while signed out is accepted right after sign-in. */
+export function parseInviteTokenFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let path = url;
+  const schemeSplit = url.indexOf('://');
+  if (schemeSplit >= 0) {
+    path = url.slice(schemeSplit + 3);
+    const expoSep = path.indexOf('/--/');
+    if (expoSep >= 0) path = path.slice(expoSep + 4);
+  }
+  return INVITE_PATH.exec(path)?.[1] ?? null;
+}
+
+export function peekPendingInvite(): string | null {
+  return pendingInviteToken;
+}
+
+export function clearPendingInvite(): void {
+  pendingInviteToken = null;
+}
 
 const REPORT_PATH = /(?:^|\/)report\/([A-Za-z0-9_-]{1,128})\/?(?:[?#].*)?$/;
 const REPORT_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -74,5 +99,9 @@ export function useCapturePendingDeepLink(status: CaptureStatus): void {
     const id = reportIdToRemember(url, status, handledUrl.current);
     handledUrl.current = url;
     if (id) rememberPendingReport(id);
+    if (status !== 'authenticated') {
+      const token = parseInviteTokenFromUrl(url);
+      if (token) pendingInviteToken = token;
+    }
   }, [url, status]);
 }

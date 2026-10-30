@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/features/auth/context/AuthProvider';
-import { peekPendingReport } from '@/features/navigation/pendingDeepLink';
+import { clearPendingInvite, peekPendingInvite, peekPendingReport } from '@/features/navigation/pendingDeepLink';
 
 /**
  * The single always-reachable anchor route ("/") — computes where to send the user based
@@ -30,6 +30,11 @@ export default function RootIndex() {
     case 'profile-unavailable':
       return <Redirect href="/account-unavailable" />;
     case 'authenticated': {
+      const pendingInvite = peekPendingInvite();
+      if (pendingInvite) {
+        clearPendingInvite();
+        return <Redirect href={{ pathname: '/invite/[token]', params: { token: pendingInvite } }} />;
+      }
       const pendingReportId = peekPendingReport();
       if (pendingReportId) return <Redirect href={{ pathname: '/report/[id]', params: { id: pendingReportId } }} />;
       return <Redirect href="/dashboard" />;

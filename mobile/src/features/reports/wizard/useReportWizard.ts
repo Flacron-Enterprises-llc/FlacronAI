@@ -18,6 +18,7 @@ import { assetToRNFile, checkPhotoAsset } from '@/features/photos/utils/fileHelp
 import { notifyReportsChanged } from '../reportsEvents';
 import { canSubmit, createInitialWizardState, readyPhotoCount, uploadingPhotoCount, wizardReducer } from './wizardReducer';
 import { clearWizardDraft, loadWizardDraft, saveWizardDraft } from './wizardStorage';
+import type { WizardDocument } from './documents';
 import { capacityMessage, outcomeFromStageError, outcomeFromStagedRecord } from './uploadOutcome';
 import type { WizardPhoto, WizardState, WizardStep } from './wizardTypes';
 
@@ -117,6 +118,9 @@ export function useReportWizard(uid: string) {
   const setField = useCallback((key: string, value: string) => dispatch({ type: 'SET_FIELD', key, value }), []);
   const goToStep = useCallback((step: WizardStep) => dispatch({ type: 'SET_STEP', step }), []);
 
+  const addDocument = useCallback((document: WizardDocument) => dispatch({ type: 'ADD_DOCUMENT', document }), []);
+  const removeDocument = useCallback((localId: string) => dispatch({ type: 'REMOVE_DOCUMENT', localId }), []);
+
   const addPhotos = useCallback(
     async (assets: PickedAsset[]) => {
       const draftId = draftIdRef.current;
@@ -203,7 +207,8 @@ export function useReportWizard(uid: string) {
     dispatch({ type: 'SUBMIT_START' });
     try {
       const fields = { ...state.fields, draftId: state.draftId } as GenerateReportFields;
-      const { report } = await reportsApi.generate(fields, []);
+      const documents = state.documents.map((d) => ({ uri: d.uri, name: d.name, type: d.mimeType }));
+      const { report } = await reportsApi.generate(fields, [], documents);
       dispatch({ type: 'SUBMIT_SUCCESS', reportId: report.id });
       notifyReportsChanged();
       await clearWizardDraft(uid);
@@ -253,6 +258,8 @@ export function useReportWizard(uid: string) {
     addPhotos,
     retryPhoto,
     removePhoto,
+    addDocument,
+    removeDocument,
     submit,
     discardDraft,
     startNewReport: discardDraft,

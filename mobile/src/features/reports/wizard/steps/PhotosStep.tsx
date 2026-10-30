@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -16,6 +17,7 @@ import type { WizardPhoto } from '../wizardTypes';
 const PICKER_BATCH_FALLBACK = 100;
 
 interface PhotosStepProps {
+  footer?: React.ReactNode;
   draftId: string;
   photos: WizardPhoto[];
   capacity: PhotoCapacity | null;
@@ -36,7 +38,7 @@ function showPermissionDeniedAlert(kind: 'camera' | 'photo library') {
   );
 }
 
-export function PhotosStep({ draftId, photos, capacity, readyCount, onAdd, onRemove, onRetry }: PhotosStepProps) {
+export function PhotosStep({ draftId, photos, capacity, readyCount, onAdd, onRemove, onRetry, footer }: PhotosStepProps) {
   const theme = useTheme();
   const { busy, captureFromCamera, pickFromLibrary } = useImageCapture();
   const [localError, setLocalError] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export function PhotosStep({ draftId, photos, capacity, readyCount, onAdd, onRem
           No photos yet — a report needs at least one to generate.
         </ThemedText>
       )}
+      {footer}
     </ScrollView>
   );
 }

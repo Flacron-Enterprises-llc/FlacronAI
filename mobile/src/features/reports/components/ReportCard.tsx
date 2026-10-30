@@ -14,25 +14,48 @@ function formatDate(iso: string): string {
   }
 }
 
-export function ReportCard({ report, onPress }: { report: Report; onPress: () => void }) {
+export function ReportCard({
+  report,
+  onPress,
+  onLongPress,
+  selected,
+}: {
+  report: Report;
+  onPress: () => void;
+  onLongPress?: () => void;
+  /** Bulk-selection mode: `true`/`false` shows a checkbox; `undefined` = normal card. */
+  selected?: boolean;
+}) {
   const theme = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      onLongPress={onLongPress}
+      accessibilityRole={selected === undefined ? 'button' : 'checkbox'}
+      accessibilityState={selected === undefined ? undefined : { checked: selected }}
       accessibilityLabel={`Report for claim ${report.claimNumber}, ${report.status}`}
       style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
+          borderColor: selected ? theme.colors.primary : theme.colors.border,
           borderRadius: theme.radii.card,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
     >
       <View style={styles.headerRow}>
+        {selected !== undefined ? (
+          <View
+            style={[
+              styles.check,
+              { borderColor: selected ? theme.colors.primary : theme.colors.border, backgroundColor: selected ? theme.colors.primary : 'transparent' },
+            ]}
+          >
+            {selected ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
+          </View>
+        ) : null}
         <ThemedText
           variant="subtitle"
           numberOfLines={1}
@@ -94,6 +117,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   footerText: { flex: 1 },
+  check: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   updated: { marginTop: 4 },
 });
