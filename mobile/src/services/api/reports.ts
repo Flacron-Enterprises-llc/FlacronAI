@@ -133,6 +133,9 @@ export interface ListReportsParams {
   search?: string;
   clientId?: string;
   claimNumber?: string;
+  /** Derived documents of a report / estimate (owner's own reports only). */
+  relatedReportId?: string;
+  documentType?: string;
 }
 
 export interface ListReportsResult {
@@ -373,6 +376,30 @@ export const reportsApi = {
 
   getAnalysisStatus: (id: string) =>
     apiRequest<{ success: true } & AnalysisStatus>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis-status`),
+
+  /** Owner only (review grantees get 404), team capability canEditReports, shares the 10/min generation limit.
+   * Returns a suggestion only — nothing is written until the caller saves the content. */
+  assistSection: (id: string, action: string, title: string, body: string) =>
+    apiRequest<{ success: true; suggestion: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/sections/assist`, {
+      method: 'POST',
+      body: { action, title, body },
+      timeoutMs: 90000,
+    }),
+
+  /** "Regenerate Section": same rules as assistSection; `instructions` ≤ 2000 chars. */
+  suggestSection: (id: string, title: string, body: string, instructions?: string) =>
+    apiRequest<{ success: true; suggestion: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/sections/suggest`, {
+      method: 'POST',
+      body: { title, body, ...(instructions ? { instructions } : {}) },
+      timeoutMs: 90000,
+    }),
+
+  /** Owner only; reviewer must be an active member of the same organization (REVIEWER_NOT_IN_ORG otherwise). */
+  requestReview: (id: string, reviewerUid: string, notes?: string) =>
+    apiRequest<{ success: true; message: string; reviewRequest: ReviewRequest }>(
+      `${REPORTS_BASE}/${encodeURIComponent(id)}/request-review`,
+      { method: 'POST', body: { reviewerUid, ...(notes ? { notes } : {}) } }
+    ),
 
   listAssignedToMe: () => apiRequest<{ success: true; reports: AssignedReport[] }>(`${REPORTS_BASE}/assigned-to-me`),
 

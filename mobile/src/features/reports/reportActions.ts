@@ -41,6 +41,12 @@ export interface ReportActions {
   editReopens: boolean;
   canShare: boolean;
   isOwner: boolean;
+  /** POST /:id/request-review: owner, not yet reviewed, no review already pending. */
+  canRequestReview: boolean;
+  /** POST /:id/sections/assist|suggest: owner only (404 for grantees) and the content must be editable. */
+  canUseSectionTools: boolean;
+  /** Owner or review grantee (team capabilities are checked server-side). */
+  hasEditAccess: boolean;
 }
 
 export function isReviewedStatus(status: string | undefined): boolean {
@@ -66,6 +72,9 @@ export function getReportActions(report: Report | null, access: ReportAccess | n
     editReopens: false,
     canShare: false,
     isOwner: false,
+    canRequestReview: false,
+    canUseSectionTools: false,
+    hasEditAccess: false,
   };
   if (!report || !access) return none;
 
@@ -93,6 +102,8 @@ export function getReportActions(report: Report | null, access: ReportAccess | n
   const canExport = isOwner && exportNote === null;
 
   const pending = report.reviewRequest?.status === 'pending';
+  // Estimates, invoices and coverage letters are edited through their own Revise forms, never as free text.
+  const structured = ['RepairEstimate', 'Invoice', 'CoverageDeterminationLetter'].includes(String(report.documentType ?? ''));
 
   return {
     isReviewed: reviewed,
@@ -104,9 +115,12 @@ export function getReportActions(report: Report | null, access: ReportAccess | n
     canRespondToReview: !!uid && pending && report.reviewRequest?.reviewerUid === uid,
     canComment: access !== 'view',
     canReviewPhotos: isOwner || access === 'review',
-    canEdit: mayApprove && !busy && hasContent && status !== 'finalized' && status !== 'archived' && status !== 'failed',
+    canEdit: !structured && mayApprove && !busy && hasContent && status !== 'finalized' && status !== 'archived' && status !== 'failed',
     editReopens: status === 'approved' || status === 'completed',
     canShare: isOwner && status !== 'archived' && !busy && status !== 'failed',
     isOwner,
+    hasEditAccess: mayApprove,
+    canRequestReview: isOwner && !reviewed && !busy && hasContent && status !== 'archived' && status !== 'failed' && !pending,
+    canUseSectionTools: !structured && isOwner && mayApprove && !busy && hasContent && status !== 'finalized' && status !== 'archived' && status !== 'failed',
   };
 }

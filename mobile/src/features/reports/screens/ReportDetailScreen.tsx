@@ -26,6 +26,8 @@ import { ExportSheet } from '../detail/ExportSheet';
 import { ReviewResponseSheet } from '../detail/ReviewResponseSheet';
 import { EditContentSheet } from '../detail/EditContentSheet';
 import { ShareSheet } from '../detail/ShareSheet';
+import { RequestReviewSheet } from '../detail/RequestReviewSheet';
+import { SectionToolsSheet } from '../detail/SectionToolsSheet';
 
 type Tab = 'overview' | 'photos' | 'comments' | 'versions';
 
@@ -54,6 +56,8 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
   const [responding, setResponding] = useState(false);
   const [editing, setEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [sectionTools, setSectionTools] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
 
   const actions = getReportActions(report, myAccess, firebaseUser?.uid ?? null);
@@ -213,6 +217,9 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
                 onRetryAnalysis={detail.retryAnalysis}
                 onRespondToReview={() => setResponding(true)}
                 onEdit={() => setEditing(true)}
+                onSectionTools={() => setSectionTools(true)}
+                onRequestReview={() => setRequesting(true)}
+                onChanged={detail.refresh}
               />
             )}
             {tab === 'photos' && <PhotosTab reportId={reportId} canReview={actions.canReviewPhotos} />}
@@ -259,6 +266,20 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
               reopensApproval={actions.editReopens}
               onClose={() => setEditing(false)}
               onSaved={(patch) => detail.applyUpdate({ ...report, ...patch } as Report)}
+            />
+          )}
+          {sectionTools && (
+            <SectionToolsSheet
+              report={report}
+              onClose={() => setSectionTools(false)}
+              onSaved={(content) => detail.applyUpdate({ ...report, content } as Report)}
+            />
+          )}
+          {requesting && (
+            <RequestReviewSheet
+              reportId={reportId}
+              onClose={() => setRequesting(false)}
+              onRequested={(reviewRequest) => detail.applyUpdate({ ...report, reviewRequest } as Report)}
             />
           )}
           {sharing && (

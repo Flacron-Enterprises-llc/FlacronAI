@@ -9,6 +9,10 @@ import { hasStuckPhotos, type ReportActions } from '../reportActions';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReportMarkdown } from '../markdown/ReportMarkdown';
 import { AnalysisProgress } from './AnalysisProgress';
+import { DocumentsPanel } from '../documents/DocumentsPanel';
+import { injectSection3PropertyBlock, injectSection7Detail } from '../documents/displayContent';
+import { documentsApi } from '@/services/api/documents';
+import { useApiResource } from '@/hooks/useApiResource';
 import { Icon } from '@/components/ui/Icon';
 
 /** Photos `POST /generate` stored on the report but never analyzed — plan-limit demotions
@@ -32,6 +36,9 @@ interface OverviewTabProps {
   onRetryAnalysis: () => void;
   onRespondToReview: () => void;
   onEdit: () => void;
+  onSectionTools: () => void;
+  onRequestReview: () => void;
+  onChanged: () => void;
 }
 
 const FIELD_ROWS: [string, string][] = [
@@ -57,13 +64,22 @@ interface Signature {
   company?: string;
 }
 
-export function OverviewTab({ report, actions, retryingAnalysis, actionError, onRetryAnalysis, onRespondToReview, onEdit }: OverviewTabProps) {
+export function OverviewTab({ report, actions, retryingAnalysis, actionError, onRetryAnalysis, onRespondToReview, onEdit, onSectionTools, onRequestReview, onChanged }: OverviewTabProps) {
   const theme = useTheme();
   const excluded = excludedPhotos(report);
   const capacityExcluded = excluded.filter((p) => p.capacityRejected).length;
   const review = report.reviewRequest;
   const card = { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.card };
   const signature = (report.signature ?? null) as Signature | null;
+  // Display-only, like the web preview: Section 7 detail + confirmed Section 3 property block.
+  const detail = useApiResource(
+    () => (report.documentType || !report.content ? Promise.resolve('') : documentsApi.getCanonicalEstimate(report.id).then((r) => r.detailMarkdown || '').catch(() => '')),
+    [report.id, report.updatedAt]
+  );
+  const displayContent = injectSection3PropertyBlock(
+    injectSection7Detail(report.content ?? '', detail.data),
+    typeof report.propertySection3Markdown === 'string' ? report.propertySection3Markdown : null
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
@@ -133,7 +149,9 @@ export function OverviewTab({ report, actions, retryingAnalysis, actionError, on
           <ThemedText variant="body" style={styles.cardText}>
             {actions.canRespondToReview
               ? `${review.requestedByEmail || 'The owner'} asked you to review this report.`
-              : REVIEW_STATUS_TEXT[review.status] || `Review status: ${review.status}`}
+              : review.status === 'pending' && review.reviewerEmail
+                ? `Awaiting review from ${review.reviewerEmail}.`
+                : REVIEW_STATUS_TEXT[review.status] || `Review status: ${review.status}`}
           </ThemedText>
           {!!review.notes && review.status !== 'pending' && (
             <ThemedText variant="caption" color="muted" style={styles.cardText}>
@@ -176,6 +194,7 @@ export function OverviewTab({ report, actions, retryingAnalysis, actionError, on
         <AnalysisProgress reportId={report.id} />
       ) : (
         <>
+          <DocumentsPanel report={report} isOwner={actions.isOwner} canEdit={actions.hasEditAccess} isReviewed={actions.isReviewed} onChanged={onChanged} />
           <View style={styles.contentHead}>
             <ThemedText variant="subtitle" accessibilityRole="header" style={styles.flex}>
               Report
@@ -184,11 +203,25 @@ export function OverviewTab({ report, actions, retryingAnalysis, actionError, on
               <PrimaryButton variant="secondary" icon="edit-2" label="Edit" onPress={onEdit} />
             ) : null}
           </View>
+          {actions.canUseSectionTools || actions.canRequestReview ? (
+            <View style={styles.toolRow}>
+              {actions.canUseSectionTools ? (
+                <View style={styles.flex}>
+                  <PrimaryButton variant="secondary" icon="star" label="FLACRON Tools" onPress={onSectionTools} />
+                </View>
+              ) : null}
+              {actions.canRequestReview ? (
+                <View style={styles.flex}>
+                  <PrimaryButton variant="secondary" icon="user-check" label="Request Review" onPress={onRequestReview} />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           <ThemedText variant="caption" color="muted" style={styles.disclaimer}>
             Super Intelligence draft for licensed-adjuster review — not a final professional determination.
           </ThemedText>
           <View style={[styles.card, card, styles.paper, { backgroundColor: theme.colors.background }]}>
-            {report.content ? <ReportMarkdown content={report.content} /> : <ThemedText variant="body">No content yet.</ThemedText>}
+            {report.content ? <ReportMarkdown content={displayContent} /> : <ThemedText variant="body">No content yet.</ThemedText>}
           </View>
         </>
       )}
@@ -212,6 +245,7 @@ const styles = StyleSheet.create({
   cardTextTight: { marginTop: 6 },
   contentHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
   flex: { flex: 1 },
+  toolRow: { flexDirection: 'row', gap: 10, marginBottom: 8, marginTop: 4 },
   paper: { paddingVertical: 18 },
   card: {
     borderWidth: 1,
