@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { ScreenContainer } from '@/components/ScreenContainer';
 import { ThemedText } from '@/components/ThemedText';
@@ -19,6 +19,8 @@ import { LoadingState, StateMessage } from '../components/StateMessage';
 import type { WizardStep } from '../wizard/wizardTypes';
 import { WizardTemplates } from '../wizard/components/WizardTemplates';
 import { SupportingDocuments } from '../wizard/components/SupportingDocuments';
+import { ClaimLinkCard, fieldsFromClaim } from '../wizard/components/ClaimLinkCard';
+import { crmApi } from '@/services/api/crm';
 import type { ReportTemplate } from '@/services/api/reports';
 
 const LAST_STEP: WizardStep = 5;
@@ -51,6 +53,20 @@ function GenerateWizard({ uid }: { uid: string }) {
   const wizard = useReportWizard(uid);
 
   const { state } = wizard;
+  const { claimId: claimParam } = useLocalSearchParams<{ claimId?: string }>();
+  const claimApplied = useRef(false);
+
+  // Opened from a CRM claim ("Generate report for this claim"): link it once the draft has loaded.
+  useEffect(() => {
+    if (wizard.resuming || claimApplied.current || !claimParam || state.fields.claimId === claimParam) return;
+    claimApplied.current = true;
+    crmApi
+      .claimProfile(String(claimParam))
+      .then(({ profile }) => {
+        for (const [k, v] of Object.entries(fieldsFromClaim(profile.claim, profile.client))) wizard.setField(k, v);
+      })
+      .catch(() => undefined);
+  }, [wizard, claimParam, state.fields.claimId]);
 
   // Navigation is a side effect — performed after commit, never during render. The moment a
   // report exists for this draft, route straight to it (replace, so Back never returns to a
@@ -168,7 +184,12 @@ function GenerateWizard({ uid }: { uid: string }) {
             <ClaimInfoStep
               fields={state.fields}
               setField={wizard.setField}
-              header={<WizardTemplates fields={state.fields} onApply={applyTemplate} />}
+              header={
+                <>
+                  <ClaimLinkCard fields={state.fields} setField={wizard.setField} />
+                  <WizardTemplates fields={state.fields} onApply={applyTemplate} />
+                </>
+              }
             />
           )}
           {state.step === 2 && <PropertyStep fields={state.fields} setField={wizard.setField} />}

@@ -19,6 +19,7 @@ import { notifyReportsChanged } from '../reportsEvents';
 import { canSubmit, createInitialWizardState, readyPhotoCount, uploadingPhotoCount, wizardReducer } from './wizardReducer';
 import { clearWizardDraft, loadWizardDraft, saveWizardDraft } from './wizardStorage';
 import type { WizardDocument } from './documents';
+import { propertyProfileFromFields } from '@/features/address/AddressAutocompleteField';
 import { capacityMessage, outcomeFromStageError, outcomeFromStagedRecord } from './uploadOutcome';
 import type { WizardPhoto, WizardState, WizardStep } from './wizardTypes';
 
@@ -206,10 +207,15 @@ export function useReportWizard(uid: string) {
     submittingRef.current = true;
     dispatch({ type: 'SUBMIT_START' });
     try {
-      const fields = { ...state.fields, draftId: state.draftId } as GenerateReportFields;
+      // `_`-prefixed keys are client-only (e.g. a confirmed address normalization) and never sent to /generate.
+      const clientOnly = Object.fromEntries(Object.entries(state.fields).filter(([k]) => !k.startsWith('_')));
+      const fields = { ...clientOnly, draftId: state.draftId } as GenerateReportFields;
+      const profile = propertyProfileFromFields(state.fields);
       const documents = state.documents.map((d) => ({ uri: d.uri, name: d.name, type: d.mimeType }));
       const { report } = await reportsApi.generate(fields, [], documents);
       dispatch({ type: 'SUBMIT_SUCCESS', reportId: report.id });
+      // Same as the web: save the confirmed address on the new report without blocking navigation.
+      if (profile) reportsApi.savePropertyProfile(report.id, profile).catch(() => undefined);
       notifyReportsChanged();
       await clearWizardDraft(uid);
       clearPhotoCacheScope(draftPhotoCacheScope(state.draftId));

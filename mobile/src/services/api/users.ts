@@ -103,6 +103,16 @@ export const usersApi = {
    * never a cached `tier` string read once at login (Golden Rule #4). */
   getUsage: () => apiRequest<{ success: true; usage: UsageSummary }>('/users/usage'),
 
+  /** Onboarding questionnaire (same as web /onboarding). Steps 0–4; step ≥2 needs userType, ≥3 needs monthlyVolume. */
+  saveOnboardingStep: (step: number, answers: { userType?: string; monthlyVolume?: string } = {}) =>
+    apiRequest<{ success: true; onboarding?: unknown; alreadyCompleted?: boolean }>('/users/onboarding/step', {
+      method: 'POST',
+      body: { step, ...answers },
+    }),
+
+  /** Without `skipped`, both answers must already be saved (400 ONBOARDING_INCOMPLETE). */
+  completeOnboarding: () => apiRequest<{ success: true; alreadyCompleted?: boolean }>('/users/onboarding/complete', { method: 'POST', body: {} }),
+
   /** The caller's own sign-in events only (audit log), newest first. */
   getLoginHistory: (page = 1, limit = 10) =>
     apiRequest<{ success: true } & Paged<LoginHistoryEntry>>('/users/login-history', { params: { page, limit } }),

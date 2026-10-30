@@ -43,13 +43,11 @@ export function MoreScreen() {
     setTimeout(requestTourReplay, 300);
   };
 
+  // Desktop-only consoles pending the client's review (see mobile/docs/WEB_MOBILE_PARITY.md "Desktop exceptions").
   const webTools = [
     features?.apiAccess && { label: 'Integrations & API keys', detail: 'Webhooks and developer access', icon: 'link' as const, path: '/integrations' },
-    features?.crmAccess && { label: 'CRM', detail: 'Clients, claims and appointments', icon: 'users' as const, path: '/crm' },
-    tier === 'enterprise' && { label: 'Organization', detail: 'Members, roles and security', icon: 'briefcase' as const, path: '/organization' },
-    tier === 'enterprise' && { label: 'Enterprise Portal', detail: 'Team, white-label and audit logs', icon: 'globe' as const, path: '/enterprise-dashboard' },
+    tier === 'enterprise' && { label: 'White-label & Enterprise portal', detail: 'Branding, subdomain and portal settings', icon: 'globe' as const, path: '/enterprise-dashboard' },
     { label: 'Template Builder', detail: 'Design structural report templates', icon: 'layout' as const, path: '/templates' },
-    { label: 'Photo Library', detail: 'Photos across all reports', icon: 'image' as const, path: '/photos' },
   ].filter(Boolean) as { label: string; detail: string; icon: 'link'; path: string }[];
 
   return (
@@ -59,11 +57,24 @@ export function MoreScreen() {
           <ScreenHeader title="More" back={false} right={<TierBadge tier={tier} />} />
 
           <Section title="Workspace">
+            <SettingsRow icon="search" label="Search" detail="Reports, photos and team members" onPress={() => router.push('/search')} />
+            <SettingsRow icon="image" label="Photo Library" detail="Review photos across all reports" onPress={() => router.push('/photos')} />
             <SettingsRow icon="trending-up" label="Analytics" detail="Report volume, turnaround and status" onPress={() => router.push('/analytics')} />
             <SettingsRow icon="folder" label="Templates" detail="Saved claim templates for the wizard" onPress={() => router.push('/templates')} />
             <SettingsRow icon="bell" label="Notifications" detail="Report, review and billing updates" onPress={() => router.push('/notifications')} />
             <SettingsRow icon="credit-card" label="Usage & Billing" detail="Plan usage and invoices" onPress={() => router.push('/billing')} />
           </Section>
+
+          {features?.crmAccess || tier === 'enterprise' ? (
+            <Section title="Team & clients">
+              {features?.crmAccess ? (
+                <SettingsRow icon="users" label="CRM" detail="Clients, claims and appointments" onPress={() => router.push('/crm')} />
+              ) : null}
+              {tier === 'enterprise' ? (
+                <SettingsRow icon="briefcase" label="Organization" detail="Members, roles, security and audit logs" onPress={() => router.push('/organization')} />
+              ) : null}
+            </Section>
+          ) : null}
 
           <Section title="Account">
             <SettingsRow icon="settings" label="Settings" detail="Profile, security, notifications and data" onPress={() => router.push('/settings')} />
@@ -76,7 +87,7 @@ export function MoreScreen() {
           </Section>
 
           <Section
-            title="On flacronai.com"
+            title="Desktop tools on flacronai.com"
             note={
               nonProd
                 ? 'These desktop tools open the live website. This QA app uses staging data, which the website does not show.'

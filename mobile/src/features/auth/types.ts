@@ -30,6 +30,10 @@ export interface UserProfile {
   tier?: 'starter' | 'professional' | 'agency' | 'enterprise';
   mfaEnabled?: boolean;
   onboardingCompleted?: boolean;
+  /** Onboarding questionnaire progress (POST /users/onboarding/step). */
+  onboardingStep?: number;
+  userType?: string;
+  monthlyVolume?: string;
   /** Interactive app tour state shared with the web (`backend/utils/productTour.js`); absent = never seen. */
   productTour?: { status?: 'completed' | 'skipped'; version?: number } | null;
   /** The mobile app's own tour state (`platform: 'mobile'`), independent of the web tour. */

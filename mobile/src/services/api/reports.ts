@@ -312,6 +312,15 @@ export interface ApprovalSignature {
 }
 
 const REPORTS_BASE = '/reports';
+/** Normalized address profile (backend property-lookup/normalize). */
+export interface AddressProfile {
+  original?: string;
+  status: string;
+  propertyLookupEligible?: boolean;
+  fields: Record<string, { value: string | number | null; source?: string; verificationStatus?: string }>;
+  [key: string]: unknown;
+}
+
 /** `GET /reports/:id/analysis-status` (photoJobService.getAnalysisStatus). */
 export interface AnalysisStatus {
   reportStatus: ReportStatus;
@@ -400,6 +409,26 @@ export const reportsApi = {
       `${REPORTS_BASE}/${encodeURIComponent(id)}/request-review`,
       { method: 'POST', body: { reviewerUid, ...(notes ? { notes } : {}) } }
     ),
+
+  /** Public: whether address autocomplete/normalization is enabled server-side. */
+  propertyLookupConfig: () =>
+    apiRequest<{ success: true; enabled: boolean; browserAutocompleteConfigured: boolean; serverNormalizationConfigured: boolean }>(
+      `${REPORTS_BASE}/property-lookup/config`
+    ),
+
+  /** Normalizes a Google place into a structured, unconfirmed profile (15-minute token; 20/min limit). */
+  normalizeAddress: (placeId: string, original?: string) =>
+    apiRequest<{ success: true; normalizationToken: string; expiresAt: string; ambiguous: boolean; profile: AddressProfile }>(
+      `${REPORTS_BASE}/property-lookup/normalize`,
+      { method: 'POST', body: { placeId, ...(original ? { original } : {}) } }
+    ),
+
+  /** Confirms the normalized address on a report (owner/reviewer; not once finalized). */
+  savePropertyProfile: (id: string, body: { mode: 'provider_confirmed' | 'manual'; normalizationToken?: string; original?: string; overrides?: Record<string, string> }) =>
+    apiRequest<{ success: true; propertyProfile: AddressProfile }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/property-profile`, {
+      method: 'PUT',
+      body,
+    }),
 
   listAssignedToMe: () => apiRequest<{ success: true; reports: AssignedReport[] }>(`${REPORTS_BASE}/assigned-to-me`),
 
