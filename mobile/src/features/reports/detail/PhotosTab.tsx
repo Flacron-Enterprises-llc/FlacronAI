@@ -70,7 +70,7 @@ function PhotoTile({ reportId, photo, index, onOpen }: { reportId: string; photo
         {failed && photo.hasThumbnail === false ? (
           <View style={[styles.thumbFallback, { backgroundColor: theme.colors.border }]} />
         ) : (
-          <AuthenticatedThumb scope={reportPhotoCacheScope(reportId)} cacheKey={photo.id} fetcher={() => reportsApi.getPhotoImage(reportId, photo.id, 'thumbnail')} />
+          <AuthenticatedThumb scope={reportPhotoCacheScope(reportId)} cacheKey={photo.id} retryable={false} fetcher={() => reportsApi.getPhotoImage(reportId, photo.id, 'thumbnail')} />
         )}
         <View style={[styles.tileDot, { backgroundColor: dot }]} />
         {photo.roomOrArea ? (
@@ -109,6 +109,7 @@ function PhotoRow({ reportId, photo, onOpen }: { reportId: string; photo: Report
           <AuthenticatedThumb
             scope={reportPhotoCacheScope(reportId)}
             cacheKey={photo.id}
+            retryable={false}
             fetcher={() => reportsApi.getPhotoImage(reportId, photo.id, 'thumbnail')}
           />
         )}

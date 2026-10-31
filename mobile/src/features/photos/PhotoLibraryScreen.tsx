@@ -122,7 +122,7 @@ export function PhotoLibraryScreen() {
             >
               <View style={{ width: '100%', height: size * 0.75 }}>
                 {item.hasThumbnail ? (
-                  <AuthenticatedThumb scope={SCOPE} cacheKey={`${item.reportId}-${item.photoId}`} fetcher={() => reportsApi.getPhotoImage(item.reportId, item.photoId, 'thumbnail')} />
+                  <AuthenticatedThumb scope={SCOPE} cacheKey={`${item.reportId}-${item.photoId}`} retryable={false} fetcher={() => reportsApi.getPhotoImage(item.reportId, item.photoId, 'thumbnail')} />
                 ) : (
                   <View style={[styles.noThumb, { backgroundColor: theme.colors.border }]}>
                     <Icon name="image" color={theme.colors.muted} />

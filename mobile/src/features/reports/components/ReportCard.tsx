@@ -52,6 +52,7 @@ export function ReportCard({
         {cover ? (
           <AuthenticatedThumb
             scope="report-card"
+            retryable={false}
             cacheKey={`${report.id}-${cover}`}
             fetcher={() => reportsApi.getPhotoImage(report.id, cover, 'thumbnail')}
           />
