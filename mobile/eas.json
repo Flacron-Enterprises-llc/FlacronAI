@@ -86,7 +86,8 @@
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:773892679617:web:daa3f6b5e3774501957140",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
-        "FLACRON_BUILD_PROFILE": "apk"
+        "FLACRON_BUILD_PROFILE": "apk",
+        "EXPO_PUBLIC_WEB_BILLING": "1"
       }
     }
   },

@@ -18,6 +18,8 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { StateMessage } from '@/features/reports/components/StateMessage';
+import { Card } from '@/components/ui';
+import { openExternal } from '@/features/legal/links';
 import type { StoreEntitlement } from '@/services/api/billing';
 import { useBilling } from '../BillingProvider';
 import { LEGAL_LINKS } from '../legalLinks';
@@ -216,6 +218,25 @@ const UNAVAILABLE_COPY: Partial<Record<ReturnType<typeof useBilling>['availabili
   },
 };
 
+/** Direct-distribution builds (Firebase App Distribution APK, never a store build) may send people to the website's
+ * Stripe checkout — the same plans and billing as flacronai.com. Store builds must keep purchases in the store. */
+const WEB_BILLING = process.env.EXPO_PUBLIC_WEB_BILLING === '1';
+
+function WebBillingCard() {
+  return (
+    <Card style={styles.webCard}>
+      <ThemedText variant="subtitle">Upgrade on flacronai.com</ThemedText>
+      <ThemedText variant="body" color="muted" style={styles.spacedSmall}>
+        Choose or change your plan on the website — the same plans and Stripe billing as your web account. Your new plan
+        shows up in the app as soon as payment completes.
+      </ThemedText>
+      <View style={styles.spaced}>
+        <PrimaryButton icon="external-link" label="View plans on flacronai.com" onPress={() => openExternal('https://flacronai.com/pricing')} />
+      </View>
+    </Card>
+  );
+}
+
 export function SubscriptionScreen() {
   const { state, availability, restore, reload, supported, changeOffers, platform } = useBilling();
 
@@ -258,7 +279,11 @@ export function SubscriptionScreen() {
             <Disclosures />
           </>
         )}
-        {copy && <StateMessage title={copy.title} description={copy.description} />}
+        {WEB_BILLING && availability !== 'ready' && availability !== 'change_plan' && availability !== 'blocked_team' ? (
+          <WebBillingCard />
+        ) : (
+          copy && <StateMessage title={copy.title} description={copy.description} />
+        )}
         {supported && state.connected && (
           <View style={styles.restore}>
             <PrimaryButton variant="secondary" label="Restore purchases" onPress={restore} loading={state.restoring} disabled={state.verifying} />
@@ -296,4 +321,5 @@ const styles = StyleSheet.create({
   link: { textDecorationLine: 'underline' },
   restore: { marginTop: 8, marginBottom: 32 },
   changeNote: { marginBottom: 12 },
+  webCard: { marginTop: 4, marginBottom: 16 },
 });

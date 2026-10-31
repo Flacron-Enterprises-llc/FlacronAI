@@ -186,6 +186,14 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-31] — Mobile reference redesign + production APK via App Distribution
+- Branch `release/android-prod` (from `origin/main` `6b386b6`; never pushed to `main`). Client reference: navy app bar with logo, center "+" tab bar, side menu, tinted stat chips, feature tiles, project cards.
+- Design layer `mobile/src/components/brand/*` (AppHeader, BrandTabBar, AppDrawer, AuthShell, Tiles, FilterTabs, Fields, ScalePressable, Reveal) + `theme/brand.ts`; applied through `ScreenContainer`/`ScreenHeader`/`PrimaryButton`/`Card`/inputs so every screen picks it up. New: welcome screen (signed-out landing), Reports tab (`/library`, reviewed reports), photo grid view, More profile card. App is light-only (reference design).
+- No invented features: every Home tile/menu item opens an existing screen; plan-gated ones (Clients, Team) show a lock and open plans. Reference items with no web equivalent (AR measure, damage map, calendar/tasks/messages) were not added. "Trusted by…" line from the reference omitted (Golden Rule #1).
+- Production data (client decision 2026-10-31): `eas.json` profile `apk` = api.flacronai.com + flacronai-c8dab + Google web client `773892679617-vfqpcld4…` (company signing SHA-1 `f0ab…` already on the Firebase Android app). `EXPO_PUBLIC_WEB_BILLING=1` (APK only) sends upgrades to flacronai.com/pricing (Stripe), since Play Billing doesn't exist for a sideloaded APK.
+- Pipeline `.github/workflows/android-apk.yml`: checks → prebuild → signed APK (secrets of env `qa-android`, branch rule `release/android-prod` added) → verify cert/production endpoints/no staging or secrets → Firebase App Distribution `flacronai-c8dab` group `android-testers` (umerali7454, laibanoreen7454, laibanoreen162). GCP (flacronai-c8dab): enabled iam/sts/iamcredentials; SA `apk-distributor` (roles/firebaseappdistro.admin only); WIF pool `github`/provider `flacronai-repo` restricted to this repo + env `qa-android` + `refs/heads/release/android-prod`. Secret `GOOGLE_SERVICES_JSON_PROD_B64` (env `qa-android`) for push.
+- Checks: tsc, expo lint, jest 549/549. Web-build screenshots verified against the reference (welcome, login, sign-up, home, drawer, projects, more, wizard).
+
 ### [2026-10-31] — Combined web/mobile PR handoff
 - Verified the clean `integration/web-mobile-combined` worktree and fetched origin without rewriting history. The
   published source is `origin/qa/web-mobile-combined`; it contains current `origin/main` (`0e98bed`), PR #30's
