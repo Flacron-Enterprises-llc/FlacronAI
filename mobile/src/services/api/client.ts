@@ -38,7 +38,7 @@
  *   distinguished from each other and from a generic network failure.
  * - Never logs a token, a request/response body, or any header value.
  */
-import { getApiBaseUrl } from '@/config/env';
+import { getApiBaseUrl, getAppEnv } from '@/config/env';
 import { ApiRequestError, type ApiErrorCategory, type QueryParams } from '@/types/api';
 import { getFirebaseAuth } from '../firebase/client';
 import { clearMfaAssertion, getMfaAssertion } from '../mfaAssertionStorage';
@@ -112,6 +112,17 @@ export function subscribeToMfaRequired(listener: MfaRequiredListener): () => voi
 }
 function notifyMfaRequired() {
   for (const listener of mfaRequiredListeners) listener();
+}
+
+// QA federation: AuthProvider registers how to re-exchange the production sign-in for a
+// fresh staging session. Used once when the backend reports the staging session expired.
+type SessionRefresher = () => Promise<boolean>;
+let federatedSessionRefresher: SessionRefresher | null = null;
+export function setFederatedSessionRefresher(refresher: SessionRefresher): () => void {
+  federatedSessionRefresher = refresher;
+  return () => {
+    if (federatedSessionRefresher === refresher) federatedSessionRefresher = null;
+  };
 }
 
 /** Query-string serialization shared by every resource client — skips `undefined`/`null`
@@ -214,6 +225,8 @@ function parseRetryAfterMs(response: Response): number | null {
 // this app calls — never guessed. See types/api.ts's ApiErrorCategory doc for the mapping
 // rationale.
 const AUTH_FATAL_CODES = new Set([
+  // Phase 8: the account was self-deleted (server tombstone).
+  'ACCOUNT_DELETED',
   'NO_TOKEN',
   'NO_AUTH',
   'NO_API_KEY',
@@ -224,6 +237,10 @@ const AUTH_FATAL_CODES = new Set([
   'CONFIG_ERROR',
   'INVALID_CREDENTIALS',
   'INVALID_PASSWORD',
+  // QA federation: the staging session could not be renewed from the production sign-in.
+  'FEDERATED_SESSION_EXPIRED',
+  'FEDERATED_SESSION_INVALID',
+  'FEDERATED_LOGIN_DISABLED',
 ]);
 const TRANSIENT_CODES = new Set(['AUTH_VERIFY_UNAVAILABLE', 'PROFILE_LOOKUP_FAILED']);
 const PERMISSION_CODES = new Set([
@@ -237,9 +254,14 @@ const PERMISSION_CODES = new Set([
   'FORBIDDEN',
   'EXPORT_FORMAT_NOT_ALLOWED',
   'TEAM_OWNER_BLOCKED',
+  // Plan-feature gate (`requireTierFeature`, backend/middleware/auth.js) and the
+  // password-change recency gate (`requireRecentAuth`) — both are authorization decisions
+  // about one action, never a sign that the session itself is invalid.
+  'FEATURE_NOT_IN_PLAN',
+  'RECENT_LOGIN_REQUIRED',
 ]);
 
-function classify(status: number, code: string | null): { category: ApiErrorCategory; retryable: boolean } {
+export function classify(status: number, code: string | null): { category: ApiErrorCategory; retryable: boolean } {
   if (code === 'MFA_REQUIRED') return { category: 'mfa_required', retryable: false };
   if (status === 429) return { category: 'rate_limited', retryable: true };
   if (status === 503 || (code && TRANSIENT_CODES.has(code))) return { category: 'transient_server', retryable: true };
@@ -247,7 +269,11 @@ function classify(status: number, code: string | null): { category: ApiErrorCate
   if (status === 401 || status === 403) {
     if (code && PERMISSION_CODES.has(code)) return { category: 'permission', retryable: false };
     if (code && AUTH_FATAL_CODES.has(code)) return { category: 'auth_fatal', retryable: false };
-    return { category: 'auth_fatal', retryable: false };
+    // A 401 means the credential itself was rejected. A 403 with a code this client doesn't
+    // recognise is a per-action authorization decision (the backend sends dozens of these,
+    // e.g. per-report share/review grants) — treating it as a dead session would wrongly push
+    // the user toward signing out for what is really "you can't do this here".
+    return status === 401 ? { category: 'auth_fatal', retryable: false } : { category: 'permission', retryable: false };
   }
   if (status === 404) return { category: 'not_found', retryable: false };
   if (status === 409) return { category: 'conflict', retryable: false };
@@ -345,6 +371,15 @@ async function performAttempt<T>(path: string, options: RequestOptions): Promise
         isNetworkError: true,
       });
     }
+    // Development-env builds only (incl. the Phase 10 e2e build): keep the platform's own
+    // reason, which is otherwise lost behind the generic message. Never in preview/production.
+    try {
+      if (getAppEnv() === 'development') {
+        console.warn(`[api] network error ${options.method ?? 'GET'} ${path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } catch {
+      // diagnostics must never change how the error is classified
+    }
     throw new ApiRequestError('Unable to reach the server. Check your connection and try again.', {
       isNetworkError: true,
       category: 'offline',
@@ -372,7 +407,16 @@ async function performAttempt<T>(path: string, options: RequestOptions): Promise
   // Phase 3; applies regardless of method, since this completes the SAME logical request
   // with a corrected credential rather than retrying due to transience.
   if (response.status === 401 && !options.skipAuth) {
-    const freshHeader = await getAuthHeader(true).catch(() => null);
+    // A federated staging session past its max age: re-exchange first (the force
+    // refresh below would only re-mint a token with the same expired `fedAt`).
+    let refreshedFederated = false;
+    if (federatedSessionRefresher) {
+      const peeked = (await response.clone().json().catch(() => null)) as { code?: string } | null;
+      if (peeked?.code === 'FEDERATED_SESSION_EXPIRED') {
+        refreshedFederated = await federatedSessionRefresher().catch(() => false);
+      }
+    }
+    const freshHeader = await getAuthHeader(!refreshedFederated).catch(() => null);
     if (freshHeader) {
       try {
         response = await doFetch(path, options, freshHeader);

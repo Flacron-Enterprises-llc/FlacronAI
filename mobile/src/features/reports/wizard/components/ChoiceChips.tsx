@@ -8,6 +8,10 @@ interface ChoiceChipsProps {
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
+  /** Optional fields: tapping the selected chip again clears it (submits nothing), so the
+   * rendered selection always equals the submitted value — never a pre-highlighted default
+   * that isn't actually sent. */
+  allowDeselect?: boolean;
 }
 
 /** No native picker dependency is installed (and Phase 5 shouldn't add one just for this) —
@@ -15,13 +19,14 @@ interface ChoiceChipsProps {
  * (claimType/lossType/propertyType/inspectionType/weatherConditions/occupancyStatus) with a
  * single reusable component, and reads more like a native form control on a touch screen than
  * a cramped native `<select>`-style picker would anyway. */
-export function ChoiceChips({ label, value, options, onChange }: ChoiceChipsProps) {
+export function ChoiceChips({ label, value, options, onChange, allowDeselect = false }: ChoiceChipsProps) {
   const theme = useTheme();
 
   return (
     <View style={styles.wrap}>
       <ThemedText variant="caption" color="muted" style={styles.label}>
         {label}
+        {allowDeselect ? ' (optional)' : ''}
       </ThemedText>
       <View style={styles.row}>
         {options.map((option) => {
@@ -29,7 +34,7 @@ export function ChoiceChips({ label, value, options, onChange }: ChoiceChipsProp
           return (
             <Pressable
               key={option}
-              onPress={() => onChange(option)}
+              onPress={() => onChange(selected && allowDeselect ? '' : option)}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               style={[

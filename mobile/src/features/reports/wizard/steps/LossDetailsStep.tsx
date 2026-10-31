@@ -35,7 +35,13 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
         maxLength={10}
         error={invalid ? 'Use the YYYY-MM-DD format' : undefined}
       />
-      <Pressable onPress={() => onChange(todayIso())} style={styles.todayLink}>
+      <Pressable
+        onPress={() => onChange(todayIso())}
+        style={styles.todayLink}
+        accessibilityRole="button"
+        accessibilityLabel={`Use today's date for ${label}`}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+      >
         <ThemedText variant="caption" style={{ color: theme.colors.primary }}>
           Use today&apos;s date
         </ThemedText>
@@ -47,25 +53,63 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
 export function LossDetailsStep({ fields, setField }: StepProps) {
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
-      <ChoiceChips label="Loss type *" value={fields.lossType || 'Water Damage'} options={LOSS_TYPES} onChange={(v) => setField('lossType', v)} />
+      <ChoiceChips label="Loss type *" value={fields.lossType || ''} options={LOSS_TYPES} onChange={(v) => setField('lossType', v)} />
       <DateField label="Date of loss *" value={fields.lossDate || ''} onChange={(v) => setField('lossDate', v)} />
       <DateField label="Inspection date" value={fields.inspectionDate || ''} onChange={(v) => setField('inspectionDate', v)} />
+      <AuthTextInput
+        label="Inspection time"
+        value={fields.inspectionTime || ''}
+        onChangeText={(v) => setField('inspectionTime', v.replace(/[^0-9:]/g, '').slice(0, 5))}
+        placeholder="HH:MM (24-hour)"
+        keyboardType="numbers-and-punctuation"
+        error={fields.inspectionTime && !TIME_RE.test(fields.inspectionTime) ? 'Use 24-hour HH:MM, e.g. 14:30' : undefined}
+      />
+      <AuthTextInput
+        label="Inspector name"
+        value={fields.inspectorName || ''}
+        onChangeText={(v) => setField('inspectorName', v)}
+        maxLength={150}
+      />
+      <AuthTextInput
+        label="Inspector ID / license #"
+        value={fields.inspectorId || ''}
+        onChangeText={(v) => setField('inspectorId', v)}
+        maxLength={50}
+      />
+      <ChoiceChips
+        label="Contact present at inspection"
+        value={fields.contactPresent || ''}
+        options={CONTACT_PRESENT}
+        allowDeselect
+        onChange={(v) => setField('contactPresent', v)}
+      />
+      {fields.contactPresent === 'Yes' ? (
+        <AuthTextInput
+          label="Contact name"
+          value={fields.contactName || ''}
+          onChangeText={(v) => setField('contactName', v)}
+          maxLength={150}
+        />
+      ) : null}
       <ChoiceChips
         label="Inspection type"
-        value={fields.inspectionType || 'Interior & Exterior'}
+        value={fields.inspectionType || ''}
         options={INSPECTION_TYPES}
+        allowDeselect
         onChange={(v) => setField('inspectionType', v)}
       />
       <ChoiceChips
         label="Weather conditions"
-        value={fields.weatherConditions || 'Clear/Sunny'}
+        value={fields.weatherConditions || ''}
         options={WEATHER_CONDITIONS}
+        allowDeselect
         onChange={(v) => setField('weatherConditions', v)}
       />
       <ChoiceChips
         label="Occupancy status"
-        value={fields.occupancyStatus || 'Occupied'}
+        value={fields.occupancyStatus || ''}
         options={OCCUPANCY_STATUSES}
+        allowDeselect
         onChange={(v) => setField('occupancyStatus', v)}
       />
       <AuthTextInput
@@ -93,6 +137,15 @@ export function LossDetailsStep({ fields, setField }: StepProps) {
         style={styles.multiline}
       />
       <AuthTextInput
+        label="Recommendations"
+        value={fields.recommendations || ''}
+        onChangeText={(v) => setField('recommendations', v)}
+        multiline
+        numberOfLines={3}
+        maxLength={5000}
+        style={styles.multiline}
+      />
+      <AuthTextInput
         label="Additional notes"
         value={fields.additionalNotes || ''}
         onChangeText={(v) => setField('additionalNotes', v)}
@@ -104,8 +157,16 @@ export function LossDetailsStep({ fields, setField }: StepProps) {
   );
 }
 
+const TIME_RE = /^\d{2}:\d{2}$/;
+const CONTACT_PRESENT = ['Yes', 'No'] as const;
+
 export function isLossDetailsStepValid(fields: WizardFields): boolean {
-  return !!(fields.lossType?.trim() && fields.lossDate && DATE_RE.test(fields.lossDate));
+  return !!(
+    fields.lossType?.trim() &&
+    fields.lossDate &&
+    DATE_RE.test(fields.lossDate) &&
+    (!fields.inspectionTime || TIME_RE.test(fields.inspectionTime))
+  );
 }
 
 const styles = StyleSheet.create({

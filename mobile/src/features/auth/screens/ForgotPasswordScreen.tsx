@@ -101,7 +101,7 @@ export function ForgotPasswordScreen() {
       )}
 
       <Link href="/login" asChild>
-        <Pressable style={styles.backLink}>
+        <Pressable style={styles.backLink} accessibilityRole="link" hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
           <ThemedText variant="body" color="primary">
             ← Back to sign in
           </ThemedText>

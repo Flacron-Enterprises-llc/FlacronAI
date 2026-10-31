@@ -19,6 +19,23 @@ There are 4 files. Read them in this order at the start of a session:
 
 ---
 
+## 0a. Workspace — ONE folder for web + mobile (since 2026-10-26)
+
+- Work in `D:\Flacron2\FlacronAI\FlacronAI\.claude\worktrees\fix+property-intelligence-cache-undefined` on local branch
+  `integration/web-mobile-combined` = latest `origin/main` (web, `0e98bed`) + `qa/android-qa-apk` (mobile, `8d5872a`).
+  It contains `backend/`, `frontend/` AND `mobile/`. Do not start new work in the other worktrees; they (and the backup
+  `D:\Flacron2\FlacronAI-backup-2026-10-26`) are kept only for recovery.
+- The combined history is published at `origin/qa/web-mobile-combined` for one integration PR targeting `main`.
+  It includes PR #30's head through merge commit `9f15606` plus the later web/mobile parity and QA fixes. PR #30
+  remains open and unchanged; do not merge or close it as part of the combined review. Never merge or enable
+  auto-merge without separate approval.
+- Private config is NOT in Git: copy `backend/.env`, `frontend/.env`, `mobile/.env.local` from the backup's `private/`
+  folder only after checking them against the current `.env.example` files (main added new Stripe/app_id + deploy vars).
+- Local runs: set `VITE_FCGE_DISABLED=true` so the Growth Engine sends nothing (its own unit tests need it unset).
+- Billing rule for the merged code: main's `app_id` standard decides WHICH Stripe objects are ours; mobile's entitlement
+  sources (`utils/entitlements.js`) decide the effective `tier` (Stripe writes only `stripeTier`; store/admin/team grants
+  survive). Account deletion never touches Stripe objects tagged with another app's `app_id`.
+
 ## 1. What the project is
 
 **FlacronAI** = a web platform that generates professional **insurance inspection reports** using AI.
@@ -80,7 +97,7 @@ If something is ambiguous or a Golden Rule is at risk → do NOT guess. Write th
 - **File storage (reworked 2026-07-19):** **Firebase Storage** (bucket `flacronai-c8dab.firebasestorage.app`, `FIREBASE_STORAGE_BUCKET`) via `firebase-admin`. `backend/config/storage.js` is now a Storage abstraction: `uploadBuffer`/`downloadBuffer`/`deleteObject(s)`/`getSignedUrl`/`tokenUrl` + object-path builders (`users/{uid}/reports|exports|logos|whitelabel/...`). **No local disk, no ephemeral-loss.** Export generators are buffer-based (`generatePDF`/`generateDOCX` return Buffers, `watermarkService` buffer-in/out, `aiService.analyzeImages` takes `{buffer,mimetype}`). Claim photos + exports are **private** (read server-side or via authenticated `GET /api/reports/:id/download`, which proxies bytes from Storage); branding logos get a stable Firebase **download-token URL** (`firebaseStorageDownloadTokens`) for the browser. The old public `/uploads` static route + `middleware/uploadAccess.js` are **removed**.
 - **Email/SMS provider (reworked 2026-07-19):** Email = **AWS SES** via `@aws-sdk/client-ses` (`backend/services/emailService.js`). All 6 transactional emails are branded inline HTML built by a shared `layout()` helper (no external template store): welcome, password reset, payment failed, team invite, sales lead, email verification. Sender `SES_FROM_EMAIL` (domain `flacronenterprises.com` verified in SES, us-east-1, **production mode** — 50k/day). Degrades gracefully (logs + skips) when AWS creds absent. **Brevo fully removed** (no dep; dead `scripts/*BrevoTemplates.js` deleted). **No SMS provider.**
 - **Hosting / deploy:** Backend → **Render** (`backend/render.yaml`: single node web service, oregon, starter plan, `healthCheckPath: /health`, secrets via dashboard). Frontend → **Vercel** (`frontend/vercel.json`: SPA rewrite + security headers). Live site: flacronai.com.
-- **Package manager + run commands:** npm, separate installs per folder. (This machine: use `--cache "E:/.npm-cache"` — C: drive is nearly full; network is flaky, retry ECONNRESET failures with `--prefer-offline`.)
+- **Package manager + run commands:** npm, separate installs per folder. (This machine: use `--cache "D:/.npm-cache"` (the E: drive is no longer mounted, 2026-10-26) — C: drive is nearly full and RAM is ~8 GB, so run installs/tests/builds ONE AT A TIME; network is flaky, retry ECONNRESET failures with `--prefer-offline`.)
   - Backend: `cd backend && npm install && npm run dev` (nodemon, port 3000) · prod `npm start` · `npm run lint` · `npm run format` / `format:check` · `npm test` (node --test, tests in `backend/test/`)
   - Frontend: `cd frontend && npm install && npm run dev` (Vite, port 5173; proxies `/api`→3000) · `npm run build` · `npm run preview` · `npm run lint` · `npm run format` / `format:check` · `npm test` (Vitest, tests in `src/__tests__/`)
 - **Existing test setup (added T-0.3):** ESLint 10 flat config (backend) / ESLint 9 + react + react-hooks plugins (frontend — plugin doesn't support ESLint 10 yet); shared `.prettierrc` at repo root; backend tests via node's built-in runner, frontend via Vitest 3 (v4 needs rolldown native bindings + Vite 6 — don't upgrade until Vite is upgraded). Lint passes with **0 errors, ~78 warnings** across both packages (pre-existing issues downgraded to warnings in the configs — clean up task-by-task, then ratchet severities back to error). A repo-wide `prettier --write` is deliberately deferred (would be a huge noisy diff); new/touched files should be prettier-clean.

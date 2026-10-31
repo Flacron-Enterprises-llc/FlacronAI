@@ -14,7 +14,13 @@ const getClient = () => {
     console.warn('⚠️  ANTHROPIC_API_KEY not set — Claude unavailable (will fall back to watsonx)');
     return null;
   }
-  client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Identity-linked keys (personal / service account) that aren't scoped to one
+  // workspace must name the workspace on every request; workspace-scoped keys omit it.
+  const workspaceId = (process.env.ANTHROPIC_WORKSPACE_ID || '').trim();
+  client = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    ...(workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': workspaceId } } : {}),
+  });
   return client;
 };
 

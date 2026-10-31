@@ -6,6 +6,7 @@ const { authenticateToken, requireTier } = require('../middleware/auth');
 const { sendTeamInviteEmail } = require('../services/emailService');
 const { recordAuditLog } = require('../services/auditLogService');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
+const { applyEntitlementSources } = require('../utils/entitlements');
 const {
   ROLES,
   resolveOrganizationId,
@@ -487,15 +488,22 @@ router.delete('/members/:memberId', authenticateToken, enterpriseOnly, async (re
     const { db, doc, member } = ctx;
 
     if (member.userId) {
-      await db.collection('users').doc(member.userId).update({
-        teamOwnerId: FieldValue.delete(),
-        teamRole: FieldValue.delete(),
-        teamPermissions: FieldValue.delete(),
-        teamMemberId: FieldValue.delete(),
-        teamMembershipStatus: FieldValue.delete(),
-        tier: 'starter',
-        tokenVersion: FieldValue.increment(1),
-      });
+      // Mobile Phase 7: removing the team plan recomputes `tier` from the
+      // member's remaining sources (their own Stripe / store / admin grant),
+      // instead of forcing 'starter' and wiping a plan they pay for.
+      await applyEntitlementSources(
+        db,
+        member.userId,
+        () => ({
+          teamOwnerId: FieldValue.delete(),
+          teamRole: FieldValue.delete(),
+          teamPermissions: FieldValue.delete(),
+          teamMemberId: FieldValue.delete(),
+          teamMembershipStatus: FieldValue.delete(),
+          tokenVersion: FieldValue.increment(1),
+        }),
+        { ignoreForTier: ['teamOwnerId', 'teamRole', 'teamPermissions', 'teamMemberId', 'teamMembershipStatus', 'tokenVersion'] }
+      );
       await getAuth()
         .revokeRefreshTokens(member.userId)
         .catch((err) => console.error('Remove revokeRefreshTokens error:', err.message));
@@ -547,15 +555,15 @@ router.post('/accept/:token', authenticateToken, async (req, res) => {
       inviteToken: null,
     });
 
-    // Give the user enterprise tier access (linked to owner)
-    await db.collection('users').doc(req.user.uid).update({
+    // Give the user enterprise tier access (linked to owner) -- team membership
+    // is an entitlement source; `tier` is recomputed (always 'enterprise' here).
+    await applyEntitlementSources(db, req.user.uid, () => ({
       teamOwnerId: data.ownerId,
       teamRole: data.role,
       teamPermissions: data.permissions,
       teamMemberId: doc.id,
       teamMembershipStatus: 'active',
-      tier: 'enterprise',
-    });
+    }));
 
     return res.json({ success: true, message: 'Team invite accepted', role: data.role, permissions: data.permissions });
   } catch (err) {

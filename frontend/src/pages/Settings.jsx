@@ -22,6 +22,9 @@ import { usersAPI, paymentAPI, authAPI, reportsAPI, clearMfaAssertion } from '..
 import { API_KEY_SCOPES, DEFAULT_API_KEY_SCOPES, formatApiScope } from '../data/apiScopes';
 import { validatePassword, PASSWORD_REQUIREMENTS_HINT } from '../utils/passwordValidation.js';
 import { startProductTour } from '../tour/tourEvents.js';
+import {
+  getDeletionMethod, deleteAccountWithReauth, describeDeletionError, SUBSCRIPTION_WARNING, PROVIDER_LABEL,
+} from '../utils/accountDeletion.js';
 
 // Phase 18 (Settings Completion): the spec's 7-tab structure (Profile/
 // Organization/Branding/Notifications/Security/Data/API), plus the
@@ -103,10 +106,11 @@ function CancelModal({ onConfirm, onClose, loading }) {
   );
 }
 
-function DeleteAccountModal({ onConfirm, onClose, loading }) {
+function DeleteAccountModal({ method, onConfirm, onClose, loading }) {
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
-  const canSubmit = password.length > 0 && confirmText === 'DELETE';
+  const needsPassword = method === 'password';
+  const canSubmit = method !== 'unsupported' && (!needsPassword || password.length > 0) && confirmText === 'DELETE';
   useEscapeToClose(onClose, !loading, true);
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
@@ -121,15 +125,28 @@ function DeleteAccountModal({ onConfirm, onClose, loading }) {
           </div>
           <h2 id="delete-account-title" className="text-lg font-bold text-gray-900 mb-2">Delete Your Account?</h2>
           <p className="text-gray-600 text-sm">This permanently deletes your account, all reports, photos, exports, templates, and API keys. This cannot be undone.</p>
+          <p className="text-gray-600 text-sm mt-2">{SUBSCRIPTION_WARNING}</p>
+          <p className="text-gray-600 text-sm mt-2">
+            Billing records, security logs and a minimal deletion record are kept.{' '}
+            <a href="/account-deletion" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">What is deleted and kept</a>
+          </p>
         </div>
         <div className="space-y-3 mb-6">
+          {needsPassword && (
+            <div>
+              <label className="label" htmlFor="delete-account-password">Current Password</label>
+              <input id="delete-account-password" type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+          )}
+          {(method === 'google' || method === 'apple') && (
+            <p className="text-gray-600 text-sm">You&apos;ll confirm it&apos;s you by signing in with {PROVIDER_LABEL[method]} in a pop-up window.</p>
+          )}
+          {method === 'unsupported' && (
+            <p className="text-red-600 text-sm" role="alert">{describeDeletionError({ code: 'DELETION_METHOD_UNSUPPORTED' }).message}</p>
+          )}
           <div>
-            <label className="label">Current Password</label>
-            <input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Type DELETE to confirm</label>
-            <input type="text" className="input" value={confirmText} onChange={e => setConfirmText(e.target.value)} />
+            <label className="label" htmlFor="delete-account-confirm">Type DELETE to confirm</label>
+            <input id="delete-account-confirm" type="text" className="input" value={confirmText} onChange={e => setConfirmText(e.target.value)} />
           </div>
         </div>
         <div className="flex gap-3">
@@ -517,19 +534,33 @@ export default function Settings() {
     finally { setCancelLoading(false); }
   };
 
+  // Mobile Phase 10: Google/Apple accounts re-confirm with their provider (recent
+  // sign-in + "DELETE"); email accounts keep the password path. See utils/accountDeletion.js.
   const handleDeleteAccount = async (password) => {
     setDeleteLoading(true);
-    try {
-      await usersAPI.deleteAccount(password);
-      toast.success('Your account has been deleted');
+    const finishSignedOut = async () => {
       setShowDeleteModal(false);
+      clearMfaAssertion();
       await logout();
       navigate('/');
+    };
+    try {
+      const res = await deleteAccountWithReauth(auth.currentUser, { password }, usersAPI.deleteAccount);
+      const store = res?.data?.subscriptionsStillBilling?.store;
+      toast.success('Your account has been deleted');
+      if (store) {
+        const where = store === 'ios' ? 'App Store' : 'Google Play';
+        toast(`Your ${where} subscription is still active. Cancel it in ${where} to stop future charges.`, { duration: 10000 });
+      }
+      await finishSignedOut();
     } catch (err) {
-      const code = err.response?.data?.code;
-      if (code === 'INVALID_PASSWORD') toast.error('Incorrect password');
-      else if (code === 'TEAM_OWNER_BLOCKED') toast.error(err.response.data.error);
-      else toast.error('Failed to delete account');
+      const { message, deleted } = describeDeletionError(err);
+      if (deleted) {
+        toast.success(message);
+        await finishSignedOut();
+      } else {
+        toast.error(message);
+      }
     } finally {
       setDeleteLoading(false);
     }
@@ -1272,6 +1303,7 @@ export default function Settings() {
         )}
         {showDeleteModal && (
           <DeleteAccountModal
+            method={getDeletionMethod(auth.currentUser)}
             onConfirm={handleDeleteAccount}
             onClose={() => setShowDeleteModal(false)}
             loading={deleteLoading}

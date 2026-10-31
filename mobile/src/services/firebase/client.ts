@@ -30,9 +30,11 @@
  */
 import { type FirebaseApp, getApps, initializeApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
-import { getReactNativePersistence, initializeAuth } from '@firebase/auth';
+import { connectAuthEmulator, getReactNativePersistence, initializeAuth } from '@firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { readAuthEmulatorUrl, resolveAuthEmulatorUrl } from '@/config/authEmulator';
+import { getAppEnv } from '@/config/env';
 import { getFirebaseConfig } from '@/config/firebaseConfig';
 
 let app: FirebaseApp | null = null;
@@ -41,9 +43,10 @@ let auth: Auth | null = null;
 function getApp(): FirebaseApp {
   if (app) return app;
   // Re-use an already-initialized app if one exists (Fast Refresh in dev can otherwise
-  // throw "Firebase App named '[DEFAULT]' already exists").
-  const existing = getApps();
-  app = existing.length > 0 ? existing[0] : initializeApp(getFirebaseConfig());
+  // throw "Firebase App named '[DEFAULT]' already exists"). Only the DEFAULT app: the
+  // QA identity app (identityClient.ts) is a different, named app.
+  const existing = getApps().find((a) => a.name === '[DEFAULT]');
+  app = existing ?? initializeApp(getFirebaseConfig());
   return app;
 }
 
@@ -53,5 +56,8 @@ export function getFirebaseAuth(): Auth {
   auth = initializeAuth(getApp(), {
     persistence: getReactNativePersistence(AsyncStorage),
   });
+  // Phase 10 e2e builds only (development env); ignored by preview/production.
+  const emulatorUrl = resolveAuthEmulatorUrl(getAppEnv(), readAuthEmulatorUrl());
+  if (emulatorUrl) connectAuthEmulator(auth, emulatorUrl, { disableWarnings: true });
   return auth;
 }

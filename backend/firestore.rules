@@ -23,11 +23,25 @@ service cloud.firestore {
       return isAuthenticated() && getUserTier() == 'enterprise';
     }
 
+    // users/{uid}: clients may change ONLY plain profile fields on their own doc.
+    // Everything else -- tier and every entitlement source (stripeTier, adminTier,
+    // legacyTier, storeEntitlement, storeSubscriptionIds, team membership fields),
+    // billing ids, MFA/session-security fields -- is written only by the backend
+    // through the Admin SDK (which bypasses these rules). An allowlist, so a field
+    // added later is server-only by default. No web/mobile client writes this doc
+    // directly today (verified 2026-10-05), so nothing legitimate is blocked.
+    function profileFields() {
+      return ['displayName', 'firstName', 'lastName', 'phone', 'company', 'address', 'photoURL', 'updatedAt'];
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(profileFields().concat(['uid', 'email', 'createdAt', 'tier']))
+        && (!('tier' in request.resource.data) || request.resource.data.tier == 'starter');
+      allow update: if isAdmin()
+        || (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(profileFields()));
       allow delete: if isAdmin();
     }
 

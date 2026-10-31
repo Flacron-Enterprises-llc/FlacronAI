@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "ReadStagingSourceBundles", "Effect": "Allow", "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::flacronai-staging-build-<AWS_ACCOUNT_ID>/src/*" },
+    { "Sid": "ReadStagingAppSecret", "Effect": "Allow", "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:us-east-1:<AWS_ACCOUNT_ID>:secret:flacronai/staging/app-*" },
+    { "Sid": "WriteStagingContainerLogs", "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"],
+      "Resource": "arn:aws:logs:us-east-1:<AWS_ACCOUNT_ID>:log-group:/flacronai/staging/backend:*" }
+  ]
+}

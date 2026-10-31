@@ -4,6 +4,7 @@ import { AuthTextInput } from '@/features/auth/components/AuthTextInput';
 import type { WizardFields } from '../wizardTypes';
 import { PROPERTY_TYPES } from '../constants';
 import { ChoiceChips } from '../components/ChoiceChips';
+import { AddressAutocompleteField } from '@/features/address/AddressAutocompleteField';
 
 interface StepProps {
   fields: WizardFields;
@@ -19,12 +20,23 @@ export function PropertyStep({ fields, setField }: StepProps) {
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
-      <AuthTextInput
-        label={isAuto ? 'Location of loss *' : 'Property address *'}
-        value={fields.propertyAddress || ''}
-        onChangeText={(v) => setField('propertyAddress', v)}
-        placeholder={isAuto ? 'e.g. Intersection of 5th & Main St' : '123 Main St, Springfield, IL'}
-      />
+      {isAuto || fields.claimId ? (
+        <AuthTextInput
+          label={isAuto ? 'Location of loss *' : 'Property address *'}
+          value={fields.propertyAddress || ''}
+          onChangeText={(v) => setField('propertyAddress', v)}
+          placeholder={isAuto ? 'e.g. Intersection of 5th & Main St' : '123 Main St, Springfield, IL'}
+          editable={!fields.claimId}
+        />
+      ) : (
+        <AddressAutocompleteField
+          label="Property address *"
+          value={fields.propertyAddress || ''}
+          placeholder="Start typing an address"
+          fields={fields}
+          setField={setField}
+        />
+      )}
 
       {isAuto ? (
         <>
@@ -46,8 +58,9 @@ export function PropertyStep({ fields, setField }: StepProps) {
       ) : (
         <ChoiceChips
           label="Property type"
-          value={fields.propertyType || 'Single-Family Home'}
+          value={fields.propertyType || ''}
           options={PROPERTY_TYPES}
+          allowDeselect
           onChange={(v) => setField('propertyType', v)}
         />
       )}

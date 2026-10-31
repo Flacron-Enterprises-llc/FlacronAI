@@ -1,0 +1,212 @@
+name: Android QA APK (staging)
+
+# Builds the signed, standalone QA APK of the whole mobile app against STAGING data only
+# (Firebase flacronai-staging-qa + the Cloud Run staging API) and uploads it to Firebase
+# App Distribution. Never deploys anything, never changes production, never publishes
+# to a store.
+#
+# Sign-in (QA federation, 2026-10-26): testers use their existing FlacronAI website
+# account. The production project is used only to prove identity (pinned public
+# identifiers, see mobile/build-guards/qaProfileGuard.js); the staging API exchanges that
+# sign-in for a staging session, so every report, file, bill and notification stays in
+# staging. Builds run from qa/web-mobile-combined (web + mobile integration branch);
+# qa/android-qa-apk stays allowed for rollback.
+#
+# The repository is PUBLIC: the APK is deliberately NOT uploaded as a workflow artifact
+# (artifacts of public repos are downloadable by anyone). Testers get it only through
+# Firebase App Distribution. Secrets live in the branch-locked `qa-android` environment;
+# Google Cloud access is keyless (Workload Identity Federation, restricted to this repo,
+# this environment and the QA branch).
+on:
+  push:
+    branches:
+      - qa/web-mobile-combined
+      - qa/android-qa-apk
+    paths:
+      - "mobile/**"
+      - "!mobile/**/*.md"
+      - ".github/workflows/android-qa-apk.yml"
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Extra release notes for testers"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-qa-apk
+  cancel-in-progress: false
+
+env:
+  # Public identifiers only.
+  GCP_WIF_PROVIDER: projects/93799061110/locations/global/workloadIdentityPools/github/providers/flacronai-repo
+  GCP_DISTRIBUTOR_SA: qa-distributor@flacronai-staging-qa.iam.gserviceaccount.com
+  FIREBASE_ANDROID_APP_ID: "1:93799061110:android:af4f6bbf6cd5dbb668b157"
+  # SHA-256 of the company (EAS-managed) Android signing certificate.
+  EXPECTED_CERT_SHA256: 87974bb7f248213ed69f750248a89a1758f342c43e426cc8d337e3533f92a0b3
+
+jobs:
+  build-and-distribute:
+    name: Build, verify and distribute QA APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: qa-android
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Refuse to run outside the QA branch
+        working-directory: .
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/qa/web-mobile-combined|refs/heads/qa/android-qa-apk) ;;
+            *) echo "QA builds run only from qa/web-mobile-combined or qa/android-qa-apk"; exit 1 ;;
+          esac
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Load the `qa` profile env from eas.json (staging data + pinned identity values)
+        run: |
+          node -e '
+            const env = require("./eas.json").build.qa.env;
+            const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
+            require("fs").appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("loaded:", Object.keys(env).join(", "));
+          '
+          # Distinct, ever-increasing Android build number for every distributed APK.
+          echo "QA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Write staging google-services.json (FCM, optional)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_QA_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then echo "not configured: push stays off in this build"; exit 0; fi
+          umask 077
+          F="$RUNNER_TEMP/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > "$F"
+          echo "GOOGLE_SERVICES_JSON=$F" >> "$GITHUB_ENV"
+          echo "written (verified as staging by the QA guard below)"
+
+      - name: Configuration guards (unit tests + app config)
+        run: |
+          npx jest build-guards --ci
+          npx expo config --type public --json > "$RUNNER_TEMP/app-config.json"
+          node -e '
+            const c = require(process.argv[1]);
+            const qa = c.extra && c.extra.qaBuild;
+            if (!qa || qa.firebaseProjectId !== "flacronai-staging-qa") { console.error("qaBuild stamp missing"); process.exit(1); }
+            console.log("qaBuild:", JSON.stringify(qa));
+          ' "$RUNNER_TEMP/app-config.json"
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build signed release APK (JS bundled, no Metro needed)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NODE_ENV: production
+        run: |
+          umask 077
+          KS="$RUNNER_TEMP/qa-signing.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          cd android
+          ./gradlew assembleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 \
+            -Pandroid.injected.signing.store.file="$KS" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f "$KS"
+          APK="$RUNNER_TEMP/FlacronAI-QA-${GITHUB_SHA::7}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Verify signature, staging config and absence of secrets
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/certs.txt"
+          grep -E "Verified using v2|certificate (DN|SHA-256 digest)" "$RUNNER_TEMP/certs.txt"
+          # Every signer certificate (label format varies by apksigner version) must be the company one.
+          DIGESTS="$(grep -oiE 'certificate SHA-256 digest: [0-9a-f]{64}' "$RUNNER_TEMP/certs.txt" | awk '{print tolower($NF)}' | sort -u)"
+          [ "$DIGESTS" = "$EXPECTED_CERT_SHA256" ] \
+            || { echo "APK is not signed (only) with the company certificate: ${DIGESTS:-none found}"; exit 1; }
+          node build-guards/verifyQaApk.js "$APK"
+          # Server-side secrets and test credentials must never ship in the app.
+          mkdir -p "$RUNNER_TEMP/apk" && unzip -q -o "$APK" -d "$RUNNER_TEMP/apk"
+          if grep -rlaE 'sk_live_|sk_test_[A-Za-z0-9]{10}|rk_(live|test)_[A-Za-z0-9]{10}|whsec_[A-Za-z0-9]{10}|sk-ant-[A-Za-z0-9_-]{10}|BEGIN (RSA |EC )?PRIVATE KEY|"private_key_id"|E2E_PASSWORD|demo-flacronai-e2e|trycloudflare|ngrok' "$RUNNER_TEMP/apk"; then
+            echo "Forbidden secret/test material found in the APK"; exit 1
+          fi
+          rm -rf "$RUNNER_TEMP/apk"
+          SUM="$(sha256sum "$APK" | cut -d' ' -f1)"; echo "APK SHA-256: $SUM"; echo "APK_SHA256=$SUM" >> "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud (keyless, staging project only)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DISTRIBUTOR_SA }}
+
+      - name: Upload to Firebase App Distribution
+        env:
+          EXTRA_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          NOTES="FlacronAI QA build ${GITHUB_SHA::7} (1.1.0 / ${QA_VERSION_CODE}). Sign in with your FlacronAI website email and password (plus your authenticator code if you use two-factor); Google sign-in is not available in this build. QA data is separate: staging backend + staging Firebase; nothing you do here changes your website account.
+          SHA-256: ${APK_SHA256}
+          ${EXTRA_NOTES}"
+          # firebase-tools prints a tokenized, unauthenticated APK download URL. Workflow logs
+          # are PUBLIC, so its output goes to a private temp file and only the console link
+          # (Firebase sign-in required) is echoed.
+          OUT="$RUNNER_TEMP/appdist.log"
+          if ! npx --yes firebase-tools@14 appdistribution:distribute "$APK" \
+            --app "$FIREBASE_ANDROID_APP_ID" \
+            --project flacronai-staging-qa \
+            --release-notes "$NOTES" \
+            --groups qa-testers > "$OUT" 2>&1; then
+            grep -vE 'https?://' "$OUT" | tail -20
+            echo "App Distribution upload failed"; exit 1
+          fi
+          grep -oE 'https://console\.firebase\.google\.com/[^ ?]+' "$OUT" | head -1
+          rm -f "$OUT"
+
+      - name: Summary
+        if: always()
+        working-directory: .
+        run: |
+          {
+            echo "### Android QA APK"
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- APK SHA-256: \`${APK_SHA256:-not built}\`"
+            echo "- Backend: staging Cloud Run; data Firebase: flacronai-staging-qa; sign-in identity: flacronai-c8dab (federated, identity only)"
+            echo "- Version: 1.1.0 (${QA_VERSION_CODE:-n/a})"
+            echo "- Distribution: Firebase App Distribution group \`qa-testers\` (APK intentionally not attached here — public repo)"
+          } >> "$GITHUB_STEP_SUMMARY"

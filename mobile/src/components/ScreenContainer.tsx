@@ -18,7 +18,7 @@ export function ScreenContainer({ children, centered = false }: ScreenContainerP
         <View
           style={[
             styles.content,
-            { padding: theme.spacing.lg },
+            { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
             centered && styles.centered,
           ]}
         >

@@ -6,18 +6,29 @@
  * submitted twice (see `SUBMIT_START` below) — both explicit task requirements for Phase 5's
  * wizard. `useReportWizard.ts` wires this to the real API/storage side effects.
  */
-import { DEFAULT_FIELDS, type WizardFields, type WizardPhoto, type WizardState, type WizardStep } from './wizardTypes';
+import {
+  DEFAULT_FIELDS,
+  REQUIRED_FIELDS,
+  type PhotoFailureReason,
+  type WizardFields,
+  type WizardPhoto,
+  type WizardState,
+  type WizardStep,
+} from './wizardTypes';
+import type { WizardDocument } from './documents';
 
 export type WizardAction =
   | { type: 'HYDRATE'; draftId: string; step?: WizardStep; fields?: WizardFields }
   | { type: 'SET_FIELD'; key: string; value: string }
   | { type: 'SET_FIELDS'; fields: WizardFields }
   | { type: 'SET_STEP'; step: WizardStep }
-  | { type: 'ADD_PHOTO_PLACEHOLDER'; localId: string; uri: string; fileName: string }
+  | { type: 'ADD_PHOTO_PLACEHOLDER'; localId: string; uri: string; fileName: string; mimeType?: string }
   | { type: 'PHOTO_RESOLVED'; localId: string; serverId: string; status: 'uploaded' | 'duplicate' }
-  | { type: 'PHOTO_FAILED'; localId: string; error: string }
+  | { type: 'PHOTO_FAILED'; localId: string; error: string; reason: PhotoFailureReason; serverId?: string }
   | { type: 'REMOVE_PHOTO'; localId: string }
   | { type: 'REPLACE_PHOTOS'; photos: WizardPhoto[] }
+  | { type: 'ADD_DOCUMENT'; document: WizardDocument }
+  | { type: 'REMOVE_DOCUMENT'; localId: string }
   | { type: 'SUBMIT_START' }
   | { type: 'SUBMIT_SUCCESS'; reportId: string }
   | { type: 'SUBMIT_FAILURE'; error: string }
@@ -29,6 +40,7 @@ export function createInitialWizardState(draftId: string): WizardState {
     draftId,
     fields: { ...DEFAULT_FIELDS },
     photos: [],
+    documents: [],
     submitting: false,
     submitError: null,
     submittedReportId: null,
@@ -60,7 +72,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         ...state,
         photos: [
           ...state.photos,
-          { localId: action.localId, uri: action.uri, fileName: action.fileName, status: 'uploading' },
+          { localId: action.localId, uri: action.uri, fileName: action.fileName, mimeType: action.mimeType, status: 'uploading' },
         ],
       };
 
@@ -68,14 +80,20 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return {
         ...state,
         photos: state.photos.map((p) =>
-          p.localId === action.localId ? { ...p, status: action.status, serverId: action.serverId, error: undefined } : p
+          p.localId === action.localId
+            ? { ...p, status: action.status, serverId: action.serverId, error: undefined, failureReason: undefined }
+            : p
         ),
       };
 
     case 'PHOTO_FAILED':
       return {
         ...state,
-        photos: state.photos.map((p) => (p.localId === action.localId ? { ...p, status: 'failed', error: action.error } : p)),
+        photos: state.photos.map((p) =>
+          p.localId === action.localId
+            ? { ...p, status: 'failed', error: action.error, failureReason: action.reason, serverId: action.serverId ?? p.serverId }
+            : p
+        ),
       };
 
     case 'REMOVE_PHOTO':
@@ -83,6 +101,12 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
 
     case 'REPLACE_PHOTOS':
       return { ...state, photos: action.photos };
+
+    case 'ADD_DOCUMENT':
+      return { ...state, documents: [...state.documents, action.document] };
+
+    case 'REMOVE_DOCUMENT':
+      return { ...state, documents: state.documents.filter((d) => d.localId !== action.localId) };
 
     case 'SUBMIT_START':
       // Refuses to start a second submission while one is in flight, AND permanently once
@@ -110,19 +134,45 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
   }
 }
 
-/** Ready photos are what actually get folded into `generate()` — duplicates and failures are
- * excluded (a duplicate is already represented server-side by the original upload; a failure
- * never reached the server at all). */
+/** Only photos the server actually stored count toward generation. A `duplicate` is the same
+ * bytes as a photo already on this draft (that original is what counts), and anything
+ * `failed` — server-rejected, over the plan limit, or refused on-device — never reached
+ * Storage, so it must never make the wizard look ready. */
 export function readyPhotoCount(state: WizardState): number {
-  return state.photos.filter((p) => p.status === 'uploaded' || p.status === 'duplicate').length;
+  return state.photos.filter((p) => p.status === 'uploaded').length;
 }
 
+export function uploadingPhotoCount(state: WizardState): number {
+  return state.photos.filter((p) => p.status === 'uploading').length;
+}
+
+/** A failed photo whose retry can plausibly succeed (a transport failure, or a plan-limit
+ * rejection after space has been freed). Server-rejected and on-device-refused photos can't. */
+export function isRetryablePhoto(photo: WizardPhoto): boolean {
+  return photo.status === 'failed' && (photo.failureReason === 'network' || photo.failureReason === 'capacity');
+}
+
+export function requiredFieldsFilled(fields: WizardFields): boolean {
+  return REQUIRED_FIELDS.every((key) => !!(fields[key] && fields[key].trim()));
+}
+
+/** Generation also waits for in-flight uploads: submitting mid-upload would silently leave the
+ * still-uploading photos out of the report. */
 export function canSubmit(state: WizardState): boolean {
   if (state.submitting || state.submittedReportId) return false;
-  return REQUIRED_FIELDS_FILLED(state.fields) && readyPhotoCount(state) > 0;
+  if (uploadingPhotoCount(state) > 0) return false;
+  return requiredFieldsFilled(state.fields) && readyPhotoCount(state) > 0;
 }
 
-function REQUIRED_FIELDS_FILLED(fields: WizardFields): boolean {
-  const required = ['claimNumber', 'insuredName', 'insuredEmail', 'propertyAddress', 'lossDate', 'lossType'];
-  return required.every((key) => !!(fields[key] && fields[key].trim()));
+/** True when nothing the user entered would be lost by leaving — every field still at its
+ * default and no photos added. */
+export function isPristine(state: WizardState): boolean {
+  if (state.photos.length > 0 || state.documents.length > 0) return false;
+  const keys = new Set([...Object.keys(state.fields), ...Object.keys(DEFAULT_FIELDS)]);
+  for (const key of keys) {
+    const value = (state.fields[key] ?? '').trim();
+    const initial = DEFAULT_FIELDS[key] ?? '';
+    if (value !== initial) return false;
+  }
+  return true;
 }

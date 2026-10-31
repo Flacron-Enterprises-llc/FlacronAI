@@ -2,29 +2,43 @@
  * Photo/thumbnail bytes never come from a public URL (`reportsApi.getPhotoImage`/
  * `getStagedPhotoImage` proxy private, authenticated bytes — see that file's own comments).
  * `expo-image`'s `<Image>` only knows how to load a `uri` (network URL or local file), so each
- * fetched image is written to a small on-device cache file and that file's `uri` is what gets
+ * fetched image is written to an on-device cache file and that file's `uri` is what gets
  * rendered — never a raw data: URI built by hand, which would duplicate the bytes in memory as
  * a base64 string for no benefit here.
+ *
+ * Files live in a per-*scope* cache directory (`report-<id>` / `draft-<draftId>`, see
+ * `services/localData/fileCache.ts`) that the owning screen deletes when it's done, and every
+ * user-scoped file is wiped on sign-out. Fetches are capped at `MAX_CONCURRENT` so a report with
+ * dozens of photos never fires dozens of simultaneous fully-buffered downloads.
  */
-import { Directory, File, Paths } from 'expo-file-system';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { BinaryResponse } from '@/services/api/client';
+import { writeCachedPhoto } from '@/services/localData/fileCache';
 
-const CACHE_DIR = new Directory(Paths.cache, 'flac-photo-cache');
+const MAX_CONCURRENT = 4;
+let active = 0;
+const waiting: (() => void)[] = [];
 
-function ensureCacheDir(): void {
+/** Runs `task` once a slot is free. Exported for tests. */
+export async function withPhotoFetchSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (active >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  }
+  active += 1;
   try {
-    if (!CACHE_DIR.exists) CACHE_DIR.create({ intermediates: true, idempotent: true });
-  } catch {
-    // Falls through — the write below will surface any real problem.
+    return await task();
+  } finally {
+    active -= 1;
+    waiting.shift()?.();
   }
 }
 
-export function useAuthenticatedPhoto(cacheKey: string, fetcher: () => Promise<BinaryResponse>, enabled = true) {
+export function useAuthenticatedPhoto(scope: string, cacheKey: string, fetcher: () => Promise<BinaryResponse>, enabled = true) {
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -35,13 +49,9 @@ export function useAuthenticatedPhoto(cacheKey: string, fetcher: () => Promise<B
       setError(null);
       setUri(null);
       try {
-        const response = await fetcher();
+        const response = await withPhotoFetchSlot(() => (cancelled ? Promise.reject(new Error('cancelled')) : fetcher()));
         if (cancelled) return;
-        ensureCacheDir();
-        const safeName = cacheKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const file = new File(CACHE_DIR, `${safeName}.img`);
-        file.write(new Uint8Array(response.data));
-        setUri(file.uri);
+        setUri(writeCachedPhoto(scope, cacheKey, response.data));
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load this photo.');
       } finally {
@@ -52,8 +62,11 @@ export function useAuthenticatedPhoto(cacheKey: string, fetcher: () => Promise<B
     return () => {
       cancelled = true;
     };
+    // `fetcher` is a fresh closure every render — keyed on scope/cacheKey/attempt instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheKey, enabled]);
+  }, [scope, cacheKey, enabled, attempt]);
 
-  return { uri, loading, error };
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+
+  return { uri, loading, error, reload };
 }

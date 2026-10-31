@@ -9,13 +9,18 @@ const {
   imageErrorResponse,
 } = require('../utils/safeImage');
 const { getAuth, getFirestore } = require('../config/firebase');
-const { authenticateToken, optionalAuth, requireApiAccess, requireRecentAuth } = require('../middleware/auth');
+const { authenticateToken, optionalAuth, requireApiAccess, requireRecentAuth, isRecentAuth } = require('../middleware/auth');
+const { isStoreEntitlementActive } = require('../utils/entitlements');
 const { profileLimiter } = require('../middleware/rateLimiters');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { API_KEY_SCOPES, normalizeApiKeyScopes } = require('../config/apiScopes');
 const { sendWelcomeEmail } = require('../services/emailService');
-const { logoObject, uploadBuffer, deleteObject, deletePrefix } = require('../config/storage');
+const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
+const { purgeAccountData } = require('../services/accountDeletionCleanup');
 const { recordAuditLog } = require('../services/auditLogService');
+const { blockFederatedSession } = require('../services/federatedIdentity');
+const { cancelStripeBillingForDeletion } = require('../services/stripeAccountCancellation');
+const { acquireDeletionLock, releaseDeletionLock } = require('../utils/accountDeletionLock');
 const { body, validationResult } = require('express-validator');
 const { resolveOrganizationId, resolveRole, hasCapability } = require('../utils/orgRoles');
 const { sanitizeNotifications } = require('../utils/notificationPrefs');
@@ -27,7 +32,7 @@ const {
   isValidOnboardingStep,
   ONBOARDING_LAST_STEP,
 } = require('../utils/onboarding');
-const { buildTourUpdate } = require('../utils/productTour');
+const { buildTourUpdate, tourField } = require('../utils/productTour');
 
 const logoUpload = multer({
   storage: multer.memoryStorage(),
@@ -51,9 +56,12 @@ router.get('/profile', authenticateToken, profileLimiter, async (req, res) => {
     // other caller correctly reads the already-created (and possibly
     // already-enriched, e.g. with firstName/lastName) doc instead of
     // clobbering it back to bare defaults.
-    const { _isNew, ...profile } = await db.runTransaction(async (tx) => {
+    const tombRef = db.collection('deletedAccounts').doc(req.user.uid);
+    const { _isNew, _deleted, ...profile } = await db.runTransaction(async (tx) => {
       const docSnap = await tx.get(docRef);
       if (docSnap.exists) return { id: docSnap.id, ...docSnap.data(), _isNew: false };
+      // Mobile Phase 8: never auto-create a profile for a self-deleted account.
+      if ((await tx.get(tombRef)).exists) return { _deleted: true };
 
       const displayName = req.user.name || req.user.email?.split('@')[0] || 'User';
       const newProfile = {
@@ -83,6 +91,10 @@ router.get('/profile', authenticateToken, profileLimiter, async (req, res) => {
       return { ...newProfile, _isNew: true };
     });
 
+    if (_deleted) {
+      return res.status(401).json({ success: false, error: 'This account has been deleted', code: 'ACCOUNT_DELETED' });
+    }
+
     // Send welcome email for ALL new signups (email/password + Google OAuth)
     if (_isNew && profile.email) {
       sendWelcomeEmail(profile.email, profile.displayName)
@@ -100,15 +112,23 @@ router.put('/profile', authenticateToken, [
   body('displayName').optional().trim().isLength({ max: 100 }),
   body('firstName').optional().trim().isLength({ max: 100 }),
   body('lastName').optional().trim().isLength({ max: 100 }),
-  body('phone').optional().trim(),
-  body('company').optional().trim(),
-  body('address').optional().trim(),
+  // Upper bounds added in Mobile Phase 8 (previously unbounded); generous so no
+  // real value is rejected. Only these fields (+ notification prefs) are ever
+  // written -- tier/billing/team/security fields are ignored if sent.
+  body('phone').optional().trim().isLength({ max: 40 }),
+  body('company').optional().trim().isLength({ max: 200 }),
+  body('address').optional().trim().isLength({ max: 500 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
 
   try {
     const db = getFirestore();
+    // Never recreate a self-deleted account's profile via set(..., {merge}).
+    const current = await db.collection('users').doc(req.user.uid).get();
+    if (!current.exists && (await db.collection('deletedAccounts').doc(req.user.uid).get()).exists) {
+      return res.status(401).json({ success: false, error: 'This account has been deleted', code: 'ACCOUNT_DELETED' });
+    }
     const { displayName, firstName, lastName, phone, company, address, notifications } = req.body;
     const updates = { updatedAt: new Date().toISOString() };
 
@@ -267,12 +287,14 @@ router.post('/product-tour', authenticateToken, async (req, res) => {
   try {
     const db = getFirestore();
     const ref = db.collection('users').doc(req.user.uid);
+    const target = tourField(req.body?.platform);
+    if (target.error) return res.status(400).json({ success: false, error: target.error, code: target.code });
     const doc = await ref.get();
-    const result = buildTourUpdate(req.body, doc.exists ? doc.data().productTour : undefined);
+    const result = buildTourUpdate(req.body, doc.exists ? doc.data()[target.field] : undefined);
     if (result.error) return res.status(400).json({ success: false, error: result.error, code: result.code });
 
-    await ref.set({ productTour: result.productTour, updatedAt: new Date().toISOString() }, { merge: true });
-    return res.json({ success: true, productTour: result.productTour });
+    await ref.set({ [target.field]: result.productTour, updatedAt: new Date().toISOString() }, { merge: true });
+    return res.json({ success: true, productTour: result.productTour, field: target.field });
   } catch (err) {
     console.error('[ProductTour] update error for uid', req.user?.uid, ':', err.message);
     return res.status(500).json({ success: false, error: 'Failed to save tour progress', code: 'PRODUCT_TOUR_ERROR' });
@@ -627,7 +649,7 @@ router.put('/update-name', authenticateToken, [body('displayName').trim().notEmp
 // middleware/auth.js for exactly what it checks and why. Runs AFTER
 // authenticateToken (needs req.mfaContext, which only that middleware sets)
 // and BEFORE the request body is ever touched.
-router.put('/change-password', authenticateToken, requireRecentAuth, [
+router.put('/change-password', authenticateToken, blockFederatedSession, requireRecentAuth, [
   body('newPassword').custom(isStrongPassword).withMessage(PASSWORD_REQUIREMENTS_MESSAGE),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -738,29 +760,75 @@ router.get('/api-usage', authenticateToken, requireApiAccess, async (req, res) =
 });
 
 // DELETE /api/users/account — self-service, irreversible account + data deletion
+//
+// Identity re-check (Mobile Phase 8): EITHER the current password (existing web
+// contract, unchanged) OR a recent sign-in (Firebase `auth_time` within the same
+// 5-minute window as requireRecentAuth) plus `confirmation: "DELETE"` -- the only
+// option for Google / Apple accounts, which have no password.
+//
+// Safe to repeat: every step is idempotent, a tombstone (deletedAccounts/{uid}) is
+// written FIRST so in-flight or delayed requests/events can't recreate the account,
+// and a partial failure returns DELETE_ACCOUNT_INCOMPLETE so the user can retry.
+//
+// Billing (decision §10.26, approved 2026-10-07): every recurring Stripe
+// subscription the account owns is cancelled immediately -- and confirmed with
+// Stripe -- BEFORE anything irreversible happens (services/stripeAccountCancellation.js:
+// no refund, no proration, no final invoice; existing invoices untouched). If
+// Stripe can't confirm, NOTHING is deleted and the user gets a retryable
+// STRIPE_CANCELLATION_FAILED. A short lease on the user doc (utils/accountDeletionLock.js)
+// blocks checkout / plan changes / webhooks from re-activating billing meanwhile.
+// Apple/Google subscriptions can only be cancelled by the user in the store; the
+// response reports them as still billing. Store purchase records are kept, locked
+// to this deleted owner, so a deleted account's purchase can never be re-linked.
+//
+// Retained after deletion (documented exceptions): audit logs, Stripe/store purchase
+// and webhook records (and Stripe's own customer/invoice history), sales-contact
+// leads, and the tombstone (uid, timestamps, Stripe customer/subscription ids and
+// the cancellation result -- kept so a retry and the webhook backstop still know
+// which Stripe records were this account's).
 router.delete('/account', authenticateToken, [
-  body('password').notEmpty().withMessage('Current password is required to confirm deletion'),
+  body('password').optional().isString(),
+  body('confirmation').optional().isString(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.mapped() });
 
   const uid = req.user.uid;
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  let leaseHeld = false;
 
   try {
-    const firebaseApiKey = process.env.FIREBASE_API_KEY;
-    if (!firebaseApiKey) {
-      return res.status(500).json({ success: false, error: 'Firebase API key not configured', code: 'CONFIG_ERROR' });
+    // QA federation shadows have no staging password: they confirm with a fresh
+    // production sign-in (recent prodAuthTime) + confirmation instead.
+    if (password && req.sessionContext?.federated) {
+      return res.status(400).json({ success: false, error: 'Confirm by signing in again, then delete.', code: 'CONFIRMATION_REQUIRED' });
     }
-
-    // Re-verify current password before an irreversible delete.
-    const axios = require('axios');
-    try {
-      await axios.post(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
-        { email: req.user.email, password: req.body.password, returnSecureToken: true }
-      );
-    } catch {
-      return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+    if (password) {
+      const firebaseApiKey = process.env.FIREBASE_API_KEY;
+      if (!firebaseApiKey) {
+        return res.status(500).json({ success: false, error: 'Firebase API key not configured', code: 'CONFIG_ERROR' });
+      }
+      // Re-verify current password before an irreversible delete.
+      const axios = require('axios');
+      try {
+        await axios.post(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`,
+          { email: req.user.email, password, returnSecureToken: true }
+        );
+      } catch {
+        return res.status(401).json({ success: false, error: 'Incorrect password', code: 'INVALID_PASSWORD' });
+      }
+    } else {
+      if (req.body.confirmation !== 'DELETE') {
+        return res.status(400).json({ success: false, error: 'Deletion must be confirmed', code: 'CONFIRMATION_REQUIRED' });
+      }
+      if (!isRecentAuth(req)) {
+        return res.status(403).json({
+          success: false,
+          error: "Please sign in again to confirm it's you before deleting your account",
+          code: 'RECENT_LOGIN_REQUIRED',
+        });
+      }
     }
 
     const db = getFirestore();
@@ -775,38 +843,93 @@ router.delete('/account', authenticateToken, [
       });
     }
 
-    // Reports (+ their versions subcollection) need a recursive delete.
-    const reportsSnap = await db.collection('reports').where('userId', '==', uid).get();
-    await Promise.all(reportsSnap.docs.map((d) => db.recursiveDelete(d.ref)));
+    // Concurrent deletions / billing changes: take the deletion lease first.
+    const lease = await acquireDeletionLock(db, uid);
+    if (!lease.acquired) {
+      return res.status(409).json({
+        success: false,
+        error: 'Your account deletion is already in progress. Please wait a moment and try again.',
+        code: 'DELETE_IN_PROGRESS',
+      });
+    }
+    leaseHeld = true;
 
-    const flatCollections = [
-      { name: 'reportTemplates', field: 'userId' },
-      { name: 'apiKeys', field: 'userId' },
-      { name: 'crmClients', field: 'userId' },
-      { name: 'crmAppointments', field: 'userId' },
-      { name: 'crmClaims', field: 'userId' },
-      { name: 'enterpriseClients', field: 'userId' },
-    ];
-    for (const { name, field } of flatCollections) {
-      const snap = await db.collection(name).where(field, '==', uid).get();
-      if (snap.empty) continue;
-      const batch = db.batch();
-      snap.docs.forEach((d) => batch.delete(d.ref));
-      await batch.commit();
+    const userSnap = await db.collection('users').doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    const store = userData.storeEntitlement;
+
+    const nowIso = new Date().toISOString();
+    const tombRef = db.collection('deletedAccounts').doc(uid);
+    const tomb = await tombRef.get();
+    const tombData = tomb.exists ? tomb.data() : {};
+
+    // 1. Stripe: cancel + confirm before anything irreversible. Ownership comes from
+    //    our own records (user doc, or the tombstone on a retry after the doc is gone).
+    const union = (...lists) => [...new Set(lists.flat().filter((v) => typeof v === 'string' && v))];
+    const stripeCustomerIds = union(userData.stripeCustomerId, tombData.stripeCustomerIds || []);
+    const stripeSubscriptionIds = union(userData.stripeSubscriptionId, tombData.stripeSubscriptionIds || []);
+    let stripeResult;
+    try {
+      stripeResult = await cancelStripeBillingForDeletion({ uid, customerIds: stripeCustomerIds, subscriptionIds: stripeSubscriptionIds });
+    } catch (err) {
+      console.error('Account deletion: Stripe cancellation not confirmed:', err && err.code ? err.code : 'unexpected');
+      recordAuditLog({ actorUid: uid, actorEmail: req.user.email, action: 'account_self_delete_stripe_failed', req });
+      return res.status(502).json({
+        success: false,
+        error:
+          "We couldn't confirm with Stripe that your subscription was cancelled, so your account was NOT deleted and nothing was removed. Please try again in a moment.",
+        code: 'STRIPE_CANCELLATION_FAILED',
+        retryable: true,
+        outcomeUncertain: !!(err && err.uncertain),
+      });
     }
 
-    // Wipe all Storage objects (report photos, exports, logos).
-    await deletePrefix(`users/${uid}/`);
+    const subscriptionsStillBilling = {
+      stripe: false,
+      store: isStoreEntitlementActive(store) && store.autoRenew ? store.platform : null,
+    };
 
-    await db.collection('users').doc(uid).delete();
-    await getAuth().deleteUser(uid);
+    // 2. Tombstone (Stripe confirmed): from here a delayed checkout/webhook for this
+    //    uid is cancelled instead of granted, and the account can't be recreated.
+    const deletedAt = tombData.deletedAt || nowIso;
+    await tombRef.set({
+      deletedAt,
+      lastAttemptAt: nowIso,
+      completed: false,
+      stripeCustomerIds,
+      stripeSubscriptionIds,
+      stripeCancellation: {
+        // When Stripe actually confirmed (not when the request started) -- audit accuracy.
+        confirmedAt: new Date().toISOString(),
+        cancelled: union(tombData.stripeCancellation?.cancelled || [], stripeResult.cancelled),
+      },
+    });
+
+    // 3-6. Store purchase lock, reports, account data, Storage, profile, sign-in,
+    //      then tombstone completed. Idempotent: a failure here leaves completed:false
+    //      and services/accountDeletionCleanup.js finishes it even if the user can no
+    //      longer sign in to retry.
+    await purgeAccountData(db, uid, { nowIso });
+    leaseHeld = false; // the lease lived on the (now deleted) user doc
 
     recordAuditLog({ actorUid: uid, actorEmail: req.user.email, action: 'account_self_delete', req });
 
-    return res.json({ success: true, message: 'Account and all associated data deleted' });
+    return res.json({
+      success: true,
+      message: 'Account and all associated data deleted',
+      subscriptionsStillBilling,
+      stripeSubscriptionsCancelled: stripeResult.cancelled.length,
+    });
   } catch (err) {
-    console.error('Account deletion error:', err);
-    return res.status(500).json({ success: false, error: 'Failed to delete account', code: 'DELETE_ACCOUNT_ERROR' });
+    console.error('Account deletion error:', err && err.message ? err.message : 'unexpected');
+    return res.status(500).json({
+      success: false,
+      error: 'Your account could not be fully deleted. Please try again.',
+      code: 'DELETE_ACCOUNT_INCOMPLETE',
+    });
+  } finally {
+    // Failed / refused attempt: leave a normal, retryable account behind.
+    if (leaseHeld) await releaseDeletionLock(getFirestore(), uid).catch(() => {});
   }
 });
 

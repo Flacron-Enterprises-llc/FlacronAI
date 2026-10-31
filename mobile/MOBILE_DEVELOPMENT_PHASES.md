@@ -40,6 +40,159 @@
 
 ## 1. Current Status
 
+> **WEB PARITY PASS — 2026-10-30.** Mobile dashboard, reports, review, export, settings, analytics, notifications and
+> tour now follow the web app. Checklist + evidence + follow-ups: `mobile/docs/WEB_MOBILE_PARITY.md`. Static checks
+> only (tsc, lint, Jest 535/535, Android/iOS bundle export); device QA needs the next QA APK. Local commits only.
+>
+> **QA LOGIN — 2026-10-26.** The QA app now signs in with FlacronAI website accounts (QA federation); all data
+> stays in staging. See `mobile/docs/QA_LOGIN_WITH_PRODUCTION_ACCOUNTS.md` and `PROGRESS.md` 2026-10-26.
+> Staging API is deployed; a new APK is waiting on the `qa-android` environment and Workload Identity branch allowance.
+>
+> **COMBINED WORKSPACE — 2026-10-26.** Main (web, `0e98bed`) and this branch (`8d5872a`) are merged on the LOCAL
+> branch `integration/web-mobile-combined` — the single folder for web and mobile from now on (root `CLAUDE.md` §0a).
+> The `payment.js` / `fakeFirestore.js` conflicts listed below are resolved there; all backend, frontend and mobile
+> checks pass (`PROGRESS.md` 2026-10-26). Not pushed; PR #30 is unchanged. Still open: staging Stripe vs `app_id`, device QA.
+>
+> **HANDOVER — 2026-10-19 (mobile paused for web work).**
+> - **Implemented (PR #30, branch `qa/android-qa-apk`, head `eda1d76`):** Phases 1–10 — Expo app foundation,
+>   env config, full auth (email/Google/MFA), typed API layer, native dashboard + 5-step generate wizard,
+>   report review/approve/finalize, authenticated export/share, push (backend + app, flag-gated), IAP
+>   (`expo-iap`, store setup pending), account screens incl. deletion, store-readiness docs; Cloud Run
+>   staging + Android QA APK pipeline (GitHub Actions → Firebase App Distribution).
+> - **Verified:** cloud Android 34 + iOS simulator — sign-in → wizard → photo upload → AI draft → approve →
+>   finalize → PDF export/share, account isolation, profile save (STORE_RELEASE_READINESS §10.1); real
+>   Claude draft on staging (cautious wording; approval blocked without signature); staging push enabled.
+> - **Status:** QA APK release `03hc2qep8422o` on App Distribution (`qa-testers`). Staging =
+>   Cloud Run `flacronai-staging-api` (project `flacronai-staging-qa`). **PR #30 OPEN, NOT merged, GitHub
+>   reports CONFLICTING** — merging deploys prod; do not merge without client approval.
+> - **Main moved on (PRs #31–#36, 2026-10-17, other dev):** multicloud AWS/Azure/IBM pipelines + Stripe
+>   centralization (`app_id=flacron-ai`, billing ledger, new live webhook). Rebasing/merging main into
+>   PR #30 conflicts in `backend/routes/payment.js` and `backend/test/helpers/fakeFirestore.js`; also
+>   touches `.env.example`, `server.js`, `package-lock.json` (auto-merge). Staging Stripe sandbox config
+>   must be re-checked against the new `app_id` standard after integration.
+> - **Remaining:** resolve conflicts with main; device QA of submitted deletion, push delivery, camera,
+>   offline, tablets/a11y; Google sign-in (staging OAuth consent screen — console step); store purchases
+>   (App Store Connect/Play products, sandbox testers); iOS creds/APNs in EAS; roll exposed Stripe sandbox
+>   key; workspace-scoped Anthropic key for staging; store submission (needs approval).
+
+- **2026-10-08 — Phase 10: IN PROGRESS (not complete).** Cloud devices (Android 34 emulator + iOS
+  simulator) passed sign-in → upload → AI draft → review → approve → export/share + isolation on BOTH
+  platforms after fixing a real upload defect (Expo SDK 57 `expo/fetch` rejects RN `{uri}` parts). Profile
+  save feedback fix verified on Android. In-app deletion NOT device-tested (free CI minutes exhausted;
+  reset 2026-11-01; $0 billed). Push, purchases, camera, tablet, accessibility still need real devices /
+  store setup. Detail: §4 "Phase 10 session 5".
+
+- **2026-10-07 (continuation) — Phase 10: still IN PROGRESS; NO device/emulator/simulator test has
+  been run.** Done this pass: EAS Android dev build FINISHED (first native compile incl. expo-iap /
+  push); EAS preview + production now carry the Firebase/Google client config (approved); web
+  `/account-deletion` public page + Google/Apple re-auth in web Settings deletion (not deployed);
+  rules-test flake root-caused (offline cache fallback) and fixed; a real duplicate-report /
+  double-credit defect in `POST /reports/generate` found by a local API end-to-end run and fixed
+  (36/36 after the fix). No Android phone is available, and a local emulator is not feasible on
+  this PC (0.8 GB commit free, no hypervisor); cloud testing and a Stripe CLI login await the
+  client (§10.34–35). Backend 1379 / 1372 / 0 fail / 7 skipped; rules 5/5 ×3; frontend 328 tests
+  pass (incl. 11 new; one file needs a dummy Firebase env var in this worktree), `vite build` blocked
+  by host memory; mobile unchanged since the previous entry. Detail: §4 "Phase 10 continuation".
+
+- **2026-10-07 — Phase 10 (Store Preparation & Release Readiness): IN PROGRESS — local preparation
+  done; NOT runtime-verified, NOT deployed, NOT submitted, completion criterion NOT met.** Node 24
+  LTS (portable) + Expo patch alignment (doctor 21/21); recoverable account-deletion cleanup
+  (server sweeper finishes deletions that failed after the user could no longer sign in; Storage
+  failures no longer marked complete); notification icon, permission cleanup, submit profiles;
+  store/privacy/reviewer drafts in `STORE_RELEASE_READINESS.md`; first native Android dev build on
+  EAS. Backend 1378 / 1371 / 0 fail / 7 skipped; rules 5/5 (one unexplained flaky run); mobile tsc
+  0, lint clean, jest 495/495, export android + ios ✔. No device, emulator, simulator or store
+  console access in this environment. New decisions §10.29–32 (EAS store env vars are a build
+  blocker). Full detail: §4 "2026-10-07 — Phase 10".
+
+- **2026-10-07 — Account deletion now cancels Stripe subscriptions (§10.26 approved) + Phase 9
+  (Testing & Hardening): static testing/hardening complete; runtime verification pending. NOT
+  device-verified, NOT production ready.** Deletion cancels every billable Stripe subscription of
+  the account (active/trialing/past_due/unpaid/incomplete/paused), expires open checkouts and
+  not-yet-started schedules, and re-lists to confirm with Stripe BEFORE anything is deleted — no
+  refund, no proration, no final invoice, existing invoices untouched. Failure/timeout → nothing
+  deleted, account usable, retry-safe `STRIPE_CANCELLATION_FAILED`. A deletion lease + the tombstone
+  stop checkout / plan change / photo packs / store verify / delayed webhooks from re-activating
+  billing (mid-deletion webhooks are redelivered; post-deletion ones cancel the new subscription).
+  Apple/Google warnings unchanged (never claimed cancelled). Phase 9 fixes: profile-response
+  account-isolation race, stale report responses on id change (detail/comments/photos/versions),
+  versions never reloading for a new report, 5 links missing accessibility roles/targets.
+  Backend 1376 / 1369 pass / 0 fail / 7 skipped; rules 5/5; mobile tsc 0, lint clean, jest
+  495/495 (48 suites), export android + ios ✔. Dependency patch alignment blocked (§6, Node 25
+  npm crash). Full detail: §4 "2026-10-07 — Stripe cancellation at deletion + Phase 9". Phase 10
+  not started.
+
+- **2026-10-07 — Phase 8 (Remaining Account/Info Screens): implemented, static validation
+  complete; Android/iOS runtime verification pending. NOT production ready.** Settings hub;
+  Profile (validated, permitted fields only); Sign-in & security (provider-aware re-auth,
+  password change for email accounts, TOTP two-factor enable/disable); Legal & support (existing
+  web pages, support email, app version); in-app account deletion (Google/Apple accounts can now
+  delete via recent re-auth; subscription warnings across Stripe/Apple/Google; retry-safe; local
+  cleanup only after confirmation; deleted accounts can't be recreated; store purchases stay
+  locked to the deleted owner). Backend 1363 / 1356 pass / 0 fail / 7 skipped; rules 5/5; mobile
+  tsc 0, lint clean, jest 486/486, export android + ios ✔. Decisions: §10 items 23, 26, 27.
+  Phase 9 not started.
+
+- **2026-10-05 — Phase 6/7 gap closure done (code + static/emulator checks). Phases 6 and 7
+  remain: implemented, static validation complete; external setup, deployment and Android/iOS
+  runtime verification pending — NOT production ready, NOT runtime-verified.** Closed: push lease
+  14 → 7 days (configurable), stale-binding push handling, outbox reconciliation, stable push
+  eventId; one transactional entitlement writer (highest of Stripe / admin / team / store), admin
+  overrides preserved, team removal no longer wipes paid plans, out-of-order Stripe events can't
+  re-grant, in-app plan changes (iOS same group, Android replacement), production sandbox
+  allowlist, Enterprise not sold in-app (matches web), Firestore users-doc allowlist with emulator
+  tests (the ORIGINAL rules let users set their own tier — **not yet deployed**), production API
+  origin confirmed (`https://api.flacronai.com`). Backend 1355 / 1348 pass / 0 fail / 7 skipped;
+  rules emulator 5/5; mobile tsc 0, lint clean, jest 453/453, export android + ios ✔. Decisions
+  needed: §10 items 5, 19–25. Full detail + setup checklist: §4 "Phase 6/7 gap closure".
+  Phase 8 not started.
+
+- **2026-10-05 — Phase 7 (Subscriptions & In-App Purchase): Implemented, static validation
+  complete; store setup and runtime verification pending. NOT purchase-verified, NOT
+  sandbox-verified, NOT production ready.** `expo-iap` (StoreKit 2 / Play Billing) behind a
+  single adapter; backend verifies every purchase with Apple's App Store Server API / Google's
+  Play Developer API, binds it to one FlacronAI account (account token + ownership rules),
+  handles App Store Server Notifications V2 and Play RTDN with replay protection, and computes
+  one entitlement across Stripe + store without overwriting web billing records. Backend
+  1339 / 1332 pass / 0 fail / 7 skipped; mobile `tsc` 0, lint clean, jest 436/436, export
+  android + ios ✔. No store products/credentials exist yet → the app shows in-app purchases as
+  unavailable and grants nothing. Full detail: §4 "2026-10-05 — Phase 7". Nothing
+  committed/pushed; no deploy, EAS build, store change or real purchase. Phases 8–10 not started.
+
+- **2026-10-05 — Phase 6 (Push Notifications): Implemented (mobile + backend), hardened, static validation complete; push delivery disabled by default; Expo/FCM/APNs credentials, AWS (ECS) configuration and Android/iOS device verification pending. NOT delivery-verified, NOT runtime-verified, NOT production ready.** Latest pass (reliability &
+  account-isolation hardening): server-enforced per-sign-in device bindings (revocation fence,
+  stale-request fence, 14-day renewable lease, session/account eligibility re-checked before
+  every send), a persistent offline-safe revocation queue on the device, a durable Firestore
+  `pushOutbox` written in the same transaction as the notification and drained by a lease-based
+  worker safe for multiple ECS tasks, persisted tickets/receipts/retries, and an authenticated
+  `GET /notifications/push-status`. Backend `npm test` 1311 / 1304 pass / 0 fail / 7 skipped
+  (32 push tests); mobile `tsc` 0, `expo lint` clean, `jest` 390/390 (37 suites), `expo
+  export` android + ios ✔. Deployment is **AWS ECS** (launch type not visible in the repo) (not Render). Full detail: §4
+  "Phase 6 — reliability & account-isolation hardening". Nothing committed/pushed; no deploy;
+  no EAS build; no AWS change; no real push. Phase 5 remains static-only; Phases 7–10 not
+  started.
+
+- **2026-10-05 — Phase 5 gap-closure pass: the implementation gaps/defects found by the
+  2026-10-05 read-only audit are fixed and statically validated; Android/iOS runtime
+  validation is still NOT performed. Phase 5 status: implemented, static checks only — NOT
+  runtime verified.** Done on a new local branch `fix/mobile-phase-5-gaps` (created from local
+  `origin/main` @ `1e12d78`, whose `mobile/` is byte-identical to the Phase 5 commit
+  `c65dfad`) in the existing clean `feature+mobile-phase-5-core-dashboard` worktree. The stale
+  `feature/mobile-initial-phases` checkout and its uncommitted work were not touched. Nothing
+  committed/pushed; no EAS build; `backend/`/`frontend/` untouched; no dependency changed.
+  Fixed: per-account draft/cache isolation + sign-out cleanup; real upload outcomes (uploaded /
+  duplicate / server-rejected / plan-limit / unsupported / too-large) with only genuine uploads
+  counting toward Generate; HEIC handling; failed-report display + owner-only retry analysis;
+  review-response UI; permission/state gating of Approve/Export/comments/photo review;
+  resilient polling; focus-based list refresh; export timeouts + accurate storage messaging;
+  start-new/discard draft; chip defaults = submitted values; navigation out of render;
+  thumbnail error/retry + bounded concurrency + cache lifecycle; status filters; 403
+  classification; report deep link preserved through sign-in. Validation: `tsc` 0 errors,
+  `expo lint` clean, `jest` **290/290 (29 suites)**, `expo export` android + ios both succeed,
+  `expo-doctor` 20/21 (patch-version drift only — §6). Full detail: §4 entry dated
+  2026-10-05; next step: §12. Phase 6: implemented, static only — credentials + device checks pending (entry above). Phases
+  7–10: not started.
+
 - **Phase 5 — Core Dashboard Feature Parity: implemented, static validation complete;
   Android/iOS runtime validation NOT performed this session (environment had no ADB,
   emulator, physical device, or browser-automation tool available — honestly recorded
@@ -643,9 +796,12 @@ Legend: **not started / in progress / done / blocked**
   Phase 5's settings/profile + dashboard/report/tier scope).
 
 ### Phase 5 — Core Dashboard Feature Parity
-- **Status: implemented, statically validated; Android/iOS runtime validation not yet
-  performed (2026-09-16).** See §1 Current Status for the full implementation summary,
-  file list, dependency justification, and exact validation results/gaps.
+- **Status (2026-10-05): implemented, static checks only — NOT runtime verified.** The
+  2026-10-05 audit found the 2026-09-16 implementation incomplete (no review-response UI,
+  failed reports unhandled, server-rejected photos counted as uploaded, drafts not
+  account-scoped, among others); those were fixed in the 2026-10-05 gap-closure pass (§4).
+  Still pending: every Android/iOS runtime check (§12). The original 2026-09-16
+  implementation summary remains in §1.
 - Objective: the major flows from `Dashboard.jsx`, native-appropriate, not copied JSX.
 - Scope, priority order: reports list + dashboard summary; the generate wizard (claim
   info → property → loss details → camera/photo-library capture and upload → review);
@@ -678,7 +834,9 @@ Legend: **not started / in progress / done / blocked**
   review → approve → export/share, against a local backend with a disposable test account.
 
 ### Phase 6 — Push Notifications
-- **Status:** not started
+- **Status:** **Implemented (mobile + backend), hardened, static validation complete; push delivery disabled by default; Expo/FCM/APNs credentials, AWS (ECS) configuration and Android/iOS device verification pending. NOT delivery-verified, NOT runtime-verified, NOT production ready.** Mobile side, backend integration and hardening: §4 entries
+  dated 2026-10-05. Completion criterion ("at least one real notification type delivers
+  end-to-end") is **not yet met** — needs credentials, AWS configuration and a device run.
 - Objective: real push for account/report activity, layered on the existing in-app feed
   (`backend/routes/notifications.js` / `backend/utils/notificationService.js`), which today
   is in-app-only — **no device-token storage or push-sending exists in the backend at all**
@@ -698,7 +856,13 @@ Legend: **not started / in progress / done / blocked**
 - Out of scope: rich/interactive notifications, new notification categories.
 
 ### Phase 7 — Subscriptions & In-App Purchase / Billing
-- **Status:** not started — **highest-risk phase, flagged explicitly**
+- **Status (2026-10-05): Implemented, static validation complete; store setup and runtime
+  verification pending.** NOT purchase-verified, NOT sandbox-verified, NOT production ready.
+  No store product, credential or notification URL exists yet, so every store path currently
+  reports "unavailable" and grants nothing. Full detail: §4 entry "2026-10-05 — Phase 7".
+  The completion criterion below ("a real sandbox purchase round-trips to a real
+  entitlement") is **not yet met**.
+- (Original plan, kept for reference:) **highest-risk phase, flagged explicitly**
 - Objective: mobile subscription purchase flows compliant with Apple/Google policy, kept
   in sync with the existing Stripe-driven tier system (`backend/config/tiers.js`,
   `backend/routes/payment.js`).
@@ -721,7 +885,11 @@ Legend: **not started / in progress / done / blocked**
   policy decision needed first, see §10).
 
 ### Phase 8 — Remaining Account/Info Screens
-- **Status:** not started
+- **Status (2026-10-07): Implemented, static validation complete — NOT runtime-verified on
+  Android/iOS, NOT production ready.** Full detail: §4 "2026-10-07 — Phase 8". Decisions
+  pending: §10 items 23 (EULA), 26 (Stripe subscription at account deletion), 27 (web delete
+  copy parity).
+- (Original plan, kept for reference:)
 - Objective: Privacy Policy, Terms, Contact/Support, About, profile & account settings
   (MFA, account deletion, if kept at parity with web).
 - Scope: mostly read-only content screens sourced from the same legal copy the web app
@@ -734,7 +902,9 @@ Legend: **not started / in progress / done / blocked**
 - Out of scope: authoring new legal copy.
 
 ### Phase 9 — Testing & Hardening
-- **Status:** not started
+- **Status:** static testing/hardening complete; runtime verification pending (2026-10-07). The
+  device/OS matrix, poor-network upload runs, per-platform share sheets, screen-reader passes and
+  crash/error-reporting choice (§10) still need real Android/iOS devices — see §4 entry.
 - Objective: systematic verification before anything nears a store queue.
 - Scope: device/OS matrix (recent iOS + Android, phone + tablet), full auth matrix, upload
   reliability on poor networks, export/share-sheet behavior per platform, accessibility
@@ -744,7 +914,12 @@ Legend: **not started / in progress / done / blocked**
 - Out of scope: performance work beyond what store review requires.
 
 ### Phase 10 — Store Preparation & Release Readiness
-- **Status:** not started
+- **Status (2026-10-07): IN PROGRESS — local preparation done, completion criterion NOT met.**
+  Done: release config (notification icon, permission cleanup, submit profiles), dependency
+  alignment on Node 24 LTS, recoverable account-deletion cleanup, store/privacy/reviewer drafts
+  (`STORE_RELEASE_READINESS.md`), native Android dev build on EAS. Not done: any device/simulator
+  run, store consoles, credentials, screenshots, deployment, internal-track/TestFlight build.
+  See §4 "2026-10-07 — Phase 10".
 - Objective: submission-ready builds.
 - Scope: finalize app icon/splash (including revisiting the Icon Composer format if
   desired), store listings, screenshots, privacy nutrition label / Data Safety form
@@ -1970,10 +2145,1243 @@ never re-verifies the current password itself.
 - Nothing was committed, pushed, or merged; `backend/`/`frontend/` diffs remain empty
   (confirmed via `git status --porcelain`).
 
+### 2026-10-05 — Phase 5 gap-closure pass (audit findings fixed; static validation only)
+- **Working copy**: new local branch `fix/mobile-phase-5-gaps` from local `origin/main`
+  (`1e12d78`; `mobile/` identical to `c65dfad`) in the clean
+  `feature+mobile-phase-5-core-dashboard` worktree (`node_modules` reused — `package.json`/
+  lockfile unchanged). Backend contracts were read from that same tree (current `main`).
+- **Findings fixed** (each re-confirmed against the code before changing it):
+  1. *Account isolation*: the wizard draft used one global AsyncStorage key and survived
+     logout; photo/export caches were never cleared. Now drafts are keyed by uid
+     (`userScopedKey`); explicit Sign Out wipes all user-scoped keys, both file caches, and any
+     pending deep link; a sign-in by a different uid than last time wipes the previous
+     account's data first; the legacy unscoped key is always removed
+     (`services/localData/*`, `AuthProvider.tsx`, `wizardStorage.ts`).
+  2. *Upload results*: a `201` carrying `photo.status: 'failed'` was shown as uploaded. Now
+     mapped from the actual response (`wizard/uploadOutcome.ts`): uploaded / duplicate /
+     server-rejected (server's `error`, not retryable, staged record deleted on Remove) /
+     plan-limit (`MAX_PHOTOS`, server message, capacity re-read) / network (retryable). Only
+     `uploaded` counts toward Generate, which also waits for in-flight uploads. Plan capacity
+     from the existing `GET /reports/photos/capacity` drives the picker limit and counter;
+     photos beyond a known limit are refused on-device.
+  3. *Failed reports*: `failed` + `pipelineError` are displayed; owner-only "Retry analysis"
+     via the existing `POST /:id/analysis/retry` (`ALREADY_PROCESSING` → refresh), also offered
+     for `needs_attention` photos; generate-time `capacityRejected`/failed photos are reported
+     on the overview.
+  4. *Gating* (`reportActions.ts`, mirroring backend checks): Approve — owner/`review`, not
+     processing/regenerating/failed/archived/already reviewed/no content; Export — owner
+     only, not processing/failed/archived; comments — `comment` or higher; photo review —
+     owner/`review`. Disabled actions show the reason.
+  5. *Review-response*: new `ReviewResponseSheet` + `useReviewResponse` on the existing
+     `POST /:id/review-response` contract (request changes / reject, optional notes up to
+     1000 chars), offered only to the named reviewer of a `pending` request; review-request
+     status/notes are shown to everyone with access.
+  6. *Polling*: at most one timer; transient errors keep the report on screen and retry with
+     backoff (5s→30s); stops on a non-recoverable error or after 10 minutes (Refresh resumes)
+     and when the report is no longer processing.
+  7. *List refresh*: `reportsEvents.ts` — generate/approve/review-response/retry/processing
+     finished signal a change; Dashboard and Reports refresh on focus only when changed or
+     when data is older than 2 minutes.
+  8. *Export*: 120s timeout for export and download (was the 20s default); server filename
+     sanitized; messaging states the file is in temporary app storage only until the next
+     export or sign-out and must be saved via the share sheet.
+  9. *Remaining*: visible "Start a new report instead" for resumed drafts and a three-way exit
+     prompt (keep editing / save & leave / discard — discard also deletes staged photos);
+     optional chips no longer pre-highlight unsent defaults (deselectable) and Report type is
+     visible; `router.replace` moved into an effect; HEIC — iOS picker asked for the compatible
+     (JPEG) representation, and anything still HEIC/unsupported or over 10 MB is refused
+     on-device with an actionable message and never counted; thumbnails have error +
+     tap-to-retry, a 4-at-a-time fetch limit, and per-screen cache scopes deleted on
+     unmount/submit/discard; comment and photo-review errors are banners that keep content;
+     status filters match real backend values (incl. `failed`/`completed`/`approved`);
+     unknown-code 403 → `permission` (401 stays `auth_fatal`; `FEATURE_NOT_IN_PLAN` and
+     `RECENT_LOGIN_REQUIRED` added); a `report/<id>` deep link opened while signed out is held in
+     memory and honored after sign-in; Settings no longer shows "Starter" for an unknown tier;
+     an offline first load shows an offline state instead of "No reports found"; the stale
+     `(app)/_layout.tsx` comment is updated.
+- **Deliberately not changed**: comment reply UI (the hook already supports `parentId`; not
+  required by this pass); `isApprovalEligible` kept for its existing test, superseded on
+  screen by `reportActions`.
+- **Backend dependency**: none required. Noted only: `GET /users/usage` reads the static tier
+  table while generation enforces PlanConfig, so the Settings report limit can differ if an
+  admin edits PlanConfig (backend-side, unchanged).
+- **Files** — new: `src/services/localData/{fileCache,userDataLifecycle}.ts`,
+  `src/features/navigation/pendingDeepLink.ts`,
+  `src/features/photos/components/AuthenticatedThumb.tsx`,
+  `src/features/reports/{reportActions,reportsEvents}.ts`,
+  `src/features/reports/wizard/uploadOutcome.ts`,
+  `src/features/reports/hooks/useReviewResponse.ts`,
+  `src/features/reports/detail/ReviewResponseSheet.tsx`, plus tests. Modified:
+  `app/{_layout,index}.tsx`, `app/(app)/_layout.tsx`, `services/api/{client,reports}.ts`,
+  `types/api.ts`, `AuthProvider.tsx`, photo hooks/utils, wizard types/reducer/storage/hook/
+  steps/chips/tile, report screens, detail tabs and hooks, `StatusBadge.tsx`,
+  `SettingsScreen.tsx`, and their tests.
+- **Validation**: §8 "Phase 5 gap-closure validation". **No runtime/device verification was
+  performed and none is claimed.**
+
 ---
+
+### 2026-10-05 — Phase 6 — Push Notifications (mobile side; static validation only)
+
+**Where:** `fix/mobile-phase-5-gaps` in the `feature+mobile-phase-5-core-dashboard` worktree, on
+top of the uncommitted Phase 5 gap fixes (all preserved). `backend/`, `frontend/`, remote EAS
+settings and external services untouched. Nothing committed/pushed/built; no device run.
+
+**Provider:** Expo push service (`expo-notifications` → `getExpoPushTokenAsync({ projectId })`).
+Open question §10 #6 was never answered; Expo push is what this file's Phase 6 plan already
+specified, so it is used as a documented assumption (§5). All provider calls live in
+`src/features/push/pushProvider.ts` — replacing that one file is the switch to direct FCM/APNs.
+
+**Backend contracts confirmed (read-only):** `backend/routes/notifications.js` (GET `/`,
+POST `/:id/read`, POST `/mark-all-read`) and `backend/utils/notificationService.js`
+(`NOTIFICATION_TYPES`; `notifyUser()` writes Firestore in-app docs only). **No device-token
+route, storage or push sending exists** (repo-wide search for expo push / FCM / APNs / device
+token: zero hits). Registration is therefore not called anywhere — `backendPushRegistrar` is
+`null` and the UI reports "Notifications are allowed on this device, but FlacronAI doesn't send
+push notifications yet." No endpoint was invented.
+
+**Implemented (mobile):**
+- Permissions: explanation shown before the OS prompt; the prompt only follows an explicit tap
+  (dashboard primer "Turn on" or Settings); the primer appears once (device-level
+  `flac_push_primer_dismissed_v1`, no personal data) and only while the OS state is
+  undetermined; granted / denied-but-askable / permanently denied (→ "Open device settings") /
+  undetermined / iOS provisional handled; permission re-read when the app returns to the
+  foreground.
+- Environment handling: web, simulators/emulators, Expo Go → "Not available here"; no EAS
+  projectId or a native config error (e.g. missing FCM config) → "Not configured"; offline →
+  retryable "setup pending"; other token failure → retryable "setup failed"; registration
+  failure → retryable; backend absent → honest "allowed, not sent yet". Provider error text is
+  reduced to a category (no ids reach the UI); nothing logs tokens.
+- Platform setup: `expo-notifications` config plugin (`color #FD4403`, `defaultChannel
+  report-activity`, iOS `aps-environment` = production for the `preview`/`production` EAS
+  profiles, development otherwise); Android channel `report-activity` created before any prompt
+  (importance DEFAULT, lock-screen PRIVATE). Identifiers unchanged
+  (`com.flacronenterprises.flacronai` on both platforms; owner `flacron-enterprises-llc`).
+- Token lifecycle: token fetched only when authenticated + granted; bounded retry (3 with
+  backoff, never for config errors); OS token rotation re-reads it; kept in memory only.
+  Registration manager: per uid; the same uid+token at most once per run; concurrent calls share
+  one attempt; bounded retry for transient API errors only; a generation counter cancels an
+  in-flight registration on sign-out/account switch so it can't land on the wrong account; a
+  rotated token unregisters the old one; a pre-sign-out task (`features/auth/signOutTasks.ts`,
+  run by `AuthProvider.logout` before Firebase sign-out, 4 s cap, errors swallowed) removes the
+  token while the session can still authenticate. UI state carries its owner uid so another
+  account never sees the previous account's status.
+- Notification handling: foreground → banner + list, no sound/badge; report-type pushes call
+  `notifyReportsChanged()` (lists refresh on focus, no auto-navigation). Taps (running,
+  background, cold launch via `getLastNotificationResponseAsync` + clear) → payload validated
+  (`pushPayload.ts`) → `notificationRouting.ts`: signed in → `router.push('/report/[id]')`; not
+  signed in → `rememberPendingReport` (the existing deep-link mechanism), honoured by
+  `app/index.tsx` after sign-in/MFA and cleared on Sign Out; malformed/unknown payloads ignored;
+  each notification id acted on once. Unavailable/forbidden reports use the existing report
+  screen states (the server decides access). Listeners attached once per mount, removed on
+  unmount.
+- Payload contract (PROPOSED — the backend must adopt it): `data: { type, reportId? }` with
+  `type` ∈ `NOTIFICATION_TYPES`. Report types (analysis_completed/failed, report_completed,
+  review_requested/declined, report_approved, report_shared, export_completed) need a valid
+  report id (`reportId`, or the feed `link` `/reports/{id}/preview` as fallback);
+  `team_invitation`/`subscription_issue` open the dashboard (no team/billing screen yet).
+- Not built (out of Phase 6 scope): inbox, background processing, rich/interactive
+  notifications, per-category preference toggles (the existing profile `notifications` prefs
+  are email/in-app categories, not push).
+
+**Files:** new `src/features/push/{pushProvider,pushPayload,notificationRouting,pushRegistration,
+pushStatus}.ts`, `PushNotificationsProvider.tsx`, `components/{NotificationSettingsCard,
+NotificationPrimerCard}.tsx`, `src/features/auth/signOutTasks.ts`, plus tests (`pushProvider`,
+`pushPayload`, `notificationRouting`, `pushRegistration`, `pushStatus`,
+`PushNotificationsProvider`, `signOutTasks`). Modified: `app/_layout.tsx` (provider inside the
+root navigator), `app.config.ts` (plugin), `AuthProvider.tsx` (runs sign-out tasks first),
+`navigation/pendingDeepLink.ts` (exports `isValidReportId`), `SettingsScreen.tsx`
+(Notifications section), `DashboardScreen.tsx` (primer), `package.json`/`package-lock.json`.
+
+**Dependencies:** `expo-notifications ~57.0.21`, `expo-device ~57.0.2` (the SDK-57 versions
+`expo install` resolved; installed with npm against `D:/.npm-cache` because `E:/.npm-cache`
+does not exist on this machine). No other package changed. `npm audit --omit=dev`: no finding
+involves either new package (§12a still applies to the existing tree).
+
+**Static checks run (results):** `npx tsc --noEmit` 0 errors · `npx expo lint` 0 problems ·
+`npx jest` 386/386, 36 suites (93 new push/sign-out tests) · `npx expo export --platform
+android` and `--platform ios` both bundle · `npx expo config --type introspect`:
+`aps-environment` production under `EXPO_PUBLIC_APP_ENV=production`, development locally;
+Android manifest `default_notification_channel_id=report-activity` + color · `npx expo-doctor`
+20/21, the only failure being the pre-existing patch drift (expo, expo-image-picker,
+expo-linking, expo-router, expo-sharing). Mocked tests prove mobile logic only — **not** that a
+notification can be delivered.
+
+**External blockers (also in §6):** (1) backend device-token register/unregister endpoint +
+storage; (2) backend fan-out from `notifyUser()` to Expo push with stale-token cleanup and the
+payload contract above (generic, claim-free copy); (3) Android FCM: `google-services.json` in
+the build (`android.googleServicesFile`) + an FCM V1 service-account key uploaded to EAS —
+without it `getExpoPushTokenAsync` fails on Android and the app shows "Not configured"; (4) iOS:
+APNs key on the Apple Developer account + EAS credentials, Push Notifications capability on the
+App ID; (5) Android monochrome notification icon asset (cosmetic, Phase 10); (6) client
+confirmation of the provider choice (§10 #6).
+
+**Deferred device checklist (after all phases; dev build; physical devices):**
+1. Android 13+: primer appears once on the dashboard; "Not now" hides it for good; Settings
+   shows "Off" + explanation; "Turn on" shows the OS prompt once; allow → status advances; deny
+   twice → "Blocked" + "Open device settings" opens FlacronAI's settings; enabling there and
+   returning updates the status without a restart.
+2. Android < 13: permission granted by default; status correct.
+3. iOS: one prompt only; denial → "Blocked" + settings link; provisional treated as allowed.
+4. With FCM/APNs configured: token obtained (status isn't "Not configured"); airplane mode on
+   first fetch → "setup pending" → "Try again" recovers.
+5. Simulator/emulator and Expo Go show "Not available here"; sign-in and reports unaffected.
+6. Once the backend exists: token registered for the signed-in account; Sign Out → token
+   removed; a second account on the same device → only that account receives pushes.
+7. Test push (Expo push tool) with `{type:'report_completed', reportId}` in each state:
+   foreground (banner, no navigation, lists refresh), background tap, killed-app tap → opens the
+   report; signed-out tap → login → lands on the report; MFA account → MFA → report; a report
+   the account can't access → existing not-found/denied state; malformed payload → app opens,
+   no navigation; the same notification handled twice → navigates once.
+8. Android channel "Report activity" exists; lock screen hides content (PRIVATE);
+   notification color/icon acceptable.
+9. Token rotation (reinstall / clear data) re-registers.
+
+### 2026-10-05 — Phase 6 — backend integration (Expo Push Service; static validation only)
+
+> **Partly superseded** by "2026-10-05 — Phase 6 — reliability & account-isolation hardening"
+> below: the in-memory `setImmediate`/timer delivery, the token-owner-scoped sign-out removal and
+> the three "remaining lifecycle limitations" listed in this entry are replaced/resolved there.
+
+**Authorization:** backend changes strictly required for mobile push were authorized for this
+task. `frontend/`, web routes/contracts, email and in-app notification behavior are unchanged.
+Same worktree/branch (`fix/mobile-phase-5-gaps`); all Phase 5/6 work preserved.
+
+**API contract (backend/routes/notifications.js, mounted under `/api` and `/api/v1`):**
+- `POST /notifications/devices` body `{ token, platform }` → `200 { success, registered: true,
+  deliveryEnabled }`. `token` must match `Expo(nent)PushToken[...]` (≤200 chars); `platform`
+  ∈ `ios|android`; otherwise `400 INVALID_PUSH_DEVICE`. Never echoes the token.
+- `POST /notifications/devices/unregister` body `{ token }` → `200 { success: true }` whether or
+  not anything was removed (removal only if the caller currently owns the token — no ownership
+  leak).
+- Auth: `authenticateToken` (Firebase ID token or custom JWT; the existing MFA-assertion
+  enforcement applies); account = `req.user.uid` only — a `uid`/`userId` in the body is ignored.
+  Rate limit: new per-user `pushDeviceLimiter` (20/min, `PUSH_DEVICE_RATE_LIMITED`). Body size:
+  the app-wide JSON limit plus the token-length bound. POST (not DELETE-with-body) for removal so
+  proxies never strip the body.
+
+**Storage & lifecycle (backend/utils/pushDeviceStore.js):** collection `pushDevices`, doc id =
+sha256(token), fields `{ uid, token, platform, provider:'expo', registrationId, createdAt,
+updatedAt }`. Server-only (no Firestore client rule matches → default deny). Register is a
+transaction: same owner → refresh `updatedAt` + new `registrationId` (createdAt kept); different
+owner → ownership moves atomically (old account can no longer receive, remove or alter it).
+Multiple devices per account; cap 10 per account (least recently registered evicted).
+Cleanup policy: removed on sign-out (mobile unregister), on account self-deletion
+(`routes/users.js` now includes `pushDevices` in its per-user wipe), when Expo confirms
+`DeviceNotRegistered`, and by the cap. No time-based sweep yet (tokens refresh `updatedAt` on
+every app launch; a stale sweep is an optional future ops job).
+
+**Delivery (backend/services/pushService.js):**
+- Hook: `notifyUser()` now returns whether a notification was actually created (false on a
+  dedupe hit or swallowed failure) and, only then, calls `enqueuePushForNotification`. Existing
+  callers ignore the return value; the in-app record, unread counter and email paths are
+  unchanged.
+- `PUSH_NOTIFICATIONS_ENABLED` must be exactly `true`; otherwise enqueue returns immediately
+  (no Firestore read, no network). Default/`.env.example`: `false`.
+- Out of the critical path: scheduled with `setImmediate` (same in-process async approach as the
+  photo pipeline; no job queue exists). Limit: a send or receipt check pending at process
+  restart is lost — the in-app feed stays the record.
+- Events: every `NOTIFICATION_TYPES` value (analysis_completed/failed, report_completed,
+  review_requested/declined, report_approved, report_shared, export_completed,
+  team_invitation, subscription_issue). Generic copy only (no claim numbers, names, report
+  content). Message: `{ to, title, body, data: { type, reportId? }, sound:'default',
+  priority:'default', channelId:'report-activity' }` — matches the mobile validator; report types
+  without a valid report id are not sent.
+- Recipients: only `pushDevices` where `uid == recipient`, de-duplicated by token.
+- Expo: batches of 100 to `/--/api/v2/push/send`; 10 s timeout per request; up to 3 attempts
+  for network/timeout/429/5xx only (1 s, 2 s backoff); other HTTP errors not retried; optional
+  `EXPO_ACCESS_TOKEN` bearer header.
+- Tickets: `DeviceNotRegistered` → remove; any other error (InvalidCredentials,
+  MessageRateExceeded, MessageTooBig, unknown) or a failed request → token kept. OK tickets →
+  receipt check after `PUSH_RECEIPT_CHECK_DELAY_MS` (default 15 min, timer `unref`'d), batches of
+  1000 to `/getReceipts`, same retry bounds; only `DeviceNotRegistered` removes.
+- Stale-result protection: removal is a transaction that deletes only if the doc still has the
+  same `uid` AND `registrationId` captured at send time — a token re-registered or moved since
+  is never deleted.
+- Logging: status codes / Expo error codes only; never tokens, access token or payloads.
+
+**Mobile adapter:** new `mobile/src/services/api/pushDevices.ts`; `backendPushRegistrar` now
+calls it (no client auto-retry — the manager owns bounded retry; unregister timeout 3 s).
+New state `registered-delivery-off` (server flag off) → "Allowed … FlacronAI isn't sending push
+notifications right now"; `registered` copy says the device is *registered* and points to device
+settings if nothing arrives (registration ≠ delivery). Sign-out: removes the registered token
+and any in-flight one, waiting for the in-flight request first, all within the existing time
+cap. **Remaining lifecycle limitations:** (1) if the in-flight registration outlasts the sign-out
+cap (≈4 s), the server may keep that association until the device registers again (the next
+account's registration moves it) or Expo reports it invalid; (2) an account switch without an
+explicit Sign Out (expired session) can't call unregister — the next account's registration
+moves the token server-side, so pushes never go to both accounts, but until then the previous
+account still owns it; (3) missing FCM/APNs credentials surface on the device as "Not configured"
+(token fetch fails) or server-side as `InvalidCredentials` tickets — the latter is only logged,
+not shown in the app.
+
+**Files (backend):** new `utils/pushDeviceStore.js`, `services/pushService.js`,
+`test/push-devices.test.js`, `test/push-service.test.js`; modified `routes/notifications.js`,
+`utils/notificationService.js`, `middleware/rateLimiters.js`, `routes/users.js` (deletion
+wipe), `.env.example`, `test/helpers/fakeFirestore.js` (additive: equality `where`, `delete`,
+`create`, `tx.delete`). No new dependency (uses Node's global `fetch`). **Mobile:** new
+`src/services/api/pushDevices.ts`; modified `features/push/pushRegistration.ts`,
+`pushStatus.ts` and their tests + `PushNotificationsProvider.test.tsx`.
+
+**Checks run:** backend `npm test` → 1307 tests, 1300 pass, 0 fail, 7 skipped (includes all
+existing notification/report/auth/MFA/logout regression suites); new push suites 28/28;
+`eslint` on all touched backend files → 0 problems; `prettier` applied to the new files only.
+Mobile `tsc --noEmit` 0 errors; `expo lint` clean; `jest --maxWorkers=2` 390/390 (36 suites) — a
+default-parallel run once lost two workers to a machine out-of-memory error (no assertion
+failures), the 2-worker rerun was clean; `expo export` android ✔ ios ✔. Provider/network were
+always local stubs — nothing contacted Expo.
+
+**Still pending (external):** Expo account access token (optional) + `PUSH_NOTIFICATIONS_ENABLED=true`
+in the AWS ECS task definition (not changed — deployment is AWS ECS, not Render); Android FCM (`google-services.json` +
+`android.googleServicesFile`, FCM V1 key uploaded to EAS); iOS APNs key + Push Notifications
+capability via EAS credentials; Android monochrome notification icon (Phase 10).
+
+**Deferred device checklist additions** (on top of the 9 steps in "Phase 6 — Push
+Notifications"): with the flag ON and credentials in place — sign in → Settings shows "On";
+`pushDevices` has one doc for the account; trigger a real event (generate a report → report
+ready) → push arrives with generic text, tap opens the report; sign out → the doc is gone; sign
+in as account B on the same device → doc owner is B, A's events no longer reach the device;
+uninstall the app → after an event, the receipt pass removes the token (DeviceNotRegistered);
+flag OFF → Settings shows "Allowed … isn't sending right now" and no Expo request is made.
+
+### 2026-10-05 — Phase 6 — reliability & account-isolation hardening (static validation only)
+
+**Scope/authorization:** backend changes needed for this hardening were authorized; `frontend/`
+untouched; notification/email/report behavior preserved; same worktree/branch; no AWS change.
+
+**What inspection confirmed (causes):** (1) mobile Sign Out is local-only (`AuthProvider.logout`
+never calls the backend), so the server only learned of a sign-out through the app's own
+unregister call — capped at ~4 s and impossible offline; (2) a registration request already in
+flight could land after that unregister and re-create the binding; (3) a session that ended
+without Sign Out (expiry, web Sign Out → `revokeRefreshTokens`, password change, account switch)
+left the binding deliverable; (4) sends and receipt checks lived in memory (`setImmediate` /
+`setTimeout`), lost on restart; (5) the app learned `deliveryEnabled` only at registration time.
+
+**Fixes — server-enforced device bindings (`backend/utils/pushDeviceStore.js`):**
+- The app creates a random UUID `bindingId` per sign-in on the device and sends it with every
+  registration; the server stores only its sha256 plus the verified session timing from the
+  auth middleware (new `req.sessionContext`: `authTime`/`issuedAt`/`kind`/`tokenVersion`, set
+  for Firebase ID tokens and the custom-JWT fallback; nothing else in the middleware changed).
+- **Revocation fence:** `POST /api/notifications/devices/revoke {bindingId}` (no auth — the
+  random id is proof of possession; per-IP rate limit `pushRevokeLimiter`, 30/min) writes a
+  tombstone (`pushBindingRevocations/{sha256}`, 30-day TTL) and deletes every registration still
+  carrying that binding. Registration reads the tombstone inside its own transaction, so a
+  request that was in flight at Sign Out is rejected (`409 PUSH_BINDING_REVOKED`) whichever order
+  the two reach the server. Idempotent; the response never reveals a match; a revoke can't touch
+  a newer binding of the same token. Client request cancellation is never relied on.
+- **Stale-request fence:** a registration whose ID token was issued (`iat`) before the session
+  currently holding that token began (`sessionAuthTime`) is rejected (`409
+  PUSH_REGISTRATION_STALE`) — a late request from an older session/account can't take a device
+  back from a newer one (same account or different account).
+- **Lease:** each registration sets `leaseExpiresAt = now + 14 days`; the app renews at least
+  daily on launch/foreground. Expired leases are never delivered to and are swept 7 days later.
+- **Eligibility before every send** (`bindingIneligibilityReason`): owner matches; lease valid;
+  account doc exists; not team-suspended; `users.tokenValidAfter` (password change) not newer
+  than the session; Firebase Auth record not disabled and `tokensValidAfterTime` (web Sign Out,
+  password change, console revocation) not newer than the session; custom-JWT bindings also
+  require the current `tokenVersion`. Plus the event's existing notification preference
+  (`notificationPrefs` keys; `notificationsEnabled === false` treated as off).
+- Multiple devices per account kept (cap 10); `users.js` account deletion wipes `pushDevices`.
+
+**Fixes — device side (`mobile/src/features/push`):**
+- `pushRevocationQueue.ts`: ending a binding first persists its id (SecureStore; ids only — no
+  token, no uid; ≤10 entries; dropped after 15 days), then tries the revoke within
+  `SIGN_OUT_REVOKE_CAP_MS` = 1.5 s. Leftovers are retried at launch and on connectivity regain.
+  Sign Out stays responsive offline.
+- The binding ends on **any** change of the signed-in identity (Sign Out, session expiry,
+  account switch) — not on transient auth states (profile refresh, MFA gate).
+- Late registration results after a binding ended are never recorded locally; a server
+  `PUSH_BINDING_REVOKED` answer is a quiet cancel (never retried).
+
+**Fixes — durable delivery (`backend/services/pushService.js`):**
+- **Handoff:** while enabled, `notifyUser` writes the notification and its `pushOutbox/{notificationId}`
+  job in ONE transaction (dedupe hits create neither). If that transaction fails, the
+  notification is still written the original way, without push. Disabled → exactly the original
+  write, no job.
+- **Job doc:** `{ notificationId, uid, type, reportId, state, createdAt, nextRunAt, attempts,
+  receiptAttempts, receiptDueAt, deliveries: { <deviceDocId>: { status, registrationId,
+  platform, ticketId?, reason? } }, leaseId, leaseOwner, leaseExpiresAt, lastError, expireAt }` —
+  no tokens, no payload text.
+- **Worker:** started by `server.js` only when enabled, in every instance; polls every 15 s
+  (`PUSH_WORKER_INTERVAL_MS`) for `nextRunAt <= now`, claims each job in a transaction with a
+  2-min lease + random lease id, and commits results only if it still holds the lease (fencing).
+  A crashed/restarted task's job is re-claimed after lease expiry. Concurrency-safe across ECS
+  tasks. Only single-field Firestore indexes are needed (auto-created).
+- **Retries/terminal states:** send attempts persisted, backoff 30 s → 10 min, max 5 → `failed`;
+  `MessageRateExceeded` retries only that device; jobs whose event is older than
+  `PUSH_MAX_EVENT_AGE_MS` (default 1 h) before any send → `expired` (so enabling push later, or
+  a long outage, never sends an old backlog). Receipts: checked `PUSH_RECEIPT_CHECK_DELAY_MS`
+  (15 min) after the first ticket, up to 4 times, then unresolved tickets → `unconfirmed`, job
+  `done`. Terminal jobs get `expireAt = +7 days` and are swept by the worker; the sweep also
+  removes expired tombstones and long-expired leases.
+- **Invalid-token cleanup:** only `DeviceNotRegistered` (ticket or receipt) deletes, and only if
+  the device doc still has the same `uid` + `registrationId` captured at send time.
+- **Sanitized diagnostics:** `InvalidCredentials` records only `{platform: lastCredentialErrorAt}`
+  in `pushDiagnostics/credentials`.
+- **Delivery semantics (documented, unavoidable):** at-least-once per device. If Expo accepts a
+  send but the worker dies or loses its lease before recording tickets, the retry can deliver the
+  same notification twice (Expo has no idempotency key). Bounded by the 5-attempt cap.
+
+**Fixes — honest app status:** `POST /devices` and new authenticated `GET
+/api/notifications/push-status?platform=` return only `{ deliveryEnabled, providerStatus:
+'unverified'|'credential-error' }` (credential error = Expo reported `InvalidCredentials` for
+that platform in the last 24 h). The app refreshes it on foreground (≤ every 10 min) and shows
+separate states: permission granted, registered ("On" — never "will arrive"), delivery off
+("isn't sending right now"), configuration problem ("Temporarily unavailable"), token-fetch
+"Not configured".
+
+**Remaining bounded limitations (with safeguards):**
+1. **Offline Sign Out that never reconnects:** the server can't learn of it until the device is
+   back online (the queued revocation is then sent). Worst case the binding stays deliverable
+   until its lease expires — **≤14 days after the app's last registration/renewal** *(reduced to
+   7 days default, configurable — see "Phase 6/7 gap closure")* — unless
+   ended sooner by: another account signing in on that device (stale fence moves the token),
+   web Sign Out / password change / account disable or deletion (eligibility check), or Expo
+   `DeviceNotRegistered` (uninstall). Payloads are always generic (no claim numbers, names or
+   report content), so a push in that window reveals only an event type.
+2. **Firebase session expiry without revocation:** Firebase refresh tokens don't expire on
+   their own, so "expiry" means revocation/disable/deletion — all covered by the eligibility
+   check at send time.
+3. **At-least-once duplicates** as described above.
+4. **Credential problems** are visible to the app only after Expo reports them (first failed
+   send/receipt), and only as a generic state.
+
+**Files:** backend new/rewritten `utils/pushDeviceStore.js`, `services/pushService.js`,
+`test/push-devices.test.js` (17), `test/push-service.test.js` (15); modified
+`routes/notifications.js`, `utils/notificationService.js`, `middleware/auth.js`
+(`req.sessionContext` only), `middleware/rateLimiters.js`, `server.js` (worker start),
+`.env.example`, `test/helpers/fakeFirestore.js` (additive numeric `<=` filter). Mobile: new
+`features/push/pushRevocationQueue.ts` (+ test), rewritten `pushRegistration.ts`,
+`services/api/pushDevices.ts` (`register` with bindingId, `revoke`, `status`); modified
+`PushNotificationsProvider.tsx`, `pushStatus.ts`; tests updated. No new dependency
+(`expo-crypto`/`expo-secure-store` were already installed).
+
+**Checks run (actual):** backend `npm test` → 1311 tests, 1304 pass, 0 fail, 7 skipped (all
+existing notification/report/auth/MFA/logout suites included); push suites 32/32; eslint on all
+touched backend files → 0 errors (one pre-existing `no-unused-vars` warning in `auth.js`).
+Mobile `tsc --noEmit` 0 errors; `expo lint` 0 problems; `jest --maxWorkers=2` 390/390, 37 suites;
+`expo export` android ✔ ios ✔. Expo, Firebase Auth and connectivity were always stubs.
+
+**AWS configuration still needed later (not done):** inferred from
+`.github/workflows/deploy-backend.yml` + `backend/Dockerfile`: the backend is a Docker image in
+ECR deployed to ECS (cluster `flacronai-production-cluster`, service
+`flacronai-backend-service`), launched as `node server.js`. Environment variables are therefore
+set on the ECS **task definition** (plain env or Secrets Manager/SSM `secrets`) — the exact
+mechanism in use is **not visible in the repo** and must be confirmed in the AWS console. To
+enable later: add `PUSH_NOTIFICATIONS_ENABLED=true` (and optionally `EXPO_ACCESS_TOKEN` as a
+secret, plus the optional tuning vars), register a new task-definition revision, redeploy the
+service. The worker then runs inside every task (no separate service/scheduler needed); a
+rolling deploy or task restart is safe — in-flight jobs are re-claimed after their 2-min lease.
+Outbound HTTPS to `exp.host` must be allowed from the tasks' subnets (NAT/egress). Disable =
+set the flag to `false` and redeploy; queued jobs then wait, and anything older than 1 h is
+expired rather than sent when re-enabled. (`backend/render.yaml` is a stale artifact; not
+modified.)
+
+**Deferred device checks (added to the earlier lists):** sign in → register → Sign Out online →
+`pushDevices` doc gone and tombstone present; airplane mode → Sign Out → reconnect → binding
+revoked within one connectivity event; Sign Out while a registration is in flight (slow network)
+→ no binding remains; account A then B on one device → only B receives; web Sign Out for the
+account → its mobile binding stops receiving; flag on → real event → push arrives once (generic
+text) → tap opens the report; kill the ECS task mid-send (staging) → job completes after lease
+expiry; Settings shows "Temporarily unavailable" after a forced credential error.
+
+### 2026-10-05 — Phase 7 — Subscriptions & In-App Purchase (static validation only)
+
+**Status: Implemented, static validation complete; store setup and runtime verification
+pending.** Same worktree/branch as Phase 6 (`fix/mobile-phase-5-gaps`); all Phase 5/6
+uncommitted work preserved. Nothing committed/pushed/merged; no PR, deploy, EAS build, store
+change or real purchase.
+
+**Library choice.** `expo-iap` 5.8.2 (Expo module, OpenIAP spec; StoreKit 2 + Google Play
+Billing; free, MIT; config plugin; dev-build workflow — never Expo Go). Chosen over
+`react-native-iap` (same maintainer, Nitro-based, less Expo-native) and RevenueCat (paid
+third-party service — not allowed without approval). Backend: Apple's official
+`@apple/app-store-server-library` 3.1.0 (App Store Server API + JWS chain verification) and
+`google-auth-library` 9.15.1 (already a transitive dep of firebase-admin; now explicit) for the
+Play Developer API and Pub/Sub OIDC verification. Docs checked 2026-10-05: Android "Fight
+fraud and abuse" (server `subscriptionsv2.get`, 3-day acknowledgement, `obfuscatedAccountId`
+match, `linkedPurchaseToken` revocation, purchase token as primary key), Apple App Store
+Server API status values 1–5.
+
+**Architecture.**
+- *Single entitlement value.* `users/{uid}.tier` stays the one value every existing plan-limit
+  and paid-feature check reads. New `backend/utils/entitlements.js` computes it as the higher
+  of: `stripeTier` (written only by Stripe paths) or `storeBaseTier` (tier captured at the first
+  store purchase), and the active `storeEntitlement` (written only after store verification).
+  Accounts with no store purchase resolve to exactly `tier || 'starter'` — unchanged.
+- *Stripe preserved.* `payment.js` `persistSubscription` + `customer.subscription.deleted` now
+  write `stripeTier` and compute `tier` through `stripeTierUpdate()` — identical result when no
+  store entitlement exists; an active App Store/Play subscription is no longer wiped by a
+  Stripe event. No Stripe field is ever written by store code; no store field by Stripe code.
+- *Read-time expiry.* `middleware/auth.js` sets `req.user.tier` via `resolveEffectiveTier`, so a
+  lapsed store subscription stops granting immediately even if the store notification is late,
+  and a background recompute corrects the stored `tier`.
+- *Store records.* `storeSubscriptions/{sha256(key)}` (key = Apple originalTransactionId /
+  hashed Google purchase token — raw tokens are not stored) with `ownerUid`, verified state,
+  expiry, auto-renew, environment. `processedStoreNotifications/{apple_uuid|google_messageId}`
+  for replay protection (written only after successful processing → store redelivers on 5xx).
+- *Account binding.* Each account gets a random UUID `billingAccountToken`
+  (`POST /billing/store/account-token`), passed to the store as Apple `appAccountToken` /
+  Google `obfuscatedAccountId`. Server rules (one transaction): a purchase carrying a token
+  binds only to that token's account (`ACCOUNT_MISMATCH` otherwise); an owned purchase is never
+  transferred (`PURCHASE_OWNED_BY_OTHER_ACCOUNT`); a token-less purchase (e.g. App Store offer
+  code) binds to the first verifying account; a deleted owner releases it. Google
+  `linkedPurchaseToken` retires the previous purchase (`replaced`) and cannot be re-claimed.
+- *Verification.* Apple: `getTransactionInfo` (production, then sandbox if accepted) →
+  `getAllSubscriptionStatuses` → JWS verified (`SignedDataVerifier`, online checks, bundle ID,
+  environment, app Apple ID); product must be mapped; family-shared transactions rejected.
+  Google: `subscriptionsv2.get` for the configured package; product + base plan must be mapped;
+  server-side acknowledge after the durable write. Client product must equal the verified
+  product (`PRODUCT_MISMATCH`). Sandbox/test purchases gated by `STORE_BILLING_ACCEPT_SANDBOX`.
+- *State mapping.* Entitled: `active` (incl. cancelled = auto-renew off, until expiry) and
+  `grace_period`. Not entitled: `billing_retry`, `on_hold`, `paused`, `pending`, `expired`,
+  `revoked`, `replaced`. 1-hour expiry leeway for renewal-notification lag.
+- *Notifications.* `POST /billing/store/notifications/apple` (signedPayload verified; state
+  re-read from the API, never trusted from the payload) and `POST
+  /billing/store/notifications/google` (Pub/Sub push; Google-signed OIDC token for the
+  configured audience + service-account email; purchase re-fetched from the Play API; wrong
+  package ignored). Purchases completed while the app was killed bind via the account token.
+- *Fail-safe.* Missing credentials/products → catalog `available:false` /
+  `STORE_NOT_CONFIGURED` / notifications 503; never a grant. Errors never echo store text,
+  tokens or JWS.
+- *Rules hardening.* `firestore.rules`: client SDKs can no longer write `tier`, `stripeTier`,
+  `storeBaseTier`, `storeEntitlement`, `billingAccountToken` or Stripe fields on their own user
+  doc (create allows `tier: 'starter'` only). This also closes a **pre-existing** hole where a
+  signed-in user could set their own `tier` via the client SDK. No client writes the user doc
+  (verified). **Rules are not deployed** (needs `firebase deploy --only firestore:rules`).
+
+**Mobile.** `src/services/api/billing.ts` (contract); `src/features/billing/storeAdapter.ts` —
+the only file importing `expo-iap` (lazy `require`, so Expo Go/web/tests never crash; normalized
+products/purchases/errors; Android picks the configured base plan's own offer, not an intro
+offer); `planCatalog.ts` (server catalog × store products; unmatched or period-mismatched
+products are never purchasable; availability states); `purchaseProcessor.ts` (server verify →
+finish only on `finish:true`; pending/failed/transient leave the transaction unfinished;
+per-session generation + in-flight dedupe; other-account purchases not submitted);
+`BillingProvider.tsx` (mounted in `app/(app)/_layout.tsx` so listeners exist only while signed
+in; one listener pair per session, removed + store disconnected on sign-out/account switch;
+state tagged by uid so another account's state is never shown; silent start-up reconciliation
+of unfinished purchases; purchase/restore/manage; foreground status refresh);
+`screens/SubscriptionScreen.tsx` + route `app/(app)/subscription.tsx` + a "Subscription"
+button in Settings. UI states: loading, offline, error, unsupported build, store not
+configured, no products, product unavailable, web-subscriber (text only, no purchase/external
+purchase link), store-subscriber (renewal / cancelled-until / grace / on-hold / expired /
+revoked line from verified data, store "Manage subscription" deep link, or cross-platform
+instructions), pending, cancelled, verifying. Auto-renew disclosure + Terms/Privacy links
+(existing `flacronai.com/terms-of-service`, `/privacy-policy`). `app.config.ts`: `expo-iap`
+plugin.
+
+**Backend contracts (new, `/api` and `/api/v1`):** `GET /billing/status`, `GET
+/billing/store/catalog?platform=ios|android`, `POST /billing/store/account-token`, `POST
+/billing/store/verify` `{platform, productId, transactionId|purchaseToken, source}` →
+`{tier, store, entitled, subscription, finish, …}`, `POST /billing/store/notifications/apple`,
+`POST /billing/store/notifications/google`. Rate limit `storeBillingLimiter` 30/min/uid.
+
+**Product mapping (env, none set — never guessed):** `APPLE_IAP_PRODUCT_<KEY>` =
+App Store product ID; `GOOGLE_PLAY_PRODUCT_<KEY>` = `<productId>:<basePlanId>`; KEY ∈
+PROFESSIONAL, PROFESSIONAL_ANNUAL, AGENCY, AGENCY_ANNUAL, ENTERPRISE, ENTERPRISE_ANNUAL
+(same tier keys as `getStripePriceId`). Unset/malformed/duplicate → not purchasable.
+
+**Still required (external, client-owned):**
+- App Store Connect: Paid Apps agreement; one subscription group with products per tier/period;
+  Family Sharing **off**; In-App Purchase API key (.p8, Key ID, Issuer ID); app Apple ID; App
+  Store Server Notifications **V2** URL (production + sandbox) →
+  `https://<ECS API origin>/api/v1/billing/store/notifications/apple`; sandbox testers; EULA
+  choice (currently links our Terms of Service).
+- Play Console: subscriptions with monthly/annual base plans; service account with Play Console
+  financial/orders permission; Pub/Sub topic + **authenticated push** subscription →
+  `/api/v1/billing/store/notifications/google`; RTDN topic set in Play Console; license testers.
+- AWS ECS task: `APPLE_IAP_*`, `APPLE_ROOT_CA_CERT_PATHS` (Apple Root CA G3 file in the image
+  or a mounted path), `GOOGLE_PLAY_*`, `STORE_BILLING_ACCEPT_SANDBOX` — via Secrets Manager;
+  public HTTPS origin still unconfirmed (§10.1).
+- Deploy the updated `firestore.rules`. New EAS **development build** (native module added).
+
+**Deferred runtime/sandbox verification (both platforms):** sandbox purchase → correct tier in
+Firestore; cancel in store → "Cancelled — access until …" and access until expiry; renewal
+(sandbox accelerated) → `expiresAt` advances via notification; expiry → tier drops; refund/revoke
+(Apple REFUND / Play voided) → access removed; grace period / billing retry / account hold;
+Ask to Buy / Play pending → pending UI then grant; kill app mid-purchase → recovered on next
+launch or via notification; restore on a second device; restore signed in as another FlacronAI
+account → explanation, no transfer; account switch during a purchase; web Stripe subscriber
+sees "managed on the web" and no buy buttons; Android acknowledgement happens server-side
+(no 3-day refund); notification signature rejection with a forged payload; Manage deep links
+open the right store pages; localized prices in a non-USD storefront.
+
+**Unresolved decisions:** see §10 items 5 and 15 (updated) and 19–23.
+
+### 2026-10-05 — Phase 6/7 gap closure (before Phase 8; static + emulator validation only)
+
+Same worktree/branch (`fix/mobile-phase-5-gaps`), all Phase 5–7 work preserved. Nothing
+committed/pushed/merged; no PR, deploy, rules deploy, EAS build, live AWS/store/Expo change,
+real push or real purchase. Phase 8 not started.
+
+**Phase 6 — reliability & privacy**
+- *Offline-logout window reduced 14 → 7 days.* Lease is now `PUSH_BINDING_LEASE_HOURS`
+  (default 168 h, clamped 24–336 h); the app renews every 12 h on launch/foreground (was 24 h).
+  **Remaining bounded window (E):** a device that signs out *offline* and never reconnects can
+  still be sent generic pushes until its lease expires — at most 7 days (default) after its last
+  renewal — unless ended sooner by another sign-in on the device, web Sign Out / password change /
+  account disable or deletion, or uninstall. The server cannot learn of an offline sign-out until
+  the device talks to it; this is not instantaneous revocation. Tradeoff: a signed-in user who
+  doesn't open the app for longer than the lease stops getting pushes until they next open it
+  (in-app feed and email unaffected). Lowering to 72 h/24 h shrinks the window further at that
+  cost — a business setting, not a code change.
+- *Stale pushes recognised on the device.* Every push now carries `bindingTag` (non-reversible,
+  derived from the stored binding hash — never the revocation secret). The app persists the tags
+  of bindings it **ended** (≤20, 30 days, AsyncStorage, tags only). A push for an ended binding
+  gets no foreground banner, never navigates, is never remembered for the next sign-in, and
+  immediately retries the queued server revocation. Bindings superseded by a relaunch are not
+  "ended", so legitimate cold-launch taps still work. **Limitation (E):** background / killed-app
+  banners are drawn by the OS before app code runs and cannot be suppressed by the app.
+- *Revocation persistence (unchanged, re-verified):* SecureStore queue, retried at launch, on
+  connectivity regain and now on any stale push; server tombstone + stale-request fence keep
+  late/old operations from touching a newer binding or account.
+- *Outbox gap closed.* If the combined notification+outbox transaction fails, the notification is
+  saved under the **same id** with `pushPending: true` (so an ambiguous commit can't create a
+  second copy); the worker's reconcile pass (every tick, 25 at a time) creates the job with
+  `create()` (idempotent) using the notification's own `createdAt`, then clears the flag; events
+  older than `PUSH_MAX_EVENT_AGE_MS` are cleared, never sent late. In-app notifications are still
+  written when push infrastructure fails; push disabled → exactly the original write.
+- *Stable event id.* Every push carries `eventId` (= notification id, identical on every retry).
+  The app de-duplicates foreground banners, list refreshes and tap navigation by it.
+  **Limitation (E):** after an ambiguous provider acknowledgement the worker may resend (Expo has
+  no idempotency key); if the OS already showed a background banner, a second banner can appear —
+  client handling only guarantees the app *acts* once.
+- Unchanged and re-tested: durable send/receipt recovery, lease-based worker fencing, binding
+  eligibility before every send, disabled-delivery behaviour, `DeviceNotRegistered`-only cleanup.
+
+**Phase 7 — entitlement consistency (all `tier` writers now go through one transactional writer)**
+- Writers found: Stripe (`payment.js`), admin (`sales.js` `PUT /admin/update-tier`), team
+  accept/remove (`teams.js`), store (`storeSubscriptions.js`); readers: `middleware/auth.js`
+  (`req.user.tier`) + ~22 direct reads of the stored `tier`.
+- **Policy (implemented):** effective tier = the **highest** of independent sources —
+  `stripeTier`, `adminTier`, team membership (→ enterprise), `storeEntitlement`, and a one-time
+  `legacyTier` snapshot for pre-existing accounts. No source can reduce another's grant.
+  `utils/entitlements.js` `applyEntitlementSources()` reads the user doc (+ store records) and
+  writes source fields + `tier` in **one Firestore transaction**; `middleware/auth.js` computes
+  the same value per request and corrects drift in the background.
+- **Admin override preserved:** stored as `adminTier`; Stripe/store/team events never erase it.
+  Admin "starter" clears the grant but cannot remove a plan the user pays for (response now
+  includes `effectiveTier`). Legacy admin-updated accounts are carried over (as `adminTier` when
+  no Stripe subscription is active, else as `legacyTier`).
+- **Team removal** recomputes from the member's own sources instead of forcing `starter`
+  (previously wiped a member's own paid plan); accepting a team still yields enterprise.
+- **Stripe ordering:** `customer.subscription.updated` now re-reads the subscription from Stripe
+  (a late "active" event can no longer re-grant an ended subscription); an event for an older
+  subscription never replaces the current one; ending a subscription clears only the Stripe
+  source and only for the current subscription id.
+- **Store:** recompute reads every subscription the user holds (`storeSubscriptionIds`) inside the
+  same transaction — concurrent verify/restore/notification/Stripe writes can't apply stale
+  results; refund/revocation of one store subscription keeps another valid one.
+- **Upgrade/downgrade (supported mechanism, explicit):** iOS — in-app switch to a plan in the
+  **same subscription group** (StoreKit/App Store applies it: upgrade now, downgrade at renewal;
+  never a second subscription; plans in another group are not offered), plus App Store
+  subscription management; a pending downgrade shows "Changes to X on <date>". Android — in-app
+  switch via Google Play **replacement** using the current purchase token (higher tier:
+  `charge-prorated-price`; otherwise `with-time-proration`); `linkedPurchaseToken` retires the old
+  purchase. Team members are told their plan is included (no purchase).
+- **Sandbox isolation:** production default accepts sandbox/test purchases **only** for accounts in
+  `STORE_SANDBOX_TESTER_EMAILS` (empty → none); others are refused (app) or recorded with no
+  access (notifications). `STORE_BILLING_ACCEPT_SANDBOX=true|false` overrides.
+- **Enterprise not sold in-app** — follows the documented web decision (Enterprise is "Contact
+  Sales", `Pricing.jsx`); ENTERPRISE store mappings are ignored even if set.
+
+**Firestore rules** — users doc is now a strict allowlist: owners may change only
+`displayName, firstName, lastName, phone, company, address, photoURL, updatedAt`; self-create
+only those + `uid/email/createdAt` and `tier: 'starter'`. All entitlement, team, billing and
+security fields are server-only. Billing/device/outbox/notification collections have no client
+rules (deny). Emulator tests (`npm run test:rules`, demo project, local emulator only) pass 5/5
+against the new rules and **fail 2/5 against the original rules** — i.e. the original rules let a
+user set their own `tier`. **This is a local fix only: the deployed rules are unchanged and are
+presumed still vulnerable until `firebase deploy --only firestore:rules` is run** (the same suite
+can audit any rules file via `RULES_FILE=`).
+
+**Public API origin (resolved):** `PROGRESS.md` (2026-08-12) recorded production traffic to
+`api.flacronai.com`; a read-only `GET https://api.flacronai.com/health` returned
+`{"status":"healthy","environment":"production"}`. Mobile production profile now sets
+`EXPO_PUBLIC_API_BASE_URL=https://api.flacronai.com/api/v1` (`eas.json`, public value). Preview
+left unset (decision). The new `/billing` routes return 404 there — nothing deployed.
+
+**Status classification**
+
+| | Item |
+|---|---|
+| **A. Code complete, statically checked** | Phase 6: lease reduction, stale-binding tags, outbox reconciliation, eventId dedupe. Phase 7: unified entitlement writer + policy, admin/team/Stripe/store consistency, out-of-order/concurrency guards, plan changes (iOS group / Android replacement), sandbox allowlist, Enterprise exclusion, rules allowlist + emulator tests, production API origin in `eas.json`. |
+| **B. Business decision pending** | Admin-override precedence confirmation; sandbox tester list / production policy; Terms vs Apple standard EULA; duplicate Stripe/store web guard; lease length (7 d default); whether preview builds use the production API; Android replacement modes (proration) and iOS group setup. |
+| **C. External setup / deployment pending** | See consolidated checklist below. |
+| **D. Android/iOS runtime verification pending** | Both platforms, after C: push delivery + tap + stale-binding behaviour; sandbox purchase, restore, plan change, cancel/expire/refund/grace/hold, notifications. |
+| **E. Inherent limitations (mitigated)** | Offline-logout ≤ lease window; OS-drawn background banners can't be suppressed; at-least-once push duplicates after ambiguous provider ack; store/notification lag (1 h expiry leeway, read-time recompute). |
+
+**Consolidated Phase 6/7 setup checklist (C)**
+1. *Expo / FCM / APNs* — Expo project `@flacron-enterprises-llc/flacronai`: upload FCM v1
+   service-account key (Android) and APNs key (iOS) via EAS credentials; optional
+   `EXPO_ACCESS_TOKEN` (enhanced push security) as an ECS secret.
+2. *Apple (App Store Connect)* — Paid Apps agreement; **one** subscription group containing
+   Professional/Agency monthly + annual; Family Sharing off; In-App Purchase API key (.p8, Key ID,
+   Issuer ID); app Apple ID; Server Notifications **V2** URL (production + sandbox) →
+   `https://api.flacronai.com/api/v1/billing/store/notifications/apple`; sandbox testers + App
+   Review demo account; Terms/EULA + privacy links in metadata.
+3. *Google (Play Console / Cloud)* — subscriptions with `monthly`/`annual` base plans; service
+   account with Play Console financial/orders access; Pub/Sub topic + **authenticated push**
+   subscription (OIDC, audience = `GOOGLE_PLAY_RTDN_AUDIENCE`) →
+   `https://api.flacronai.com/api/v1/billing/store/notifications/google`; RTDN topic set in Play
+   Console; license testers.
+4. *AWS ECS* (cluster `flacronai-production-cluster`, service `flacronai-backend-service`) — new
+   task-definition revision with: `PUSH_NOTIFICATIONS_ENABLED`, optional `PUSH_BINDING_LEASE_HOURS`;
+   `APPLE_IAP_BUNDLE_ID`, `APPLE_IAP_APP_APPLE_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`,
+   `APPLE_IAP_PRIVATE_KEY` (secret), `APPLE_ROOT_CA_CERT_PATHS` (Apple Root CA G3 file baked into
+   the image or mounted), `APPLE_IAP_PRODUCT_*`; `GOOGLE_PLAY_PACKAGE_NAME`,
+   `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (secret), `GOOGLE_PLAY_PRODUCT_*`, `GOOGLE_PLAY_RTDN_AUDIENCE`,
+   `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL`; `STORE_SANDBOX_TESTER_EMAILS` /
+   `STORE_BILLING_ACCEPT_SANDBOX` — secrets via Secrets Manager/SSM. Worker: runs inside every
+   task (no separate service); egress to `exp.host`, `api.storekit.itunes.apple.com`,
+   `api.storekit-sandbox.itunes.apple.com`, `androidpublisher.googleapis.com`,
+   `oauth2.googleapis.com`/`www.googleapis.com` (OIDC certs). Then deploy the backend image.
+5. *Firestore* — `firebase deploy --only firestore:rules` (rules in `backend/firestore.rules`);
+   single-field indexes only (auto). Optionally audit the live rules first with
+   `RULES_FILE=<exported rules> npm run test:rules`.
+6. *New development builds* (both platforms) — required: native modules `expo-iap` and
+   `expo-notifications` were added; then preview/production builds (preview needs an
+   `EXPO_PUBLIC_API_BASE_URL`).
+
+### 2026-10-07 — Phase 8 — Remaining Account/Info Screens (static validation only)
+
+Same worktree/branch (`fix/mobile-phase-5-gaps`), all Phase 5–7 work preserved. Nothing
+committed/pushed/merged; no PR, deploy, rules deploy, EAS build, live change, real deletion,
+purchase or push. Phase 9 not started.
+
+**Scope (from §3 Phase 8 + reuse strategy §2.8):** profile & account settings, MFA, account
+deletion (web parity), Privacy/Terms + other legal pages, contact/support, about. Legal copy is
+not re-authored — the app opens the same live pages the web serves.
+
+**Mobile (new):**
+- `features/settings/screens/SettingsScreen.tsx` → hub: plan summary (server `/users/usage`),
+  Account (Profile, Subscription — Phase 7 screen reused, Sign-in & security), Notifications
+  (Phase 6 card reused), Legal & support, Sign out, Delete account.
+- `account/screens/ProfileScreen.tsx` + `profileValidation.ts`: displayName (required), first/last
+  name, company, phone, address; limits mirror the server; only changed, permitted fields are
+  sent; email read-only; inline errors, saved/failed feedback, edits kept on failure.
+- `account/reauth.ts` + `components/ReauthPanel.tsx`: re-authenticates the CURRENT Firebase
+  user — password, Google sheet or Apple sheet (iOS) — then forces a fresh ID token (server checks
+  `auth_time`). A credential for another account is rejected by Firebase (`auth/user-mismatch`).
+  Apple-only accounts on Android get an honest "use an Apple device or the website" state.
+  `googleSignIn.ts`/`appleSignIn.ts` refactored to expose the credential step (sign-in unchanged).
+- `account/screens/SecurityScreen.tsx`: sign-in methods; password change only for email accounts
+  (policy validation, confirm, re-auth, `PUT /users/change-password`; the server ends all sessions,
+  so the app signs out with a clear message); Google/Apple: "password managed by …"; two-factor:
+  status, setup (QR + manual key + "open authenticator", 6-digit verify, one-time recovery codes,
+  fresh MFA assertion stored), disable with authenticator/recovery code.
+- `legal/links.ts` + `legal/screens/LegalSupportScreen.tsx`: Privacy, Terms, Acceptable Use,
+  Refund, Cookies, Security, About, FAQs, Contact form (routes verified in `frontend/src/App.jsx`),
+  `support@flacronenterprises.com` (published on the web Contact/Privacy/Terms pages), app version
+  + platform + non-production environment. Failed opens show the URL/address instead. Phase 7's
+  disclosure links now come from the same module. EULA remains decision §10.23.
+- `account/deletion.ts` + `screens/DeleteAccountScreen.tsx`: what is deleted vs. retained;
+  subscription check from `/billing/status` (Stripe, App Store, Google Play; unknown status is
+  treated as a warning, never "nothing to cancel"); "Manage subscription" for a same-device store
+  subscription; acknowledgement checkbox when anything may keep billing; typed DELETE; provider
+  re-auth; deletion; ONLY after the server confirms: `logout()` → push binding revocation, Firebase
+  sign-out, MFA assertion cleared, pending report link cleared, drafts/photos/exports wiped. Final
+  alert says which subscriptions are still active — never "cancelled". Retry/incomplete/offline →
+  user stays signed in with a "safe to retry" message.
+- Routes: `app/(app)/account/{profile,security,legal,delete}.tsx`. Shared `AccountScaffold`
+  (keyboard-aware scroll, 640pt max-width column for tablets, back button), `SettingsRow` (≥52pt
+  rows, labels/hints). API: `usersApi.changePassword/deleteAccount`, `authApi.mfaSetup/
+  mfaVerifySetup/mfaDisable`; `ACCOUNT_DELETED` classified auth-fatal.
+
+**Backend (authorized, web behaviour preserved):**
+- `DELETE /users/account`: web password path unchanged; NEW path = recent sign-in (same 5-min
+  `auth_time` rule as password change) + `confirmation: "DELETE"` — the only way Google/Apple
+  accounts could ever delete. Team-owner block unchanged and checked before any change. Writes a
+  `deletedAccounts/{uid}` tombstone first; locks the user's `storeSubscriptions` to the deleted owner
+  (`ownerDeleted`, account token cleared); also deletes previously missed data (notifications,
+  pushOutbox, reportDrafts, apiUsage, webhookEndpoints); tolerates an already-deleted Auth user;
+  partial failure → `DELETE_ACCOUNT_INCOMPLETE` (retry-safe, no internals). Response reports
+  `subscriptionsStillBilling {stripe, store}`. Retained (documented): audit logs, Stripe/store
+  purchase + webhook records, sales leads, tombstone.
+- No recreation of a deleted account: `authenticateToken` refuses a token whose user doc is
+  missing AND tombstoned (`401 ACCOUNT_DELETED`; extra read only on that rare path); `GET
+  /users/profile` never auto-creates over a tombstone; `PUT /users/profile` refuses; the
+  notification unread counter now uses `update()` (a delayed report/billing notification can no
+  longer create a stub user doc). Stripe/store paths already only update existing docs.
+- Purchase ownership: a store purchase whose owner was deleted is no longer releasable — any other
+  account gets `409 PURCHASE_LINKED_TO_DELETED_ACCOUNT` (Phase 7 test updated accordingly).
+- `PUT /users/profile`: added upper bounds (phone 40, company 200, address 500).
+- Firestore rules unchanged in substance; `deletedAccounts` is server-only (default deny) and is
+  now covered by the emulator suite.
+
+**Policy kept, not invented** *(SUPERSEDED 2026-10-07 — §10.26 approved: deletion now cancels
+Stripe subscriptions; see the 2026-10-07 Stripe/Phase 9 entry)*: deleting an account does NOT cancel any subscription (unchanged web
+behaviour). The app warns and links to store management; Stripe remains web-managed. Whether
+deletion should block or cancel an active Stripe subscription is decision §10.26.
+
+**Checks (actual):** backend `node --test --test-concurrency=1` 1363 / 1356 pass / 0 fail / 7
+skipped (new `account-deletion.test.js` 8; store-billing ownership test updated); `eslint .` 0
+errors (62 pre-existing warnings); `npm run test:rules` 5/5. Mobile `tsc --noEmit` 0; `expo lint`
+clean; `jest --maxWorkers=1` 486/486 (47 suites; new: reauth, profileValidation, legal links,
+deletion, DeleteAccountScreen); `expo export --max-workers 1` android ✔ (1579 modules) ios ✔ (1453).
+
+**Deferred Android/iOS checks:** profile edit/save/offline; password change → signed out → new
+password works; Google and Apple re-auth sheets (incl. cancel, wrong account); TOTP setup with a
+real authenticator, recovery-code disable; each legal link + mailto (with/without a mail app);
+deletion for email, Google and Apple accounts on both platforms (test accounts only), with an
+active sandbox store subscription (warning + Manage), team-owner block, airplane-mode retry,
+post-deletion: signed out, no drafts/cached files, push stops, the old account can't sign back in;
+tablet layout, large text, VoiceOver/TalkBack.
+
+
+### 2026-10-07 — Stripe cancellation at deletion + Phase 9 Testing & Hardening (static only)
+
+Same worktree/branch (`fix/mobile-phase-5-gaps`); all Phase 5–8 work preserved. Nothing
+committed/pushed/merged; no PR, deploy, rules deploy, EAS build, live config change, real Stripe
+cancellation, real account deletion, purchase or push. Phase 10 not started.
+
+**Task A — account deletion cancels Stripe subscriptions (approved behaviour, §10.26):**
+- `backend/services/stripeAccountCancellation.js` (new): ownership only from our records — the
+  user doc's `stripeCustomerId`/`stripeSubscriptionId`, or the tombstone's saved ids on a retry. A
+  customer whose Stripe metadata names another uid → refused (`STRIPE_OWNERSHIP_MISMATCH`); a stored
+  subscription belonging to neither a trusted customer nor this uid → never touched. Per customer:
+  expire open Checkout Sessions, cancel `not_started` subscription schedules, cancel every
+  subscription in `active|trialing|past_due|unpaid|incomplete|paused` with `invoice_now:false,
+  prorate:false` and idempotency key `account-delete-<uid>-<sub>`; already-cancelled / missing =
+  done (re-checked against Stripe). Then re-lists and fails unless nothing can bill. Paginated;
+  every call has a timeout (15 s, `STRIPE_ACCOUNT_DELETE_TIMEOUT_MS`); timeout / network / 5xx →
+  `uncertain`. No refund, credit-note, invoice or charge API is called anywhere.
+- `DELETE /users/account` order: identity re-check → team-owner block → **deletion lease**
+  (`users.accountDeletionLock`, 5 min, `utils/accountDeletionLock.js`; concurrent attempt → `409
+  DELETE_IN_PROGRESS`) → **Stripe cancel + confirm** → tombstone (now also stores Stripe customer /
+  subscription ids + cancellation result, for retries and the webhook backstop) → existing data
+  deletion. Stripe not confirmed → `502 STRIPE_CANCELLATION_FAILED {retryable, outcomeUncertain}`,
+  NOTHING deleted, lease released, account fully usable. Any later failure also releases the lease.
+  Success response: `subscriptionsStillBilling.stripe:false`, `stripeSubscriptionsCancelled: n`.
+- Re-activation guards (`routes/payment.js`, `routes/billing.js`): create-checkout-session,
+  confirm-checkout, photo-pack-checkout, store account-token and store verify → `409
+  ACCOUNT_DELETION_IN_PROGRESS` while leased or tombstoned (store verify also `finish:false`).
+  `persistSubscription` refuses (inside its transaction) for a leased/tombstoned account. Webhooks
+  (`checkout.session.completed`, `customer.subscription.updated`): mid-deletion → 500 without
+  marking processed, so Stripe redelivers after the deletion settles; after deletion → the new
+  subscription is cancelled (no refund/proration) and nothing is granted or recreated.
+- Retained for audit: Stripe's own customer/invoice history (customer not deleted),
+  `processedWebhooks`, store purchase records, audit logs (`account_self_delete_stripe_failed` added),
+  tombstone with Stripe ids. Deleted accounts still can't be recreated (Phase 8 guards unchanged).
+- **Outstanding-invoice limitation (documented, not changed):** open / past-due invoices are left
+  exactly as they are (not voided, paid or refunded). Whether Stripe keeps retrying collection of an
+  invoice whose subscription was cancelled depends on the Stripe account's Billing settings — ops
+  should review (§10.28). A retry after the profile doc is already gone is still blocked by the
+  Phase 8 `ACCOUNT_DELETED` auth guard (pre-existing; Stripe is always finished before that point).
+- Messaging: mobile `deletion.ts` / `DeleteAccountScreen` — Stripe warning now says deletion
+  cancels it immediately, plan ends, past payments not refunded; acknowledgement text adapts
+  (Stripe / store / both); final alert claims Stripe cancellation only when the server reports
+  `stripeSubscriptionsCancelled > 0`; `STRIPE_CANCELLATION_FAILED` / `DELETE_IN_PROGRESS` → "not
+  deleted, safe to retry". App Store / Google Play copy + Manage link unchanged (never "cancelled").
+  Web `Settings.jsx`: one sentence in the delete modal + the two new error codes surfaced (rest of
+  web unchanged; Google/Apple web deletion still password-only, §10.27).
+- Tests (mocked Stripe only): `account-deletion.test.js` +7 (multi-subscription incl. trialing/
+  past_due/unpaid/ended + open checkout + pending schedule + other customer untouched; failure →
+  nothing deleted + retry; timeout → uncertain + idempotent retry; still-active-after-cancel not
+  confirmed; ownership mismatch / foreign stored subscription; lease held vs expired; tombstone-id
+  retry); new `account-deletion-billing-guards.test.js` 6 (checkout/confirm/photo-pack blocked,
+  normal checkout unchanged, mid-deletion webhook redelivered, post-deletion completed/updated
+  webhooks cancel, released lease grants normally); mobile deletion + screen tests updated/added.
+
+**Phase 9 — static testing & hardening (no devices):**
+- Account isolation: `AuthProvider` — a profile response that started under an earlier Firebase
+  session (sign-out / account switch) could overwrite the new account's profile (and stay if the new
+  fetch failed). Fixed with an auth-generation guard; regression test fails without the fix.
+- Interrupted navigation / deep links: `useReportDetail`, `useReportComments`, `useReportPhotos`,
+  `useReportVersions` applied late responses for a previous report id when the route id changed on
+  the same screen (deep link / notification tap); `useReportVersions` never reloaded for a new id.
+  Fixed via `hooks/useActiveId.ts`; regression tests (detail one verified failing without the fix).
+- Accessibility: 5 text links/buttons without a role (login "Forgot password?" / "Sign up", sign-up
+  "Sign in", forgot-password "Back", wizard "Use today's date") → roles, label, hitSlop.
+- Reviewed, no defect found: route guards + pending deep-link capture (validated ids, in-memory,
+  cleared on sign-out), report-id URL encoding, polling/timer cleanup (detail, auth retry,
+  verify-email cooldown, sign-out tasks), Firestore users-doc allowlist (emulator suite now also
+  asserts `accountDeletionLock` is client-immutable).
+- Dependencies: `expo install --check` → 7 patch-level drifts in SDK 57 (expo 57.0.22→~57.0.27,
+  expo-constants, expo-image-picker, expo-linking, expo-notifications, expo-router, expo-sharing).
+  `expo install --fix` failed (npm child process crashed, 0xC0000409, Node v25.2.1 — no LTS Node on
+  this machine); `package.json` restored, nothing changed (§6). expo-doctor's other failures were
+  the same npm crash + network; schema check needs network.
+- **Still pending (device/runtime):** device/OS matrix (phone + tablet, recent iOS + Android),
+  full auth matrix on devices, poor-network/airplane-mode uploads, export/share sheets per platform,
+  TalkBack/VoiceOver + large text, crash/error reporting (no SDK chosen — decision), sandbox
+  purchases, real push, credentials, deployment (incl. rules deploy), store setup, and a Stripe
+  **test-mode** deletion run against a real Stripe sandbox.
+
+**Checks (actual):** backend `node --test --test-concurrency=1` 1376 / 1369 pass / 0 fail / 7
+skipped; `eslint .` 0 errors (62 pre-existing warnings); rules emulator 5/5. Mobile `tsc --noEmit`
+0; `expo lint` clean; `jest --maxWorkers=1` 495/495 (48 suites); `expo export --max-workers 1`
+android ✔ ios ✔. Web: `Settings.jsx` eslint clean (run with the main checkout's frontend tooling —
+this worktree has no `frontend/node_modules`). Mocked tests and bundle exports are NOT device
+verification.
+
+
+### 2026-10-07 — Phase 10 — Store Preparation & Release Readiness (local preparation; NOT complete)
+
+Same worktree/branch (`fix/mobile-phase-5-gaps`); all Phase 5–9 work preserved, still uncommitted.
+Nothing committed/pushed/merged; no PR, production deploy, rules deploy, store-console change,
+EAS environment/credential change, submission, push, purchase or account deletion.
+
+**Environment / access found:** Windows 10, 8 GB RAM (~0.5 GB free — the cause of every npm/jest
+crash), no Android SDK/ADB/emulator, no physical device connection, no macOS (no iOS simulator or
+local iOS build). EAS: signed in as `laibanoreen` (Admin of `flacron-enterprises-llc`). GitHub CLI
+signed in. **Not available:** Firebase CLI login, AWS CLI/credentials, Google Cloud, App Store
+Connect, Play Console, Apple Developer. Stripe CLI installed (not used — no test-mode run without a
+backend reachable by a device). The worktree has no `backend/.env` (intentionally not created).
+
+**1. Build blockers:** Node 24.21.0 LTS portable (see §6 resolution); 7 Expo patch drifts fixed;
+`expo-doctor` 21/21; `expo install --check` clean.
+
+**2. Recoverable account deletion (code gap closed):**
+- Gap 1: once `users/{uid}` was deleted, a later failure (Auth `deleteUser`, final tombstone update)
+  could never be retried — every request from that account gets `401 ACCOUNT_DELETED`. The old test
+  named "a retry finishes safely" never actually retried; it now proves the user retry is refused
+  AND that the server finishes the deletion.
+- Gap 2: `deletePrefix` swallowed Storage errors, so a failed photo/export wipe was still marked
+  `completed: true`. Now `strict` for deletion → the deletion stays incomplete instead.
+- `backend/services/accountDeletionCleanup.js` (new): `purgeAccountData()` = the former steps 3–6,
+  idempotent (also skips already-locked store purchases), used by `DELETE /users/account`; plus a
+  sweeper started in `server.js` that finishes tombstones still `completed:false` after 10 min
+  (longer than the 5-min deletion lease so it never races a user retry), with a transactional
+  per-tombstone lease (safe on every ECS task), max 20 attempts, and only an error **code** stored
+  (`lastSweepError`). A tombstone exists only after Stripe cancellation was confirmed, so the
+  sweeper never calls Stripe; the Stripe-before-deletion order and all Phase 9 guards are unchanged.
+  Env (optional): `ACCOUNT_DELETION_SWEEP_ENABLED/_STALE_MS/_INTERVAL_MS` (in `.env.example`).
+- Tests: retry test extended; new "storage failure keeps deletion incomplete" and "sweeper: error
+  code only, attempt cap, skips completed". Outstanding invoices re-inspected — §10.28 unchanged.
+
+**3. Release configuration:** Android notification icon (96×96 white FA silhouette from
+`brand-mark.png`, wired in `expo-notifications`); `SYSTEM_ALERT_WINDOW` blocked; unused generic
+Face ID string removed (`expo-secure-store` `faceIDPermission:false`); verified via resolved config
+that `RECORD_AUDIO` is removed and legacy storage is capped at SDK 32; `eas.json` `submit.production`
+(Android internal track as draft, iOS default). App icon validated 1024² opaque.
+**Release blocker found:** EAS `preview`/`production` environments have no Firebase/Google config
+(§10.29).
+
+**4. Store materials:** `mobile/STORE_RELEASE_READINESS.md` — listing drafts from published web copy
+(no stats/claims), URLs, permission table, App Privacy / Data safety table derived from code,
+reviewer instructions draft, checklist, exact deployment/submission steps. **Screenshots NOT
+produced** (no device; never mocked).
+
+**5. Runtime verification:** none possible on a device. One private Android **development** build
+was queued on EAS with `--non-interactive` (existing keystore reused; no credential created) as the
+first native compile including `expo-iap` / `expo-notifications` — result in §8. A dev build is not
+a store build and was not installed anywhere.
+
+**Not done (precise):** every item in the Phase 5–9 "deferred device checks" lists; push delivery;
+sandbox purchase/restore; Stripe test-mode deletion; tablet/accessibility/poor-network runs;
+screenshots; store consoles; credentials (APNs, FCM V1, App Store API key, Play service account);
+backend + rules deployment; internal-track/TestFlight build. Phase 10 completion criterion ("build
+accepted into internal testing on both stores") is **not met**.
+
+
+### 2026-10-07 — Phase 10 continuation (blockers, web deletion, local end-to-end; NOT device-verified)
+
+Same worktree/branch, everything still uncommitted. No push/merge/PR, no production deploy, no rules
+deploy, no store change, no real purchase/push/customer action.
+
+**Build:** EAS Android development build `5df37167-d7c2-48f5-b785-606b86e374d1` FINISHED (artifact on
+EAS) — the first native compile including `expo-iap`, `expo-notifications`, the notification icon and
+the permission changes. Not installed on anything (no device).
+
+**Access found:** EAS ✔ (Admin). Firebase CLI not logged in; no gcloud/AWS CLI; no Apple/Google
+console access in this environment; Stripe CLI installed but **not logged in** (no test key);
+ADB installed portably (`D:\tools\platform-tools`) — no device attached. No Android phone/cable
+(client). iOS: no Mac → no simulator/local iOS build; an Apple Developer account alone gives no
+runnable device.
+
+**Configuration (approved):** the 8 existing `EXPO_PUBLIC_FIREBASE_*`/`EXPO_PUBLIC_GOOGLE_*` EAS
+variables were attached to `preview` + `production` with `eas env:update` (values never read,
+copied or printed). Single Firebase project `flacronai-c8dab` for all environments.
+`EXPO_PUBLIC_API_BASE_URL`: production fixed in `eas.json`; preview has no staging backend (§10.34).
+
+**Web (limited, authorized):** `frontend/src/utils/accountDeletion.js` (shared deletion method
+detection, Google/Apple popup re-auth → forced fresh ID token → `{confirmation:'DELETE'}`; password
+accounts keep the unchanged server-verified path; error mapping incl. `ACCOUNT_DELETED` →
+signed-out, popup cancelled/blocked, wrong account, unsupported provider; shared deleted/kept lists
++ subscription warning); `Settings.jsx` modal uses it (provider-aware, kept-data link, store
+subscription still-active notice); `api.js` `deleteAccount` accepts a body (string still = password);
+public `pages/AccountDeletion.jsx` at `/account-deletion` (information only — no form, no lookup, no
+API call; support address and "Privacy Request" route reused from the Privacy Policy), routed in
+`App.jsx`, added to `sitemap.xml`. Tests: `src/__tests__/accountDeletion.test.js` (11).
+**Policy discrepancy found (not changed):** Privacy Policy §5 says closed accounts are retained 90
+days "to allow for recovery requests"; the implemented deletion is immediate with no recovery. The
+new page states actual behaviour and links §5 for periods (§10.33).
+
+**Rules-test flake — root cause + fix:** the failing assertion was the collection query
+`getDocs(storeSubscriptions)`. Reproduced deterministically: with the client offline,
+`getDocs` resolves from the local cache (0 docs, `fromCache=true`), so `assertFails` reported
+"succeeded" — exactly the flake (host memory pressure stalled the emulator connection).
+`getDocsFromServer` fails with `unavailable` instead. Spec now uses `getDocFromServer` /
+`getDocsFromServer` everywhere; 3 consecutive runs 5/5.
+
+**Local end-to-end (real, but NOT a device test):** this worktree's backend on the Firebase
+Auth/Firestore/Storage emulators (`demo-` project, explicit `FIREBASE_EMULATOR` mode), AI keys only
+from the main `.env` (approved), Stripe/SES/push/store disabled; disposable emulator users; a script
+calling the mobile app's exact API contract. Run 1: 29/33 — 2 wrong expectations (Starter can't
+export DOCX = correct plan gating; failed/duplicate photo rows are kept on the report by design),
+1 expectation refined (a deleted Auth user's token gets `401 INVALID_TOKEN`, not `ACCOUNT_DELETED`
+— still refused, profile not recreated), and **1 real defect**: re-submitting the same `draftId`
+created a **second, photo-less report** (another report credit) because `POST /generate` deleted the
+claimed draft right after claiming it. Fix: the claimed draft is kept (photo list cleared and
+`reportId` recorded after the report is written), the claim is released if the request fails before
+the report exists (retry keeps its photos), and staging into a used draft is refused (`409
+DRAFT_ALREADY_USED`, also inside the transaction). Run 2: **36/36** — profile create/update/limits,
+capacity, staging valid/duplicate/invalid-bytes/11 MB, resume, cross-account isolation (staged
+photos, report, download), generate → real AI draft in ~80 s with cautious language, duplicate
+generate 409, used-draft 409, thumbnail, comment, DRAFT-watermarked export, approve → finalized,
+versions, clean PDF export + `%PDF` download, DOCX plan gate, deletion (confirmation required,
+deleted, refused afterwards, data/Auth user gone, other account intact), and the **sweeper finishing a
+seeded part-failed deletion**. Stripe test-mode deletion script prepared
+(`stripe-deletion-e2e.js`, scratchpad) — blocked on a Stripe CLI login.
+
+**Device/emulator:** none run. Local emulator assessed NOT feasible: CPU virtualization enabled in
+firmware but no hypervisor active (needs Windows Hypervisor Platform or the AEHD driver — admin +
+reboot, can affect other VMs); 7.7 GB RAM with ~0.8 GB physical and 0.8 GB commit free; an AVD needs
+≥2 GB plus Metro/backend. Cloud options + recommendation in §10.35.
+
+**Not run (still required):** every on-device check — login/Google/Apple/MFA/re-auth UI, camera/
+library/permission denial, offline/reconnect, push delivery/taps, sandbox purchase/restore, Stripe
+test-mode deletion, accessibility/tablet/performance, real-app screenshots; iOS anything.
+
+
+### 2026-10-07 — Phase 10 session 3 (website-derived decisions; runtime work blocked by host memory)
+
+**Host blocker:** Windows commit charge exhausted (18.9 of 19.2 GB committed while all processes
+together hold ~8.4 GB private) — the Firestore/Storage emulator JVMs, the Stripe CLI (Node) and
+`vite build` all die with out-of-memory. Not fixable from here; needs a Windows restart. Stripe CLI
+login is stored in the OS credential store (not `config.toml`), so the launcher must obtain the test
+key through the CLI after the restart.
+
+**Website as source of truth (done, see `STORE_RELEASE_READINESS.md` §1a):** prices (Professional
+$39.99/mo, Agency $99.99/mo, annual −20% = $383.88 / $959.88 per year), Enterprise "Talk to Sales"
+(not in-app), no free trial, refunds non-refundable with discretionary exceptions, **"we do not pursue
+collection of the unpaid amount"** (Refund Policy §5), admin `adminTier` source, photo packs web-only.
+App shows store-localized prices only; no external purchase links/CTAs (checked).
+
+**Deletion/privacy mismatch (resolved as "unsupported statement"):** no requirement for recovery; the
+client explicitly deferred automated retention/expiry on 2026-07-22. Privacy §5 (90-day recovery,
+3-year report expiry, 90-day photo purge), Security page (90-day audit logs) and the Refund Policy's
+visible "[CLIENT TO CONFIRM]" trial placeholder do not match the product. Exact corrections drafted in
+`mobile/POLICY_CORRECTIONS_PROPOSED.md` — **not applied (legal change needs approval)**. The
+`/account-deletion` page now states "Deleted accounts cannot be recovered" and links §5 only for
+billing-record retention.
+
+**EULA:** Terms lack app-store provisions → recommend Apple standard EULA + Terms/Privacy links.
+**Reviewer account:** Starter account + `STORE_SANDBOX_TESTER_EMAILS` (no admin grant/bypass),
+created on production after deployment. **Listing:** Business/Productivity, 4+/Everyone draft.
+
+**Pending after restart:** Stripe test-mode deletion run (incl. outstanding-invoice inspection),
+Expo plan/credit check for cloud testing, `vite build`, frontend tests for the edited page.
+
+
+### 2026-10-07/08 — Phase 10 session 4 (policy applied, real Stripe sandbox, report deletion, cloud tests)
+
+**Legal text (client-approved with adjustments, applied locally — NOT deployed):** Privacy §5 (client's
+exact deletion paragraph; report/photo wording matched to verified behaviour; new "Records retained after
+account deletion"; no backup claim), Security page audit-log sentence, Refund Policy app-store paragraph
+and §6 "no free trial" (placeholder removed). Unresolved release values (not invented): backup retention,
+audit-log retention period, contact-form retention period. Regression tests in
+`frontend/src/__tests__/accountDeletion.test.js`. Page "Last updated" dates left for the client.
+
+**Report deletion verified against the wording → 2 real defects fixed (`routes/reports.js`):** a single
+permanent delete used `ref.delete()`, orphaning the `versions/` + `comments/` subcollections (full report
+content); neither single nor bulk delete removed supporting documents. Now `recursiveDelete` + removal of
+every Storage folder the report uses (its own folder and the wizard draft folder its photos live in).
+Exports are per-user, not linked to reports → removed with the account (stated in the policy). Real-stack
+E2E 42/42 (versions/comments/files gone after permanent delete; exports remain until account deletion;
+nothing left after account deletion).
+
+**Stripe — real sandbox run (disposable, unclaimed sandbox `flacron-e2e-disposable` CLI profile; the
+client's Flacron sandbox login is untouched):** 19/19 — active + incomplete subscriptions stopped,
+not-started schedule cancelled, open checkout expired, no refund / credit note / proration / new invoice,
+customer history kept, late `customer.subscription.updated` for the deleted uid cancelled by the webhook
+backstop (real `stripe listen` delivery) without recreating the account; ownership-mismatch → `502
+STRIPE_CANCELLATION_FAILED`, NOTHING deleted, subscription untouched; retry after fix succeeds. Audit fix:
+`stripeCancellation.confirmedAt` now records the confirmation time (was the request start). Outstanding
+invoice: the incomplete subscription's open first invoice became **void** when Stripe expired it (Stripe's
+own behaviour); a past-due *renewal* invoice could not be produced — test clocks are not available to an
+unclaimed sandbox key (§10.28 stays open for that case). Incident: the sandbox key's `rkcs_test_` prefix
+escaped the output redaction once (test-mode, throwaway sandbox, expires 2026-10-14, do not claim);
+redaction widened to any `*_test_`/`*_live_` key.
+
+**Web build:** `vite build` ✔ (13.8 s) once host memory was freed; frontend 34 files / 330 tests ✔.
+
+**Cloud device testing (client-approved, $0 cap):** Expo org = Free plan, no payment method, 30 builds/
+month. EAS Workflows `maestro` jobs require a paid plan → used **custom EAS Builds** instead
+(`mobile/.eas/build/e2e-maestro*.yml`: build → emulator/simulator → Maestro → artifacts), counted as
+normal free builds. Test backend: this worktree's backend on local Firebase Auth/Firestore/Storage
+emulators (client chose fully-local auth) + Stripe disposable sandbox + approved AI key, exposed only via
+two temporary Cloudflare quick tunnels (random URLs baked into the `e2e` build profile; removed after).
+App change: dev-build-only Auth-emulator hook (`src/config/authEmulator.ts`, ignored by preview/
+production; unit-tested). EAS confirmed the e2e profile's demo Firebase values override the EAS
+environment's real ones. Packaging fix: repo-root `.easignore` (EAS ignored `.eas/build/` via the
+root `build/` rule) — verified archive contains no env/secret/credential files or node_modules.
+
+**Cloud device runs — ACTUAL results (EAS free tier, $0; Android 34 emulator on a Workflows custom job
+`linux-medium-nested-virtualization` reusing the e2e APK — custom *builds* cannot boot an emulator
+("requires nested virtualization"); iOS 26.5 iPhone 17 simulator inside custom EAS builds — iOS
+simulator build compiles + installs with no Apple credentials):**
+- PASSED on Android: sign-in through the emulator-backed backend; dashboard; wizard steps 1–3 (claim,
+  property, loss details incl. "Use today's date"); library photo picked; **account isolation** (second
+  account sees "No reports yet" / "No reports found", not the first account's report); profile edit +
+  save reached the server (`PUT /users/profile` 200).
+- PASSED on iOS: install/launch; sign-in (after dismissing iOS's own "Save Password?" sheet); dashboard;
+  wizard steps 1–3; library photo picked from the multi-select PHPicker; isolation check "No reports yet".
+- **Defect found + fixed:** Profile's "Profile saved." / error notice rendered at the top of the form,
+  scrolled out of view when the user taps Save at the bottom → moved next to the button
+  (`ProfileScreen.tsx`). Not yet re-verified on a device (tunnel loss, below).
+- **Open, NOT resolved:** the photo upload (`POST /reports/photos/stage`) failed on BOTH platforms with
+  "Unable to reach the server" and never reached the backend (Express logs every request incl. aborted
+  ones; cloudflared logged no origin errors), while JSON GET/POST/PUT requests over the same tunnel
+  succeeded. The same endpoint passes the real local API E2E (42/42). Most likely the Cloudflare quick
+  tunnel/edge path for multipart uploads, but not proven — the reproduction (`curl` multipart through a
+  fresh tunnel) and the device logcat capture (dev-env-only `[api] network error` log added to
+  `client.ts`, tested) could not run because Cloudflare's quick-tunnel service evicted both tunnels
+  (~10:43 UTC, "Tunnel not found") and then refused new ones for >6 min. Everything after the upload
+  (generate, review/approve, export/share, in-app deletion) is therefore NOT device-verified.
+- Flow fixes (test-only): return key instead of `hideKeyboard` (on iOS it tapped "Sign in"); label vs
+  input index for duplicated a11y labels; picker selectors from real screenshots; absolute artifact
+  paths; `yes | sdkmanager` SIGPIPE.
+- Usage: ~25 of 60 free CI minutes; 6 Android + 5 iOS free builds this month; $0 billed.
+- **Cleanup done (verified):** tunnels, backend, emulators (no export → all disposable emulator
+  accounts/data destroyed), webhook forwarder stopped; tunnel URLs removed from `eas.json` (e2e profile
+  kept with demo values only); temporary workflow deleted; emulator passwords in `.maestro/` replaced by
+  `${E2E_PASSWORD_*}` placeholders; `.whsec`, test-user file and the disposable Stripe CLI profile
+  deleted. The unclaimed Stripe sandbox expires 2026-10-14 (do not claim).
+- Checks after fixes: mobile `tsc` 0, `expo lint` clean, jest 498/498 (49 suites); backend 1379 / 1372 /
+  0 fail / 7 skipped; frontend 330/330 + `vite build` ✔.
+
+
+### 2026-10-08 — Phase 10 session 5 (upload root cause, launch-time test config, device results)
+
+**Photo-upload failure — ROOT CAUSE FOUND + FIXED (app defect):** not Cloudflare (a Node multipart upload
+through a fresh tunnel returned 201). Expo SDK 57 replaces the global `fetch` with `expo/fetch`
+(`expo/src/winter/runtime.native.ts`), whose multipart encoder rejects React Native `{uri,name,type}`
+parts ("Unsupported FormDataPart implementation") before sending; the client reported it as "Unable to
+reach the server". Fix: `reportsApi` `toUploadPart()` sends `{name, type, bytes()}` read via
+expo-file-system (`services/api/reports.ts`) — covers photo staging, generate images and documents.
+Regression test runs Expo's REAL encoder (`uploadPart.test.ts`: new part encodes with filename/MIME/
+bytes; the old RN part throws). Dev-env-only network-error logging kept in `client.ts` (tested).
+
+**Launch-time test endpoints (test build only):** quick tunnels lived 104 / 40 min — shorter than a free
+EAS build — so the `e2e` build now reads API + Auth-emulator origins from
+`flacronai://e2e-config?api=…&auth=…` before Firebase/API init (`config/e2eRuntimeConfig.ts`,
+`e2eOverride.ts`, gate in `app/_layout.tsx`, `app/+native-intent.tsx` rewrite). Doubly gated:
+`EXPO_PUBLIC_APP_ENV=development` AND `EXPO_PUBLIC_E2E_RUNTIME_CONFIG=1` (set only by the `e2e` profile);
+preview/production never read the link. Unit-tested (gate, parser, rewrite).
+
+**ACTUAL cloud-device results (Android 34 emulator via Workflows nested-virtualization custom job; iOS
+simulator via macOS custom job; local emulator-backed backend; disposable emulator users):**
+
+| Flow | Android | iOS |
+|---|---|---|
+| Sign-in via launch link + Auth emulator | ✔ | ✔ (iOS "Open in FlacronAI?" + "Save Password?" handled) |
+| Dashboard, wizard steps 1–4, library photo | ✔ | ✔ |
+| **Photo upload** `POST /reports/photos/stage` 201 | ✔ | ✔ |
+| **Generate** `POST /reports/generate` 201 → real AI draft (≈16–17k chars) → "Draft — needs review" | ✔ | ✔ |
+| Approve sheet: incomplete details correctly blocked ("…are required") | ✔ | ✔ |
+| **Approve & finalize** `POST /approve` 200 | ✔ | ✔ |
+| **Export** `POST /export` 200 → authenticated PDF download 200 → share sheet | ✔ | ✔ |
+| Account isolation (second account: "No reports yet" / "No reports found") | ✔ | ✔ |
+| Profile edit + save `PUT /users/profile` 200 with **"Profile saved." visible next to the button** | ✔ (fix verified) | not reached |
+| Delete-account screen: subscription check ("No active paid subscription was found"), DELETE typed, password | ✔ reached + filled | not reached |
+| **In-app deletion submitted + signed out** | **NOT TESTED** | **NOT TESTED** |
+
+The final deletion step was never executed: the last flow-2 runs were refused with "Free plan CI/CD 60
+minute limit reached" (Expo blocked them — $0 billed; minutes reset 2026-11-01). Deletion itself is
+verified at API level (real backend E2E 42/42 + real Stripe-sandbox run 19/19), not on a device.
+Remaining device-run failures were all test-flow issues (keyboard covering sheet fields, iOS tab
+labels, iOS password autofill, mangled em dash after a PowerShell rewrite, cosmetic Photos tab after the
+share sheet) — fixed in `.maestro/`. One iOS run showed a blank screen after sign-in; the next iOS run's
+failure screenshot showed "Invalid email or password" with an empty password field (autofill, fixed by
+tapping the secure field directly); not reproduced afterwards.
+
+**Not device-tested (need real devices/store setup):** push delivery/taps, store sandbox purchase/
+restore, camera capture, permission denial, poor network, tablet layouts, VoiceOver/TalkBack.
+
+**Backups / audit-log retention:** no backup configuration and no audit-log expiry exist in the repo;
+whether Firestore PITR/scheduled backups or Storage versioning are enabled is a Google Cloud setting —
+not verifiable without Firebase/GCP access (`firebase login`). Retention periods remain a business
+decision; the Privacy Policy states none for these (by approval).
+
+**Cleanup (verified):** tunnels/backend/emulators stopped (no export ⇒ all disposable emulator accounts
+and data destroyed), temporary workflows deleted, flow passwords/link restored to `${…}` placeholders, test
+user file deleted, disposable Stripe profile already removed; repo-root `.easignore` and the custom-build
+configs removed and `mobile/.gitignore` restored byte-identical (the final approach does not need them).
+Reusable templates + how-to: `mobile/e2e/`. Usage: 13 of 30 free builds, 60/60 free CI minutes, $0.
+
+**Final checks:** mobile `tsc` 0, `expo lint` 0 warnings, jest 503/503 (51 suites), `expo export`
+android ✔ (1584 modules) ios ✔ (1458); backend 1379 / 1372 / 0 fail / 7 skipped (no backend change this
+session); frontend unchanged since 330/330 + `vite build` ✔.
+
+### 2026-10-09 — Phase 10 session 6 (QA APK: staging backend prepared, awaiting approval)
+
+**Access verified (read-only):** AWS SSO profile `flacron-qa` → account <staging AWS account>, role
+DeveloperAccess (PowerUserAccess + others; no IAM role creation, `iam:PassRole` unconfirmed). Stripe CLI
+→ "Flacron Enterprises LLC · sandbox", `livemode: false`. Access notes + restrictions saved to the
+assistant's local memory (outside the repo; no credentials).
+**Backend decision:** production `api.flacronai.com` lacks this branch (`/billing/*`,
+`/notifications/*` → 404), so it is NOT used. Isolated staging scripted in `backend/deploy/staging/`
+(README, `deploy-staging.sh`, `teardown-staging.sh`, `container.js`, `buildspec.yml`): ECS Express Mode,
+own cluster/ECR/log group/secret, secrets only via Secrets Manager key refs, working-tree bundle checked for
+`.env`/`node_modules` (dry run: 262 files, clean). **Nothing provisioned.**
+**Findings:** (1) EAS `preview` env's `EXPO_PUBLIC_FIREBASE_*` are shared with production → the `qa` APK
+needs staging Firebase values first; API URL has no silent fallback (startup throws). (2) Production task
+definition carries secrets as plaintext env vars → recommend Secrets Manager (not changed). (3) The
+existing Express gateway ALB is in VPC `vpc-0ede5cff24c3bf077` (used by another app); production runs in
+the default VPC — sharing vs. new gateway ALB is an owner decision.
+**Free-plan usage:** 13/30 builds, CI minutes exhausted until 2026-11-01, $0 billed. No push/merge/PR/deploy.
+**Continuation (budget ≈ $41/mo approved):** design switched to **App Runner** (isolated HTTPS on
+`*.awsapprunner.com`, ≈ $15/mo; an isolated ECS Express service would need its own ALB ≈ $51/mo).
+Firebase CLI (the developer Google account) created project `flacronai-staging-qa` + Android app (3 SHAs copied
+from the production app's registered certs) + Web app; Firestore deploy failed: billing disabled. IAM role
+creation not permitted for DeveloperAccess. Added `boot.js` (secret JSON → env, smoke-tested),
+`set-staging-secret.js` (hidden input, refuses live Stripe keys / non-staging service accounts),
+`iam/*.json` (3 roles + scoped PassRole), `ACCESS_REQUEST.md`; deploy/teardown rewritten for App Runner;
+`qa` profile → staging Firebase web config. Nothing provisioned in AWS yet.
+**2026-10-10 update:** App Runner rejected after compatibility check (idle CPU throttling breaks post-response
+generation + deletion sweeper; closed to new customers 2026-04-30). Redesigned as one EC2 t4g.small (Docker +
+Caddy HTTPS, EIP, SSM, no SSH) — scripts: deploy/remote-deploy/pause/teardown/budget; IAM: one instance role +
+scoped PassRole + cost-tag activation + optional least-privilege deployer policy, all inlined in
+`backend/deploy/staging/ACCESS_REQUEST.md` (admin-ready). AWS ≈ $19/mo, AI ≈ $12–28/mo (Opus 4.8, 40 reports).
+Owner invite for the client owner Google account not possible via Firebase CLI (no IAM command; no gcloud) → console step.
+AWS `aws login` session expired (needs interactive re-login). Nothing provisioned; $0 spent.
+**2026-10-10 feasibility audit (read-only):** App Runner closure confirmed (aws.amazon.com/apprunner: no new
+customers from 2026-04-30; existing customers may still create services) — dropped for idle CPU throttling. EC2
+design verified on paper: arm64 base-image index + caddy:2.10 + sharp arm64 prebuilt (lockfile); no local Docker build
+(Docker absent). Found existing app risk: full-res photos (q92, no downscale) sent to Claude in 10-photo batches can
+exceed request/image size limits — needs a separately approved fix. AI ≈ $0.40–0.47 per 10-photo report on Opus 4.8
+(estimate, unmeasured). Added read-only `verify-staging-prereqs.sh`; ACCESS_REQUEST.md re-rendered with verified rates
+(running ≈ $19 / stopped ≈ $5.70 / removed $0.40 AWS). Live AWS checks pending `aws login`.
+**2026-10-11:** found restart gap (report stuck `processing`; Retry refuses ALREADY_PROCESSING) → proposed
+patches (stale-processing recovery, vision downscale) in `backend/deploy/staging/proposed-patches/`, tested by temporary
+apply: 35/35 related tests, 9.5 MB 4032×3024 photo → 2.3 MB 2576×1932; originals restored byte-identical; NOT applied.
+Deploy fixes: SSM params via JSON file, first-boot wait, LF-only bundle/remote script (core.autocrlf=true here would
+have shipped CRLF scripts). linux-arm64 `npm ci` resolution OK (404 pkgs, sharp arm64 prebuilt); real Docker build
+impossible locally (no Docker/WSL distro). qa export scan clean; mobile tsc 0, lint 0, jest 503/503. Firestore
+`(default)` nam5 exists (created 2026-10-09 by earlier attempt; no PITR). DNS: Hostinger, no CAA, name free.
+**2026-10-11 (approved cost; provisioning started):** AWS verified (identity, role trust ec2-only, SSM core +
+staging-scope attached, instance profile, scoped PassRole via dry-run RunInstances). Fixed Git-Bash path rewriting
+(MSYS_NO_PATHCONV) + local-path conversion (cygpath) in staging scripts. Budget `flacronai-staging-qa` created
+(ACTUAL $25/$50/$100 → rodrigue@); account is a linked member of org payer <org payer account> → cost-tag activation must
+be confirmed there. **Applied** both fixes: pipeline lease (heartbeat 60 s, stale 10 min, transactional retry
+claim, status-poll self-heal) and vision sizing (≤5 MB base64/image, ≤20 MB base64/batch, originals untouched);
+new tests 12/12, backend 1391 (1384 pass/0 fail/7 skip). EAS precedence enforced: `build-guards/qaProfileGuard.js`
+run from app.config.ts when FLACRON_BUILD_PROFILE=qa (fails `expo config` on any non-staging value — proven) +
+`build-guards/verifyQaApk.js` artifact verifier; mobile tsc 0 / lint 0 / jest 509/509. Firestore rules deployed
+to staging. **EC2 provisioned:** <staging EC2 instance> t4g.small arm64, EIP <staging EIP>, SSM Online; real arm64
+image build 45 s / ~0.6 GB, sharp arm64 OK, awslogs OK, role reads staging secret only. Stripe sandbox webhook
+we_1UPLFoKFLhrvSzkgTH4oAhOY → secret piped into Secrets Manager (an earlier attempt's orphan webhook deleted).
+Secret still missing Firebase SA fields, STRIPE_SECRET_KEY, ANTHROPIC_API_KEY. App NOT deployed yet.
+
 
 ## 5. Decisions Log
 
+- **2026-10-05 — Phase 6 push provider = Expo Push Service (CONFIRMED by the backend
+  integration task instruction).** One token type/API for both platforms, works with the
+  existing EAS project and the plain-`firebase` JS architecture. Provider code is isolated in
+  `mobile/src/features/push/pushProvider.ts` and `backend/services/pushService.js`.
 - **2026-09-05 — Backend infra correction:** documented as AWS ECR/ECS via GitHub Actions,
   not Render, based on `.github/workflows/deploy-backend.yml` and `backend/Dockerfile`.
   `backend/render.yaml` exists but is stale/legacy; left untouched (not a mobile concern).
@@ -2066,6 +3474,39 @@ never re-verifies the current password itself.
 ---
 
 ## 6. Blockers Log
+
+- **2026-10-05 — RESOLVED (same day) — Phase 6 backend push support.** Implemented under
+  explicit authorization: device-token endpoints, `pushDevices` storage, Expo fan-out from
+  `notifyUser()`, receipt processing — disabled by default (§4 "Phase 6 — backend
+  integration").
+- **2026-10-05 — OPEN — Phase 6 provider credentials (external setup).** Android: Firebase
+  `google-services.json` for `com.flacronenterprises.flacronai` referenced via
+  `android.googleServicesFile` + an FCM V1 service-account key uploaded to EAS. iOS: APNs key
+  (Apple Developer account, Flacron Enterprises LLC) + the Push Notifications capability on the
+  App ID, managed via EAS credentials. Not created/uploaded in this task. Also a 96×96
+  monochrome Android notification icon (Phase 10).
+- **2026-10-05 — OPEN — Phase 6 device verification deferred** until all phases are
+  implemented (checklist in §4 "2026-10-05 — Phase 6").
+
+- **2026-10-05 — OPEN — Phase 5 runtime verification (Android, then iOS) not performed.**
+  Prerequisites: (a) a **new Android development build** — the only one
+  (`6c609bb0-9d54-4134-ad4d-68ec9ba7c3df`) expired 2026-09-24 and predates the native modules
+  Phases 4–5 added (netinfo, image-picker, file-system, sharing); running `eas build` needs
+  explicit approval; (b) a physical Android device on the same LAN, or an emulator; (c) a
+  `mobile/.env.local` in the working copy (this worktree has none → `ConfigRequiredScreen`);
+  (d) the local backend reachable over LAN (firewall setup as in the Phase 3 entry); (e) the
+  disposable test account, plus a second account and a reviewer grant to exercise
+  isolation and review-response. iOS additionally needs a Mac + simulator, or an iPhone with
+  Apple signing. Expo Go might run the email/password flows (the Google import is lazily
+  guarded) — unconfirmed.
+- **2026-10-05 — OPEN, non-blocking — `expo-doctor` 20/21: patch-version drift only.**
+  `expo` 57.0.22→~57.0.26, `expo-constants` 57.0.18→~57.0.20, `expo-image-picker`
+  57.0.18→~57.0.20, `expo-linking` 57.0.10→~57.0.11, `expo-router` 57.0.21→~57.0.24,
+  `expo-sharing` 57.0.20→~57.0.22. These are newer SDK-57 patch releases published upstream
+  (same SDK); no incompatibility was found (tsc, jest and both bundles pass), so this is not
+  a confirmed necessary fix and was not applied (it would be a six-package lockfile bump).
+  Recommended: run `npx expo install --fix` as its own approved step just before the new
+  dev build, so the build includes them.
 
 - **2026-09-08 — RESOLVED: Auth strategy recommendation approval.** Was: implementation
   blocked pending explicit sign-off on `AUTHENTICATION_ARCHITECTURE.md` §4's hybrid
@@ -2342,6 +3783,20 @@ never re-verifies the current password itself.
   for this phase's runtime validation to be completed.
 
 ---
+
+- **2026-10-07 — Expo SDK patch alignment blocked (Phase 9).** `expo install --check` reports 7
+  patch-level drifts (expo ~57.0.27, expo-constants ~57.0.21, expo-image-picker ~57.0.20,
+  expo-linking ~57.0.12, expo-notifications ~57.0.22, expo-router ~57.0.25, expo-sharing ~57.0.22).
+  `expo install --fix` crashes inside npm (exit 0xC0000409) on Node v25.2.1; no LTS Node is
+  installed here. Unblock: install Node 22/24 LTS, run `npx expo install --fix` in `mobile/`, then
+  re-run tsc / jest / exports. Not a runtime blocker for static checks.
+  **RESOLVED 2026-10-07 (Phase 10):** portable Node **v24.21.0 LTS** (SHA-256 verified) unpacked to
+  `D:\tools\node-v24.21.0-win-x64` and used per-command via `PATH` only — the system Node 25 and
+  other projects are untouched. `expo install --fix` still crashed (its spawned npm, exit 134,
+  under host memory pressure — ~0.5 GB free of 8 GB), so the 7 SDK-expected versions were installed
+  with one direct low-concurrency `npm install`. `expo install --check` → up to date;
+  `expo-doctor` 21/21. The earlier doctor failures were subprocess crashes / network, not
+  dependency problems. Use `export PATH="/d/tools/node-v24.21.0-win-x64:$PATH"` before mobile work.
 
 ## 7. Folder Structure
 
@@ -2702,7 +4157,114 @@ version control.
   a dev-client/Expo Go install) — none was available; see the Blockers Log (§6) entry dated
   2026-09-16 for the exact tooling checked and what's needed to complete this validation.
 
+### Phase 5 gap-closure validation — 2026-10-05, `fix/mobile-phase-5-gaps` worktree
+- `npx tsc --noEmit` → 0 errors (baseline before changes: 0).
+- `npx expo lint` → exit 0, no problems reported.
+- `npx jest` → **290/290 passing, 29 suites** (baseline 200/200, 22 suites). New suites:
+  `reportActions`, `reportsEvents`, `useReportDetail` (polling recovery / single timer / stop /
+  retry analysis), `useReviewResponse`, `userDataLifecycle` (account isolation, sign-out wipe),
+  `pendingDeepLink`, `useAuthenticatedPhoto` (fetch concurrency). Extended: wizard
+  reducer/storage/hook (upload outcomes, capacity, HEIC, isolation, discard), `fileHelpers`,
+  `client` (403/401 classification), `reports` (timeouts, capacity call), `useReportExport`.
+- `EXPO_PUBLIC_APP_ENV=development npx expo export --platform android` and `--platform ios` →
+  both exported successfully (output written to the session scratchpad, then deleted).
+- `npx expo-doctor` → 20/21 (patch drift only, §6); `npx expo install --check` → same six.
+- Secret/credential pattern scan over the mobile diff + new files → no matches;
+  `git diff --check` → clean (LF/CRLF notices only); `git status` → changes confined to
+  `mobile/`; no `dist/` or build output left behind.
+- **Not run**: any Android/iOS device, emulator, simulator, dev client or Expo Go session, and
+  no real-backend round trip. These are static/bundler checks, not runtime verification.
+
 ---
+
+### Phase 10 continuation validation — 2026-10-07
+- Backend `node --test --test-concurrency=1` 1379 / 1372 / 0 fail / 7 skipped (+1 claimed-draft test);
+  `eslint .` 0 errors (62 pre-existing warnings); rules emulator 5/5 on 3 consecutive runs.
+- Frontend (worktree, using the main checkout's `node_modules` via a temporary ignored junction):
+  `vitest run` 33/34 files, 324 tests pass; the 34th file `apiMfaHeader` passes 4/4 when a dummy `VITE_FIREBASE_API_KEY` is
+  set (the worktree has no `frontend/.env`; the suite fails to import Firebase without one —
+  environmental, not a regression); new `accountDeletion.test.js` 11/11; eslint on touched files
+  clean. **`vite build` NOT completed** — native out-of-memory on this host (3 attempts).
+- Local API end-to-end (emulators, real AI, no Stripe): 36/36 (run 1: 29/33 → defect fixed).
+- EAS Android development build `5df37167…` FINISHED.
+- NOT performed: any device/emulator/simulator run, iOS build, Stripe test-mode run, push, purchase,
+  deploy, rules deploy, store-console change.
+
+### Phase 10 validation — 2026-10-07, same worktree, Node v24.21.0 LTS
+- Mobile: `expo install --check` up to date; `expo-doctor` 21/21; `tsc --noEmit` 0; `expo lint`
+  clean; `jest --maxWorkers=1` 495/495 (48 suites — 491 in the full run, where the OS killed one
+  worker; that suite `useReportsList` re-run alone 4/4); `expo export --max-workers 1` android ✔
+  (1580 modules) ios ✔ (1454); resolved production config re-checked (permissions, notification icon).
+- Backend: `node --test --test-concurrency=1` 1378 / 1371 pass / 0 fail / 7 skipped; `eslint .` 0
+  errors (62 pre-existing warnings, none in touched files); rules emulator: run 1 4/5 (one
+  deny-by-default path unexpectedly allowed, under memory pressure — not reproduced, unexplained),
+  runs 2 and 3 5/5.
+- EAS Android development build `5df37167-d7c2-48f5-b785-606b86e374d1`: BUILD_RESULT_PENDING
+- NOT performed: any device/emulator/simulator run, iOS build, store build, push, purchase, Stripe
+  test-mode deletion, deploy, rules deploy, console/EAS-env/credential change.
+
+### Stripe-at-deletion + Phase 9 validation — 2026-10-07, same worktree
+- Backend serial `node --test`: 1376 / 1369 pass / 0 fail / 7 skipped; `eslint .` 0 errors (62
+  pre-existing warnings); rules emulator 5/5.
+- Mobile `tsc` 0; `expo lint` clean; `jest --maxWorkers=1` 495/495 (48 suites); `expo export
+  --max-workers 1` android ✔ ios ✔. `expo install --check`: 7 patch drifts (fix blocked, §6).
+- NOT performed: any device/simulator run, real Stripe cancellation, real account deletion,
+  purchase, push, EAS build, deploy, rules deploy, console change.
+
+### Phase 8 validation — 2026-10-07, same worktree
+- Backend serial `node --test`: 1363 / 1356 pass / 0 fail / 7 skipped; `eslint .` 0 errors (62
+  pre-existing warnings); rules emulator 5/5.
+- Mobile `tsc` 0; `expo lint` clean; `jest --maxWorkers=1` 486/486 (47 suites); `expo export
+  --max-workers 1` android ✔ ios ✔.
+- NOT performed: any device/simulator run, real account deletion, purchase, push, EAS build,
+  deploy, rules deploy, console change.
+
+### Phase 6/7 gap-closure validation — 2026-10-05, same worktree
+- Backend `node --test --test-concurrency=1`: 1355 / 1348 pass / 0 fail / 7 skipped (new/extended:
+  `push-reliability.test.js` 6, `store-billing.test.js` 29, `store-billing-stripe-compat.test.js`
+  9; push/notification suites updated for the eventId/bindingTag payload). `eslint .` 0 errors
+  (62 pre-existing warnings).
+- Rules: `npm run test:rules` (Firestore emulator, demo project) 5/5 on the new rules; the same
+  suite against `git show HEAD:backend/firestore.rules` fails 2/5 (self-tier escalation allowed).
+- Mobile `tsc --noEmit` 0; `expo lint` clean; `jest --maxWorkers=1` 453/453 (42 suites);
+  `expo export --max-workers 1` android ✔ (1564 modules) ios ✔ (1438 modules).
+- One read-only `GET https://api.flacronai.com/health` (+ one unauthenticated GET confirming
+  `/api/v1/billing/status` is not deployed — 404). No other network call to production.
+- NOT performed: device/simulator run, real push, sandbox/real purchase, EAS build, deploy, rules
+  deploy, any console change.
+
+### Phase 7 static validation — 2026-10-05, same worktree
+- Backend `node --test --test-concurrency=1` (full suite): 1339 / 1332 pass / 0 fail / 7
+  skipped (Phase 6 baseline + 28 new: `store-billing.test.js` 25, `store-billing-stripe-compat
+  .test.js` 3). A parallel `npm test` run hit host out-of-memory crashes (not assertions); the
+  serial run is the result of record. `eslint .` 0 errors (62 pre-existing warnings).
+- Mobile `tsc --noEmit` 0; `expo lint` clean; `jest --maxWorkers=1` 436/436 (41 suites; 46 new
+  in `src/features/billing`); `expo export --max-workers 1` android ✔ (1563 modules) ios ✔
+  (1437 modules) — default-worker exports crashed in Hermes from host memory exhaustion, not
+  code; `expo config --type introspect` lists the `expo-iap` plugin; `expo install --check`:
+  `expo-iap` compatible, only the pre-existing patch drift (expo, expo-router, expo-linking,
+  expo-image-picker, expo-sharing). `git diff --check` clean; secret scan clean.
+- Store APIs, native billing and Pub/Sub are mocked in every test. Mocked tests do **not**
+  prove billing works on a device.
+- NOT performed: device/simulator run, sandbox/real purchase, EAS build, deploy, rules deploy,
+  any App Store Connect / Play Console / AWS change.
+
+### Phase 6 hardening validation — 2026-10-05, same worktree
+- Backend `npm test` 1311 / 1304 pass / 0 fail / 7 skipped; push suites 32/32; eslint 0 errors.
+- Mobile `tsc` 0; `expo lint` clean; `jest --maxWorkers=2` 390/390 (37 suites); `expo export`
+  android ✔ ios ✔.
+- NOT performed: device run, real push send, EAS build, deploy, any AWS/Expo config change.
+
+### Phase 6 backend-integration validation — 2026-10-05, same worktree
+- Backend `npm test` 1307 / 1300 pass / 0 fail / 7 skipped; push suites 28/28; eslint clean.
+- Mobile `tsc` 0; `expo lint` clean; `jest --maxWorkers=2` 390/390; `expo export` android ✔ ios ✔.
+- NOT performed: device run, real push send, EAS build, deploy, any AWS/Expo config change.
+
+### Phase 6 static validation — 2026-10-05, `fix/mobile-phase-5-gaps` worktree
+- `tsc --noEmit` 0 errors; `expo lint` clean; `jest` 386/386 (36 suites); `expo export`
+  android ✔ ios ✔; `expo config --type introspect` — notification plugin applied (channel,
+  color, `aps-environment` per profile); `expo-doctor` 20/21 (pre-existing patch drift).
+- NOT performed: any device/emulator/simulator run, any real push send, any EAS build.
 
 ## 9. Environment Variables & Secrets Policy
 
@@ -2745,6 +4307,9 @@ version control.
    `EXPO_PUBLIC_API_BASE_URL` (`mobile/src/config/env.ts` intentionally throws until this
    is supplied) — does **not** block Phase 3, which can use the confirmed local-dev origin
    `http://localhost:3000/api/v1`.
+   *(RESOLVED 2026-10-05: production API origin is `https://api.flacronai.com` — health check
+   reports `environment: production`; set for the production EAS profile. Still open: what
+   `preview` builds should use — production, or a staging API if one exists.)*
 2. **RESOLVED 2026-09-08 — Auth client strategy: Firebase JS SDK with RN persistence,
    NOT the backend's REST `/api/v1/auth/register`+`/login` endpoints.** Approved and
    implemented exactly per `AUTHENTICATION_ARCHITECTURE.md` §4's recommendation — see that
@@ -2773,9 +4338,16 @@ version control.
 4. **Dashboard scope for v1** — confirm whether CRM/teams/white-label/enterprise admin
    screens are in scope for mobile at all. Needed before Phase 5.
 5. **IAP-vs-Stripe entitlement policy** — what a Stripe-subscribed web user sees/can do on
-   mobile, and vice versa. Needed before Phase 7.
+   mobile, and vice versa. Needed before Phase 7. *(PARTIALLY RESOLVED 2026-10-05 by Phase 7's
+   conservative default, pending your confirmation: one account, one effective tier = the
+   higher of Stripe and store; an active web subscriber cannot buy in-app (sees "managed on
+   the web", text only, no external purchase link); an active store subscriber cannot buy a
+   second store plan. **Still open:** the web app does not yet block or warn a store
+   subscriber from also buying via Stripe (web behavior left unchanged per instruction) —
+   decide whether it should.)*
 6. **Push provider** — confirm Expo's push service (one API for both platforms via EAS) is
-   acceptable vs. wanting direct FCM/APNs integration. Needed before Phase 6.
+   acceptable vs. wanting direct FCM/APNs integration. Needed before Phase 6. *(RESOLVED 2026-10-05: Expo Push
+   Service confirmed by the backend-integration task instruction — §5.)*
 7. **RESOLVED 2026-09-08, per direct task instruction — Email-verification/password-reset
    deep-link behavior: use the existing web/Firebase-hosted behavior as-is, documented as
    a limitation, not worked around.** Both `VerifyEmailScreen` and `ForgotPasswordScreen`
@@ -2801,6 +4373,10 @@ version control.
 15. **Mobile subscription management** — what a mobile user can do to their own
     subscription (view is safe today via `GET /payment/current-subscription`; cancel/
     change needs a policy decision alongside item 5 above). See reuse-strategy doc §6.
+    *(2026-10-05, Phase 7: store subscriptions are managed through the store's own
+    subscription settings (deep link). Upgrading/downgrading between store plans inside the
+    app is NOT offered in v1 — confirm if wanted (needs Play replacement-mode handling).
+    Cancelling a Stripe subscription from mobile is still not exposed in the UI.)*
 16. **Comments/replies and version history parity** — both exist server-side
     (`reports.js`) but are not yet confirmed as mobile v1 scope vs. deferred. See
     reuse-strategy doc §2.4/§6.
@@ -2834,132 +4410,84 @@ version control.
     verified token's own `auth_time`, `403 RECENT_LOGIN_REQUIRED` on failure) — previously
     the backend trusted the authenticated session alone with no recency check at all. See
     §12.3's "Server-side recent-authentication requirement" block.
+19. **Sandbox in production — recommendation: keep the implemented default.** Production accepts
+    Apple sandbox / Play test purchases only for accounts in `STORE_SANDBOX_TESTER_EMAILS` (put the
+    App Review demo account + named testers there); everyone else is refused. *Needs:* the tester
+    list, and confirmation not to set `STORE_BILLING_ACCEPT_SANDBOX=true` in production.
+20. **Plans sold in-app — RESOLVED by documented decision:** Enterprise is sales-led on the web
+    (Contact Sales), so it is not sold in-app (enforced). Professional + Agency, monthly + annual,
+    are sellable once configured. *Needs:* store prices (set in the consoles — your call; store
+    commission 15–30% vs. web price parity).
+21. **Admin override precedence — recommendation: keep the implemented "highest source wins".**
+    Admin grants survive billing events; an admin cannot downgrade a paying subscriber below their
+    paid plan (Golden Rule #4). If you need admins to *force* a lower tier (e.g. abuse), that needs
+    a separate explicit "suspend/limit" control — confirm.
+22. **Account deletion with an active store subscription:** the store keeps billing until the user
+    cancels in the store; the Phase 8 deletion flow must say so.
+23. **Terms / EULA — recommendation:** keep the in-app link to the existing Terms of Service *and*
+    either (a) attach those Terms as the custom EULA in App Store Connect, or (b) choose Apple's
+    standard EULA and add its link alongside. Legal choice — needs your decision.
+24. **Duplicate Stripe/store subscriptions — recommended web guard (NOT implemented; needs your
+    approval because it changes the web purchase flow):** `POST /payment/create-checkout-session`
+    should refuse (409 `STORE_SUBSCRIPTION_ACTIVE`, "Manage your subscription in the App Store /
+    Google Play") when the account has an active store entitlement, and the web Pricing page
+    should show that message. Mobile already blocks the reverse case.
+25. **Push lease length:** 7 days default (offline-logout window vs. pushes pausing for users who
+    don't open the app for a week). Confirm, or choose 72 h / 24 h.
+26. **RESOLVED 2026-10-07 — option (c), cancel immediately at deletion** (no refund/proration;
+    implemented + statically tested, see §4). Original note: **Stripe subscription at account deletion (Phase 8) — decision needed.** Today (web and
+    mobile, unchanged): deleting the account does NOT cancel an active Stripe subscription; it keeps
+    billing until cancelled on the web, and the app warns and requires acknowledgement. Options:
+    (a) keep warn-only; (b) block deletion while a renewing Stripe subscription exists; (c) cancel
+    it automatically during deletion (immediately or at period end; refund policy applies).
+    Recommendation: (c) cancel at deletion — a deleted user can no longer reach web Settings to
+    cancel. Apple/Google subscriptions can never be cancelled by us — the user must do it in the store.
+27. **Web delete-account copy parity — recommended, not changed (web behaviour preserved):** the
+    web modal doesn't mention subscriptions or retained records, and Google/Apple web accounts still
+    can't delete (password-only UI) although the endpoint now supports recent-sign-in deletion.
 
----
-
-## 11. Git / Branch / Commit / Push / PR Rules (permanent — copied here so this file is
-self-contained for anyone picking up mobile work later)
-
-1. Never expose or commit passwords, API secrets, Firebase admin credentials,
-   service-account JSON files, Apple credentials, Google credentials, signing
-   certificates, provisioning profiles, keystores, tokens, or real `.env` files.
-2. A mobile app is a public client and must never contain private backend secrets.
-3. Only explicitly safe client configuration may use `EXPO_PUBLIC_*` variables.
-4. Real environment values live only in approved local/EAS secret storage.
-5. Never modify unrelated web frontend or backend files.
-6. Reuse the existing backend only through verified APIs and shared authentication flows;
-   never invent endpoints.
-7. Inspect and confirm existing behavior before changing any backend code.
-8. All work stays local unless explicitly requested otherwise.
-9. Commit only when explicitly asked.
-10. Push only when explicitly asked.
-11. Create a pull request only when explicitly asked.
-12. Never merge, force-push, publish an update, submit an app, or trigger a production
-    build without explicit approval.
-13. Before every future commit, verify no secret, credential, `.env` file, build output,
-    or unrelated change is included.
-14. Each implementation phase is validated and documented before moving to the next.
-15. Company-level projects, store records, credentials, and signing assets remain owned by
-    Flacron Enterprises LLC.
-
-### Branch strategy in effect
-
-- `feature/mobile-app-foundation` — Phase 1 branch, created from an up-to-date `main`;
-  merged into `main` via PR #18 (confirmed 2026-09-08 — `origin/main` contains it).
-- `docs/mobile-reuse-strategy` → renamed (2026-09-08, `git branch -m`, a pure local
-  rename, no new branch created and no history lost) to `feature/mobile-initial-phases` —
-  created from the post-merge `main` for the documentation audit, and now also carrying
-  Phase 2 (and, per its name, intended to carry the next initial mobile phases). Not
-  pushed as of Phase 2 completion.
-- No separate long-lived `mobile/main` branch.
-- Previous QA branches/PRs are not touched or referenced by mobile work.
-
----
-
-## 12a. npm Audit Findings (analyzed 2026-09-05, none applied — documented and deferred)
-
-`npm audit` reports **14 moderate-severity advisories, 0 high/critical**. Full dependency
-paths were traced with `npm ls <pkg>`; only **two** packages are actually vulnerable —
-every other flagged entry is an ancestor package npm audit reports because it sits
-somewhere in the path down to one of these two:
-
-| Root-cause package | Resolved version | Pulled in by | Advisory |
-|---|---|---|---|
-| `decode-uri-component` | `0.2.2` | `expo-router@57.0.19` → `query-string@7.1.3` → `decode-uri-component` | ReDoS via exponential decoding of malformed percent-encoded input (GHSA-w573-4hg7-7wgq) |
-| `uuid` | `7.0.3` | `expo-splash-screen@57.0.8` → `@expo/config-plugins@57.0.9` → `xcode@3.0.1` → `uuid` | Missing buffer bounds check in v3/v5/v6 when `buf` is provided (GHSA-w5hq-g745-h8pq) |
-
-The other 12 (`expo`, `expo-router`, `expo-splash-screen`, `@expo/cli`, `@expo/config`,
-`@expo/config-plugins`, `@expo/inline-modules`, `@expo/local-build-cache-provider`,
-`@expo/metro-config`, `@expo/prebuild-config`, `query-string`, `xcode`) are flagged purely
-because they're ancestors of the two packages above in the dependency tree — none has an
-independent vulnerability of its own.
-
-- **Direct vs. transitive:** `expo`, `expo-router`, and `expo-splash-screen` are our only
-  direct dependencies among the 14 — and even those are flagged solely because a
-  transitive sub-dependency several levels down is affected, not because of anything in
-  their own code. Every other entry, including both actual root causes, is fully
-  transitive.
-- **From Expo-managed dependencies?** Yes — both vulnerable packages are pulled in by
-  Expo's own currently-published SDK 57 packages (`expo-router@57.0.19`,
-  `expo-splash-screen@57.0.8`, resolved via `npx expo install`, not hand-picked). This is
-  Expo's own current official dependency graph, not something introduced by any choice
-  made in this foundation.
-- **Runtime exposure:** The `uuid`/`xcode`/`@expo/config-plugins` chain is **build-time-only
-  tooling** — used solely during `expo prebuild`/native project generation on a
-  developer's or CI's own machine; none of it ships inside the app bundle installed by an
-  end user. The `decode-uri-component`/`query-string` chain **does** ship as part of
-  `expo-router`'s runtime deep-link/query-string parsing — the practical exploit path is
-  an adversarially crafted, extremely long query string causing a CPU-bound regex hang
-  (ReDoS), a low-severity availability issue (not data exposure or code execution), which
-  matches the advisory's own "moderate" (not high/critical) rating.
-- **Is a compatible, non-breaking fix available?** No, confirmed two ways:
-  1. `npm audit fix --dry-run` (no changes applied) proposes no in-range fix for either
-     chain — it explicitly states the fix requires `npm audit fix --force` and would
-     install `expo-splash-screen@55.0.25`.
-  2. Checked both vulnerable packages' immediate parents' declared dependency ranges
-     directly: `query-string@7.1.3` pins `"decode-uri-component": "^0.2.2"` (0.2.2 is the
-     newest release in that caret range — no patched version exists within it; the
-     ReDoS advisory is only resolved starting at 0.3.0+, which is out of range).
-     `xcode@3.0.1` pins `"uuid": "^7.0.3"` (the advisory wants `>=11.1.1`, also out of
-     range). The only path npm can find that resolves to a "safe" range is
-     **downgrading** `expo` to `46.0.21`, `expo-router` to `5.1.11`, and/or
-     `expo-splash-screen` to `55.0.25` — all major-version downgrades, 10+ SDK versions
-     behind our current SDK 57 baseline. This would break the entire project and was
-     **not** attempted.
-- **Decision: document and defer, do not patch now.** Per instruction, a fix is only
-  applied here if it is clearly safe, Expo-compatible, and caused by this setup — none of
-  those hold: it isn't caused by this setup (it's Expo's own current SDK 57 tree), and the
-  only available "fix" is an unacceptable major downgrade. A `package.json` `overrides`
-  entry forcing just the two leaf versions was considered and **rejected** — it would
-  bypass both parent packages' own tested compatibility range without any way to validate
-  the result in this phase (no native build is being run), which is not "clearly safe."
-  **Recommended handling:** re-check with `npm audit` at the start of each future phase
-  (cheap, already good practice) and specifically before Phase 10 (Store Preparation) as a
-  final pre-submission check — by then Expo will very likely have shipped a patched SDK
-  point release that resolves this upstream, at which point a routine `expo install
-  --check` / point-release bump (not attempted here) is the correct fix path, not a
-  manual override.
-
-## 12. Recommended Next Phase
-
-**Phase 3 — Authentication is implemented, partially complete** (§1/§3/§4/§6 above;
-full detail in [`AUTHENTICATION_ARCHITECTURE.md`](./AUTHENTICATION_ARCHITECTURE.md) §11).
-**Do not start Phase 4 yet.** Recommended before either resuming Phase 3 work or starting
-Phase 4:
-
-1. **Close the Firebase console dependency** (§6 Blockers Log) — register this app's
-   iOS/Android "app" against the `flacronai` Firebase project and populate
-   `EXPO_PUBLIC_FIREBASE_*` in a local `.env.local`. This unblocks moving past
-   `ConfigRequiredScreen` and is a prerequisite for any real device testing.
-2. **Perform a real on-device Expo Go walkthrough** of the email/password flows (sign-up →
-   verify → sign-in → forgot-password → logout) against a local `backend/` instance, once
-   (1) is done — the one validation category this session could not perform itself
-   (§8 "Phase 3 validation").
-3. **Decide the two genuinely open items** before considering Google/Apple sign-in and MFA
-   "finished," not just "implemented": Firebase/Google/Apple console configuration (§6,
-   unblocks Google/Apple sign-in functionally) and whether server-side MFA enforcement is
-   wanted enough to justify a separately-approved `backend/` change (§6, §10 item 3).
-4. Only then, **Phase 4 — Backend/API Integration Layer**, which depends on Phase 3's
-   token-attach plumbing (already built in `src/services/api/client.ts`, scoped so far to
-   just the auth-related endpoints Phase 3 needed — Phase 4 extends it to the full
-   `reports`/`users`/`payment`/`notifications` surface).
+28. **Outstanding Stripe invoices at account deletion (2026-10-07).** Deletion cancels the
+    subscriptions but leaves open / past-due invoices untouched (no void, no refund). Confirm in the
+    Stripe dashboard whether collection retries continue for invoices of a cancelled subscription,
+    and whether they should be voided — a billing-policy decision, not changed in code.
+    *(Re-inspected 2026-10-07, Phase 10: unchanged and still correct to leave — cancellation uses
+    `invoice_now:false, prorate:false`, no invoice/refund/credit-note API is called anywhere. Still
+    needs: a Stripe-dashboard check of "Manage failed payments" + a void-or-collect policy.)*
+29. **RESOLVED 2026-10-07 (approved, done) — see §4 "Phase 10 continuation".** Original:
+    **EAS preview/production environment variables (Phase 10, BLOCKER for any store build).** Only
+    the `development` EAS environment has `EXPO_PUBLIC_FIREBASE_*` / `EXPO_PUBLIC_GOOGLE_*`. Approve
+    creating them in `preview` + `production` (public client identifiers; confirm the production
+    Firebase project's iOS/Android app registrations to copy from), and decide which API `preview`
+    builds use (item 1).
+30. **IMPLEMENTED 2026-10-07, pending deployment** — option (a) + (b): `/account-deletion` public page
+    and Google/Apple re-auth in web Settings. Original: **Google Play account-deletion web link (Phase 10).** Play requires a web URL to request deletion.
+    Web Settings can delete only password accounts (item 27). Options: (a) add recent-sign-in deletion
+    to web Settings (endpoint already supports it); (b) a public "request deletion" support page.
+31. **Store reviewer account (Phase 10).** A dedicated production demo account (MFA off, sample report,
+    plan that allows generation) whose email goes into `STORE_SANDBOX_TESTER_EMAILS`. Who creates it,
+    and with which plan?
+32. **Listing choices (Phase 10):** category, keywords, age-rating answers, feature graphic design,
+    export-compliance answer (app uses only standard HTTPS/OS crypto — `ITSAppUsesNonExemptEncryption`
+    not set in code pending confirmation), and whether `expo-updates` (OTA) is wanted.
+33. **Privacy Policy vs. actual deletion (Phase 10, legal).** Policy §5: "Account data is retained for
+    90 days after account closure to allow for recovery requests, then deleted from primary systems
+    within 180 days. Backups may retain data for an additional 90 days." Implemented behaviour:
+    immediate deletion from Firestore/Storage/Auth, no recovery; billing records, audit logs, sales
+    leads and a tombstone kept. Either update the policy text or change behaviour — store privacy
+    answers must match whichever is true.
+34. **Staging backend for preview builds / private client testing.** No non-production backend exists.
+    Options: (a) a small staging ECS service + staging Firebase project (paid; cleanest); (b) preview
+    builds against production once this branch is deployed (testers then use real production data —
+    disposable accounts only); (c) development builds against a local backend (works, but needs this
+    PC running and a device). Recommendation: (a) before external testers. **2026-10-09:** (a) chosen by
+    owner; scripts prepared in `backend/deploy/staging/` — awaiting approval of cost + missing access
+    (staging Firebase project, CodeBuild IAM role/PassRole, staging secret values, network choice).
+35. **Device testing route (no phone; local emulator not feasible).** Options: (1) **EAS Workflows
+    Maestro tests** on Expo's cloud Android emulator — reuses the existing Expo account/build, scripted
+    flows; needs a reachable backend (staging, or a temporary HTTPS tunnel to the local emulator-backed
+    backend) and may consume paid EAS build credits; (2) BrowserStack/LambdaTest App Automate — real
+    Android + iOS devices, local tunnel, paid subscription, build + test data uploaded to a third party;
+    (3) Firebase Test Lab — Robo crawl only for unscripted flows, needs gcloud access; (4) a cheap
+    physical Android phone + USB cable (most complete; push/camera/purchase testable). Recommendation:
+    (4) for real verification, or (1) for scripted coverage now. iOS in all cases needs either a Mac
+    (simulator) or a TestFlight build on a real iPhone.

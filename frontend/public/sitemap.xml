@@ -103,6 +103,12 @@
     <priority>0.3</priority>
   </url>
   <url>
+    <loc>https://flacronai.com/account-deletion</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://flacronai.com/terms-of-service</loc>
     <lastmod>2026-07-17</lastmod>
     <changefreq>yearly</changefreq>

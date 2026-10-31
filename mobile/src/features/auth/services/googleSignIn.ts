@@ -19,7 +19,7 @@
  * `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is set, and the UI must treat that as "blocked," never
  * silently attempt a sign-in with a missing client ID.
  */
-import { GoogleAuthProvider, signInWithCredential, type UserCredential } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithCredential, type AuthCredential, type UserCredential } from 'firebase/auth';
 
 import { getFirebaseAuth } from '@/services/firebase/client';
 
@@ -33,7 +33,32 @@ export function isGoogleSignInConfigured(): boolean {
   return !!webClientId && webClientId.trim().length > 0;
 }
 
+export type GoogleCredentialOutcome = { status: 'success'; credential: AuthCredential } | { status: 'cancelled' };
+
+/** Signs in with Google (native sheet) and exchanges the result into Firebase. */
 export async function signInWithGoogle(): Promise<GoogleSignInOutcome> {
+  const outcome = await getGoogleCredential();
+  if (outcome.status === 'cancelled') return outcome;
+  const credential = await signInWithCredential(getFirebaseAuth(), outcome.credential);
+  return { status: 'success', credential };
+}
+
+/** Forgets the device's Google account selection so the next Google sign-in shows the
+ * account chooser (sign-out / account switching). Never throws; no-op if unconfigured. */
+export async function signOutOfGoogle(): Promise<void> {
+  if (!isGoogleSignInConfigured()) return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    await GoogleSignin.signOut();
+  } catch {
+    // Not signed in to Google / module unavailable: nothing to forget.
+  }
+}
+
+/** Phase 8: the Google sheet + Firebase credential only (no sign-in) — reused to
+ * re-authenticate the CURRENT user before sensitive actions. */
+export async function getGoogleCredential(): Promise<GoogleCredentialOutcome> {
   if (!isGoogleSignInConfigured()) {
     throw new Error(
       'Google Sign-In is not configured yet (missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID). ' +
@@ -65,9 +90,7 @@ export async function signInWithGoogle(): Promise<GoogleSignInOutcome> {
       throw new Error('Google did not return an ID token. Please try again.');
     }
 
-    const firebaseCredential = GoogleAuthProvider.credential(idToken);
-    const credential = await signInWithCredential(getFirebaseAuth(), firebaseCredential);
-    return { status: 'success', credential };
+    return { status: 'success', credential: GoogleAuthProvider.credential(idToken) };
   } catch (err) {
     // `require()`d above, so these helpers are untyped (`any`) — cast explicitly rather
     // than relying on `isErrorWithCode`'s type-predicate narrowing, which TS can't apply

@@ -16,10 +16,35 @@
  * sub-document routes. Add typed wrappers for these only when a phase actually needs the
  * screen that calls them.
  */
+import { File } from 'expo-file-system';
+
 import { apiRequest, apiRequestBinary, type BinaryResponse } from './client';
 import type { QueryParams } from '@/types/api';
 
-export type ReportStatus = 'processing' | 'draft' | 'finalized' | 'completed' | 'approved' | 'archived';
+/** Every value `reports/{id}.status` takes server-side: `processing` while the background
+ * pipeline runs, `failed` when it errors (with `pipelineError` set — recover via
+ * `retryAnalysis`), `draft` awaiting review, `finalized` once approved (`completed`/`approved`
+ * are legacy reviewed values the backend still treats as reviewed), `archived` when hidden. */
+export type ReportStatus = 'processing' | 'failed' | 'draft' | 'finalized' | 'completed' | 'approved' | 'archived';
+
+/** Statuses the backend treats as already human-reviewed (`REVIEWED_STATUSES`,
+ * backend/utils/watermarkPolicy.js). */
+export const REVIEWED_STATUSES: readonly ReportStatus[] = ['finalized', 'approved', 'completed'];
+
+export type ReportAccess = 'owner' | 'review' | 'comment' | 'view';
+
+/** `report.reviewRequest` as written by `POST /:id/request-review` and updated by
+ * `/approve`/`/review-response`. */
+export interface ReviewRequest {
+  reviewerUid: string;
+  reviewerEmail?: string | null;
+  requestedBy?: string;
+  requestedByEmail?: string | null;
+  requestedAt?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'changes_requested' | string;
+  notes?: string | null;
+  respondedAt?: string | null;
+}
 
 /** A photo attached to a report/draft, as returned inline on the report doc itself (list/
  * detail responses) — a different, smaller shape than `ReportPhoto` from
@@ -30,6 +55,10 @@ export interface ReportPhotoRecord {
   fileName?: string;
   status?: 'uploaded' | 'failed' | 'duplicate' | string;
   analysisStatus?: string;
+  /** Set on a photo `POST /generate` demoted to `failed` because the plan's photo capacity
+   * was exceeded at commit time — it was never analyzed. */
+  capacityRejected?: boolean;
+  error?: string;
   [key: string]: unknown;
 }
 
@@ -64,6 +93,9 @@ export interface Report {
   qualityScore?: number | null;
   pipelineError?: string | null;
   status: ReportStatus;
+  /** `true` while a regenerate is in flight — approval/export are rejected server-side. */
+  regenerating?: boolean;
+  reviewRequest?: ReviewRequest | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   createdAt: string;
@@ -101,6 +133,9 @@ export interface ListReportsParams {
   search?: string;
   clientId?: string;
   claimNumber?: string;
+  /** Derived documents of a report / estimate (owner's own reports only). */
+  relatedReportId?: string;
+  documentType?: string;
 }
 
 export interface ListReportsResult {
@@ -129,8 +164,24 @@ export interface RNFile {
   type: string;
 }
 
+/**
+ * Expo SDK 57 replaces the global `fetch` with `expo/fetch`, whose multipart encoder does NOT
+ * accept React Native's `{ uri, name, type }` file parts — it throws "Unsupported FormDataPart
+ * implementation" before anything is sent, which surfaced as "Unable to reach the server" on
+ * every photo upload (found on the Phase 10 cloud Android emulator + iOS simulator). The encoder
+ * accepts any part exposing `bytes()`, taking the multipart filename/content-type from the part's
+ * own `name`/`type`, so the local file is read through expo-file-system at send time.
+ */
+export function toUploadPart(file: RNFile): { name: string; type: string; bytes: () => Promise<Uint8Array> } {
+  return {
+    name: file.name,
+    type: file.type,
+    bytes: async () => new File(file.uri).bytes(),
+  };
+}
+
 function appendFile(form: FormData, field: string, file: RNFile): void {
-  form.append(field, file as unknown as Blob);
+  form.append(field, toUploadPart(file) as unknown as Blob);
 }
 
 export interface GenerateReportFields {
@@ -163,12 +214,28 @@ export interface GenerateReportFields {
   [key: string]: string | undefined;
 }
 
+/** One staging result. `POST /photos/stage` answers 201 for every processed file, including
+ * ones it rejected — `status: 'failed'` (with a human-readable `error`, e.g. "File is not a
+ * valid image") is a real outcome of a successful HTTP call, never an upload success. */
 export interface StagedPhotoRecord {
   id: string;
   fileName?: string;
   status: 'uploaded' | 'failed' | 'duplicate';
+  error?: string;
   contentHash?: string;
   [key: string]: unknown;
+}
+
+/** `GET /reports/photos/capacity` — the caller's plan photo limit (PlanConfig), and how much of
+ * it the given draft already uses. `effectiveCapacity`/`remaining` are `null` when unlimited. */
+export interface PhotoCapacity {
+  success: true;
+  plan?: string;
+  effectiveCapacity: number | null;
+  unlimited: boolean;
+  used: number;
+  remaining: number | null;
+  uploadAllowed: boolean;
 }
 
 export interface ReportPhoto {
@@ -199,6 +266,9 @@ export interface ReportComment {
   body: string;
   resolved?: boolean;
   parentId?: string | null;
+  authorName?: string | null;
+  authorEmail?: string | null;
+  createdAt?: string;
   [key: string]: unknown;
 }
 
@@ -242,6 +312,50 @@ export interface ApprovalSignature {
 }
 
 const REPORTS_BASE = '/reports';
+/** Normalized address profile (backend property-lookup/normalize). */
+export interface AddressProfile {
+  original?: string;
+  status: string;
+  propertyLookupEligible?: boolean;
+  fields: Record<string, { value: string | number | null; source?: string; verificationStatus?: string }>;
+  [key: string]: unknown;
+}
+
+/** `GET /reports/:id/analysis-status` (photoJobService.getAnalysisStatus). */
+export interface AnalysisStatus {
+  reportStatus: ReportStatus;
+  pipelineError: string | null;
+  totalPhotos: number;
+  analyzed: number;
+  needsAttention: number;
+  failed: number;
+  generation: { status: string; error?: string | null } | null;
+}
+
+/** `GET /reports/assigned-to-me` — reports another account shared with or sent for review to the caller. */
+export interface AssignedReport {
+  id: string;
+  claimNumber: string | null;
+  insuredName: string | null;
+  status: string | null;
+  updatedAt: string | null;
+  myPermission: ReportAccess | null;
+  reviewRequestStatus: string | null;
+}
+
+export type SharePermission = 'view' | 'comment' | 'review';
+export type ShareExpiry = '24h' | '7d' | '30d';
+
+export interface ReportShare {
+  id: string;
+  permission: SharePermission;
+  expiresAt: string | null;
+  createdAt: string | null;
+  url: string;
+  [key: string]: unknown;
+}
+
+export const EXPORT_TIMEOUT_MS = 120000;
 
 export const reportsApi = {
   getDashboardSummary: () =>
@@ -254,7 +368,7 @@ export const reportsApi = {
     apiRequest<ListReportsResult>(REPORTS_BASE, { params: params as QueryParams }),
 
   get: (id: string) =>
-    apiRequest<{ success: true; report: Report; myAccess: 'owner' | 'review' | 'comment' | 'view' }>(
+    apiRequest<{ success: true; report: Report; myAccess: ReportAccess }>(
       `${REPORTS_BASE}/${encodeURIComponent(id)}`
     ),
 
@@ -270,7 +384,92 @@ export const reportsApi = {
     }),
 
   getAnalysisStatus: (id: string) =>
-    apiRequest<{ success: true; [key: string]: unknown }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis-status`),
+    apiRequest<{ success: true } & AnalysisStatus>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis-status`),
+
+  /** Owner only (review grantees get 404), team capability canEditReports, shares the 10/min generation limit.
+   * Returns a suggestion only — nothing is written until the caller saves the content. */
+  assistSection: (id: string, action: string, title: string, body: string) =>
+    apiRequest<{ success: true; suggestion: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/sections/assist`, {
+      method: 'POST',
+      body: { action, title, body },
+      timeoutMs: 90000,
+    }),
+
+  /** "Regenerate Section": same rules as assistSection; `instructions` ≤ 2000 chars. */
+  suggestSection: (id: string, title: string, body: string, instructions?: string) =>
+    apiRequest<{ success: true; suggestion: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/sections/suggest`, {
+      method: 'POST',
+      body: { title, body, ...(instructions ? { instructions } : {}) },
+      timeoutMs: 90000,
+    }),
+
+  /** Owner only; reviewer must be an active member of the same organization (REVIEWER_NOT_IN_ORG otherwise). */
+  requestReview: (id: string, reviewerUid: string, notes?: string) =>
+    apiRequest<{ success: true; message: string; reviewRequest: ReviewRequest }>(
+      `${REPORTS_BASE}/${encodeURIComponent(id)}/request-review`,
+      { method: 'POST', body: { reviewerUid, ...(notes ? { notes } : {}) } }
+    ),
+
+  /** Public: whether address autocomplete/normalization is enabled server-side. */
+  propertyLookupConfig: () =>
+    apiRequest<{ success: true; enabled: boolean; browserAutocompleteConfigured: boolean; serverNormalizationConfigured: boolean }>(
+      `${REPORTS_BASE}/property-lookup/config`
+    ),
+
+  /** Normalizes a Google place into a structured, unconfirmed profile (15-minute token; 20/min limit). */
+  normalizeAddress: (placeId: string, original?: string) =>
+    apiRequest<{ success: true; normalizationToken: string; expiresAt: string; ambiguous: boolean; profile: AddressProfile }>(
+      `${REPORTS_BASE}/property-lookup/normalize`,
+      { method: 'POST', body: { placeId, ...(original ? { original } : {}) } }
+    ),
+
+  /** Confirms the normalized address on a report (owner/reviewer; not once finalized). */
+  savePropertyProfile: (id: string, body: { mode: 'provider_confirmed' | 'manual'; normalizationToken?: string; original?: string; overrides?: Record<string, string> }) =>
+    apiRequest<{ success: true; propertyProfile: AddressProfile }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/property-profile`, {
+      method: 'PUT',
+      body,
+    }),
+
+  listAssignedToMe: () => apiRequest<{ success: true; reports: AssignedReport[] }>(`${REPORTS_BASE}/assigned-to-me`),
+
+  /** Archive (default) or permanently delete (`permanent`) — owner only. Permanent deletion removes Storage objects. */
+  remove: (id: string, permanent = false) =>
+    apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      params: permanent ? { permanent: 'true' } : undefined,
+    }),
+
+  restore: (id: string) =>
+    apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+    }),
+
+  /** Copies claim/property fields into a new draft (no photos, no generated content). */
+  duplicate: (id: string) =>
+    apiRequest<{ success: true; report: Report }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+    }),
+
+  deleteAllArchived: () =>
+    apiRequest<{ success: true; deletedCount: number; message?: string }>(`${REPORTS_BASE}/archived/delete-all`, { method: 'POST' }),
+
+  listShares: (id: string) =>
+    apiRequest<{ success: true; shares: ReportShare[] }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/shares`),
+
+  /** A view link requires a finalized report (server: NOT_FINALIZED). */
+  createShare: (id: string, permission: SharePermission, expiresIn?: ShareExpiry) =>
+    apiRequest<{ success: true; url: string; [key: string]: unknown }>(
+      `${REPORTS_BASE}/${encodeURIComponent(id)}/shares`,
+      { method: 'POST', body: { permission, ...(expiresIn ? { expiresIn } : {}) } }
+    ),
+
+  revokeShare: (id: string, shareId: string) =>
+    shareId === 'legacy'
+      ? apiRequest<{ success: true }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/share`, { method: 'DELETE' })
+      : apiRequest<{ success: true }>(
+          `${REPORTS_BASE}/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`,
+          { method: 'DELETE' }
+        ),
 
   retryAnalysis: (id: string) =>
     apiRequest<{ success: true; message: string }>(`${REPORTS_BASE}/${encodeURIComponent(id)}/analysis/retry`, {
@@ -314,6 +513,11 @@ export const reportsApi = {
       { method: 'POST', multipart: form, idempotent: true, timeoutMs: 30000 }
     );
   },
+
+  /** Plan photo capacity for the wizard's Photos step (Phase 44 PlanConfig) — the staging
+   * route enforces the same limit and rejects with `MAX_PHOTOS` (plus `limit`/`used`). */
+  getPhotoCapacity: (draftId?: string) =>
+    apiRequest<PhotoCapacity>(`${REPORTS_BASE}/photos/capacity`, { params: draftId ? { draftId } : undefined }),
 
   /** Resumes the wizard's photo list after an app relaunch mid-session. Returns an empty
    * array (never a 404) if the draft doesn't exist or belongs to another account. */
@@ -391,7 +595,7 @@ export const reportsApi = {
 
   /** Only the reviewer named on the report's pending review request may call this. */
   submitReviewResponse: (id: string, decision: 'rejected' | 'changes_requested', notes?: string) =>
-    apiRequest<{ success: true; message: string; reviewRequest: unknown }>(
+    apiRequest<{ success: true; message: string; reviewRequest: ReviewRequest }>(
       `${REPORTS_BASE}/${encodeURIComponent(id)}/review-response`,
       { method: 'POST', body: { decision, notes } }
     ),
@@ -408,6 +612,9 @@ export const reportsApi = {
     apiRequest<ExportResult>(`${REPORTS_BASE}/${encodeURIComponent(id)}/export`, {
       method: 'POST',
       body: options,
+      // Rendering a PDF/DOCX with every photo embedded routinely takes far longer than the
+      // client's 20s default.
+      timeoutMs: EXPORT_TIMEOUT_MS,
     }),
 
   /** Proxied private bytes — never a public URL. Pass the `filename` from
@@ -415,6 +622,7 @@ export const reportsApi = {
   downloadExport: (id: string, file: string, inline = false): Promise<BinaryResponse> =>
     apiRequestBinary(`${REPORTS_BASE}/${encodeURIComponent(id)}/download`, {
       params: { file, ...(inline ? { inline: true } : {}) },
+      timeoutMs: EXPORT_TIMEOUT_MS,
     }),
 
   /** Downloads one of the wizard's uploaded supporting documents (PDF/DOC/DOCX/TXT) — not

@@ -1,0 +1,194 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyDiscovery",
+      "Effect": "Allow",
+      "Resource": "*",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeImages",
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeInstanceTypeOfferings",
+        "servicequotas:GetServiceQuota",
+        "organizations:DescribeOrganization",
+        "ce:ListCostAllocationTags",
+        "secretsmanager:ListSecrets",
+        "logs:DescribeLogGroups",
+        "ssm:ListCommands"
+      ]
+    },
+    {
+      "Sid": "ResolveAmazonLinuxAmi",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameters",
+      "Resource": "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/*"
+    },
+    {
+      "Sid": "LaunchOnlyTaggedStagingInstance",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:instance/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:volume/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/cost-center": "flacronai-staging-qa",
+          "ec2:InstanceType": "t4g.small"
+        }
+      }
+    },
+    {
+      "Sid": "LaunchSupportingResources",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:us-east-1::image/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:subnet/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:network-interface/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:security-group/*"
+      ]
+    },
+    {
+      "Sid": "CreateTaggedStagingSgAndEip",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateSecurityGroup",
+        "ec2:AllocateAddress"
+      ],
+      "Resource": [
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:security-group/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:elastic-ip/*",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:vpc/*"
+      ]
+    },
+    {
+      "Sid": "TagOnlyAtCreation",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:CreateAction": [
+            "RunInstances",
+            "CreateSecurityGroup",
+            "AllocateAddress"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ManageOnlyStagingTaggedEc2",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StartInstances",
+        "ec2:StopInstances",
+        "ec2:TerminateInstances",
+        "ec2:AssociateAddress",
+        "ec2:ReleaseAddress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:DeleteSecurityGroup"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/cost-center": "flacronai-staging-qa"
+        }
+      }
+    },
+    {
+      "Sid": "AssociateEipToNetworkInterface",
+      "Effect": "Allow",
+      "Action": "ec2:AssociateAddress",
+      "Resource": "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:network-interface/*"
+    },
+    {
+      "Sid": "RunDeployCommandOnStagingInstanceOnly",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ssm:us-east-1::document/AWS-RunShellScript",
+        "arn:aws:ec2:us-east-1:<AWS_ACCOUNT_ID>:instance/*"
+      ],
+      "Condition": {
+        "StringEqualsIfExists": {
+          "ssm:resourceTag/cost-center": "flacronai-staging-qa"
+        }
+      }
+    },
+    {
+      "Sid": "StagingBuildBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketTagging",
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::flacronai-staging-build-<AWS_ACCOUNT_ID>",
+        "arn:aws:s3:::flacronai-staging-build-<AWS_ACCOUNT_ID>/*"
+      ]
+    },
+    {
+      "Sid": "StagingLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:DeleteLogGroup",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:<AWS_ACCOUNT_ID>:log-group:/flacronai/staging/backend*"
+    },
+    {
+      "Sid": "StagingSecretOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:TagResource"
+      ],
+      "Resource": "arn:aws:secretsmanager:us-east-1:<AWS_ACCOUNT_ID>:secret:flacronai/staging/app-*"
+    },
+    {
+      "Sid": "StagingBudgetOnly",
+      "Effect": "Allow",
+      "Action": [
+        "budgets:ViewBudget",
+        "budgets:ModifyBudget"
+      ],
+      "Resource": "arn:aws:budgets::<AWS_ACCOUNT_ID>:budget/flacronai-staging-qa"
+    },
+    {
+      "Sid": "PassOnlyTheStagingInstanceRoleToEC2",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/flacronai-staging-ec2",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

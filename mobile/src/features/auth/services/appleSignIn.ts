@@ -18,7 +18,7 @@
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import { OAuthProvider, signInWithCredential, type UserCredential } from 'firebase/auth';
+import { OAuthProvider, signInWithCredential, type AuthCredential, type UserCredential } from 'firebase/auth';
 
 import { getFirebaseAuth } from '@/services/firebase/client';
 
@@ -32,7 +32,18 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
   return AppleAuthentication.isAvailableAsync();
 }
 
+export type AppleCredentialOutcome = { status: 'success'; credential: AuthCredential } | { status: 'cancelled' };
+
 export async function signInWithApple(): Promise<AppleSignInOutcome> {
+  const outcome = await getAppleCredential();
+  if (outcome.status === 'cancelled') return outcome;
+  const credential = await signInWithCredential(getFirebaseAuth(), outcome.credential);
+  return { status: 'success', credential };
+}
+
+/** Phase 8: the Apple sheet + Firebase credential only (no sign-in) — reused to
+ * re-authenticate the CURRENT user before sensitive actions. */
+export async function getAppleCredential(): Promise<AppleCredentialOutcome> {
   if (Platform.OS !== 'ios') {
     throw new Error('Sign in with Apple is only available on iOS.');
   }
@@ -72,7 +83,5 @@ export async function signInWithApple(): Promise<AppleSignInOutcome> {
     idToken: appleCredential.identityToken,
     rawNonce,
   });
-
-  const credential = await signInWithCredential(getFirebaseAuth(), firebaseCredential);
-  return { status: 'success', credential };
+  return { status: 'success', credential: firebaseCredential };
 }

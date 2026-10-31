@@ -1,13 +1,13 @@
 /**
  * Reports list with offset pagination (`GET /reports` — see `reportsApi.list`'s own comment:
  * offset-based, not cursor-based), pull-to-refresh, "load more" on scroll, and an
- * offline-aware error state. One `status` filter is exposed (the dashboard's main use case);
- * more filters exist server-side but aren't needed for Phase 5's list screen.
+ * offline-aware error state. Takes a status string, or the web list's filter set (status, search, loss type,
+ * report type) — all applied server-side by `GET /reports`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { isOffline } from '@/services/api/offline';
-import { reportsApi, type Report } from '@/services/api/reports';
+import { reportsApi, type ListReportsParams, type Report } from '@/services/api/reports';
 import { ApiRequestError } from '@/types/api';
 
 const PAGE_LIMIT = 20;
@@ -31,7 +31,11 @@ function errorMessage(err: unknown): string {
   return 'We could not load your reports. Please try again.';
 }
 
-export function useReportsList(status?: string) {
+export type ReportsListFilter = Omit<ListReportsParams, 'page' | 'limit'>;
+
+export function useReportsList(filter?: string | ReportsListFilter) {
+  const params: ReportsListFilter = typeof filter === 'string' ? { status: filter } : (filter ?? {});
+  const key = JSON.stringify(params);
   const [state, setState] = useState<State>({
     reports: [],
     page: 1,
@@ -65,7 +69,7 @@ export function useReportsList(status?: string) {
       }
 
       try {
-        const result = await reportsApi.list({ page, limit: PAGE_LIMIT, status });
+        const result = await reportsApi.list({ page, limit: PAGE_LIMIT, ...(JSON.parse(key) as ReportsListFilter) });
         if (seq !== requestSeq.current) return;
         setState((s) => ({
           reports: mode === 'more' ? [...s.reports, ...result.data] : result.data,
@@ -82,13 +86,13 @@ export function useReportsList(status?: string) {
         setState((s) => ({ ...s, loading: false, refreshing: false, loadingMore: false, error: errorMessage(err) }));
       }
     },
-    [status]
+    [key]
   );
 
   useEffect(() => {
     load(1, 'initial');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [key]);
 
   const refresh = useCallback(() => load(1, 'refresh'), [load]);
   const loadMore = useCallback(() => {

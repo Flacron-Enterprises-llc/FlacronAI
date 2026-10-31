@@ -93,7 +93,30 @@ const {
   uploadBuffer,
   downloadBuffer,
   deleteObjects,
+  deletePrefix,
 } = require('../config/storage');
+
+// Mobile Phase 10: everything stored under the report's own Storage folder --
+// photos, thumbnails, originals AND supporting documents (`documents/`), which the
+// explicit path lists below never covered. Exports live per user
+// (users/{uid}/exports/) and are not linked to a report; they go with the account.
+// Wizard-staged photos live under the DRAFT's folder (users/{uid}/reports/{draftId}/),
+// so every folder referenced by the report's own photo paths is included (a draft is
+// claimed by exactly one report). Only folders inside the owner's reports/ tree.
+const deleteReportFolder = async (ownerUid, reportId, data = {}) => {
+  if (!ownerUid) return;
+  const base = `users/${ownerUid}/reports/`;
+  const folders = new Set([`${base}${reportId}/`]);
+  const paths = [
+    ...(data.imagePaths || []),
+    ...(data.photos || []).flatMap((p) => [p.objectPath, p.thumbnailPath, p.originalPath]),
+  ];
+  for (const p of paths) {
+    const m = typeof p === 'string' && p.startsWith(base) && p.slice(base.length).match(/^([^/]+)\//);
+    if (m) folders.add(`${base}${m[1]}/`);
+  }
+  for (const f of folders) await deletePrefix(f);
+};
 const {
   sanitizeReportContent,
   sanitizeInstructions,
@@ -106,6 +129,7 @@ const { isAllowedStoredImage, PHOTO_TYPES, PDF_EMBEDDABLE_TYPES } = require('../
 const { isValidDocumentBuffer } = require('../utils/documentValidation');
 const { processPhotoBatch } = require('../utils/photoBatchProcessor');
 const { appendStagedPhoto, claimDraftPhotos, removeStagedPhoto } = require('../utils/photoDraftStaging');
+const DRAFT_ALREADY_USED_MESSAGE = 'This photo upload session was already used to create a report. Start a new report to upload more photos.';
 const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
 const photoJobService = require('../services/photoJobService');
 const { aiLimiter, pricingLimiter, addressLookupLimiter, propertyIntelligenceLimiter } = require('../middleware/rateLimiters');
@@ -451,6 +475,7 @@ router.post('/archived/delete-all', authenticateAny, reportsWrite, async (req, r
         ...(data.photos || []).map((p) => p.originalPath).filter(Boolean),
       ];
       if (paths.length) await deleteObjects(paths);
+      await deleteReportFolder(data.userId, d.id, data);
       // Phase 19: reportShares is top-level, not a subcollection -- recursiveDelete
       // below only cleans up reports/{id}/versions and reports/{id}/comments.
       await deleteReportShares(db, d.id);
@@ -640,6 +665,9 @@ router.post(
       if (doc.exists && doc.data().userId !== req.user.uid) {
         return res.status(403).json({ success: false, error: 'Not your draft', code: 'FORBIDDEN' });
       }
+      if (doc.exists && doc.data().claimed) {
+        return res.status(409).json({ success: false, error: DRAFT_ALREADY_USED_MESSAGE, code: 'DRAFT_ALREADY_USED' });
+      }
       const existingPhotos = doc.exists ? doc.data().photos || [] : [];
 
       // Phase 44: the cap is now the caller's OWN plan's effective photo
@@ -682,6 +710,9 @@ router.post(
     } catch (err) {
       if (err.code === 'MAX_PHOTOS') {
         return res.status(400).json({ success: false, error: err.message, code: 'MAX_PHOTOS' });
+      }
+      if (err.code === 'DRAFT_ALREADY_USED') {
+        return res.status(409).json({ success: false, error: DRAFT_ALREADY_USED_MESSAGE, code: 'DRAFT_ALREADY_USED' });
       }
       return res.status(500).json({ success: false, error: 'Photo upload failed', code: 'STAGE_ERROR' });
     }
@@ -1190,10 +1221,14 @@ router.post(
             code: 'DUPLICATE_GENERATE_REQUEST',
           });
         }
+        // Mobile Phase 10: the claimed draft is KEPT (not deleted) -- deleting it
+        // reopened the window this claim closes: a resubmit after the delete found no
+        // draft and silently created a second, photo-less report (another report
+        // credit). Released below if this request fails before the report exists.
+        res.locals.claimedDraftId = draftId;
         photoRecords = claim.photos;
         const stagedCandidates = photoRecords.filter((p) => p.status === 'uploaded' && p.objectPath);
         analyzableImages = await downloadPhotosForAnalysis(stagedCandidates, downloadBuffer);
-        db.collection('reportDrafts').doc(draftId).delete().catch(() => {});
       }
 
       if (req.files?.images?.length > 0) {
@@ -1448,6 +1483,13 @@ router.post(
       };
 
       await db.collection('reports').doc(reportId).set(reportDoc);
+      if (draftId) {
+        // Report exists: keep the claimed marker (blocks resubmits), drop the staging list.
+        res.locals.claimedDraftId = null;
+        db.collection('reportDrafts').doc(draftId)
+          .update({ photos: [], reportId, updatedAt: new Date().toISOString() })
+          .catch(() => {});
+      }
 
       // Phase 7: create the job records the analysis-status endpoint reads,
       // then respond to the client immediately -- the client never waits for
@@ -1475,6 +1517,12 @@ router.post(
       return undefined;
     } catch (err) {
       console.error('Report generation error:', err);
+      // No report was created: release the draft so a retry still has its photos.
+      if (res.locals.claimedDraftId) {
+        await getFirestore().collection('reportDrafts').doc(res.locals.claimedDraftId)
+          .update({ claimed: false, claimedAt: null })
+          .catch(() => {});
+      }
       return res
         .status(500)
         .json({
@@ -3562,8 +3610,11 @@ router.delete('/:id', authenticateAny, reportsWrite, async (req, res) => {
       // Phase 19: reportShares is a top-level collection (not a subcollection
       // of this doc, see its own header comment), so a plain ref.delete()
       // below would never clean it up -- do it explicitly.
+      await deleteReportFolder(data.userId, req.params.id, data);
       await deleteReportShares(db, req.params.id);
-      await ref.delete();
+      // Mobile Phase 10: recursive, like the bulk path -- a plain ref.delete() left the
+      // versions/ and comments/ subcollections (full report content) orphaned.
+      await db.recursiveDelete(ref);
       recordAuditLog({
         actorUid: req.user.uid,
         actorEmail: req.user.email,

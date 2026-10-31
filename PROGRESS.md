@@ -186,6 +186,80 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-31] — Combined web/mobile PR handoff
+- Verified the clean `integration/web-mobile-combined` worktree and fetched origin without rewriting history. The
+  published source is `origin/qa/web-mobile-combined`; it contains current `origin/main` (`0e98bed`), PR #30's
+  remote head (`eda1d76`) through merge `9f15606`, all later mobile-parity commits, and the final QA fixes at
+  `32bc322`. No newer main or combined-branch commit existed, so no additional merge/conflict resolution was needed.
+- Confirmed the exact `32bc322` GitHub Actions run `41033890747` succeeded and distributed QA APK `1.1.0 (1007)`
+  through Firebase App Distribution. The workflow verified the company signature, staging-only configuration, and
+  absence of embedded secrets. No APK was rebuilt or redistributed during this handoff.
+- Final validation, run sequentially: backend 1,435 pass / 7 skip with one Node worker deserialization error in the
+  aggregate run; the affected `photo-addon-webhook.test.js` then passed 14/14 alone; backend lint 0 errors / 63
+  warnings. Frontend 360/360 with documented dummy Firebase env, lint 0 errors / 14 warnings, production build
+  succeeds (existing chunk/import warnings). Mobile 549/549, TypeScript clean, Expo lint clean. `git diff --check`
+  clean.
+- Secret/release scan: no high-confidence credential values in the outgoing additions/history; no APK, signing key,
+  service-account file, private key, or real `.env` is tracked. Local
+  `backend/deploy/staging/ACCESS_REQUEST.md` remains ignored/untracked because it contains personal access details.
+- PR #30 remains open and untouched. No merge, auto-merge, production deployment, cloud/Stripe change, or outbound
+  message was performed. A later merge to `main` can trigger the production workflows documented in the combined PR.
+
+### [2026-10-30] — Mobile app aligned with the web product (parity pass)
+- Local branch `integration/web-mobile-combined`, baseline `b3a2176`; recovery branch `checkpoint/pre-mobile-parity-2026-10-30`. Commits `fec4a3a`, `c1ce230`, `cbf4d00`, `1a6ee0f` (+ this docs commit). Not pushed, no PR, nothing deployed or distributed. PR #30 is already in history (merge `9f15606`); not re-merged.
+- Full checklist, evidence and follow-ups: `mobile/docs/WEB_MOBILE_PARITY.md`.
+- Mobile now follows the web dashboard: tabs Dashboard / My Reports / Generate / More; web home view (usage card, four metrics, recent reports, Shared With You, FLACRON ENGINE panel, Starter banner, notification bell); notification inbox; Analytics; Usage & Billing with invoices; saved templates; product tour shared with the web (`POST /users/product-tour`); formatted report body; live analysis progress; draft editing; web export options with plan-locked formats; share links; owner menu (duplicate/archive/restore/delete); full photo review (edit/note/area/include); comment replies; report search + filters; Settings sections with email preferences, login history, data export, delete archived; extra wizard fields (inspection time, inspector, contact, Recommendations).
+- Bug fixed: excluded photos could never be re-included on mobile (`review.excluded` vs the backend's `review.status`).
+- Web: signed-in routes set `noindex, nofollow` while mounted; Vitest guards robots.txt coverage of every protected route.
+- No backend, billing (Stripe centralization, ledger, app_id checks, webhooks), store or cloud/deploy file changed. Added dependency: `@expo/vector-icons@^15.0.2` (SDK-57 version, JS + font only).
+- Tests: mobile tsc/lint clean, Jest 535/535, Android + iOS bundle export OK; web Vitest 356/356 (with each file's documented env), `vite build` OK. **No emulator/device testing** — needs the next QA APK (approval required to push and build).
+
+### [2026-10-26] — QA APK: sign in with website accounts (QA federation)
+- Cause of the client's "Invalid email or password": the QA APK (release `03hc2qep8422o`, commit `c13e632`) signs in only to staging Firebase, where `admin@flacronenterprises.com` does not exist. It was not a wrong password. No tester allowlist exists; App Distribution only controls downloads.
+- Implemented the approved design (`mobile/docs/QA_LOGIN_WITH_PRODUCTION_ACCOUNTS.md`): the app signs in to the production project for identity only, and `POST /auth/federated/exchange` on the staging API verifies the token (signature, issuer, audience, expiry, verified email). Production checks MFA and revocation through its own API using the user's token. The app gets a 1-hour staging session for a passwordless staging copy of the account. No production credential is in staging. Profiles, reports, files, billing, notifications and roles stay in staging, and production admin rights are never copied. QA deletion removes only the staging copy. QA password, MFA and reset changes are blocked and point to flacronai.com.
+- Google sign-in is **disabled** in the federated QA build. Firebase would create a production account for an unknown Google user, and preventing that needs a production change. The federated Google path (including the create-then-delete rollback) was removed, and the QA guard rejects any Google client ID.
+- Staging API deployed: revision `00014-x9g` (rollback `00012-fzl`). On Windows Git Bash, run `deploy-cloudrun.sh` with `MSYS_NO_PATHCONV=1 GCLOUD=<path>/gcloud.cmd`; otherwise `/secrets/app.env` is rewritten into a Windows path and the container exits 9.
+- QA guards now enforce staging data settings plus the pinned production identity values. QA builds are versioned `1.1.0` with build number `1000 + run`. The workflow builds from `qa/web-mobile-combined`, and `qa/android-qa-apk` stays allowed for rollback.
+- Tests: backend 1437/0; mobile 527/0 plus type check and lint; live staging-only checks 8/8.
+- 2026-10-26 (later): the owner authorized the QA infrastructure changes. Applied: `qa-android` environment branch rule `qa/web-mobile-combined` (existing rule kept), and the staging Workload Identity condition now allows the repo plus environment `qa-android` plus exactly the two QA branch refs (the environment claim was verified from the last successful run). Still pending: a live check with a real production sign-in (owner-assisted test account) and physical-device checks.
+- QA APK built and distributed: GitHub run `40281307360` from commit `48e0dd3` on `qa/web-mobile-combined`. App Distribution release `2qhk8bu5uupmg`: version `1.1.0`, build `1006`, APK SHA-256 `b9ff7da4…819f9f`, company signing certificate (SHA-256 `87974bb7…`). Independently re-verified after download: the embedded config has staging data and `flacronai-c8dab` identity only, and the bundle contains no production API, storage, app or OAuth IDs. Distributed to `qa-testers` (1 tester). The release notes were corrected after upload to say Google is unavailable. The previous release `03hc2qep8422o` is kept for rollback.
+
+### [2026-10-26] — Web + mobile combined into one local workspace
+- New LOCAL branch `integration/web-mobile-combined` (see CLAUDE.md §0a): `origin/main` `0e98bed` + `qa/android-qa-apk` `8d5872a` (PR #30 head `eda1d76` + the 2026-10-19 handover commit). Not pushed; PR #30 untouched.
+- Conflicts resolved per hunk: `backend/routes/payment.js` (main's app_id/ledger/Growth Engine/refund-dispute attribution + mobile's entitlement sources, deletion guards, out-of-order protection ported into main's merged `customer.subscription.created/updated` handler), `backend/test/helpers/fakeFirestore.js` (union), `frontend/src/pages/Settings.jsx` (both imports).
+- Integration fixes: deletion-time Stripe cancellation now skips objects tagged with another app's `app_id` and reads `internal_user_id` (+ new test); duplicate `create` in fakeFirestore removed; mobile webhook test fixtures tagged `app_id: flacron-ai` + price/customer lookups; one mobile string aligned to the web's FLACRON ENGINE wording.
+- `mobile/POLICY_CORRECTIONS_PROPOSED.md` (proposal, NOT applied) committed; `backend/deploy/staging/ACCESS_REQUEST.md` kept local-only (personal contact details; excluded via `.git/info/exclude`).
+- QA: backend 1425 pass / 0 fail / 7 skipped, lint 0 errors; frontend 353/353 (env notes in CLAUDE.md §0a), lint 0 errors, build OK; mobile jest 512/512, tsc OK, lint OK, Android JS export OK.
+- Remaining: re-check the staging Stripe sandbox against the `app_id` standard; mobile device QA items from the 2026-10-19 handover; any distributed APK is unchanged until a separately approved rebuild.
+
+### [2026-10-12] — QA Android push enabled on staging
+- Staging-only FCM sender SA (`roles/firebasecloudmessaging.admin`, staging project only) → FCM V1 key in EAS (local key deleted). Staging push sending on (secret flag; `deploy-cloudrun.sh` no longer hard-codes it off — that override was why the first enable didn't take).
+- Staging API push test 16/16 (registration, binding, revocation, account switch, cross-account unregister no-op). Real device delivery still pending. QA APK rebuilt with staging `google-services.json`.
+- Google sign-in still needs the console steps (no browser tool in this session); store access unverified. See `mobile/STORE_RELEASE_READINESS.md` §10.4.
+
+### [2026-10-12] — QA push/Google/store audit; FCM config for the QA build
+- Audited access + credentials (details: `mobile/STORE_RELEASE_READINESS.md` §10.4). Company cert SHA-1/256 already on the staging Firebase Android app; EAS has no FCM V1 key, no Play/ASC keys, no iOS credentials.
+- QA build can now embed the staging `google-services.json` (CI secret `GOOGLE_SERVICES_JSON_QA_B64`, set); `qaProfileGuard` rejects non-staging files and non-staging Google web client IDs (9 guard tests pass; `expo config` verified with the real staging file).
+- Outstanding: staging FCM sender SA + EAS upload (automated session not permitted), Google consent screen/OAuth clients (console-only), store access + annual-price decision. No production change, no build run yet.
+
+### [2026-10-12] — Staging AI verified (workspace header)
+- Client key is a personal key not scoped to a workspace: per the official auth docs it needs `anthropic-workspace-id`. `backend/config/anthropic.js` now sends it from `ANTHROPIC_WORKSPACE_ID` (staging = org Default workspace); test added.
+- Staging (API-level): real AI draft → approval (signature enforced) → finalized → clean PDF download; real instance kill mid-generation → retryable, concurrent retry 409, only unfinished work redone. Estimated AI spend ≈ $1 (4 single-photo Opus 4.8 runs; usage report not yet populated).
+
+### [2026-10-12] — QA handover: secret-handling fix, Stripe sandbox billing, staging recovery checks, AWS staging removed
+- **Fixed:** `set-staging-secret.js` allowlists field names, refuses secrets as CLI arguments, never prints unknown names/values (a mistyped argument had printed the Stripe sandbox key); malformed field removed from the AWS secret; 9 regression tests (`backend/test/staging-secret-script.test.js`). Added `staging-gcp/sync-secret.sh` (AWS → Secret Manager, redeploy, retire old versions).
+- **Billing:** FlacronAI-tagged sandbox prices (Professional $39.99, Agency $99.99 monthly — match `frontend/src/data/plans.js`) wired into staging; webhook repointed to Cloud Run.
+- **QA (API-level, disposable accounts):** isolation, photo staging, restart recovery (stale lease + concurrent retry 409), Stripe checkout/webhook signature/entitlement/idempotency, deletion cancels subscription, deletion sweeper recovery — all passed. AI draft/approval/PDF **blocked** (Anthropic key is user-scoped, needs a workspace-scoped key).
+- **Release:** APK `ed25ab8` reused (only backend/tooling/docs changed since; full mobile tree verified); release notes updated; first authorized tester invited via group `qa-testers`.
+- **AWS:** EC2 instance, EBS volume, EIP, security group, build bucket, log group deleted; role policies removed. Retained: secret `flacronai/staging/app`, empty IAM role + instance profile (need iam:RemoveRoleFromInstanceProfile).
+- **Open:** rotate the exposed Stripe sandbox key (shared sandbox), workspace-scoped Anthropic key, device QA.
+
+### [2026-10-12] — Mobile QA: Android QA APK via GitHub Actions + Firebase App Distribution; Cloud Run staging
+- **What:** committed the full uncommitted mobile phases 6–10 work (push, store billing, account management/deletion, legal, local data lifecycle) + backend support on branch `qa/android-qa-apk`; added `.github/workflows/android-qa-apk.yml` (signed standalone APK, staging-only guards, App Distribution upload via keyless WIF; no public artifact); moved QA staging from EC2 to Cloud Run (`backend/deploy/staging-gcp/`, min 0 / max 1 instance); EC2 staging stopped, not deleted.
+- **Fixed:** photos stuck "analyzing" when no vision provider is configured (`aiService.analyzeImages`, test added); `set-staging-secret`'s presence-only check replaced by format validation in `build-env.js`; mobile ESLint globals for build tooling; AWS IDs/personal emails redacted from public docs/scripts.
+- **QA:** backend 1,386 pass / 0 fail; mobile tsc clean, Jest 509/509, ESLint clean; frontend Vitest 330/330. Staging API checks (disposable accounts): auth, isolation, photo staging, background generation (graceful failure), account deletion incl. Storage cleanup.
+- **Open:** real `ANTHROPIC_API_KEY` + `STRIPE_SECRET_KEY` sandbox values missing from the staging secret (stored as 1-char placeholders) → AI generation/approval/PDF and Stripe untested on staging; tester emails needed for App Distribution; device QA not done. Details: `mobile/STORE_RELEASE_READINESS.md` §10.3.
+
 ### [2026-08-24] — Phase 39 (PHASES.md): Coverage Determination Letter (Document Type)
 - **Status:** DONE, per explicit instruction ("implement Phase 39 only") using the approved authoring model the instruction itself specified: an authorized licensed adjuster enters every coverage decision through a structured form; FlacronAI performs **zero AI drafting** of approval/denial, policy basis, rights/next-steps, or payment content — it only validates, calculates (payment math only, deterministically), formats, stores, and exports. This resolves PHASES.md's own previously-blocking "which authoring model?" client decision (option (a) of the two offered). Not committed/pushed per standing instruction.
 - **Why this phase carried the most scrutiny of the nine document-type phases:** PHASES.md flagged this as "the one genuine Golden-Rule-2 violation risk in this whole nine-phase set" because, unlike every other sample, this letter's entire purpose IS a coverage/payment determination — the exact category of decision Golden Rule #2 says AI must never make. The mitigation is structural, not just prompt wording: the AI is **never called anywhere in either new module or route** (no `generateReport`/`generateWithFallback`/Claude/watsonx import at all), so there is nothing to jailbreak or drift — confirmed by grep and by the live QA script never touching the Anthropic-configured pipeline.

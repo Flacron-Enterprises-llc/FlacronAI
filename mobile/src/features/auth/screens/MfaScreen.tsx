@@ -25,7 +25,7 @@ import { FormError } from '../components/FormError';
  */
 export function MfaScreen() {
   const theme = useTheme();
-  const { markMfaVerified, logout } = useAuth();
+  const { markMfaVerified, logout, federatedMfaPending, completeFederatedMfa } = useAuth();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,8 +38,13 @@ export function MfaScreen() {
     setLoading(true);
     setError(null);
     try {
-      const result = await authApi.mfaVerify(code);
-      markMfaVerified(result.mfaAssertion);
+      if (federatedMfaPending) {
+        // QA federation: the code is checked by your FlacronAI website account.
+        await completeFederatedMfa(code);
+      } else {
+        const result = await authApi.mfaVerify(code);
+        markMfaVerified(result.mfaAssertion);
+      }
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {

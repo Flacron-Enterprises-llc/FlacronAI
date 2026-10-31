@@ -23,6 +23,11 @@ describe('computeAuthStatus — the single source of truth behind every route gu
     expect(computeAuthStatus({ ...base, hasFirebaseUser: false, userProfile: null })).toBe('signed-out');
   });
 
+  it('QA federation: production sign-in accepted but its MFA code owed -> "needs-mfa" before any staging session', () => {
+    expect(computeAuthStatus({ ...base, hasFirebaseUser: false, userProfile: null, federatedMfaPending: true })).toBe('needs-mfa');
+    expect(computeAuthStatus({ ...base, loading: true, hasFirebaseUser: false, federatedMfaPending: true })).toBe('loading');
+  });
+
   it('stays "loading" (not "profile-unavailable") while a blocking profile fetch is in flight right after sign-in', () => {
     expect(computeAuthStatus({ ...base, profileLoading: true, userProfile: null, profileError: null })).toBe('loading');
   });

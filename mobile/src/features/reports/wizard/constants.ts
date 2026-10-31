@@ -21,4 +21,4 @@ export const WEATHER_CONDITIONS = [
   'Other',
 ] as const;
 export const OCCUPANCY_STATUSES = ['Occupied', 'Vacant', 'Under Renovation', 'Unknown'] as const;
-export const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Reinspection'] as const;
+export const REPORT_TYPES = ['Initial', 'Supplemental', 'Final', 'Re-Inspection'] as const;

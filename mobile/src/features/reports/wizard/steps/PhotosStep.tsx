@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -5,15 +6,23 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { useImageCapture } from '@/features/photos/hooks/useImageCapture';
+import type { PhotoCapacity } from '@/services/api/reports';
+import type { PickedAsset } from '@/features/photos/utils/fileHelpers';
 import { WizardPhotoTile } from '../components/WizardPhotoTile';
+import { isRetryablePhoto } from '../wizardReducer';
 import type { WizardPhoto } from '../wizardTypes';
 
-const MAX_PHOTOS = 100;
+/** Picker batch cap used only until the plan's real capacity has loaded (or when it's
+ * unlimited) — the staging route enforces the authoritative per-plan limit itself. */
+const PICKER_BATCH_FALLBACK = 100;
 
 interface PhotosStepProps {
+  footer?: React.ReactNode;
   draftId: string;
   photos: WizardPhoto[];
-  onAdd: (assets: { uri: string; fileName?: string | null; mimeType?: string }[]) => Promise<void>;
+  capacity: PhotoCapacity | null;
+  readyCount: number;
+  onAdd: (assets: PickedAsset[]) => Promise<void>;
   onRemove: (photo: WizardPhoto) => Promise<void>;
   onRetry: (photo: WizardPhoto) => Promise<void>;
 }
@@ -29,17 +38,22 @@ function showPermissionDeniedAlert(kind: 'camera' | 'photo library') {
   );
 }
 
-export function PhotosStep({ draftId, photos, onAdd, onRemove, onRetry }: PhotosStepProps) {
+export function PhotosStep({ draftId, photos, capacity, readyCount, onAdd, onRemove, onRetry, footer }: PhotosStepProps) {
   const theme = useTheme();
   const { busy, captureFromCamera, pickFromLibrary } = useImageCapture();
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const remaining = Math.max(0, MAX_PHOTOS - photos.length);
+  const limit = capacity && !capacity.unlimited ? capacity.effectiveCapacity : null;
+  const inFlight = photos.filter((p) => p.status === 'uploading').length;
+  const remaining = limit === null ? PICKER_BATCH_FALLBACK : Math.max(0, limit - readyCount - inFlight);
+  const limitMessage =
+    limit === null ? null : `Your plan allows ${limit} photo${limit === 1 ? '' : 's'} per report. Remove a photo to add another.`;
+  const notReady = photos.filter((p) => p.status === 'failed' || p.status === 'duplicate');
 
   const handleCamera = async () => {
     setLocalError(null);
     if (remaining <= 0) {
-      setLocalError(`Maximum of ${MAX_PHOTOS} photos reached. Remove a photo to add another.`);
+      setLocalError(limitMessage);
       return;
     }
     const outcome = await captureFromCamera();
@@ -52,7 +66,7 @@ export function PhotosStep({ draftId, photos, onAdd, onRemove, onRetry }: Photos
   const handleLibrary = async () => {
     setLocalError(null);
     if (remaining <= 0) {
-      setLocalError(`Maximum of ${MAX_PHOTOS} photos reached. Remove a photo to add another.`);
+      setLocalError(limitMessage);
       return;
     }
     const outcome = await pickFromLibrary(remaining);
@@ -84,8 +98,18 @@ export function PhotosStep({ draftId, photos, onAdd, onRemove, onRetry }: Photos
       )}
 
       <ThemedText variant="caption" color="muted" style={styles.count}>
-        {photos.length} / {MAX_PHOTOS} photos
+        {limit === null
+          ? `${readyCount} photo${readyCount === 1 ? '' : 's'} uploaded${capacity?.unlimited ? ' (no plan limit)' : ''}`
+          : `${readyCount} of ${limit} photos uploaded (your plan limit)`}
+        {inFlight > 0 ? ` · ${inFlight} uploading…` : ''}
       </ThemedText>
+
+      {notReady.length > 0 && (
+        <ThemedText variant="caption" style={{ color: theme.colors.warning, marginBottom: 8 }}>
+          {notReady.length} photo{notReady.length === 1 ? '' : 's'} won’t be included in the report. Tap a photo marked Failed to see why
+          {notReady.some(isRetryablePhoto) ? ', or retry it' : ''}.
+        </ThemedText>
+      )}
 
       <View style={styles.grid}>
         {photos.map((photo) => (
@@ -104,6 +128,7 @@ export function PhotosStep({ draftId, photos, onAdd, onRemove, onRetry }: Photos
           No photos yet — a report needs at least one to generate.
         </ThemedText>
       )}
+      {footer}
     </ScrollView>
   );
 }

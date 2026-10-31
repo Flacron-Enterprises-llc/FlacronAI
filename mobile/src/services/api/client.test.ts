@@ -7,8 +7,10 @@
 import { apiRequest, apiRequestBinary, buildQueryString, subscribeToMfaRequired } from './client';
 import { isOffline } from './offline';
 
+const mockAppEnv = { value: 'production' };
 jest.mock('@/config/env', () => ({
   getApiBaseUrl: () => 'https://api.test.example/api/v1',
+  getAppEnv: () => mockAppEnv.value,
 }));
 
 jest.mock('../firebase/client', () => ({
@@ -177,6 +179,21 @@ describe('apiRequest — offline handling', () => {
     await expect(apiRequest('/reports')).resolves.toEqual({ success: true });
   });
 
+  it('development builds log the platform network-error reason; production builds stay silent', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    (globalThis.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await expect(apiRequest('/reports/photos/stage', { method: 'POST' })).rejects.toMatchObject({ category: 'offline' });
+    expect(warn).not.toHaveBeenCalled();
+    mockAppEnv.value = 'development';
+    try {
+      await expect(apiRequest('/reports/photos/stage', { method: 'POST' })).rejects.toMatchObject({ category: 'offline' });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('POST /reports/photos/stage: Network request failed'));
+    } finally {
+      mockAppEnv.value = 'production';
+      warn.mockRestore();
+    }
+  });
+
   it('classifies a genuine fetch failure as offline even when connectivity looked fine', async () => {
     (globalThis.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
     await expect(apiRequest('/reports/generate', { method: 'POST' })).rejects.toMatchObject({
@@ -297,6 +314,13 @@ describe('apiRequest — error classification', () => {
     [403, 'TEAM_PERMISSION_DENIED', 'permission'],
     [403, 'TEAM_ACCESS_SUSPENDED', 'auth_fatal'],
     [401, 'TOKEN_REVOKED', 'auth_fatal'],
+    // A 403 is a per-action authorization decision unless its code is a known auth failure —
+    // never a reason to treat the whole session as dead.
+    [403, 'FEATURE_NOT_IN_PLAN', 'permission'],
+    [403, 'RECENT_LOGIN_REQUIRED', 'permission'],
+    [403, 'NOT_ASSIGNED_REVIEWER', 'permission'],
+    [403, 'SOME_FUTURE_403_CODE', 'permission'],
+    [401, 'SOME_FUTURE_401_CODE', 'auth_fatal'],
     [500, 'INTERNAL_ERROR', 'transient_server'],
   ])('classifies HTTP %d code %s as category %s', async (status, code, category) => {
     (globalThis.fetch as jest.Mock).mockResolvedValue(jsonResponse(status, { success: false, error: 'x', code }));

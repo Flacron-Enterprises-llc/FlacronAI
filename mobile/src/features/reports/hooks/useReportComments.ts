@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useActiveId } from './useActiveId';
+
 import { reportsApi, type ReportComment } from '@/services/api/reports';
 import { ApiRequestError } from '@/types/api';
 
 interface State {
   comments: ReportComment[];
   loading: boolean;
+  /** Load failure — nothing to show. */
   error: string | null;
+  /** A post/resolve/reopen failed; the loaded comments stay on screen. */
+  actionError: string | null;
   posting: boolean;
 }
 
@@ -16,17 +21,20 @@ function errorMessage(err: unknown): string {
 }
 
 export function useReportComments(reportId: string) {
-  const [state, setState] = useState<State>({ comments: [], loading: true, error: null, posting: false });
+  const [state, setState] = useState<State>({ comments: [], loading: true, error: null, actionError: null, posting: false });
+  const activeId = useActiveId(reportId);
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const { comments } = await reportsApi.getComments(reportId);
-      setState({ comments, loading: false, error: null, posting: false });
+      if (activeId.current !== reportId) return;
+      setState({ comments, loading: false, error: null, actionError: null, posting: false });
     } catch (err) {
+      if (activeId.current !== reportId) return;
       setState((s) => ({ ...s, loading: false, error: errorMessage(err) }));
     }
-  }, [reportId]);
+  }, [reportId, activeId]);
 
   useEffect(() => {
     load();
@@ -36,17 +44,18 @@ export function useReportComments(reportId: string) {
     async (body: string, parentId?: string): Promise<boolean> => {
       const trimmed = body.trim();
       if (!trimmed) return false;
-      setState((s) => ({ ...s, posting: true, error: null }));
+      setState((s) => ({ ...s, posting: true, actionError: null }));
       try {
         const { comment } = await reportsApi.addComment(reportId, trimmed, parentId ? { parentId } : {});
+        if (activeId.current !== reportId) return true;
         setState((s) => ({ ...s, comments: [...s.comments, comment], posting: false }));
         return true;
       } catch (err) {
-        setState((s) => ({ ...s, posting: false, error: errorMessage(err) }));
+        setState((s) => ({ ...s, posting: false, actionError: errorMessage(err) }));
         return false;
       }
     },
-    [reportId]
+    [reportId, activeId]
   );
 
   const setResolved = useCallback(
@@ -55,6 +64,7 @@ export function useReportComments(reportId: string) {
       // idempotent, so a failed attempt is safe to just roll back visually.
       setState((s) => ({
         ...s,
+        actionError: null,
         comments: s.comments.map((c) => (c.id === commentId ? { ...c, resolved } : c)),
       }));
       try {
@@ -64,12 +74,14 @@ export function useReportComments(reportId: string) {
         setState((s) => ({
           ...s,
           comments: s.comments.map((c) => (c.id === commentId ? { ...c, resolved: !resolved } : c)),
-          error: errorMessage(err),
+          actionError: errorMessage(err),
         }));
       }
     },
     [reportId]
   );
 
-  return { ...state, retry: load, addComment, setResolved };
+  const clearActionError = useCallback(() => setState((s) => ({ ...s, actionError: null })), []);
+
+  return { ...state, retry: load, addComment, setResolved, clearActionError };
 }

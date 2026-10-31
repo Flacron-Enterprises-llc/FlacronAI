@@ -354,7 +354,10 @@ export const usersAPI = {
   revokeApiKey: (keyId) => api.delete(`/users/api-keys/${keyId}`),
   getKeyUsage: (keyId) => api.get(`/users/api-keys/${keyId}/usage`),
   getApiUsage: () => api.get('/users/api-usage'),
-  deleteAccount: (password) => api.delete('/users/account', { data: { password } }),
+  // `{ password }` (email accounts) or `{ confirmation: 'DELETE' }` after a fresh
+  // Google/Apple re-sign-in; a bare string is still treated as the password.
+  deleteAccount: (body) =>
+    api.delete('/users/account', { data: typeof body === 'string' ? { password: body } : body }),
   recordRegistrationConsent: (policyVersion) =>
     api.post('/users/consent/registration', { policyVersion }),
   getLoginHistory: (params) => api.get('/users/login-history', { params }),
