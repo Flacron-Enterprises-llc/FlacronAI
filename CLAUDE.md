@@ -25,7 +25,10 @@ There are 4 files. Read them in this order at the start of a session:
   `integration/web-mobile-combined` = latest `origin/main` (web, `0e98bed`) + `qa/android-qa-apk` (mobile, `8d5872a`).
   It contains `backend/`, `frontend/` AND `mobile/`. Do not start new work in the other worktrees; they (and the backup
   `D:\Flacron2\FlacronAI-backup-2026-10-26`) are kept only for recovery.
-- The branch is LOCAL ONLY (not pushed, no PR). PR #30 is unchanged. Pushing, a PR or a merge needs explicit approval.
+- The combined history is published at `origin/qa/web-mobile-combined` for one integration PR targeting `main`.
+  It includes PR #30's head through merge commit `9f15606` plus the later web/mobile parity and QA fixes. PR #30
+  remains open and unchanged; do not merge or close it as part of the combined review. Never merge or enable
+  auto-merge without separate approval.
 - Private config is NOT in Git: copy `backend/.env`, `frontend/.env`, `mobile/.env.local` from the backup's `private/`
   folder only after checking them against the current `.env.example` files (main added new Stripe/app_id + deploy vars).
 - Local runs: set `VITE_FCGE_DISABLED=true` so the Growth Engine sends nothing (its own unit tests need it unset).

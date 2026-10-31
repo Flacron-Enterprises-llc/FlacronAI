@@ -186,6 +186,25 @@
 
 ## Changelog (newest on top)
 
+### [2026-10-31] — Combined web/mobile PR handoff
+- Verified the clean `integration/web-mobile-combined` worktree and fetched origin without rewriting history. The
+  published source is `origin/qa/web-mobile-combined`; it contains current `origin/main` (`0e98bed`), PR #30's
+  remote head (`eda1d76`) through merge `9f15606`, all later mobile-parity commits, and the final QA fixes at
+  `32bc322`. No newer main or combined-branch commit existed, so no additional merge/conflict resolution was needed.
+- Confirmed the exact `32bc322` GitHub Actions run `41033890747` succeeded and distributed QA APK `1.1.0 (1007)`
+  through Firebase App Distribution. The workflow verified the company signature, staging-only configuration, and
+  absence of embedded secrets. No APK was rebuilt or redistributed during this handoff.
+- Final validation, run sequentially: backend 1,435 pass / 7 skip with one Node worker deserialization error in the
+  aggregate run; the affected `photo-addon-webhook.test.js` then passed 14/14 alone; backend lint 0 errors / 63
+  warnings. Frontend 360/360 with documented dummy Firebase env, lint 0 errors / 14 warnings, production build
+  succeeds (existing chunk/import warnings). Mobile 549/549, TypeScript clean, Expo lint clean. `git diff --check`
+  clean.
+- Secret/release scan: no high-confidence credential values in the outgoing additions/history; no APK, signing key,
+  service-account file, private key, or real `.env` is tracked. Local
+  `backend/deploy/staging/ACCESS_REQUEST.md` remains ignored/untracked because it contains personal access details.
+- PR #30 remains open and untouched. No merge, auto-merge, production deployment, cloud/Stripe change, or outbound
+  message was performed. A later merge to `main` can trigger the production workflows documented in the combined PR.
+
 ### [2026-10-30] — Mobile app aligned with the web product (parity pass)
 - Local branch `integration/web-mobile-combined`, baseline `b3a2176`; recovery branch `checkpoint/pre-mobile-parity-2026-10-30`. Commits `fec4a3a`, `c1ce230`, `cbf4d00`, `1a6ee0f` (+ this docs commit). Not pushed, no PR, nothing deployed or distributed. PR #30 is already in history (merge `9f15606`); not re-merged.
 - Full checklist, evidence and follow-ups: `mobile/docs/WEB_MOBILE_PARITY.md`.
