@@ -1,9 +1,11 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { ThemedText } from '@/components/ThemedText';
+import { LossPill } from '@/components/brand/Fields';
+import { ScalePressable } from '@/components/brand/ScalePressable';
 import { Icon } from '@/components/ui/Icon';
-import { useTheme } from '@/theme';
-import type { Report } from '@/services/api/reports';
+import { AuthenticatedThumb } from '@/features/photos/components/AuthenticatedThumb';
+import { reportsApi, type Report } from '@/services/api/reports';
+import { brand, shadows } from '@/theme/brand';
 import { StatusBadge } from './StatusBadge';
 
 function formatDate(iso: string): string {
@@ -14,6 +16,13 @@ function formatDate(iso: string): string {
   }
 }
 
+/** First photo that was actually stored (thumbnail-capable) — the card's cover image. */
+function coverPhotoId(report: Report): string | null {
+  const photo = (report.photos ?? []).find((p) => p && p.id && p.status !== 'failed' && p.status !== 'duplicate');
+  return photo ? photo.id : null;
+}
+
+/** Reference project card: cover photo, insured/property name, address, loss-type pill + status, date and photo count. */
 export function ReportCard({
   report,
   onPress,
@@ -26,98 +35,99 @@ export function ReportCard({
   /** Bulk-selection mode: `true`/`false` shows a checkbox; `undefined` = normal card. */
   selected?: boolean;
 }) {
-  const theme = useTheme();
+  const cover = coverPhotoId(report);
+  const title = report.insuredName || `Claim ${report.claimNumber}`;
 
   return (
-    <Pressable
+    <ScalePressable
       onPress={onPress}
       onLongPress={onLongPress}
+      pressScale={0.98}
       accessibilityRole={selected === undefined ? 'button' : 'checkbox'}
       accessibilityState={selected === undefined ? undefined : { checked: selected }}
-      accessibilityLabel={`Report for claim ${report.claimNumber}, ${report.status}`}
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
-          borderRadius: theme.radii.card,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
+      accessibilityLabel={`${title}, claim ${report.claimNumber}, ${report.status}`}
+      style={[styles.card, shadows.card, selected && styles.selected]}
     >
-      <View style={styles.headerRow}>
+      <View style={styles.thumb}>
+        {cover ? (
+          <AuthenticatedThumb
+            scope="report-card"
+            cacheKey={`${report.id}-${cover}`}
+            fetcher={() => reportsApi.getPhotoImage(report.id, cover, 'thumbnail')}
+          />
+        ) : (
+          <View style={styles.thumbEmpty}>
+            <Icon name="home" size={26} color={brand.navy} />
+          </View>
+        )}
         {selected !== undefined ? (
-          <View
-            style={[
-              styles.check,
-              { borderColor: selected ? theme.colors.primary : theme.colors.border, backgroundColor: selected ? theme.colors.primary : 'transparent' },
-            ]}
-          >
+          <View style={[styles.check, selected && styles.checkOn]}>
             {selected ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
           </View>
         ) : null}
-        <ThemedText
-          variant="subtitle"
-          numberOfLines={1}
-          style={[styles.claimNumber, { color: theme.colors.primaryHover, fontFamily: theme.typography.fontFamily.bodySemiBold }]}
-        >
-          {report.claimNumber}
-        </ThemedText>
-        <StatusBadge status={report.status} />
       </View>
-      <ThemedText variant="body" numberOfLines={1} style={styles.insured}>
-        {report.insuredName}
-      </ThemedText>
-      <ThemedText variant="caption" color="muted" numberOfLines={1}>
-        {report.propertyAddress}
-      </ThemedText>
-      <View style={styles.footerRow}>
-        <ThemedText variant="caption" color="muted" numberOfLines={1} style={styles.footerText}>
-          {[report.reportType, report.lossType].filter(Boolean).join(' · ')}
-        </ThemedText>
+
+      <View style={styles.body}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.address} numberOfLines={1}>
+          {report.propertyAddress || `Claim ${report.claimNumber}`}
+        </Text>
+        <View style={styles.tags}>
+          <LossPill lossType={report.lossType} />
+          <StatusBadge status={report.status} compact />
+        </View>
         <View style={styles.meta}>
-          <Icon name="image" size={12} color={theme.colors.muted} />
-          <ThemedText variant="caption" color="muted">
-            {report.imageCount ?? 0}
-          </ThemedText>
+          <Text style={styles.metaText} numberOfLines={1}>
+            {formatDate(report.updatedAt || report.createdAt)}
+          </Text>
+          <View style={styles.photos}>
+            <Icon name="camera" size={12} color={brand.muted} />
+            <Text style={styles.metaText}>{report.imageCount ?? 0}</Text>
+          </View>
         </View>
       </View>
-      <ThemedText variant="caption" color="muted" style={styles.updated}>
-        Updated {formatDate(report.updatedAt || report.createdAt)}
-        {report.createdByEmail ? ` · ${report.createdByEmail}` : ''}
-      </ThemedText>
-    </Pressable>
+      <Icon name="chevron-right" size={22} color={brand.orange} />
+    </ScalePressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: brand.card,
+    borderRadius: 16,
+    padding: 10,
+    paddingRight: 8,
+    marginBottom: 10,
     borderWidth: 1,
-    padding: 14,
-    marginBottom: 12,
+    borderColor: brand.line,
   },
-  headerRow: {
-    flexDirection: 'row',
+  selected: { borderColor: brand.orange, borderWidth: 2 },
+  thumb: { width: 88, height: 76, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E9EEF6' },
+  thumbEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  check: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(0,26,66,0.35)',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    justifyContent: 'center',
   },
-  claimNumber: {
-    flexShrink: 1,
-    marginRight: 8,
-  },
-  insured: {
-    marginTop: 2,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 10,
-  },
-  footerText: { flex: 1 },
-  check: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  updated: { marginTop: 4 },
+  checkOn: { backgroundColor: brand.orange, borderColor: brand.orange },
+  body: { flex: 1, minWidth: 0, gap: 3 },
+  title: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 15.5, color: brand.ink },
+  address: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: brand.muted },
+  tags: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 1 },
+  metaText: { fontFamily: 'Inter_400Regular', fontSize: 11.5, color: brand.muted },
+  photos: { flexDirection: 'row', alignItems: 'center', gap: 3 },
 });

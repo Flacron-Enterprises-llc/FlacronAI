@@ -1,5 +1,6 @@
 import { Redirect, Stack, useSegments } from 'expo-router';
 
+import { DrawerProvider } from '@/components/brand/AppDrawer';
 import { useAuth } from '@/features/auth/context/AuthProvider';
 import { BillingProvider } from '@/features/billing/BillingProvider';
 
@@ -24,7 +25,9 @@ export default function AppLayout() {
   }
   return (
     <BillingProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <DrawerProvider>
+        <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }} />
+      </DrawerProvider>
     </BillingProvider>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthShell } from '@/components/brand/AuthShell';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { authApi } from '@/services/api/auth';
@@ -11,7 +11,6 @@ import { isValidEmail } from '../utils/validation';
 import { AuthTextInput } from '../components/AuthTextInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { FormError } from '../components/FormError';
-import { AuthFormScroll } from '../components/AuthFormScroll';
 
 /**
  * Forgot password — calls the existing `POST /auth/forgot-password`, which always
@@ -57,15 +56,10 @@ export function ForgotPasswordScreen() {
   };
 
   return (
-    <ScreenContainer>
-    <AuthFormScroll>
-      <View style={styles.header}>
-        <ThemedText variant="heading">Reset your password</ThemedText>
-        <ThemedText variant="body" color="muted" style={styles.subtitle}>
-          Enter the email on your account and we&apos;ll send you a reset link. It opens in
-          your browser — once you&apos;ve reset your password there, come back here to sign in.
-        </ThemedText>
-      </View>
+    <AuthShell
+      title="Reset your password"
+      subtitle="Enter the email on your account and we'll send you a reset link. It opens in your browser — once you've reset your password there, come back here to sign in."
+    >
 
       <FormError message={generalError} />
 
@@ -107,8 +101,7 @@ export function ForgotPasswordScreen() {
           </ThemedText>
         </Pressable>
       </Link>
-    </AuthFormScroll>
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 

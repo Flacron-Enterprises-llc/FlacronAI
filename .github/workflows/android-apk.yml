@@ -1,0 +1,194 @@
+name: Android APK (production)
+
+# Builds the signed Android APK against PRODUCTION (api.flacronai.com + Firebase flacronai-c8dab — the same accounts,
+# reports and plans as flacronai.com, Google sign-in included) and sends it to testers through Firebase App
+# Distribution (group `android-testers` in flacronai-c8dab). Never deploys the backend, never publishes to a store.
+#
+# The repository is PUBLIC: the APK is deliberately NOT uploaded as a workflow artifact and the tokenized download URL
+# printed by firebase-tools is never echoed. Signing secrets come from the branch-locked `qa-android` environment
+# (same company key as every earlier build, so installed copies upgrade in place). Google Cloud access is keyless:
+# Workload Identity Federation in flacronai-c8dab, restricted to this repo + environment `qa-android` + this branch,
+# impersonating `apk-distributor` (Firebase App Distribution Admin only).
+on:
+  push:
+    branches:
+      - release/android-prod
+    paths:
+      - "mobile/**"
+      - "!mobile/**/*.md"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Extra release notes for testers"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-prod
+  cancel-in-progress: false
+
+env:
+  # Public identifiers only.
+  GCP_WIF_PROVIDER: projects/773892679617/locations/global/workloadIdentityPools/github/providers/flacronai-repo
+  GCP_DISTRIBUTOR_SA: apk-distributor@flacronai-c8dab.iam.gserviceaccount.com
+  FIREBASE_ANDROID_APP_ID: "1:773892679617:android:877dc8163d82e4bf957140"
+  # SHA-256 of the company (EAS-managed) Android signing certificate — registered on the Firebase Android app above,
+  # which is what lets Google sign-in accept this build.
+  EXPECTED_CERT_SHA256: 87974bb7f248213ed69f750248a89a1758f342c43e426cc8d337e3533f92a0b3
+
+jobs:
+  build-and-distribute:
+    name: Build, verify and distribute production APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: qa-android
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Refuse to run outside the release branch
+        working-directory: .
+        run: |
+          [ "$GITHUB_REF" = "refs/heads/release/android-prod" ] || { echo "Production APKs build only from release/android-prod"; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Load the `apk` profile env from eas.json (production, public identifiers only)
+        run: |
+          node -e '
+            const env = require("./eas.json").build.apk.env;
+            const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
+            require("fs").appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("loaded:", Object.keys(env).join(", "));
+          '
+          # Above every QA build (1000 + run), so a tester's QA install upgrades to this one.
+          echo "APK_VERSION_CODE=$((2000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Write production google-services.json (push notifications)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_PROD_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then echo "not configured: push stays off in this build"; exit 0; fi
+          umask 077
+          F="$RUNNER_TEMP/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > "$F"
+          node -e 'const j=require(process.argv[1]); if (j.project_info.project_id!=="flacronai-c8dab") { console.error("google-services.json is not flacronai-c8dab"); process.exit(1); }' "$F"
+          echo "GOOGLE_SERVICES_JSON=$F" >> "$GITHUB_ENV"
+
+      - name: Checks (types, lint, unit tests)
+        run: |
+          npx tsc --noEmit
+          npx expo lint
+          npx jest --ci
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NODE_ENV: production
+        run: |
+          umask 077
+          KS="$RUNNER_TEMP/signing.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          cd android
+          ./gradlew assembleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 \
+            -Pandroid.injected.signing.store.file="$KS" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f "$KS"
+          APK="$RUNNER_TEMP/FlacronAI-${GITHUB_SHA::7}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Verify signature, production config and absence of secrets
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/certs.txt"
+          DIGESTS="$(grep -oiE 'certificate SHA-256 digest: [0-9a-f]{64}' "$RUNNER_TEMP/certs.txt" | awk '{print tolower($NF)}' | sort -u)"
+          [ "$DIGESTS" = "$EXPECTED_CERT_SHA256" ] \
+            || { echo "APK is not signed (only) with the company certificate: ${DIGESTS:-none found}"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/apk" && unzip -q -o "$APK" -d "$RUNNER_TEMP/apk"
+          BUNDLE="$(find "$RUNNER_TEMP/apk/assets" -name 'index.android.bundle' | head -1)"
+          for must in api.flacronai.com flacronai-c8dab 773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu; do
+            grep -aq "$must" "$BUNDLE" || { echo "bundle is missing $must"; exit 1; }
+          done
+          if grep -aqE 'flacronai-staging-qa|staging-api|demo-flacronai-e2e' "$BUNDLE"; then echo "staging/test endpoints found in a production APK"; exit 1; fi
+          if grep -rlaE 'sk_live_|sk_test_[A-Za-z0-9]{10}|rk_(live|test)_[A-Za-z0-9]{10}|whsec_[A-Za-z0-9]{10}|sk-ant-[A-Za-z0-9_-]{10}|BEGIN (RSA |EC )?PRIVATE KEY|"private_key_id"|E2E_PASSWORD|trycloudflare|ngrok' "$RUNNER_TEMP/apk"; then
+            echo "Forbidden secret/test material found in the APK"; exit 1
+          fi
+          rm -rf "$RUNNER_TEMP/apk"
+          SUM="$(sha256sum "$APK" | cut -d' ' -f1)"; echo "APK SHA-256: $SUM"; echo "APK_SHA256=$SUM" >> "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud (keyless)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DISTRIBUTOR_SA }}
+
+      - name: Upload to Firebase App Distribution
+        env:
+          EXTRA_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          NOTES="FlacronAI ${GITHUB_SHA::7} (1.2.0 / ${APK_VERSION_CODE}). Sign in with your FlacronAI account (email and password or Google) — the same account, reports and plan as flacronai.com.
+          SHA-256: ${APK_SHA256}
+          ${EXTRA_NOTES}"
+          OUT="$RUNNER_TEMP/appdist.log"
+          if ! npx --yes firebase-tools@14 appdistribution:distribute "$APK" \
+            --app "$FIREBASE_ANDROID_APP_ID" \
+            --project flacronai-c8dab \
+            --release-notes "$NOTES" \
+            --groups android-testers > "$OUT" 2>&1; then
+            grep -vE 'https?://' "$OUT" | tail -20
+            echo "App Distribution upload failed"; exit 1
+          fi
+          grep -oE 'https://console\.firebase\.google\.com/[^ ?]+' "$OUT" | head -1
+          rm -f "$OUT"
+
+      - name: Summary
+        if: always()
+        working-directory: .
+        run: |
+          {
+            echo "### Android APK (production)"
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- APK SHA-256: \`${APK_SHA256:-not built}\`"
+            echo "- Backend: https://api.flacronai.com · Firebase: flacronai-c8dab"
+            echo "- Version: 1.2.0 (${APK_VERSION_CODE:-n/a})"
+            echo "- Distribution: Firebase App Distribution group \`android-testers\` (APK intentionally not attached — public repo)"
+          } >> "$GITHUB_STEP_SUMMARY"

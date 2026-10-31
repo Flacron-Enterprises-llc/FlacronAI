@@ -39,15 +39,15 @@ export function formatStatus(status: string | null | undefined): string {
     .join(' ');
 }
 
-export function StatusBadge({ status }: { status: ReportStatus | string }) {
+export function StatusBadge({ status, compact = false }: { status: ReportStatus | string; compact?: boolean }) {
   const theme = useTheme();
   const tone = TONES[status] ?? DEFAULT_TONE;
   const text = theme.scheme === 'dark' && tone === DEFAULT_TONE ? theme.colors.muted : tone.text;
-  const label = LABELS[status] ?? formatStatus(status);
+  const label = compact && status === 'draft' ? 'Draft' : (LABELS[status] ?? formatStatus(status));
 
   return (
-    <View style={[styles.badge, { backgroundColor: tone.base + '33', borderColor: tone.base + '4D' }]}>
-      <ThemedText variant="caption" style={{ color: text, fontFamily: theme.typography.fontFamily.bodySemiBold }}>
+    <View style={[styles.badge, compact && styles.compact, { backgroundColor: tone.base + '22', borderColor: tone.base + '4D' }]}>
+      <ThemedText variant="caption" style={{ color: text, fontFamily: theme.typography.fontFamily.bodySemiBold, fontSize: compact ? 11 : 12 }}>
         {label}
       </ThemedText>
     </View>
@@ -62,4 +62,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
+  compact: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
 });

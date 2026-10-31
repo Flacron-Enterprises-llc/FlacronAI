@@ -3,12 +3,15 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimen
 
 import { ScreenContainer } from '@/components/ScreenContainer';
 import { ThemedText } from '@/components/ThemedText';
-import { Card, Icon, MetricCard, ProgressBar, SectionHeader, TierBadge } from '@/components/ui';
+import { Card, Icon, ProgressBar, SectionHeader, TierBadge } from '@/components/ui';
+import type { IconName } from '@/components/ui/Icon';
+import { Reveal } from '@/components/brand/Reveal';
+import { ActionTile, StatChip } from '@/components/brand/Tiles';
+import { brand, type ToneName } from '@/theme/brand';
 import { useApiResource } from '@/hooks/useApiResource';
 import { useTheme } from '@/theme';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useAuth } from '@/features/auth/context/AuthProvider';
-import { NotificationBell } from '@/features/notifications/components/NotificationBell';
 import { NotificationPrimerCard } from '@/features/push/components/NotificationPrimerCard';
 import { ProductTour } from '@/features/tour/ProductTour';
 import { useTourTarget } from '@/features/tour/tourTargets';
@@ -22,6 +25,21 @@ import { useReportsList } from '../hooks/useReportsList';
 import { useRefreshOnFocus } from '../reportsEvents';
 import { ReportCard } from '../components/ReportCard';
 import { StateMessage } from '../components/StateMessage';
+
+interface Tile {
+  icon: IconName;
+  label: string;
+  tone: ToneName;
+  path: string;
+  /** Not in the account's plan: shown with a lock and opens the plans page (Golden Rule #4). */
+  locked?: boolean;
+}
+
+function tileRows(tiles: Tile[]): Tile[][] {
+  const rows: Tile[][] = [];
+  for (let i = 0; i < tiles.length; i += 3) rows.push(tiles.slice(i, i + 3));
+  return rows;
+}
 
 function greetingWord(now = new Date()): string {
   const h = now.getHours();
@@ -72,10 +90,24 @@ export function DashboardScreen() {
   const shared = (assigned.data ?? []).slice(0, 5);
 
   const newReport = () => router.push('/report/new');
+  const tier = u?.tier ?? userProfile?.tier;
+  const tiles: Tile[] = [
+    { icon: 'folder', label: 'Projects', tone: 'blue', path: '/reports' },
+    { icon: 'camera', label: 'Photos', tone: 'blue', path: '/photos' },
+    { icon: 'layers', label: 'Templates', tone: 'violet', path: '/templates' },
+    { icon: 'users', label: 'Clients', tone: 'blue', path: '/crm', locked: !!u && !u.features?.crmAccess },
+    { icon: 'file-text', label: 'Reports', tone: 'blue', path: '/library' },
+    { icon: 'bar-chart-2', label: 'Analytics', tone: 'green', path: '/analytics' },
+    { icon: 'search', label: 'Search', tone: 'slate', path: '/search' },
+    { icon: 'bell', label: 'Alerts', tone: 'amber', path: '/notifications' },
+    { icon: 'credit-card', label: 'Billing', tone: 'green', path: '/billing' },
+    { icon: 'briefcase', label: 'Team', tone: 'violet', path: '/organization', locked: !!u && tier !== 'enterprise' },
+    { icon: 'help-circle', label: 'Help', tone: 'teal', path: '/account/legal' },
+    { icon: 'settings', label: 'Settings', tone: 'slate', path: '/settings' },
+  ];
   const screenRef = useRef<RNView>(null);
   const generateRef = useTourTarget('generate-cta');
   const usageRef = useTourTarget('usage-card');
-  const bellRef = useTourTarget('notification-bell');
   const searchRef = useTourTarget('search-button');
 
   return (
@@ -86,13 +118,18 @@ export function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.column}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerText}>
-              <ThemedText variant="heading" accessibilityRole="header">
-                {greetingWord()}, {firstName}
+          <Reveal style={styles.welcomeRow}>
+            <View style={[styles.avatarLg, { backgroundColor: brand.navy }]}>
+              <ThemedText variant="title" style={styles.avatarText}>
+                {firstName.charAt(0).toUpperCase()}
               </ThemedText>
-              <ThemedText variant="body" color="muted" style={styles.subhead}>
-                Here&apos;s what&apos;s happening with your reports.
+            </View>
+            <View style={styles.headerText}>
+              <ThemedText variant="body" color="muted">
+                {greetingWord()},
+              </ThemedText>
+              <ThemedText variant="title" accessibilityRole="header" numberOfLines={1} style={styles.name}>
+                {firstName}
               </ThemedText>
             </View>
             <View ref={searchRef} collapsable={false}>
@@ -106,13 +143,39 @@ export function DashboardScreen() {
                 <UiIcon name="search" size={20} />
               </Pressable>
             </View>
-            <View ref={bellRef} collapsable={false}>
-              <NotificationBell />
-            </View>
+          </Reveal>
+
+          <View style={styles.chips}>
+            <Reveal index={1} style={styles.flex}>
+              <StatChip tone="blue" label="This Month" value={u?.reportsThisMonth} loading={usage.loading && !u} onPress={() => router.navigate('/reports')} />
+            </Reveal>
+            <Reveal index={2} style={styles.flex}>
+              <StatChip tone="orange" label="Photos" value={summary.summary?.photosAnalyzed} loading={summary.loading && !summary.summary} onPress={() => router.push('/photos')} />
+            </Reveal>
+            <Reveal index={3} style={styles.flex}>
+              <StatChip tone="green" label="Completed" value={summary.summary?.reportsCompleted} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/library')} />
+            </Reveal>
+            <Reveal index={4} style={styles.flex}>
+              <StatChip tone="red" label="Pending" value={summary.summary?.reportsAwaitingReview} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/reports')} />
+            </Reveal>
           </View>
 
-          <View ref={generateRef} collapsable={false} style={styles.cta}>
-            <PrimaryButton label="Generate Report" icon="zap" onPress={newReport} />
+          <Reveal index={5}>
+            <View ref={generateRef} collapsable={false} style={styles.cta}>
+              <PrimaryButton label="New Inspection" icon="plus" onPress={newReport} />
+            </View>
+          </Reveal>
+
+          <View style={styles.grid}>
+            {tileRows(tiles).map((row, r) => (
+              <View key={r} style={styles.gridRow}>
+                {row.map((t, i) => (
+                  <Reveal key={t.label} index={6 + r * 3 + i} style={styles.flex}>
+                    <ActionTile icon={t.icon} label={t.label} tone={t.tone} locked={t.locked} onPress={() => router.push((t.locked ? '/subscription' : t.path) as never)} />
+                  </Reveal>
+                ))}
+              </View>
+            ))}
           </View>
 
           {/* Plan + usage (web mobile usage panel / sidebar card). */}
@@ -212,42 +275,10 @@ export function DashboardScreen() {
 
           <NotificationPrimerCard />
 
-          <View style={styles.metrics}>
-            <MetricCard
-              icon="file-text"
-              label="Reports This Month"
-              value={u?.reportsThisMonth}
-              sub={u ? (unlimited ? 'Unlimited plan' : `of ${u.reportsLimit} limit`) : undefined}
-              loading={usage.loading && !u}
-              error={!!usage.error && !u}
-            />
-            <MetricCard
-              icon="image"
-              label="Photos Analyzed"
-              value={summary.summary?.photosAnalyzed}
-              loading={summary.loading && !summary.summary}
-              error={!!summary.error && !summary.summary}
-            />
-            <MetricCard
-              icon="clock"
-              label="Awaiting Review"
-              value={summary.summary?.reportsAwaitingReview}
-              loading={summary.loading && !summary.summary}
-              error={!!summary.error && !summary.summary}
-            />
-            <MetricCard
-              icon="check-circle"
-              label="Completed Reports"
-              value={summary.summary?.reportsCompleted}
-              loading={summary.loading && !summary.summary}
-              error={!!summary.error && !summary.summary}
-            />
-          </View>
-
           <View style={wide ? styles.twoCol : undefined}>
             <View style={wide ? styles.mainCol : undefined}>
               <SectionHeader
-                title="Recent Reports"
+                title="Recent Projects"
                 actionLabel={recent.reports.length > 0 ? 'View all' : undefined}
                 onAction={() => router.push('/reports')}
               />
@@ -354,12 +385,17 @@ function EngineRow({ label, value, muted }: { label: string; value: string; mute
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  flex: { flex: 1 },
+  welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  avatarLg: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FFFFFF' },
+  name: { fontSize: 22 },
+  chips: { flexDirection: 'row', gap: 8 },
+  grid: { gap: 10, marginBottom: 24 },
+  gridRow: { flexDirection: 'row', gap: 10 },
   headerBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   column: { width: '100%', maxWidth: 1100, alignSelf: 'center', paddingBottom: 24 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   headerText: { flex: 1, minWidth: 0 },
-  subhead: { marginTop: 4 },
-  cta: { marginTop: 16, marginBottom: 16 },
+  cta: { marginTop: 14, marginBottom: 16 },
   block: { marginBottom: 20 },
   planRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -370,7 +406,6 @@ const styles = StyleSheet.create({
   usageLine: { marginTop: 8 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 20 },
   bannerText: { flex: 1 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
   twoCol: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
   mainCol: { flex: 2 },
   sideCol: { flex: 1 },

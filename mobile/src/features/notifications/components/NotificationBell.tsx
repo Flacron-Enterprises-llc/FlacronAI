@@ -6,12 +6,15 @@ import { ThemedText } from '@/components/ThemedText';
 import { Icon } from '@/components/ui';
 import { notificationsApi } from '@/services/api/notifications';
 import { useTheme } from '@/theme';
+import { useTourTarget } from '@/features/tour/tourTargets';
 
 /** Web NotificationBell: unread badge from the live `unreadCount` on the first inbox page; refreshed on focus. */
-export function NotificationBell() {
+export function NotificationBell({ onNavy = false }: { onNavy?: boolean } = {}) {
   const theme = useTheme();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  // The navy app bar's bell is the one the product tour spotlights.
+  const tourRef = useTourTarget(onNavy ? 'notification-bell' : 'notification-bell-inline');
 
   useFocusEffect(
     useCallback(() => {
@@ -28,6 +31,7 @@ export function NotificationBell() {
 
   const label = unread > 0 ? `Notifications, ${unread} unread` : 'Notifications';
   return (
+    <View ref={tourRef} collapsable={false}>
     <Pressable
       onPress={() => router.push('/notifications')}
       accessibilityRole="button"
@@ -35,18 +39,21 @@ export function NotificationBell() {
       hitSlop={8}
       style={({ pressed }) => [
         styles.button,
-        { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, opacity: pressed ? 0.7 : 1 },
+        onNavy
+          ? { borderWidth: 0, borderRadius: 22, backgroundColor: pressed ? 'rgba(255,255,255,0.12)' : 'transparent' }
+          : { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      <Icon name="bell" size={20} />
+      <Icon name="bell" size={onNavy ? 23 : 20} color={onNavy ? '#FFFFFF' : undefined} />
       {unread > 0 ? (
-        <View style={[styles.dot, { backgroundColor: theme.colors.primary, borderColor: theme.colors.background }]}>
+        <View style={[styles.dot, { backgroundColor: theme.colors.primary, borderColor: onNavy ? '#002A64' : theme.colors.background }]}>
           <ThemedText variant="caption" style={styles.dotText}>
             {unread > 99 ? '99+' : unread}
           </ThemedText>
         </View>
       ) : null}
     </Pressable>
+    </View>
   );
 }
 

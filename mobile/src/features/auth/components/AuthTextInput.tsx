@@ -16,7 +16,7 @@ export function AuthTextInput({ label, error, style, ...rest }: AuthTextInputPro
 
   return (
     <View style={styles.wrap}>
-      <ThemedText variant="caption" color="muted" style={styles.label}>
+      <ThemedText variant="caption" style={[styles.label, { fontFamily: theme.typography.fontFamily.bodySemiBold, color: theme.colors.ink }]}>
         {label}
       </ThemedText>
       <TextInput
@@ -27,7 +27,7 @@ export function AuthTextInput({ label, error, style, ...rest }: AuthTextInputPro
             borderColor: error ? theme.colors.error : theme.colors.border,
             backgroundColor: theme.colors.surface,
             color: theme.colors.ink,
-            borderRadius: theme.radii.btn,
+            borderRadius: 14,
             fontFamily: theme.typography.fontFamily.body,
             fontSize: theme.typography.size.body,
           },
@@ -52,9 +52,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderWidth: 1.5,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 50,
   },
   error: {
     marginTop: 6,

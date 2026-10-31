@@ -1,4 +1,6 @@
-import { ActivityIndicator, Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type GestureResponderEvent } from 'react-native';
+
+import { ScalePressable } from '@/components/brand/ScalePressable';
 
 import { ThemedText } from '@/components/ThemedText';
 import { Icon, type IconName } from '@/components/ui/Icon';
@@ -30,27 +32,28 @@ export function PrimaryButton({
   const theme = useTheme();
   const isDisabled = disabled || loading;
   const isPrimary = variant === 'primary';
-  const fg = isPrimary ? '#FFFFFF' : variant === 'danger' ? theme.colors.error : theme.colors.ink;
-  const bg = isPrimary ? theme.colors.primary : variant === 'danger' ? theme.colors.error + '14' : theme.colors.background;
+  const fg = isPrimary ? '#FFFFFF' : variant === 'danger' ? theme.colors.error : theme.colors.navy;
+  const bg = isPrimary ? theme.colors.primary : variant === 'danger' ? theme.colors.error + '14' : theme.colors.surface;
   const border = variant === 'danger' ? theme.colors.error + '4D' : theme.colors.border;
 
   return (
-    <Pressable
+    <ScalePressable
       onPress={onPress}
       disabled={isDisabled}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      style={({ pressed }) => [
+      pressScale={0.97}
+      style={[
         styles.base,
-        isPrimary && theme.scheme === 'light' && !isDisabled && styles.shadow,
+        isPrimary && !isDisabled && styles.shadow,
         {
-          borderRadius: theme.radii.btn,
-          backgroundColor: isPrimary && pressed ? theme.colors.primaryHover : bg,
-          borderWidth: isPrimary ? 0 : 1,
-          borderColor: border,
-          opacity: isDisabled ? 0.6 : pressed && !isPrimary ? 0.85 : 1,
+          borderRadius: 14,
+          backgroundColor: bg,
+          borderWidth: isPrimary ? 0 : 1.5,
+          borderColor: variant === 'secondary' ? theme.colors.navy + '40' : border,
+          opacity: isDisabled ? 0.6 : 1,
         },
       ]}
     >
@@ -64,13 +67,13 @@ export function PrimaryButton({
           </ThemedText>
         </View>
       )}
-    </Pressable>
+    </ScalePressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 48,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
@@ -78,12 +81,13 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   label: {
     fontWeight: '600',
+    fontSize: 16,
   },
   shadow: {
     shadowColor: '#FD4403',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    elevation: 5,
   },
 });

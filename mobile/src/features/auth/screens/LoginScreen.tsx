@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Link } from 'expo-router';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
-import { BrandMark } from '@/components/BrandMark';
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthShell } from '@/components/brand/AuthShell';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { useAuth } from '../context/AuthProvider';
@@ -14,7 +13,6 @@ import { PasswordInput } from '../components/PasswordInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { FormError } from '../components/FormError';
 import { SocialSignInButtons } from '../components/SocialSignInButtons';
-import { AuthFormScroll } from '../components/AuthFormScroll';
 import { WEBSITE_LOGIN_URL, WEBSITE_SIGNUP_URL, isFederatedLoginEnabled } from '@/config/identityConfig';
 
 /**
@@ -80,22 +78,15 @@ export function LoginScreen() {
   };
 
   return (
-    <ScreenContainer>
-    <AuthFormScroll>
-      <View style={styles.header}>
-        <BrandMark size={64} />
-        <ThemedText variant="heading" style={styles.title}>
-          Welcome back
+    <AuthShell
+      title="Welcome back"
+      subtitle={federated ? 'Sign in with your FlacronAI website account' : 'Sign in with your FlacronAI account — the same one you use on flacronai.com'}
+    >
+      {federated && (
+        <ThemedText variant="caption" color="muted" style={styles.qaNote}>
+          QA test app: reports and data you create here are kept separately from the website.
         </ThemedText>
-        <ThemedText variant="body" color="muted" style={styles.subtitle}>
-          {federated ? 'Sign in with your FlacronAI website account' : 'Sign in to your FlacronAI account'}
-        </ThemedText>
-        {federated && (
-          <ThemedText variant="caption" color="muted" style={styles.subtitle}>
-            QA test app: reports and data you create here are kept separately from the website.
-          </ThemedText>
-        )}
-      </View>
+      )}
 
       <FormError message={generalError} />
 
@@ -170,21 +161,13 @@ export function LoginScreen() {
           </Link>
         )}
       </View>
-    </AuthFormScroll>
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    marginTop: 12,
-  },
-  subtitle: {
-    marginTop: 4,
+  qaNote: {
+    marginBottom: 12,
   },
   forgotLink: {
     alignSelf: 'flex-end',

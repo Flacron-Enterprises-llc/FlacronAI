@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+
+import { ScalePressable } from '@/components/brand/ScalePressable';
 
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
@@ -52,13 +54,27 @@ export function SocialSignInButtons({ onGoogle, onApple, loading = false }: Soci
         <View style={[styles.line, { backgroundColor: theme.colors.border }]} />
       </View>
 
-      <PrimaryButton
-        variant="secondary"
-        label={googleConfigured ? 'Continue with Google' : 'Google (not enabled in this build)'}
+      <ScalePressable
         onPress={onGoogle}
         disabled={!googleConfigured || loading}
-        loading={loading}
-      />
+        accessibilityRole="button"
+        accessibilityLabel={googleConfigured ? 'Continue with Google' : 'Google sign-in not enabled in this build'}
+        accessibilityState={{ disabled: !googleConfigured || loading, busy: loading }}
+        style={[styles.google, { borderColor: theme.colors.border, opacity: !googleConfigured ? 0.55 : 1 }]}
+      >
+        {loading ? (
+          <ActivityIndicator color={theme.colors.primary} />
+        ) : (
+          <>
+            <Text style={styles.gMark}>
+              <Text style={{ color: '#4285F4' }}>G</Text>
+            </Text>
+            <Text style={[styles.googleText, { color: theme.colors.ink }]}>
+              {googleConfigured ? 'Continue with Google' : 'Google (not enabled in this build)'}
+            </Text>
+          </>
+        )}
+      </ScalePressable>
       {!googleConfigured && (
         <ThemedText variant="caption" color="muted" style={styles.note}>
           {isFederatedLoginEnabled()
@@ -89,7 +105,7 @@ export function SocialSignInButtons({ onGoogle, onApple, loading = false }: Soci
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: 8,
+    marginTop: 20,
   },
   dividerRow: {
     flexDirection: 'row',
@@ -110,4 +126,16 @@ const styles = StyleSheet.create({
   appleWrap: {
     marginTop: 12,
   },
+  google: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+  },
+  gMark: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22, lineHeight: 26 },
+  googleText: { fontFamily: 'Inter_600SemiBold', fontSize: 16 },
 });

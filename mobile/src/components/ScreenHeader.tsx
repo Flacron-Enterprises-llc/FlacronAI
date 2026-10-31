@@ -1,44 +1,28 @@
-import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { Reveal } from '@/components/brand/Reveal';
 import { ThemedText } from '@/components/ThemedText';
-import { Icon } from '@/components/ui/Icon';
 import { useTheme } from '@/theme';
 
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
-  /** Show the back control (stack screens). Tab roots pass false. */
+  /** Kept for call-site compatibility: back now lives in the navy app bar (ScreenContainer). */
   back?: boolean;
   action?: { label: string; onPress: () => void; disabled?: boolean };
   right?: ReactNode;
 }
 
-/** Page header shared by stack screens: back, display-font title (web page `h1`), optional action. Back falls back to
- * the dashboard when the screen was opened directly (notification tap / deep link) with nothing to go back to. */
-export function ScreenHeader({ title, subtitle, back = true, action, right }: ScreenHeaderProps) {
+/** Page title row under the navy app bar (reference: "Projects", "Room Details", "Estimate"): bold display title,
+ * optional subtitle, optional action on the right. */
+export function ScreenHeader({ title, subtitle, action, right }: ScreenHeaderProps) {
   const theme = useTheme();
-  const router = useRouter();
   return (
-    <View style={styles.wrap}>
-      {back ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/dashboard'))}
-          hitSlop={8}
-          style={styles.back}
-        >
-          <Icon name="chevron-left" size={20} color={theme.colors.primary} />
-          <ThemedText variant="body" style={{ color: theme.colors.primary }}>
-            Back
-          </ThemedText>
-        </Pressable>
-      ) : null}
+    <Reveal style={styles.wrap}>
       <View style={styles.row}>
         <View style={styles.titles}>
-          <ThemedText variant="heading" accessibilityRole="header">
+          <ThemedText variant="title" accessibilityRole="header" style={styles.title}>
             {title}
           </ThemedText>
           {subtitle ? (
@@ -54,23 +38,26 @@ export function ScreenHeader({ title, subtitle, back = true, action, right }: Sc
             disabled={action.disabled}
             accessibilityRole="button"
             hitSlop={8}
-            style={[styles.action, { opacity: action.disabled ? 0.5 : 1 }]}
+            style={({ pressed }) => [
+              styles.action,
+              { backgroundColor: theme.colors.primarySoft, opacity: action.disabled ? 0.5 : pressed ? 0.75 : 1 },
+            ]}
           >
-            <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodyMedium }}>
+            <ThemedText variant="caption" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold, fontSize: 14 }}>
               {action.label}
             </ThemedText>
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </Reveal>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 16 },
-  back: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', minHeight: 44 },
+  wrap: { marginBottom: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   titles: { flex: 1 },
+  title: { fontSize: 24, letterSpacing: -0.3 },
   subtitle: { marginTop: 4 },
-  action: { minHeight: 44, justifyContent: 'center' },
+  action: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: 'center' },
 });
