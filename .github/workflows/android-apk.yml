@@ -82,6 +82,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # Before the build env is loaded: the config/auth unit tests assume no EXPO_PUBLIC_* values are set.
+      - name: Checks (types, lint, unit tests)
+        run: |
+          npx tsc --noEmit
+          npx expo lint
+          npx jest --ci
+
       - name: Load the `apk` profile env from eas.json (production, public identifiers only)
         run: |
           node -e '
@@ -103,12 +110,6 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > "$F"
           node -e 'const j=require(process.argv[1]); if (j.project_info.project_id!=="flacronai-c8dab") { console.error("google-services.json is not flacronai-c8dab"); process.exit(1); }' "$F"
           echo "GOOGLE_SERVICES_JSON=$F" >> "$GITHUB_ENV"
-
-      - name: Checks (types, lint, unit tests)
-        run: |
-          npx tsc --noEmit
-          npx expo lint
-          npx jest --ci
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean --no-install

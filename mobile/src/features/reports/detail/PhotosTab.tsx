@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -50,6 +51,39 @@ export function effectiveObservation(photo: ReportPhoto): string {
 }
 
 type Review = (photoId: string, action: PhotoReviewAction, extra?: { observation?: string; note?: string; roomOrArea?: string }) => Promise<boolean>;
+
+/** Reference grid tile: square cover photo with the review status in the corner (human review stays visible). */
+function PhotoTile({ reportId, photo, index, onOpen }: { reportId: string; photo: ReportPhoto; index: number; onOpen: () => void }) {
+  const theme = useTheme();
+  const status = reviewOf(photo).status || 'pending';
+  const failed = photo.status === 'failed';
+  const pill = REVIEW_PILL[status] ?? REVIEW_PILL.pending;
+  const dot = failed ? theme.colors.error : status === 'approved' ? theme.colors.success : status === 'edited' ? theme.colors.info : status === 'excluded' ? theme.colors.error : theme.colors.warning;
+  return (
+    <Animated.View entering={FadeIn.delay(Math.min(index, 15) * 40).duration(300)} style={styles.tileWrap}>
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={`Photo ${photo.roomOrArea || photo.fileName}, ${failed ? 'not included' : pill.label}`}
+        style={({ pressed }) => [styles.tile, { opacity: status === 'excluded' ? 0.55 : pressed ? 0.85 : 1 }]}
+      >
+        {failed && photo.hasThumbnail === false ? (
+          <View style={[styles.thumbFallback, { backgroundColor: theme.colors.border }]} />
+        ) : (
+          <AuthenticatedThumb scope={reportPhotoCacheScope(reportId)} cacheKey={photo.id} fetcher={() => reportsApi.getPhotoImage(reportId, photo.id, 'thumbnail')} />
+        )}
+        <View style={[styles.tileDot, { backgroundColor: dot }]} />
+        {photo.roomOrArea ? (
+          <View style={styles.tileCaption}>
+            <ThemedText variant="caption" numberOfLines={1} style={styles.tileCaptionText}>
+              {photo.roomOrArea}
+            </ThemedText>
+          </View>
+        ) : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 function PhotoRow({ reportId, photo, onOpen }: { reportId: string; photo: ReportPhoto; onOpen: () => void }) {
   const theme = useTheme();
@@ -271,6 +305,7 @@ export function PhotosTab({ reportId, canReview }: { reportId: string; canReview
   const theme = useTheme();
   const { photos, loading, error, reviewError, clearReviewError, retry, review, reviewingId } = useReportPhotos(reportId);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const open = photos.find((p) => p.id === openId) ?? null;
 
   if (loading && photos.length === 0) return <LoadingState label="Loading photos…" />;
@@ -297,14 +332,31 @@ export function PhotosTab({ reportId, canReview }: { reportId: string; canReview
           </ThemedText>
         </Pressable>
       )}
-      <ThemedText variant="caption" color="muted" style={styles.hint}>
-        {photos.length} photo{photos.length === 1 ? '' : 's'} · {counts.approved ?? 0} approved · {counts.edited ?? 0} edited ·{' '}
-        {counts.excluded ?? 0} excluded · {counts.pending ?? 0} pending
-        {canReview ? '. Tap a photo to review its observation.' : ''}
-      </ThemedText>
-      {photos.map((photo) => (
-        <PhotoRow key={photo.id} reportId={reportId} photo={photo} onOpen={() => setOpenId(photo.id)} />
-      ))}
+      <View style={styles.hintRow}>
+        <ThemedText variant="caption" color="muted" style={[styles.hint, styles.flex]}>
+          {photos.length} photo{photos.length === 1 ? '' : 's'} · {counts.approved ?? 0} approved · {counts.edited ?? 0} edited ·{' '}
+          {counts.excluded ?? 0} excluded · {counts.pending ?? 0} pending
+          {canReview ? '. Tap a photo to review its observation.' : ''}
+        </ThemedText>
+        <Pressable
+          onPress={() => setLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
+          accessibilityRole="button"
+          accessibilityLabel={layout === 'grid' ? 'Show photos as a list' : 'Show photos as a grid'}
+          hitSlop={8}
+          style={[styles.layoutBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+        >
+          <Icon name={layout === 'grid' ? 'list' : 'grid'} size={18} color={theme.colors.navy} />
+        </Pressable>
+      </View>
+      {layout === 'grid' ? (
+        <View style={styles.grid}>
+          {photos.map((photo, i) => (
+            <PhotoTile key={photo.id} reportId={reportId} photo={photo} index={i} onOpen={() => setOpenId(photo.id)} />
+          ))}
+        </View>
+      ) : (
+        photos.map((photo) => <PhotoRow key={photo.id} reportId={reportId} photo={photo} onOpen={() => setOpenId(photo.id)} />)
+      )}
       {open ? (
         <PhotoReviewSheet
           key={open.id}
@@ -325,6 +377,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, padding: 10, marginBottom: 10, gap: 12 },
   thumb: { width: 72, height: 72, overflow: 'hidden' },
   thumbFallback: { width: '100%', height: '100%' },
+  hintRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  layoutBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  tileWrap: { width: '33.333%', padding: 4 },
+  tile: { aspectRatio: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E9EEF6' },
+  tileDot: { position: 'absolute', top: 6, right: 6, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#FFFFFF' },
+  tileCaption: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 6, paddingVertical: 3, backgroundColor: 'rgba(0,26,66,0.6)' },
+  tileCaptionText: { color: '#FFFFFF', fontSize: 11 },
   rowBody: { flex: 1, justifyContent: 'center', gap: 2 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   flex: { flex: 1 },

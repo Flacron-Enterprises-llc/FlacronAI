@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { Reveal } from '@/components/brand/Reveal';
+import { ScalePressable } from '@/components/brand/ScalePressable';
+import { Icon } from '@/components/ui/Icon';
+import { brand } from '@/theme/brand';
 
 import { ScreenContainer } from '@/components/ScreenContainer';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -32,11 +38,17 @@ function safeEnv(): string {
  */
 export function MoreScreen() {
   const router = useRouter();
-  const { userProfile } = useAuth();
+  const { userProfile, firebaseUser, logout } = useAuth();
   const usage = useApiResource(() => usersApi.getUsage().then((r) => r.usage));
   const tier = usage.data?.tier ?? userProfile?.tier;
   const features = usage.data?.features;
   const nonProd = safeEnv() !== 'production';
+  const displayName = userProfile?.displayName || firebaseUser?.displayName || firebaseUser?.email || 'FlacronAI user';
+  const signOut = () =>
+    Alert.alert('Sign out?', 'You can sign back in with the same FlacronAI account at any time.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => logout() },
+    ]);
 
   const replayTour = () => {
     router.navigate('/dashboard');
@@ -55,6 +67,28 @@ export function MoreScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.column}>
           <ScreenHeader title="More" back={false} right={<TierBadge tier={tier} />} />
+
+          <Reveal>
+            <LinearGradient colors={[brand.navy, brand.navyDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.profile}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={styles.profileText}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                <Text style={styles.email} numberOfLines={1}>
+                  {firebaseUser?.email}
+                </Text>
+              </View>
+              {tier !== 'enterprise' ? (
+                <ScalePressable onPress={() => router.push('/subscription')} accessibilityRole="button" accessibilityLabel="Upgrade plan" style={styles.upgrade}>
+                  <Icon name="award" size={15} color="#FFFFFF" />
+                  <Text style={styles.upgradeText}>Upgrade</Text>
+                </ScalePressable>
+              ) : null}
+            </LinearGradient>
+          </Reveal>
 
           <Section title="Workspace">
             <SettingsRow icon="search" label="Search" detail="Reports, photos and team members" onPress={() => router.push('/search')} />
@@ -79,6 +113,7 @@ export function MoreScreen() {
           <Section title="Account">
             <SettingsRow icon="settings" label="Settings" detail="Profile, security, notifications and data" onPress={() => router.push('/settings')} />
             <SettingsRow icon="star" label="Subscription" detail="Plans and store purchases" onPress={() => router.push('/subscription')} />
+            <SettingsRow icon="log-out" label="Sign out" destructive onPress={signOut} />
           </Section>
 
           <Section title="Help & support">
@@ -123,6 +158,14 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 const styles = StyleSheet.create({
   column: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingBottom: 24 },
   section: { marginBottom: 20 },
+  profile: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 16, marginBottom: 20 },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: brand.orange, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' },
+  avatarText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 20 },
+  profileText: { flex: 1, minWidth: 0 },
+  name: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
+  email: { color: brand.onNavyMuted, fontFamily: 'Inter_400Regular', fontSize: 12.5, marginTop: 2 },
+  upgrade: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: brand.orange, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
+  upgradeText: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   sectionTitle: { marginBottom: 8 },
   note: { marginBottom: 8 },
   card: { paddingVertical: 4 },
