@@ -26,7 +26,7 @@ Code Engine projects (all us-east): `adsgen-project`, `adsgen-project-prod`, `fl
 |---|---|
 | Backend | Code Engine app `flacronai-api` in **new** project `flacronai-staging` (later `flacronai-prod`), RG `FlacronAI` |
 | Frontend | Code Engine app `flacronai-web` running an unprivileged nginx image (`nginxinc/nginx-unprivileged`, port 8080) that serves the Vite `dist/` with SPA fallback + security headers. Scale-to-zero in staging. (COS static website can't do managed TLS on a custom domain without CIS; CE gives TLS on its own domain.) |
-| Registry | ICR namespace **`flacronai`** in `us.icr.io`, RG `FlacronAI`. Image tags = Git SHA. Retention policy keeps the last 20. Vulnerability Advisor scans. |
+| Registry | ICR namespace **`flacronai`** in the global registry `icr.io` (moved from `us.icr.io` on 2026-11-10: its free plan caps storage at 512 MB per account), RG `FlacronAI`, pull secret `icr-flacronai-pull-global`. The old `us.icr.io` namespace and `icr-flacronai-pull` secret stay only for rollback to pre-move images. Image tags = Git SHA. Retention policy keeps the last 20. Vulnerability Advisor scans. |
 | Registry pull | Code Engine **registry access via a service ID scoped to `Reader` on namespace `flacronai`**. Use a trusted profile if CE supports it for pulls in this account (verify at provisioning). |
 | Secrets | Code Engine **secrets** (`flacronai-api-secrets`), encrypted at rest, injected as env. IBM Secrets Manager isn't provisioned in the account and adds cost; defer unless required. |
 | Logs/monitoring | IBM Cloud Logs + Monitoring instances are optional add-ons (cost); CE app logs are available via `ibmcloud ce app logs` meanwhile. |

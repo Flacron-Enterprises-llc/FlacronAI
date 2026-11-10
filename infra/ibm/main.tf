@@ -6,7 +6,10 @@ locals {
   app_secret_name = "flacronai-api-secrets"
 }
 
-# us.icr.io belongs to the us-south registry region.
+# us.icr.io belongs to the us-south registry region. Since 2026-11-10 CI pushes to
+# the global registry icr.io instead (namespace flacronai, pull secret
+# icr-flacronai-pull-global, created with the CLI); the regional namespace and
+# icr-flacronai-pull below remain only for rollback to pre-move images.
 provider "ibm" {
   alias  = "registry"
   region = "us-south"
