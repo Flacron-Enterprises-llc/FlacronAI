@@ -529,4 +529,10 @@ export const salesAPI = {
   getIntegrationStatus: () => api.get('/sales/admin/integration-status'),
 };
 
+// IBM Cloud catalog (watsonx Orchestrate agent) subscription link.
+export const ibmAPI = {
+  link: (instanceId, sig) => api.post('/ibm/link', { instanceId, sig }),
+  status: () => api.get('/ibm/status'),
+};
+
 export default api;
