@@ -204,6 +204,8 @@ const routeTable = [
   { path: '/notifications', router: require('./routes/notifications') },
   { path: '/search', router: require('./routes/search') },
   { path: '/photos', router: require('./routes/photos') },
+  { path: '/ibm', router: require('./routes/ibm') },
+  { path: '/orchestrate', router: require('./routes/orchestrate') },
 ];
 
 for (const prefix of API_PREFIXES) {
@@ -212,6 +214,9 @@ for (const prefix of API_PREFIXES) {
     app.use(`${prefix}${path}`, ...pre, router);
   }
 }
+
+// IBM Cloud catalog Open Service Broker (HTTP Basic auth, see routes/ibmBroker.js).
+app.use('/ibm-broker', require('./routes/ibmBroker'));
 
 // ── 404 HANDLER ───────────────────────────────────────────────────────────────
 app.use((req, res) => {

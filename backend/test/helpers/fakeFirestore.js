@@ -170,8 +170,8 @@ class FakeFirestore {
           readVersions.set(ref.__path, entry ? entry.version : 0);
           return { exists: !!entry, data: () => entry?.data, id: ref.id };
         },
-        set: (ref, data) => {
-          pendingWrites.push({ path: ref.__path, type: 'set', data });
+        set: (ref, data, setOptions = {}) => {
+          pendingWrites.push({ path: ref.__path, type: 'set', data, merge: Boolean(setOptions.merge) });
         },
         update: (ref, patch) => {
           pendingWrites.push({ path: ref.__path, type: 'update', data: patch });
@@ -195,7 +195,9 @@ class FakeFirestore {
           if (!prev) throw new Error(`FakeFirestore: cannot update non-existent doc ${w.path}`);
           this.store.set(w.path, { version: prev.version + 1, data: { ...prev.data, ...w.data } });
         } else {
-          this.store.set(w.path, { version: prev ? prev.version + 1 : 1, data: w.data });
+          // set(..., { merge: true }) keeps fields it does not name, like real Firestore.
+          const data = w.merge && prev ? { ...prev.data, ...w.data } : w.data;
+          this.store.set(w.path, { version: prev ? prev.version + 1 : 1, data });
         }
       }
       return result;

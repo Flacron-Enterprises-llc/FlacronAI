@@ -546,7 +546,11 @@ const requireApiAccess = (req, res, next) => {
     return res.status(401).json({ success: false, error: 'Authentication required', code: 'NO_AUTH' });
   }
   const tier = getTier(req.user.tier);
-  if (!tier.apiAccess) {
+  // Customers who added the FlacronAI agent from the IBM Cloud catalog need
+  // an API key for watsonx Orchestrate on any plan; their report limits are
+  // still enforced (or billed by IBM on the starter plan) per request.
+  const ibmLinked = Boolean(req.user.ibmInstanceId && req.user.ibmStatus === 'active');
+  if (!tier.apiAccess && !ibmLinked) {
     return res.status(403).json({
       success: false,
       error: 'API access requires Agency or Enterprise tier',
