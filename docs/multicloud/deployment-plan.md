@@ -22,7 +22,7 @@ push to main (FlacronAI repo)
          │     → build SPA with Azure VITE_* → deploy SWA → smoke GET /
          │     on failure: reactivate previous revision (automatic step) 
          └── ibm    (environment ibm-staging → later ibm-production w/ approval)
-               build image :<sha> → Trivy → push us.icr.io/flacronai → ibmcloud ce app update --image :<sha>
+               build image :<sha> → Trivy → push icr.io/flacronai → ibmcloud ce app update --image :<sha>
                → wait ready → /health check (version == <sha>)
                → build nginx web image with IBM VITE_* → ce app update → smoke GET /
                on failure: ce app update --image :<previous verified sha>

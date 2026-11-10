@@ -236,7 +236,10 @@ jobs:
       name: ibm-production
       url: ${{ vars.WEB_URL }}
     env:
-      REGISTRY: us.icr.io/${{ vars.ICR_NAMESPACE }}
+      # Global registry icr.io: the regional us.icr.io free plan caps storage at
+      # 512 MB per account, shared with FlacronLead, and that cap was reached.
+      REGISTRY: icr.io/${{ vars.ICR_NAMESPACE }}
+      PULL_SECRET: icr-flacronai-pull-global
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,7 +259,7 @@ jobs:
       - name: Select Code Engine project + registry login
         run: |
           ibmcloud ce project select --name "${{ vars.IBM_CE_PROJECT }}"
-          ibmcloud cr region-set us-south
+          ibmcloud cr region-set global
           ibmcloud cr login
 
       - name: Download scanned image
@@ -296,7 +299,7 @@ jobs:
       - name: Deploy API
         run: |
           ibmcloud ce app update -n flacronai-api --image "$REGISTRY/flacronai-backend:$RELEASE_SHA" \
-            --registry-secret icr-flacronai-pull --wait --wait-timeout 600
+            --registry-secret "$PULL_SECRET" --wait --wait-timeout 600
 
       - name: Verify API serves this release
         run: |
@@ -311,7 +314,7 @@ jobs:
       - name: Deploy frontend
         run: |
           ibmcloud ce app update -n flacronai-web --image "$REGISTRY/flacronai-web:$RELEASE_SHA" \
-            --registry-secret icr-flacronai-pull --wait --wait-timeout 300
+            --registry-secret "$PULL_SECRET" --wait --wait-timeout 300
           curl -fsS -o /dev/null "${{ vars.WEB_URL }}/"
           curl -fsS -o /dev/null "${{ vars.WEB_URL }}/pricing"
           echo "IBM frontend OK"
@@ -319,7 +322,9 @@ jobs:
       - name: Roll back
         if: failure() && env.PREVIOUS_API != ''
         run: |
-          ibmcloud ce app update -n flacronai-api --image "$PREVIOUS_API" --registry-secret icr-flacronai-pull --wait --wait-timeout 600 || true
+          # Images pushed before the move to icr.io still live in us.icr.io.
+          secret_for() { case "$1" in us.icr.io/*) echo icr-flacronai-pull ;; *) echo "$PULL_SECRET" ;; esac; }
+          ibmcloud ce app update -n flacronai-api --image "$PREVIOUS_API" --registry-secret "$(secret_for "$PREVIOUS_API")" --wait --wait-timeout 600 || true
           if [ -n "$PREVIOUS_WEB" ]; then
-            ibmcloud ce app update -n flacronai-web --image "$PREVIOUS_WEB" --registry-secret icr-flacronai-pull --wait --wait-timeout 300 || true
+            ibmcloud ce app update -n flacronai-web --image "$PREVIOUS_WEB" --registry-secret "$(secret_for "$PREVIOUS_WEB")" --wait --wait-timeout 300 || true
           fi
