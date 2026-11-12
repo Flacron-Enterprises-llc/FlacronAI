@@ -27,6 +27,7 @@ const { isNotificationEnabled } = require('../utils/notificationPrefs');
 const { notifyUser, NOTIFICATION_TYPES } = require('../utils/notificationService');
 const { getReportAccess } = require('../utils/reportAccess');
 const { downloadPhotosForAnalysis } = require('../utils/photoRetrieval');
+const { recordIbmGeneration } = require('./ibmAgentService');
 
 const MAX_GENERATION_ATTEMPTS = 2;
 // Pipeline lease (restart recovery). Pipelines run in-process, so a server
@@ -504,6 +505,10 @@ const runReportPipelineUnleased = async ({ reportId, uid, analyzableImages, repo
         updatedAt: nowIso(),
       }, { merge: true });
     });
+    // IBM catalog subscribers: count the generation and report a pack to IBM
+    // when it opens a new one. Never blocks or fails the report.
+    recordIbmGeneration(db, uid).catch((err) =>
+      console.error(`[ibmMetering] recordIbmGeneration failed for ${uid}:`, err.message));
 
     emitEvent(uid, 'report.generated', {
       reportId, status: 'draft', claimNumber: reportData.claimNumber || null, createdAt: nowIso(),

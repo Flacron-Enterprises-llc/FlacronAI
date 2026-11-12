@@ -9,6 +9,7 @@ Disallow: /reports/
 Disallow: /templates
 Disallow: /subscriptions
 Disallow: /settings
+Disallow: /ibm/
 Disallow: /crm
 Disallow: /white-label
 Disallow: /admin

@@ -162,6 +162,9 @@ function DeleteAccountModal({ method, onConfirm, onClose, loading }) {
 
 export default function Settings() {
   const { userProfile, tier, refreshProfile, logout, markMfaVerified } = useAuth();
+  // IBM Cloud catalog subscribers get API keys on any plan (for watsonx Orchestrate).
+  const ibmLinked = Boolean(userProfile?.ibmInstanceId && userProfile?.ibmStatus === 'active');
+  const apiAllowed = ['agency', 'enterprise'].includes(tier) || ibmLinked;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Phase 16: allows a deep link (e.g. from /integrations' "Manage API Keys")
@@ -322,14 +325,14 @@ export default function Settings() {
   }, [userProfile]);
 
   useEffect(() => {
-    if (activeTab === 'api-keys' && ['agency', 'enterprise'].includes(tier)) fetchApiKeys();
+    if (activeTab === 'api-keys' && apiAllowed) fetchApiKeys();
     if (activeTab === 'billing') fetchBilling();
     if (activeTab === 'security') {
       authAPI.mfaStatus().then(res => setMfaEnabled(!!res.data.mfaEnabled)).catch(() => {});
       fetchLoginHistory(1);
     }
     if (activeTab === 'organization' || activeTab === 'branding') fetchOrganization();
-  }, [activeTab, tier, fetchLoginHistory, fetchOrganization]);
+  }, [activeTab, tier, apiAllowed, fetchLoginHistory, fetchOrganization]);
 
   const fetchApiKeys = async () => {
     setKeysLoading(true);
@@ -1018,7 +1021,7 @@ export default function Settings() {
               {/* API Keys Tab */}
               {activeTab === 'api-keys' && (
                 <motion.div key="api-keys" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  {!['agency', 'enterprise'].includes(tier) ? (
+                  {!apiAllowed ? (
                     <div className="card p-10 text-center">
                       <Key className="w-10 h-10 text-gray-600 mx-auto mb-4" />
                       <h3 className="text-gray-900 font-semibold mb-2">API Access Requires Agency Plan</h3>

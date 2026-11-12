@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getFirestore } = require('../config/firebase');
+const { isIbmMeteredUser } = require('../services/ibmAgentService');
 const {
   authenticateAny,
   requireApiScope,
@@ -802,7 +803,9 @@ router.post(
       const tier = await getEffectiveTier(db, userData.tier || 'starter');
       const reportsThisMonth = userData.reportsThisMonth || 0;
 
-      if (!(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
+      // IBM catalog "starter" subscribers are billed per pack by IBM
+      // (services/ibmAgentService.js), so FlacronAI's own quota does not apply.
+      if (!isIbmMeteredUser(userData) && !(await canGenerateAsync(db, userData.tier, reportsThisMonth))) {
         return res.status(429).json({
           success: false,
           error: `Monthly report limit reached (${tier.reportsPerMonth} reports). Upgrade your plan.`,

@@ -42,6 +42,7 @@ const ReportPreviewPage = lazy(() => import('./pages/ReportPreviewPage.jsx'));
 const Templates = lazy(() => import('./pages/Templates.jsx'));
 const TemplateBuilder = lazy(() => import('./pages/TemplateBuilder.jsx'));
 const Developers = lazy(() => import('./pages/Developers.jsx'));
+const IbmConnect = lazy(() => import('./pages/IbmConnect.jsx'));
 const Features = lazy(() => import('./pages/Features.jsx'));
 const PhotoAnalysis = lazy(() => import('./pages/PhotoAnalysis.jsx'));
 const Solutions = lazy(() => import('./pages/Solutions.jsx'));
@@ -134,6 +135,7 @@ const App = () => {
         {/* ApiDocs.jsx kept intact for future use — route disabled, redirects home */}
         <Route path="/docs/api" element={<Navigate to="/" replace />} />
         <Route path="/developers" element={<Developers />} />
+        <Route path="/ibm/connect" element={<ProtectedRoute skipOnboardingGate><IbmConnect /></ProtectedRoute>} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/faqs" element={<FAQs />} />
         <Route path="/about" element={<About />} />

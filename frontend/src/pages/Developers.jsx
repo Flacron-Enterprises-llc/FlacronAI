@@ -33,6 +33,8 @@ const RESPONSE_EXAMPLE = `{
   }
 }`;
 
+const ORCHESTRATE_API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '').replace(/\/api(\/v\d+)?$/, '');
+
 const STEPS = [
   {
     step: '01',
@@ -224,6 +226,32 @@ export default function Developers() {
       </section>
 
       {/* CTA */}
+      <section id="ibm-orchestrate" className="py-20 px-4">
+        <motion.div className="max-w-3xl mx-auto"
+          initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">Use FlacronAI in IBM watsonx Orchestrate</h2>
+          <p className="text-gray-600 mb-6">
+            Add the FlacronAI agent from the IBM Cloud catalog. Open it from your IBM Cloud resource list to link it to your
+            FlacronAI account, then create an API key under Settings &gt; API. Accounts linked through IBM can create API keys on any plan.
+          </p>
+          <ol className="list-decimal pl-5 space-y-2 text-gray-700 mb-6">
+            <li>In watsonx Orchestrate, choose <strong>Import tools from OpenAPI</strong>.</li>
+            <li>Use the tools file: <code className="bg-gray-100 px-1 rounded break-all">{`${ORCHESTRATE_API_BASE}/api/v1/orchestrate/openapi.json`}</code></li>
+            <li>Connect with an API key sent in the <code className="bg-gray-100 px-1 rounded">x-api-key</code> header.</li>
+          </ol>
+          <p className="text-gray-700 mb-2 font-semibold">Tools</p>
+          <ul className="list-disc pl-5 space-y-1 text-gray-700 mb-6">
+            <li>generateReport, getReportStatus, getReport, listReports: create a report with Super Intelligence and read it back.</li>
+            <li>exportReport: get a PDF, DOCX or HTML download link.</li>
+            <li>listClients, createClient, listClaims, createClaim: CRM (Agency plan and above).</li>
+          </ul>
+          <p className="text-gray-600">
+            Plans on IBM: <strong>Free</strong> uses your FlacronAI plan limits. <strong>Starter</strong> is billed by IBM at
+            US$25 per pack of 5 report generations, and your FlacronAI monthly report limit does not apply.
+          </p>
+        </motion.div>
+      </section>
+
       <section className="py-20 px-4 bg-surface border-t border-gray-200">
         <motion.div className="max-w-2xl mx-auto text-center"
           initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
