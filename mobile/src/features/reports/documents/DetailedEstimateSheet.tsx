@@ -32,13 +32,18 @@ import {
 } from './canonicalEstimate';
 import { money } from './documentCalcs';
 import { DocSheet, Disclaimer, Field, NumField, RowCard, SectionLabel, Toggle, TotalsBox, TwoCol } from './formKit';
+import { reportAddressParts } from './PropertyIntelligenceSheet';
 
 type AmountKey = 'permits' | 'generalConditions' | 'manualAdjustments';
-const AMOUNT_GROUPS: { key: AmountKey; label: string; taxableDefault: boolean }[] = [
-  { key: 'permits', label: 'Permits', taxableDefault: false },
-  { key: 'generalConditions', label: 'General Conditions', taxableDefault: true },
-  { key: 'manualAdjustments', label: 'Manual Adjustments', taxableDefault: true },
+const AMOUNT_GROUPS: { key: AmountKey; label: string; taxableDefault: boolean; allowNegative: boolean }[] = [
+  { key: 'permits', label: 'Permits', taxableDefault: false, allowNegative: false },
+  { key: 'generalConditions', label: 'General Conditions', taxableDefault: true, allowNegative: false },
+  // Adjustments may be credits (e.g. a discount). Phone number pads have no minus key, so credits use a toggle.
+  { key: 'manualAdjustments', label: 'Manual Adjustments', taxableDefault: true, allowNegative: true },
 ];
+
+const isCredit = (amount: string) => /^\s*-/.test(amount);
+const stripSign = (amount: string) => amount.replace(/^\s*-/, '');
 
 function Chips({ options, value, onChange, disabled }: { options: readonly string[]; value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const theme = useTheme();
@@ -82,12 +87,21 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
   const [open, setOpen] = useState<string | null>(null);
   const [priceTargets, setPriceTargets] = useState<Set<string>>(new Set());
   const profile = ((report.propertyProfile as { fields?: Record<string, { value?: unknown }> } | undefined)?.fields ?? {}) as Record<string, { value?: unknown }>;
-  const [loc, setLoc] = useState({
-    country: String(profile.countryCode?.value ?? profile.country?.value ?? ''),
-    state: String(profile.stateCode?.value ?? profile.state?.value ?? ''),
-    city: String(profile.city?.value ?? ''),
-    postalCode: String(profile.postalCode?.value ?? ''),
+  // Prefill from the confirmed address profile, falling back to the claim's own address so the
+  // location fields don't start blank when the report already has a street/city/ZIP.
+  const claimAddr = reportAddressParts(report as unknown as Record<string, unknown>);
+  const pv = (v: unknown) => (v == null ? '' : String(v));
+  const [loc, setLoc] = useState(() => {
+    const postalCode = pv(profile.postalCode?.value) || claimAddr.zip;
+    return {
+      country: pv(profile.countryCode?.value ?? profile.country?.value) || (/^\d{5}(-\d{4})?$/.test(postalCode) ? 'US' : ''),
+      state: pv(profile.stateCode?.value ?? profile.state?.value) || claimAddr.state,
+      city: pv(profile.city?.value) || claimAddr.city,
+      postalCode,
+    };
   });
+  const defaultRegion = [loc.city, [loc.state, loc.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [pricing, setPricing] = useState<{ proposalId: string; items: PriceSuggestion[] } | null>(null);
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [pricingBusy, setPricingBusy] = useState(false);
@@ -99,7 +113,8 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
     try {
       const res = await documentsApi.getCanonicalEstimate(report.id);
       setServer(res.estimate);
-      setDraft(draftFromServerEstimate(res.estimate));
+      const d = draftFromServerEstimate(res.estimate);
+      setDraft(d.region.trim() ? d : { ...d, region: defaultRegion });
       setDirty(false);
       setConflict(false);
     } catch (err) {
@@ -127,6 +142,7 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
 
   const change = (patch: Partial<CanonicalDraft>) => {
     setDirty(true);
+    setSavedNote(null);
     setDraft((d) => (d ? { ...d, ...patch } : d));
   };
   const setLine = (i: number, patch: Partial<DraftLineItem>) => change({ lineItems: draft.lineItems.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
@@ -135,16 +151,22 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
   const serverTotals = (server?.totals ?? {}) as { grandTotal?: number };
 
   const save = async () => {
-    const invalid = validateCanonicalEstimateDraft(draft.lineItems);
+    const invalid = validateCanonicalEstimateDraft(
+      draft.lineItems,
+      AMOUNT_GROUPS.map((g) => ({ label: g.label, rows: draft[g.key], allowNegative: g.allowNegative }))
+    );
     if (invalid) return setError(invalid);
     setSaving(true);
     setError(null);
+    setSavedNote(null);
     try {
       const res = await documentsApi.saveCanonicalEstimate(report.id, buildCanonicalEstimatePayload(server, draft, changeSummary));
       setServer(res.estimate);
       setDraft(draftFromServerEstimate(res.estimate));
       setDirty(false);
       setChangeSummary('');
+      const savedTotals = (res.estimate?.totals ?? {}) as { grandTotal?: number };
+      setSavedNote(`Saved as Revision ${res.estimate?.revision ?? ''} — total ${money(savedTotals.grandTotal)}.`);
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'REVISION_CONFLICT') setConflict(true);
       setError(apiErrorMessage(err, 'Could not save the estimate.'));
@@ -343,8 +365,21 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
             <RowCard key={r.id} title={r.description || `${g.label} ${i + 1}`} onRemove={readOnly ? undefined : () => change({ [g.key]: draft[g.key].filter((x) => x.id !== r.id) } as Partial<CanonicalDraft>)}>
               <TwoCol>
                 <Field label="Description *" value={r.description} onChangeText={(v) => setAmount(g.key, i, { description: v })} maxLength={300} editable={!readOnly} />
-                <NumField label="Amount" value={r.amount} onChangeText={(v) => setAmount(g.key, i, { amount: v })} editable={!readOnly} />
+                <NumField
+                  label={g.allowNegative && isCredit(r.amount) ? 'Credit amount' : 'Amount'}
+                  value={g.allowNegative ? stripSign(r.amount) : r.amount}
+                  onChangeText={(v) => setAmount(g.key, i, { amount: g.allowNegative && isCredit(r.amount) ? `-${stripSign(v)}` : g.allowNegative ? stripSign(v) : v })}
+                  editable={!readOnly}
+                />
               </TwoCol>
+              {g.allowNegative ? (
+                <Toggle
+                  label="Credit / discount (subtract)"
+                  value={isCredit(r.amount)}
+                  onChange={(on) => setAmount(g.key, i, { amount: on ? `-${stripSign(r.amount)}` : stripSign(r.amount) })}
+                  disabled={readOnly}
+                />
+              ) : null}
               <Toggle label="Taxable" value={r.taxable} onChange={(v) => setAmount(g.key, i, { taxable: v })} disabled={readOnly} />
             </RowCard>
           ))}
@@ -434,7 +469,12 @@ export function DetailedEstimateSheet({ report, canEdit, onClose }: { report: Re
             </Card>
           ) : null}
           <SectionLabel>Save</SectionLabel>
-          <Field label="Change summary (optional)" value={changeSummary} onChangeText={(v) => { setDirty(true); setChangeSummary(v); }} maxLength={300} multiline />
+          <Field label="Change summary (optional)" value={changeSummary} onChangeText={(v) => { setDirty(true); setSavedNote(null); setChangeSummary(v); }} maxLength={300} multiline />
+          {savedNote ? (
+            <ThemedText variant="body" accessibilityLiveRegion="polite" style={[styles.mt, { color: theme.colors.success }]}>
+              {savedNote}
+            </ThemedText>
+          ) : null}
         </>
       ) : null}
     </DocSheet>

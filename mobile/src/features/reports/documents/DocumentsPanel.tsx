@@ -13,7 +13,7 @@ import { CoverageLetterSheet } from './CoverageLetterSheet';
 import { DetailedEstimateSheet } from './DetailedEstimateSheet';
 import { InvoiceSheet } from './InvoiceSheet';
 import { MoldSupplementSheet } from './MoldSupplementSheet';
-import { PropertyIntelligenceSheet } from './PropertyIntelligenceSheet';
+import { PropertyIntelligenceSheet, reportAddressParts } from './PropertyIntelligenceSheet';
 import { RepairEstimateSheet } from './RepairEstimateSheet';
 import { money } from './documentCalcs';
 
@@ -34,7 +34,9 @@ export function documentSummary(r: Report): string | null {
     case 'RepairEstimate':
       return `Repair Estimate ${String(r.estimateNumber ?? '')} · ${rev} · Total ${money(t.grandTotal)}`;
     case 'Invoice':
-      return `Invoice ${String(r.invoiceNumber ?? '')} · ${rev} · Total Due ${money(t.balanceDue)}`;
+      return Number(t.balanceDue) < 0
+        ? `Invoice ${String(r.invoiceNumber ?? '')} · ${rev} · Credit ${money(Math.abs(t.balanceDue))} (overpaid)`
+        : `Invoice ${String(r.invoiceNumber ?? '')} · ${rev} · Total Due ${money(t.balanceDue)}`;
     case 'CoverageDeterminationLetter':
       return `Coverage Determination Letter · ${rev} · Initial Payment (ACV) ${money(t.initialPayment)}`;
     case 'MoldSupplement':
@@ -186,7 +188,7 @@ export function DocumentsPanel({ report, isOwner, canEdit, isReviewed, onChanged
       {sheet === 'revise-letter' && <CoverageLetterSheet doc={report} mode="revise" onClose={() => setSheet(null)} onSaved={saved} />}
       {sheet === 'mold' && <MoldSupplementSheet report={report} onClose={() => setSheet(null)} onCreated={open} />}
       {sheet === 'detailed' && <DetailedEstimateSheet report={report} canEdit={canEdit} onClose={() => { setSheet(null); onChanged(); }} />}
-      {sheet === 'property' && <PropertyIntelligenceSheet reportId={report.id} onClose={() => setSheet(null)} onSaved={saved} />}
+      {sheet === 'property' && <PropertyIntelligenceSheet reportId={report.id} finalized={report.status === 'finalized'} address={reportAddressParts(report as unknown as Record<string, unknown>)} onClose={() => setSheet(null)} onSaved={saved} />}
     </View>
   );
 }

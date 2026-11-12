@@ -150,10 +150,10 @@ export function DashboardScreen() {
               <StatChip tone="orange" label="Photos" value={summary.summary?.photosAnalyzed} loading={summary.loading && !summary.summary} onPress={() => router.push('/photos')} />
             </Reveal>
             <Reveal index={3} style={styles.flex}>
-              <StatChip tone="green" label="Completed" value={summary.summary?.reportsCompleted} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/library')} />
+              <StatChip tone="green" label="Finalized (all)" value={summary.summary?.reportsCompleted} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/library')} />
             </Reveal>
             <Reveal index={4} style={styles.flex}>
-              <StatChip tone="red" label="Pending" value={summary.summary?.reportsAwaitingReview} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/reports')} />
+              <StatChip tone="red" label="Drafts to review" value={summary.summary?.reportsAwaitingReview} loading={summary.loading && !summary.summary} onPress={() => router.navigate('/reports')} />
             </Reveal>
           </View>
 
@@ -198,8 +198,8 @@ export function DashboardScreen() {
               <>
                 <View style={styles.stats}>
                   {[
-                    { label: 'Used', value: u ? u.reportsThisMonth : '—', color: theme.colors.primary },
-                    { label: 'Limit', value: u ? (unlimited ? '∞' : u.reportsLimit) : '—', color: theme.colors.ink },
+                    { label: 'Used this month', value: u ? u.reportsThisMonth : '—', color: theme.colors.primary },
+                    { label: 'Monthly limit', value: u ? (unlimited ? '∞' : u.reportsLimit) : '—', color: theme.colors.ink },
                     {
                       label: 'Left',
                       value: u ? (unlimited ? '∞' : u.reportsRemaining) : '—',
@@ -215,12 +215,16 @@ export function DashboardScreen() {
                       <ThemedText variant="subtitle" style={{ color: s.color, fontFamily: theme.typography.fontFamily.display }}>
                         {s.value}
                       </ThemedText>
-                      <ThemedText variant="caption" color="muted">
+                      <ThemedText variant="caption" color="muted" style={styles.statLabel}>
                         {s.label}
                       </ThemedText>
                     </View>
                   ))}
                 </View>
+                {/* QA POT-06: these are different measures and are not expected to add up. */}
+                <ThemedText variant="caption" color="muted" style={styles.usageNote}>
+                  Usage counts every report generated this calendar month (supplements included, even if later deleted). The Finalized and Drafts tiles count all your current reports.
+                </ThemedText>
                 <View style={styles.usageHead}>
                   <ThemedText variant="caption" color="muted">
                     Monthly reports
@@ -393,6 +397,8 @@ const styles = StyleSheet.create({
   planRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   stats: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   stat: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center' },
+  statLabel: { textAlign: 'center' },
+  usageNote: { marginTop: 8 },
   usageHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   usageLine: { marginTop: 8 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 20 },

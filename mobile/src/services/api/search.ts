@@ -4,7 +4,7 @@ import { apiRequest } from './client';
  * `team` is only filled for callers who can manage or view their organization's profiles. */
 export interface SearchResults {
   query: string;
-  reports: { id: string; claimNumber: string | null; insuredName: string | null; propertyAddress: string | null; status: string | null; link: string }[];
+  reports: { id: string; claimNumber: string | null; insuredName: string | null; propertyAddress: string | null; status: string | null; documentType?: string | null; revision?: number | null; updatedAt?: string | null; link: string }[];
   photos: { reportId: string; photoId: string; fileName: string; claimNumber: string | null; link: string }[];
   team: { id: string; email: string; role: string; status: string; link: string }[];
 }

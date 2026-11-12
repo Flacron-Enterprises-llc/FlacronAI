@@ -284,7 +284,9 @@ export function SubscriptionScreen() {
         ) : (
           copy && <StateMessage title={copy.title} description={copy.description} />
         )}
-        {supported && state.connected && (
+        {/* QA POT-08: only offer Restore where store purchases actually exist (plans on sale, or an
+            existing store subscription) -- not when the app sends upgrades to the website. */}
+        {supported && state.connected && (availability === 'ready' || availability === 'change_plan' || !!state.status?.store) && (
           <View style={styles.restore}>
             <PrimaryButton variant="secondary" label="Restore purchases" onPress={restore} loading={state.restoring} disabled={state.verifying} />
           </View>

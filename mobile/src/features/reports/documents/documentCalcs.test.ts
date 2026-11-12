@@ -39,7 +39,7 @@ describe('document preview math (mirrors backend *Calculations.js)', () => {
 describe('detailed estimate (port of canonicalEstimateEditor.js)', () => {
   it('validates, previews and builds the same payload shape as the web', () => {
     const li = { ...emptyCanonicalLineItem(), room: 'Kitchen', category: 'Drywall', description: 'Replace', quantity: '10', materialUnitCost: '2', laborUnitCost: '1.5' };
-    expect(validateCanonicalEstimateDraft([{ ...li, room: '' }])).toBe('Every line item needs a room/area.');
+    expect(validateCanonicalEstimateDraft([{ ...li, room: '' }])).toBe('Item 1: add a room/area.');
     const draft = { currency: 'usd', region: 'TX', lineItems: [li], permits: [{ id: 'p', description: 'Permit', amount: '100', taxable: false }], generalConditions: [], manualAdjustments: [], overheadProfitPercent: '10', taxRatePercent: '5' };
     expect(computeEstimatePreviewTotals(draft).grandTotal).toBeCloseTo(135 * 1.1 + 35 * 0.05);
     const payload = buildCanonicalEstimatePayload({ revision: 3, schemaVersion: 1 }, draft, ' first ');

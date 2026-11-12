@@ -6,6 +6,7 @@ import { Badge, Icon } from '@/components/ui';
 import { apiErrorMessage, useApiResource } from '@/hooks/useApiResource';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { documentsApi, type PropertyLookupResult } from '@/services/api/documents';
+import { reportsApi } from '@/services/api/reports';
 import { useTheme } from '@/theme';
 import { DocSheet, Disclaimer, SectionLabel } from './formKit';
 
@@ -44,21 +45,68 @@ export function lookupMessage(r: PropertyLookupResult): string | null {
   if (r.status === 'not_eligible')
     return r.reason === 'country_not_supported'
       ? 'Detailed property records are only available for U.S. addresses. You can continue with manual entry.'
-      : 'Property records need a confirmed, complete U.S. address (street, city and ZIP code). Please re-confirm the address above.';
+      : r.reason === 'address_not_confirmed'
+        ? 'Confirm the property address below to look up public records.'
+        : 'Property records need a complete U.S. address (street, city and ZIP code). Check the address below.';
   return 'No property details were returned for this address. You can try again or continue with manual entry.';
 }
+
+export interface ReportAddress {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+/** Best-effort split of the report's address into parts: structured fields win; otherwise parses
+ * "123 Main St, Dallas, TX 75201" (the format the wizard and CRM claims store). */
+export function reportAddressParts(r: Record<string, unknown>): ReportAddress {
+  const s = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).trim() : '');
+  const out = { street: s('propertyStreet'), city: s('propertyCity'), state: s('propertyState'), zip: s('propertyZip') };
+  const full = s('propertyAddress');
+  if (full && (!out.street || !out.city || !out.zip)) {
+    const parts = full.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length && /^(usa|us|united states)$/i.test(parts[parts.length - 1])) parts.pop();
+    const tail = parts.length >= 2 ? parts[parts.length - 1].match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/) : null;
+    if (tail) {
+      out.state ||= tail[1].toUpperCase();
+      out.zip ||= tail[2];
+      parts.pop();
+    }
+    if (parts.length >= 2) {
+      out.city ||= parts[parts.length - 1];
+      out.street ||= parts.slice(0, -1).join(', ');
+    } else if (parts.length === 1) out.street ||= parts[0];
+  }
+  return out;
+}
+
+const FINALIZED_NOTE = 'This report is finalized, so property details are locked. Reopen the report for editing to run a new lookup.';
 
 const show = (v: unknown) => (v == null || v === '' ? '' : String(v));
 
 /** Web PropertyIntelligenceModal (Section 3): look up public-record details for the confirmed address, choose which
  * fields to confirm (editing any value records a user override), then save. Informational only. */
-export function PropertyIntelligenceSheet({ reportId, onClose, onSaved }: { reportId: string; onClose: () => void; onSaved: () => void }) {
+export function PropertyIntelligenceSheet({
+  reportId,
+  finalized = false,
+  address,
+  onClose,
+  onSaved,
+}: {
+  reportId: string;
+  finalized?: boolean;
+  address?: ReportAddress;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const theme = useTheme();
   const current = useApiResource(() => documentsApi.getPropertyIntelligence(reportId).then((r) => r.propertyIntelligence), [reportId]);
   const [result, setResult] = useState<PropertyLookupResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<'lookup' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'lookup' | 'save' | 'address' | null>(null);
+  const [addr, setAddr] = useState<ReportAddress>(address ?? { street: '', city: '', state: '', zip: '' });
   const [error, setError] = useState<string | null>(null);
   const existing = current.data;
   const confirmed = existing?.status === 'confirmed';
@@ -77,6 +125,36 @@ export function PropertyIntelligenceSheet({ reportId, onClose, onSaved }: { repo
     } finally {
       setBusy(null);
     }
+  };
+
+  const needsAddress = result?.status === 'not_eligible' && (result.reason === 'address_not_confirmed' || result.reason === 'incomplete_address');
+
+  const confirmAddressAndLookup = async () => {
+    const a = { street: addr.street.trim(), city: addr.city.trim(), state: addr.state.trim().toUpperCase(), zip: addr.zip.trim() };
+    if (!a.street || !a.city || !a.zip) return setError('Enter the street, city and ZIP code.');
+    if (!/^\d{5}(-\d{4})?$/.test(a.zip)) return setError('Enter a 5-digit U.S. ZIP code.');
+    setBusy('address');
+    setError(null);
+    try {
+      const formatted = `${a.street}, ${a.city}${a.state ? `, ${a.state}` : ''} ${a.zip}`.replace(/\s+/g, ' ').trim();
+      await reportsApi.savePropertyProfile(reportId, {
+        mode: 'manual',
+        original: formatted,
+        overrides: {
+          formattedAddress: formatted,
+          addressLine1: a.street,
+          city: a.city,
+          ...(a.state ? { state: a.state, stateCode: a.state } : {}),
+          postalCode: a.zip,
+          country: 'United States',
+          countryCode: 'US',
+        },
+      });
+    } catch (err) {
+      setBusy(null);
+      return setError(apiErrorMessage(err, 'Could not confirm the address.'));
+    }
+    await lookup();
   };
 
   const save = async () => {
@@ -129,12 +207,53 @@ export function PropertyIntelligenceSheet({ reportId, onClose, onSaved }: { repo
         </>
       ) : null}
       <View style={styles.mt}>
-        <PrimaryButton icon="search" label={confirmed || stale ? 'Re-check property details' : 'Look up property details'} onPress={lookup} loading={busy === 'lookup'} disabled={!!busy} />
+        <PrimaryButton
+          icon={finalized ? 'lock' : 'search'}
+          label={confirmed || stale ? 'Re-check property details' : 'Look up property details'}
+          onPress={lookup}
+          loading={busy === 'lookup'}
+          disabled={!!busy || finalized}
+          accessibilityHint={finalized ? FINALIZED_NOTE : undefined}
+        />
+        {finalized ? (
+          <ThemedText variant="caption" color="muted" style={styles.note}>
+            {FINALIZED_NOTE}
+          </ThemedText>
+        ) : null}
       </View>
       {message ? (
         <ThemedText variant="body" color="muted" style={styles.mt}>
           {message}
         </ThemedText>
+      ) : null}
+      {needsAddress && !finalized ? (
+        <>
+          <SectionLabel>Property address</SectionLabel>
+          {(
+            [
+              ['street', 'Street address'],
+              ['city', 'City'],
+              ['state', 'State (e.g. TX)'],
+              ['zip', 'ZIP code'],
+            ] as const
+          ).map(([k, label]) => (
+            <View key={k} style={styles.addrField}>
+              <ThemedText variant="caption" color="muted">
+                {label}
+              </ThemedText>
+              <TextInput
+                value={addr[k]}
+                onChangeText={(v) => setAddr((p) => ({ ...p, [k]: v }))}
+                accessibilityLabel={label}
+                autoCapitalize={k === 'state' ? 'characters' : 'words'}
+                keyboardType={k === 'zip' ? 'number-pad' : 'default'}
+                maxLength={k === 'state' ? 2 : k === 'zip' ? 10 : 120}
+                style={[styles.input, { color: theme.colors.ink, borderColor: theme.colors.border }]}
+              />
+            </View>
+          ))}
+          <PrimaryButton icon="map-pin" label="Confirm address & look up" onPress={confirmAddressAndLookup} loading={busy === 'address'} disabled={!!busy} />
+        </>
       ) : null}
       {result && !message ? (
         <>
@@ -180,6 +299,8 @@ export function PropertyIntelligenceSheet({ reportId, onClose, onSaved }: { repo
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8 },
   mt: { marginTop: 12 },
+  note: { marginTop: 8 },
+  addrField: { marginBottom: 8 },
   kv: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   flex: { flex: 1 },
   pick: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, padding: 8, marginBottom: 8 },

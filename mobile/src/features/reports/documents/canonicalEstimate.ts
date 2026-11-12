@@ -156,12 +156,12 @@ export const reorderLineItems = <T>(list: T[], index: number, direction: number)
 
 export const lineUnitPrice = (li: DraftLineItem) =>
   li.overrideActive
-    ? Number(li.unitPriceOverride) || 0
-    : (Number(li.materialUnitCost) || 0) + (Number(li.laborUnitCost) || 0) + (Number(li.equipmentUnitCost) || 0);
+    ? parseAmount(li.unitPriceOverride) || 0
+    : (parseAmount(li.materialUnitCost) || 0) + (parseAmount(li.laborUnitCost) || 0) + (parseAmount(li.equipmentUnitCost) || 0);
 
 export function computeEstimatePreviewTotals(draft: Pick<CanonicalDraft, 'lineItems' | 'permits' | 'generalConditions' | 'manualAdjustments' | 'overheadProfitPercent' | 'taxRatePercent'>) {
-  const items = draft.lineItems.map((li) => ({ total: (Number(li.quantity) || 0) * lineUnitPrice(li), taxable: li.taxable !== false }));
-  const sum = (rows: DraftAmount[], onlyTaxable = false) => rows.filter((r) => !onlyTaxable || r.taxable).reduce((t, r) => t + (Number(r.amount) || 0), 0);
+  const items = draft.lineItems.map((li) => ({ total: (parseAmount(li.quantity) || 0) * lineUnitPrice(li), taxable: li.taxable !== false }));
+  const sum = (rows: DraftAmount[], onlyTaxable = false) => rows.filter((r) => !onlyTaxable || r.taxable).reduce((t, r) => t + (parseAmount(r.amount) || 0), 0);
   const lineSubtotal = items.reduce((t, i) => t + i.total, 0);
   const permitsTotal = sum(draft.permits);
   const gcTotal = sum(draft.generalConditions);
@@ -172,21 +172,58 @@ export function computeEstimatePreviewTotals(draft: Pick<CanonicalDraft, 'lineIt
     sum(draft.permits, true) +
     sum(draft.generalConditions, true) +
     sum(draft.manualAdjustments, true);
-  const tax = taxableBasis * ((Number(draft.taxRatePercent) || 0) / 100);
-  const op = directCost * ((Number(draft.overheadProfitPercent) || 0) / 100);
+  const tax = taxableBasis * ((parseAmount(draft.taxRatePercent) || 0) / 100);
+  const op = directCost * ((parseAmount(draft.overheadProfitPercent) || 0) / 100);
   return { lineSubtotal, permitsTotal, gcTotal, adjTotal, directCost, taxableBasis, tax, op, grandTotal: directCost + op + tax };
 }
 
-export function validateCanonicalEstimateDraft(lineItems: DraftLineItem[]): string | null {
+/** Parses a typed amount, tolerating "$" and thousands separators ("1,250.50" -> 1250.5). NaN when not a number. */
+export function parseAmount(v: string | number | null | undefined): number {
+  if (typeof v === 'number') return v;
+  const t = String(v ?? '').replace(/[$,\s]/g, '');
+  if (t === '' || t === '-') return 0;
+  return /^-?\d*\.?\d+$|^-?\d+\.$/.test(t) ? Number(t) : NaN;
+}
+
+const joinList = (parts: string[]) => (parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`);
+
+/**
+ * Validates the whole draft at once and reports EVERY missing field per row ("Item 1: add a room/area, category and
+ * description."), instead of stopping at the first problem. Returns null when the draft can be saved.
+ */
+export function validateCanonicalEstimateDraft(
+  lineItems: DraftLineItem[],
+  amountGroups: { label: string; rows: DraftAmount[]; allowNegative: boolean }[] = []
+): string | null {
   if (!lineItems.length) return 'At least one line item is required.';
-  for (const li of lineItems) {
-    if (!li.category.trim() && !li.trade.trim()) return 'Every line item needs a category or trade.';
-    if (!li.room.trim()) return 'Every line item needs a room/area.';
-    if (!li.description.trim()) return 'Every line item needs a description.';
-    if (!(Number(li.quantity) > 0)) return 'Every line item needs a positive quantity.';
-    if (li.overrideActive && !li.overrideReason.trim()) return 'A reason is required when overriding a unit price.';
+  const problems: string[] = [];
+  lineItems.forEach((li, i) => {
+    const missing: string[] = [];
+    if (!li.room.trim()) missing.push('a room/area');
+    if (!li.category.trim() && !li.trade.trim()) missing.push('a category');
+    if (!li.description.trim()) missing.push('a description');
+    const other: string[] = [];
+    const qty = parseAmount(li.quantity);
+    if (!(qty > 0)) other.push('quantity must be greater than 0');
+    for (const [k, label] of [['materialUnitCost', 'material'], ['laborUnitCost', 'labor'], ['equipmentUnitCost', 'equipment']] as const) {
+      const n = parseAmount(li[k]);
+      if (Number.isNaN(n) || n < 0) other.push(`${label} cost must be a number of 0 or more`);
+    }
+    if (li.overrideActive && !li.overrideReason.trim()) other.push('a reason is required for the price override');
+    const msg = [missing.length ? `add ${joinList(missing)}` : '', ...other].filter(Boolean).join('; ');
+    if (msg) problems.push(`Item ${i + 1}: ${msg}.`);
+  });
+  for (const g of amountGroups) {
+    g.rows.forEach((r, i) => {
+      const n = parseAmount(r.amount);
+      const issues: string[] = [];
+      if (!r.description.trim()) issues.push('add a description');
+      if (Number.isNaN(n)) issues.push('amount must be a number');
+      else if (!g.allowNegative && n < 0) issues.push("amount can't be negative");
+      if (issues.length) problems.push(`${g.label} ${i + 1}: ${issues.join('; ')}.`);
+    });
   }
-  return null;
+  return problems.length ? problems.join('\n') : null;
 }
 
 function buildAppliedProposals(lineItems: DraftLineItem[]) {
@@ -200,15 +237,15 @@ function buildAppliedProposals(lineItems: DraftLineItem[]) {
 }
 
 export function buildCanonicalEstimatePayload(serverEstimate: ServerCanonicalEstimate | null, draft: CanonicalDraft, changeSummary: string) {
-  const amounts = (rows: DraftAmount[]) => rows.map((r) => ({ id: r.id, description: r.description.trim(), amount: Number(r.amount) || 0, taxable: r.taxable }));
+  const amounts = (rows: DraftAmount[]) => rows.map((r) => ({ id: r.id, description: r.description.trim(), amount: parseAmount(r.amount) || 0, taxable: r.taxable }));
   return {
     schemaVersion: serverEstimate?.schemaVersion,
     currency: draft.currency.trim().toUpperCase() || 'USD',
     locationContext: { region: draft.region.trim(), source: 'manual' as const },
     baseRevision: serverEstimate?.revision || 0,
     changeSummary: changeSummary.trim(),
-    overheadProfitPercent: Number(draft.overheadProfitPercent) || 0,
-    taxRatePercent: Number(draft.taxRatePercent) || 0,
+    overheadProfitPercent: parseAmount(draft.overheadProfitPercent) || 0,
+    taxRatePercent: parseAmount(draft.taxRatePercent) || 0,
     appliedProposals: buildAppliedProposals(draft.lineItems),
     lineItems: draft.lineItems.map((li) => {
       const item: Record<string, unknown> = {
@@ -220,11 +257,11 @@ export function buildCanonicalEstimatePayload(serverEstimate: ServerCanonicalEst
         repairAction: li.repairAction.trim(),
         description: li.description.trim(),
         material: li.material.trim(),
-        quantity: Number(li.quantity),
+        quantity: parseAmount(li.quantity),
         unit: li.unit,
-        materialUnitCost: Number(li.materialUnitCost) || 0,
-        laborUnitCost: Number(li.laborUnitCost) || 0,
-        equipmentUnitCost: Number(li.equipmentUnitCost) || 0,
+        materialUnitCost: parseAmount(li.materialUnitCost) || 0,
+        laborUnitCost: parseAmount(li.laborUnitCost) || 0,
+        equipmentUnitCost: parseAmount(li.equipmentUnitCost) || 0,
         taxable: li.taxable !== false,
         assumptions: li.assumptions.trim(),
         confidence: li.confidence,
@@ -233,7 +270,7 @@ export function buildCanonicalEstimatePayload(serverEstimate: ServerCanonicalEst
         pricingSource: li.pricingSource || 'manual',
       };
       if (li.appliedSuggestionId) item.appliedSuggestionId = li.appliedSuggestionId;
-      if (li.overrideActive) item.userOverride = { active: true, unitPrice: Number(li.unitPriceOverride) || 0, reason: li.overrideReason.trim() };
+      if (li.overrideActive) item.userOverride = { active: true, unitPrice: parseAmount(li.unitPriceOverride) || 0, reason: li.overrideReason.trim() };
       return item;
     }),
     permits: amounts(draft.permits),
