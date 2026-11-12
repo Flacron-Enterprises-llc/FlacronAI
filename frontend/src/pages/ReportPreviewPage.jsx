@@ -1463,7 +1463,10 @@ function InvoiceModal({ report, mode, onClose, onSaved }) {
           <div className="flex justify-between"><span className="text-gray-500">Combined Subtotal</span><span className="font-medium">{money(preview.combinedSubtotal)}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Sales Tax</span><span className="font-medium">{money(preview.tax)}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Payments Received</span><span className="font-medium">({money(preview.paymentsTotal)})</span></div>
-          <div className="flex justify-between border-t border-gray-200 mt-1 pt-1"><span className="font-bold text-gray-800">Total Due</span><span className="font-bold text-brand-600">{money(preview.balanceDue)}</span></div>
+          <div className="flex justify-between border-t border-gray-200 mt-1 pt-1"><span className="font-bold text-gray-800">Total Due</span><span className="font-bold text-brand-600">{money(Math.max(0, preview.balanceDue))}</span></div>
+          {preview.balanceDue < 0 && (
+            <div className="flex justify-between"><span className="font-semibold text-gray-800">Credit balance (overpayment)</span><span className="font-semibold text-emerald-700">{money(Math.abs(preview.balanceDue))}</span></div>
+          )}
           <p className="text-[10px] text-gray-400 mt-1">Preview only -- the server recomputes and stores the authoritative totals.</p>
         </div>
 
@@ -2517,7 +2520,7 @@ export default function ReportPreviewPage() {
               {report.documentType === 'Invoice' && (
                 <p className="text-xs text-navy-700 flex items-center gap-1 mt-0.5">
                   <FileText className="w-3.5 h-3.5 shrink-0" />
-                  Invoice {report.invoiceNumber || ''} · Rev. {report.revision || 0} · Total Due {money(report.totals?.balanceDue)}
+                  Invoice {report.invoiceNumber || ''} · Rev. {report.revision || 0} · {Number(report.totals?.balanceDue) < 0 ? `Credit ${money(Math.abs(report.totals.balanceDue))} (overpaid)` : `Total Due ${money(report.totals?.balanceDue)}`}
                   {report.relatedReportId && (
                     <Link to={`/reports/${report.relatedReportId}/preview`} className="inline-flex items-center gap-0.5 text-navy-700 hover:underline ml-1">
                       <Link2 className="w-3 h-3" /> View linked estimate

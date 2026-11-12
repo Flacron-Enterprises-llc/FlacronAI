@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { approvedVersionLabel } = require('./exportWording');
 const { tokenizeInline, parseBlockToken } = require('./richContent');
 const { REVIEWED_STATUSES } = require('./watermarkPolicy');
 
@@ -105,31 +106,71 @@ const generatePDF = async (report, options = {}) => {
       let inTable = false;
       let tableRows = [];
 
+      // Fixed column widths: 3-col tables get Category 25% / Description 50% / Cost 25%
+      const tableColWidths = (cols) => {
+        if (cols === 3) {
+          const q = Math.floor(contentWidth * 0.25);
+          return [q, contentWidth - q * 2, q];
+        }
+        const w = Math.floor(contentWidth / Math.max(cols, 1));
+        const widths = Array(cols).fill(w);
+        widths[cols - 1] = contentWidth - w * (cols - 1);
+        return widths;
+      };
+      const tableRowHeight = (row, colWidths) => {
+        doc.fontSize(9);
+        let h = 28;
+        row.forEach((cell, ci) => {
+          const cellH = doc.heightOfString(stripMd(cell.trim()), { width: colWidths[ci] - 8 }) + 14;
+          if (cellH > h) h = cellH;
+        });
+        return h;
+      };
+      // Usable body height on a fresh page (content starts at y=62; the
+      // per-row break check below stops at pageHeight - 40).
+      const PAGE_BODY_HEIGHT = pageHeight - 40 - 62;
+      const tableHeight = (rows) => {
+        if (!rows.length) return 0;
+        const widths = tableColWidths(rows[0].length);
+        return rows.reduce((t, r) => t + tableRowHeight(r, widths), 0);
+      };
+      const parseTableRow = (line) =>
+        line
+          .split('|')
+          .slice(1, -1)
+          .filter((c) => !c.trim().match(/^[-:]+$/));
+      // Rows of the Markdown table starting at/after line index `from`
+      // (skipping blank lines); [] when the next content isn't a table.
+      const peekTable = (from) => {
+        let i = from;
+        while (i < lines.length && lines[i].trim() === '') i += 1;
+        const rows = [];
+        while (i < lines.length && lines[i].startsWith('|')) {
+          const cells = parseTableRow(lines[i]);
+          if (cells.length > 0) rows.push(cells);
+          i += 1;
+        }
+        return rows;
+      };
+      // Space a heading needs so it isn't left orphaned at the bottom of a
+      // page: itself plus the whole following table when that table fits on
+      // one page (QA FAI-002: "TOTAL DUE" alone on the next page).
+      const headingKeepSpace = (li, base) => {
+        const h = tableHeight(peekTable(li + 1));
+        return h > 0 && h + base <= PAGE_BODY_HEIGHT ? base + h : base;
+      };
+
       const flushTable = () => {
         if (tableRows.length === 0) return;
         const cols = tableRows[0].length;
+        const colWidths = tableColWidths(cols);
+        const calcRowHeight = (row) => tableRowHeight(row, colWidths);
 
-        // Fixed column widths: 3-col tables get Category 25% / Description 50% / Cost 25%
-        let colWidths;
-        if (cols === 3) {
-          const q = Math.floor(contentWidth * 0.25);
-          colWidths = [q, contentWidth - q * 2, q];
-        } else {
-          const w = Math.floor(contentWidth / Math.max(cols, 1));
-          colWidths = Array(cols).fill(w);
-          colWidths[cols - 1] = contentWidth - w * (cols - 1);
-        }
-
-        const calcRowHeight = (row) => {
-          doc.fontSize(9);
-          let h = 28;
-          row.forEach((cell, ci) => {
-            const cellH =
-              doc.heightOfString(stripMd(cell.trim()), { width: colWidths[ci] - 8 }) + 14;
-            if (cellH > h) h = cellH;
-          });
-          return h;
-        };
+        // Keep a table that fits on one page together (financial summaries
+        // like Invoice Totals must never split mid-table); only a table
+        // taller than a page breaks row-by-row, repeating its header.
+        const whole = tableRows.reduce((t, r) => t + calcRowHeight(r), 0);
+        if (whole <= PAGE_BODY_HEIGHT && doc.y + whole > pageHeight - 32 - 8) addPage();
 
         const drawRow = (row, ri, rowY) => {
           const isTotalRow = ri > 0 && row.some((c) => /total/i.test(c));
@@ -574,7 +615,7 @@ const generatePDF = async (report, options = {}) => {
         if (/^###/.test(trimmedLine)) {
           flushTable();
           numberedCounter = 0;
-          ensureSpace(40);
+          ensureSpace(headingKeepSpace(li, 40));
           const title = trimmedLine.replace(/^#+\s*/, '');
           drawRuns(title, margin, doc.y + 5, contentWidth, { fontSize: 11, color: '#1e293b' });
           doc.y += 4;
@@ -586,7 +627,7 @@ const generatePDF = async (report, options = {}) => {
         if (/^##/.test(trimmedLine)) {
           flushTable();
           numberedCounter = 0;
-          ensureSpace(40);
+          ensureSpace(headingKeepSpace(li, 40));
           const title = stripMd(trimmedLine.replace(/^#+\s*/, ''));
           currentSectionTitle = title;
           // QA fix: record the actual physical page this section heading
@@ -906,7 +947,7 @@ const generatePDF = async (report, options = {}) => {
         ['License Number', sig?.licenseNumber],
         ['License State', sig?.licenseState],
         ['Company / Firm Name', sig?.company],
-        ['Report Version Approved', report.versionApproved],
+        [report.revision != null && report.documentType ? 'Document Revision Approved' : 'Report Version Approved', approvedVersionLabel(report)],
       ].forEach(([label, value]) => {
         if (value) {
           doc

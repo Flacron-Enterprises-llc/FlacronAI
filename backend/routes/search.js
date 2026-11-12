@@ -74,6 +74,11 @@ router.get('/', authenticateToken, async (req, res) => {
           insuredName: r.insuredName || null,
           propertyAddress: r.propertyAddress || null,
           status: r.status || null,
+          // QA POT-04: lets clients tell apart records that share a claim
+          // number (copies, estimates, invoices, supplements).
+          documentType: r.documentType || null,
+          revision: r.revision ?? null,
+          updatedAt: r.updatedAt || r.createdAt || null,
           link: `/reports/${d.id}/preview`,
         });
       }
