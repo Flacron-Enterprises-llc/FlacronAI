@@ -43,7 +43,7 @@ export function AuthShell({ title, subtitle, back = true, children }: PropsWithC
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </Animated.View>
           </SafeAreaView>
-          <Animated.View entering={FadeInDown.delay(120).duration(520).springify().damping(18)} style={styles.sheet}>
+          <Animated.View entering={FadeInDown.delay(80).duration(320)} style={styles.sheet}>
             <SafeAreaView edges={['bottom']}>{children}</SafeAreaView>
           </Animated.View>
         </ScrollView>

@@ -1,11 +1,12 @@
 import type { Tabs } from 'expo-router';
 import { useEffect, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { brand, shadows } from '@/theme/brand';
+import { motion } from '@/theme/motion';
 
 type BottomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
@@ -44,9 +45,9 @@ export function BrandTabBar({ state, navigation, descriptors }: BottomTabBarProp
 function TabItem({ tab, focused, onPress, label }: { tab: (typeof TABS)[number]; focused: boolean; onPress: () => void; label: string }) {
   const lift = useSharedValue(focused ? 1 : 0);
   useEffect(() => {
-    lift.set(withSpring(focused ? 1 : 0, { damping: 14, stiffness: 220 }));
+    lift.set(withTiming(focused ? 1 : 0, motion.move));
   }, [focused, lift]);
-  const iconStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -2 * lift.value }, { scale: 1 + 0.08 * lift.value }] }));
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -1 * lift.value }] }));
   const dotStyle = useAnimatedStyle(() => ({ opacity: lift.value, transform: [{ scaleX: lift.value }] }));
   const color = focused ? brand.orange : '#7A879C';
   return (
@@ -62,17 +63,15 @@ function TabItem({ tab, focused, onPress, label }: { tab: (typeof TABS)[number];
 
 function CenterButton({ onPress, label }: { onPress: () => void; label: string }) {
   const scale = useSharedValue(1);
-  const spin = useSharedValue(0);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }, { rotate: `${spin.value * 90}deg` }] }));
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <View style={styles.centerSlot}>
       <Pressable
         onPress={() => {
-          spin.set(withSequence(withTiming(1, { duration: 180 }), withTiming(0, { duration: 0 })));
           onPress();
         }}
-        onPressIn={() => scale.set(withSpring(0.9, { damping: 16, stiffness: 400 }))}
-        onPressOut={() => scale.set(withSpring(1, { damping: 10, stiffness: 260 }))}
+        onPressIn={() => scale.set(withTiming(0.95, motion.press))}
+        onPressOut={() => scale.set(withTiming(1, motion.release))}
         accessibilityRole="button"
         accessibilityLabel={label}
         hitSlop={6}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { brand } from '@/theme/brand';
+import { motion } from '@/theme/motion';
 
 export interface FilterTab {
   key: string;
@@ -20,8 +21,8 @@ export function FilterTabs({ tabs, value, onChange }: { tabs: FilterTab[]; value
   useEffect(() => {
     const l = layouts[value];
     if (!l) return;
-    x.set(withSpring(l.x, { damping: 18, stiffness: 200 }));
-    w.set(withSpring(l.width, { damping: 18, stiffness: 200 }));
+    x.set(withTiming(l.x, motion.move));
+    w.set(withTiming(l.width, motion.move));
   }, [layouts, value, x, w]);
 
   const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }], width: w.value }));

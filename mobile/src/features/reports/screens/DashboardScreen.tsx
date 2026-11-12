@@ -6,8 +6,9 @@ import { ThemedText } from '@/components/ThemedText';
 import { Card, Icon, ProgressBar, SectionHeader, TierBadge } from '@/components/ui';
 import type { IconName } from '@/components/ui/Icon';
 import { Reveal } from '@/components/brand/Reveal';
+import { UserAvatar } from '@/components/brand/UserAvatar';
 import { ActionTile, StatChip } from '@/components/brand/Tiles';
-import { brand, type ToneName } from '@/theme/brand';
+import type { ToneName } from '@/theme/brand';
 import { useApiResource } from '@/hooks/useApiResource';
 import { useTheme } from '@/theme';
 import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
@@ -119,11 +120,7 @@ export function DashboardScreen() {
       >
         <View style={styles.column}>
           <Reveal style={styles.welcomeRow}>
-            <View style={[styles.avatarLg, { backgroundColor: brand.navy }]}>
-              <ThemedText variant="title" style={styles.avatarText}>
-                {firstName.charAt(0).toUpperCase()}
-              </ThemedText>
-            </View>
+            <UserAvatar size={52} name={firstName} style={styles.avatarLg} />
             <View style={styles.headerText}>
               <ThemedText variant="body" color="muted">
                 {greetingWord()},
@@ -182,11 +179,7 @@ export function DashboardScreen() {
           <View ref={usageRef} collapsable={false}>
           <Card style={styles.block}>
             <View style={styles.planRow}>
-              <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
-                <ThemedText variant="subtitle" style={styles.avatarText}>
-                  {(userProfile?.displayName || firebaseUser?.email || 'U').charAt(0).toUpperCase()}
-                </ThemedText>
-              </View>
+              <UserAvatar size={40} />
               <View style={styles.headerText}>
                 <ThemedText variant="body" numberOfLines={1} style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
                   {userProfile?.displayName || firebaseUser?.email || 'Welcome'}
@@ -387,7 +380,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1 },
   welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  avatarLg: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FFFFFF' },
+  avatarLg: { borderWidth: 3, borderColor: '#FFFFFF' },
   name: { fontSize: 22 },
   chips: { flexDirection: 'row', gap: 8 },
   grid: { gap: 10, marginBottom: 24 },
@@ -398,8 +391,6 @@ const styles = StyleSheet.create({
   cta: { marginTop: 14, marginBottom: 16 },
   block: { marginBottom: 20 },
   planRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold' },
   stats: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   stat: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center' },
   usageHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },

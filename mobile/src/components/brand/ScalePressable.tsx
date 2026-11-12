@@ -1,6 +1,8 @@
 import type { PropsWithChildren } from 'react';
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+
+import { motion } from '@/theme/motion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -10,8 +12,8 @@ interface ScalePressableProps extends Omit<PressableProps, 'style'> {
   pressScale?: number;
 }
 
-/** Pressable with a spring "sink" on touch — the tactile feedback every tappable card, tile and button in the app uses. */
-export function ScalePressable({ children, style, pressScale = 0.96, onPressIn, onPressOut, disabled, ...rest }: PropsWithChildren<ScalePressableProps>) {
+/** Pressable with a subtle eased "sink" on touch (no spring bounce) — the feedback every tappable card, tile and button uses. */
+export function ScalePressable({ children, style, pressScale = 0.98, onPressIn, onPressOut, disabled, ...rest }: PropsWithChildren<ScalePressableProps>) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
@@ -19,11 +21,11 @@ export function ScalePressable({ children, style, pressScale = 0.96, onPressIn, 
       {...rest}
       disabled={disabled}
       onPressIn={(e) => {
-        scale.set(withSpring(pressScale, { damping: 18, stiffness: 420 }));
+        scale.set(withTiming(pressScale, motion.press));
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
-        scale.set(withSpring(1, { damping: 14, stiffness: 320 }));
+        scale.set(withTiming(1, motion.release));
         onPressOut?.(e);
       }}
       style={[style, animated]}

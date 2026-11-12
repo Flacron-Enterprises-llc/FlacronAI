@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Reveal } from '@/components/brand/Reveal';
 import { ScalePressable } from '@/components/brand/ScalePressable';
+import { UserAvatar } from '@/components/brand/UserAvatar';
 import { Icon } from '@/components/ui/Icon';
 import { brand } from '@/theme/brand';
 
@@ -70,9 +71,9 @@ export function MoreScreen() {
 
           <Reveal>
             <LinearGradient colors={[brand.navy, brand.navyDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.profile}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
-              </View>
+              <ScalePressable onPress={() => router.push('/account/profile')} accessibilityRole="button" accessibilityLabel="Edit profile picture">
+                <UserAvatar size={50} name={displayName} ring />
+              </ScalePressable>
               <View style={styles.profileText}>
                 <Text style={styles.name} numberOfLines={1}>
                   {displayName}
@@ -159,8 +160,6 @@ const styles = StyleSheet.create({
   column: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingBottom: 24 },
   section: { marginBottom: 20 },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 16, marginBottom: 20 },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: brand.orange, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' },
-  avatarText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 20 },
   profileText: { flex: 1, minWidth: 0 },
   name: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
   email: { color: brand.onNavyMuted, fontFamily: 'Inter_400Regular', fontSize: 12.5, marginTop: 2 },

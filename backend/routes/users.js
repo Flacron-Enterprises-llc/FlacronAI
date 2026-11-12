@@ -15,7 +15,7 @@ const { profileLimiter } = require('../middleware/rateLimiters');
 const { generateApiKey, getUserKeys, revokeKey, getKeyUsage } = require('../services/apiKeyService');
 const { API_KEY_SCOPES, normalizeApiKeyScopes } = require('../config/apiScopes');
 const { sendWelcomeEmail } = require('../services/emailService');
-const { logoObject, uploadBuffer, deleteObject } = require('../config/storage');
+const { logoObject, avatarObject, uploadBuffer, deleteObject } = require('../config/storage');
 const { purgeAccountData } = require('../services/accountDeletionCleanup');
 const { recordAuditLog } = require('../services/auditLogService');
 const { blockFederatedSession } = require('../services/federatedIdentity');
@@ -348,6 +348,58 @@ router.delete('/profile/logo', authenticateToken, async (req, res) => {
     return res.json({ success: true, message: 'Logo removed' });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Failed to remove logo', code: 'LOGO_DELETE_ERROR' });
+  }
+});
+
+// POST /api/users/profile/avatar
+// Profile picture (mobile app + web). Same validation pipeline as the logo:
+// the real bytes are sniffed, then re-encoded by sharp to a 256x256 square
+// PNG (which also strips EXIF/GPS metadata from camera photos). Stored under
+// users/{uid}/avatar/ so account deletion's users/{uid}/ purge removes it.
+router.post('/profile/avatar', authenticateToken, logoUpload.single('avatar'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: 'No image provided' });
+
+  try {
+    await validateLogoUpload(req.file);
+
+    const objectPath = avatarObject(req.user.uid, `avatar_${Date.now()}.png`);
+    const buf = await sharp(req.file.buffer)
+      .rotate() // honour camera orientation before EXIF is dropped
+      .resize(256, 256, { fit: 'cover', position: 'attention' })
+      .png()
+      .toBuffer();
+
+    const db = getFirestore();
+    const ref = db.collection('users').doc(req.user.uid);
+    const prev = (await ref.get()).data() || {};
+
+    const { url: avatarUrl } = await uploadBuffer(objectPath, buf, 'image/png', { publicToken: true });
+    await ref.set({ avatarUrl, avatarPath: objectPath, updatedAt: new Date().toISOString() }, { merge: true });
+    // Old object is removed only after the new one is saved, so a failed
+    // upload never leaves the user without a picture.
+    if (prev.avatarPath && prev.avatarPath !== objectPath) {
+      await deleteObject(prev.avatarPath).catch((e) => console.warn('[Avatar] old object cleanup failed:', e.message));
+    }
+
+    return res.json({ success: true, avatarUrl });
+  } catch (err) {
+    if (err instanceof ImageValidationError) return imageErrorResponse(res, err);
+    console.error('Avatar upload error:', err.message);
+    return res.status(500).json({ success: false, error: 'Profile picture upload failed', code: 'AVATAR_ERROR' });
+  }
+});
+
+// DELETE /api/users/profile/avatar
+router.delete('/profile/avatar', authenticateToken, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const ref = db.collection('users').doc(req.user.uid);
+    const { avatarPath } = (await ref.get()).data() || {};
+    if (avatarPath) await deleteObject(avatarPath);
+    await ref.set({ avatarUrl: null, avatarPath: null, updatedAt: new Date().toISOString() }, { merge: true });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to remove profile picture', code: 'AVATAR_DELETE_ERROR' });
   }
 });
 

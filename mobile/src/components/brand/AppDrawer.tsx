@@ -11,6 +11,7 @@ import { usersApi } from '@/services/api/users';
 import { brand } from '@/theme/brand';
 import { BrandLogo } from './BrandLogo';
 import { ScalePressable } from './ScalePressable';
+import { UserAvatar } from './UserAvatar';
 
 interface DrawerApi {
   open: () => void;
@@ -117,9 +118,7 @@ function DrawerPanel({ progress, onClose }: { progress: ReturnType<typeof useSha
         </View>
 
         <View style={styles.profile}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-          </View>
+          <UserAvatar size={54} name={name} ring />
           <View style={styles.flex}>
             <Text style={styles.name} numberOfLines={1}>
               {name}
@@ -185,17 +184,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.18)',
   },
-  avatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: brand.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-  },
-  avatarText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 22 },
   name: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold', fontSize: 17 },
   role: { color: brand.onNavyMuted, fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 1 },
   email: { color: brand.onNavyMuted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 1 },
