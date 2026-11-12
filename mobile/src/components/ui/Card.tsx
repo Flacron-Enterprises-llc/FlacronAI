@@ -34,10 +34,10 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1 },
   padded: { padding: 16 },
   shadow: {
-    shadowColor: '#002250',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowColor: '#0B1F44',
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 });

@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { useTheme } from '@/theme';
 import { parseInline, parseMarkdown, type Block } from './parseMarkdown';
@@ -91,29 +91,91 @@ export function ReportMarkdown({ content }: { content: string | null | undefined
           </ScrollView>
         );
       case 'table':
-        return (
-          <ScrollView key={key} horizontal showsHorizontalScrollIndicator style={styles.tableWrap}>
-            <View style={[styles.table, { borderColor: c.border }]}>
-              {[b.header, ...b.rows].map((row, r) => (
-                <View key={r} style={[styles.tr, r === 0 && { backgroundColor: c.surface }]}>
-                  {b.header.map((_, col) => (
-                    <View key={col} style={[styles.td, { borderColor: c.border }]}>
-                      <Text style={[body, { fontSize: 13, lineHeight: 19 }, r === 0 && { fontFamily: f.bodySemiBold }]}>
-                        {inline(row[col] ?? '')}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        );
+        return <MarkdownTable key={key} header={b.header} rows={b.rows} renderInline={inline} textStyle={[body, { fontSize: 13, lineHeight: 19 }]} headerFont={f.bodySemiBold} border={c.border} headerBg={c.surface} muted={c.muted} />;
       default:
         return null;
     }
   };
 
   return <View>{blocks.map(render)}</View>;
+}
+
+/** Approximate glyph width (px) of the 13px table text, plus each cell's horizontal padding + border. */
+const CHAR_PX = 7.2;
+const CELL_PAD = 18;
+const MIN_COL = 56;
+const MAX_MIN_COL = 150;
+
+/**
+ * Column widths for a Markdown table. Each column gets at least the width of its longest single word (so words never
+ * break mid-word), and the remaining space is shared out by how much text each column holds -- a long "Change
+ * Summary" column gets more room than "Version". When even the minimums don't fit, the table scrolls sideways.
+ */
+export function tableColumnWidths(header: string[], rows: string[][], available: number): { widths: number[]; scroll: boolean } {
+  const cells = (i: number) => [header[i] ?? '', ...rows.map((r) => String(r[i] ?? ''))];
+  const mins = header.map((_, i) => {
+    const longestWord = Math.max(0, ...cells(i).flatMap((c) => c.replace(/[*`]/g, '').split(/\s+/)).map((w) => w.length));
+    return Math.min(MAX_MIN_COL, Math.max(MIN_COL, Math.ceil(longestWord * CHAR_PX + CELL_PAD)));
+  });
+  const weights = header.map((_, i) => Math.max(1, Math.max(...cells(i).map((c) => c.length))));
+  const minTotal = mins.reduce((a, b) => a + b, 0);
+  if (available > 0 && minTotal <= available) {
+    const spare = available - minTotal;
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const widths = mins.map((m, i) => m + Math.floor((spare * weights[i]) / weightSum));
+    return { widths, scroll: false };
+  }
+  return { widths: mins.map((m, i) => Math.max(m, Math.min(220, Math.round(weights[i] * CHAR_PX * 0.6) + CELL_PAD))), scroll: header.length > 1 };
+}
+
+function MarkdownTable({
+  header,
+  rows,
+  renderInline,
+  textStyle,
+  headerFont,
+  border,
+  headerBg,
+  muted,
+}: {
+  header: string[];
+  rows: string[][];
+  renderInline: (t: string) => ReactNode;
+  textStyle: StyleProp<TextStyle>;
+  headerFont: string;
+  border: string;
+  headerBg: string;
+  muted: string;
+}) {
+  const [available, setAvailable] = useState(0);
+  const { widths, scroll } = tableColumnWidths(header, rows, available);
+  const table = (
+    <View style={[styles.table, { borderColor: border }]}>
+      {[header, ...rows].map((row, r) => (
+        <View key={r} style={[styles.tr, r === 0 && { backgroundColor: headerBg }]}>
+          {header.map((_, col) => (
+            <View key={col} style={[styles.td, { borderColor: border, width: widths[col] }]}>
+              <Text style={[textStyle, r === 0 && { fontFamily: headerFont }]}>{renderInline(row[col] ?? '')}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+  return (
+    <View style={styles.tableWrap} onLayout={(e) => setAvailable(Math.floor(e.nativeEvent.layout.width) - 2)}>
+      {available === 0 ? null : scroll ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar>
+            {table}
+          </ScrollView>
+          <Text style={[styles.swipe, { color: muted }]}>Swipe sideways to see all columns →</Text>
+        </>
+      ) : (
+        table
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -133,5 +195,6 @@ const styles = StyleSheet.create({
   tableWrap: { marginVertical: 12 },
   table: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
   tr: { flexDirection: 'row' },
-  td: { width: 150, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 8 },
+  td: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingVertical: 8 },
+  swipe: { fontSize: 12, marginTop: 6 },
 });

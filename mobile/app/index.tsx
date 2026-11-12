@@ -22,7 +22,7 @@ export default function RootIndex() {
 
   switch (status) {
     case 'signed-out':
-      return <Redirect href="/login" />;
+      return <Redirect href="/welcome" />;
     case 'needs-email-verification':
       return <Redirect href="/verify-email" />;
     case 'needs-mfa':

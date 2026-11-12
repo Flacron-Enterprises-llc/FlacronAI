@@ -12,11 +12,11 @@ export const light: ColorPalette = {
   primaryHover: '#E23C02', // brand orange 600
   primarySoft: '#FFF3EE', // brand orange 50 (--brand-50, light)
   navy: '#002A64', // brand navy 800 (logo navy)
-  ink: '#002250', // --color-ink (light)
-  background: '#FFFFFF', // --color-bg (light)
-  surface: '#F8F8F8', // --color-surface (light)
-  border: '#E5E7EB', // --color-border (light)
-  muted: '#4B5563', // gray-600 (light)
+  ink: '#0B1F44', // navy ink
+  background: '#F3F5F9', // app canvas behind white cards (mobile reference redesign)
+  surface: '#FFFFFF', // cards and inputs (mobile reference redesign)
+  border: '#E4E8F0', // hairlines
+  muted: '#5B6B85', // slate-navy muted text
   success: '#16A34A', // green-600
   warning: '#D97706', // amber-600
   error: '#DC2626', // red-600

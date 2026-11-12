@@ -152,7 +152,7 @@ function GenerateWizard({ uid }: { uid: string }) {
             </ThemedText>
           </Pressable>
           <ThemedText variant="title" accessibilityRole="header">
-            Generate Report
+            New Inspection
           </ThemedText>
           <View style={styles.headerSpacer} />
         </View>

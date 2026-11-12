@@ -11,11 +11,14 @@ interface AuthenticatedThumbProps {
   cacheKey: string;
   fetcher: () => Promise<BinaryResponse>;
   style?: StyleProp<ViewStyle>;
+  /** `false` when the thumb sits inside another pressable (a card): a failed load then shows a static placeholder, since
+   * nesting a retry button inside the card's button is invalid. The card's own refresh reloads it. */
+  retryable?: boolean;
 }
 
 /** A thumbnail loaded through the authenticated photo proxy, with explicit loading, failed
  * (tap to retry), and loaded states — a failed fetch never spins forever. */
-export function AuthenticatedThumb({ scope, cacheKey, fetcher, style }: AuthenticatedThumbProps) {
+export function AuthenticatedThumb({ scope, cacheKey, fetcher, style, retryable = true }: AuthenticatedThumbProps) {
   const theme = useTheme();
   const { uri, loading, error, reload } = useAuthenticatedPhoto(scope, cacheKey, fetcher);
 
@@ -23,6 +26,10 @@ export function AuthenticatedThumb({ scope, cacheKey, fetcher, style }: Authenti
     // `cachePolicy="none"`: the cache file path is stable per photo, so expo-image's own cache
     // could otherwise keep showing a previous file's pixels after a re-fetch.
     return <Image source={{ uri }} style={[styles.fill, style as object]} contentFit="cover" cachePolicy="none" />;
+  }
+
+  if (error && !loading && !retryable) {
+    return <View style={[styles.fill, styles.center, { backgroundColor: theme.colors.surface }, style]} accessibilityLabel="Photo unavailable" />;
   }
 
   if (error && !loading) {

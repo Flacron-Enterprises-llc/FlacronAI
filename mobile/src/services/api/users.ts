@@ -15,6 +15,7 @@
  * calls them, so this file doesn't grow speculative surface.
  */
 import { apiRequest } from './client';
+import { toUploadPart, type RNFile } from './reports';
 import type { NotificationPreferences, UserProfile } from '@/features/auth/types';
 
 export interface UsageFeatures {
@@ -89,6 +90,19 @@ export const usersApi = {
       method: 'PUT',
       body: data,
     }),
+
+  /** Uploads a profile picture; the server crops it to a 256px square PNG and strips metadata. */
+  uploadAvatar: (file: RNFile) => {
+    const form = new FormData();
+    form.append('avatar', toUploadPart(file) as unknown as Blob);
+    return apiRequest<{ success: true; avatarUrl: string }>('/users/profile/avatar', {
+      method: 'POST',
+      multipart: form,
+      timeoutMs: 30000,
+    });
+  },
+
+  removeAvatar: () => apiRequest<{ success: true }>('/users/profile/avatar', { method: 'DELETE' }),
 
   /** Records the required Terms + Privacy acceptance at sign-up (Golden Rule #5 —
    * distinct from optional marketing consent, which this app does not collect). */

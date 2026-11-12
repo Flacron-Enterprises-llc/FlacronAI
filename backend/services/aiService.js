@@ -1846,6 +1846,13 @@ const buildMoldNarrativePrompt = (reportData, imageAnalysis) => {
   const imageSection = imageAnalysis
     ? `\n\nIMAGE ANALYSIS RESULTS:\n${JSON.stringify(imageAnalysis, null, 2)}`
     : '';
+  // QA POT-12: with no analyzed photos, the only verifiable source is the
+  // adjuster's own entered text -- the draft must not invent detail beyond it.
+  const analyzedPhotos = Number(imageAnalysis?.totalImagesAnalyzed) || 0;
+  const sourceRule =
+    analyzedPhotos === 0
+      ? `\n\nSOURCE RULE (NO PHOTOS WERE ANALYZED): Base "visualObservations" ONLY on conditions explicitly stated in the adjuster-provided context above. Attribute each item to that source (e.g. "Per the adjuster's notes on the related claim, ..."). Do NOT add any location, size, colour, moisture reading, pattern or other detail that is not stated there. If the provided context describes no mold-related condition, return a single bullet stating that no visible-condition details were provided and that an on-site inspection is required.`
+      : '';
 
   return `You are assisting a licensed insurance adjuster by drafting the narrative sections of a Mold Assessment — Preliminary Report for their review, editing, and approval. You are NOT the adjuster and you are NOT a certified mold assessor. You do NOT make final determinations.
 
@@ -1859,7 +1866,7 @@ CLAIM DETAILS:
 - Date of Discovery: ${dateOfDiscovery}
 - Related Claim Context (provided by adjuster): ${lossDescription || 'None provided'}
 - Damages Previously Observed (provided by adjuster): ${damagesObserved || 'None provided'}
-- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}
+- Additional Notes: ${additionalNotes || 'None provided'}${imageSection}${sourceRule}
 
 Return ONLY a JSON object with exactly these 2 keys, each a string, no other text/preamble/code fence:
 {
@@ -1971,6 +1978,19 @@ _This report should be read alongside the related claim's original inspection re
 // final markdown in manifest order, then hands off to the existing generic
 // PDF/DOCX renderers unchanged. The scope-notice section is inserted here as
 // the fixed MOLD_SCOPE_NOTICE constant, never passed through the AI.
+// QA POT-12: states where Section 5's observations come from, so a reader
+// can tell photo-backed observations from ones restated from typed notes.
+const observationSourceNote = (imageAnalysis, photoCount) => {
+  const analyzed = Number(imageAnalysis?.totalImagesAnalyzed) || 0;
+  if (analyzed > 0) {
+    return `*Source: the reviewer-approved observations for ${analyzed} photo${analyzed === 1 ? '' : 's'} from the related report, plus the adjuster-entered notes.*`;
+  }
+  if (photoCount > 0) {
+    return `*Source: the adjuster-entered loss description and damage notes from the related report. ${photoCount} photo${photoCount === 1 ? ' is' : 's are'} attached for reference but no photo observations were available to draft from -- verify every item on site.*`;
+  }
+  return '*Source: the adjuster-entered loss description and damage notes from the related report. No photographs were available -- every item below must be verified on site.*';
+};
+
 const assembleMoldReport = (staticSections, narrative, imageAnalysis, photoCount) => {
   const photoSection =
     photoCount === 0
@@ -1991,6 +2011,8 @@ ${staticSections.background}
 ${MOLD_SCOPE_NOTICE}
 
 ## SECTION 5: VISUAL OBSERVATIONS
+${observationSourceNote(imageAnalysis, photoCount)}
+
 ${narrative.visualObservations}
 
 ## SECTION 6: RECOMMENDED NEXT STEPS

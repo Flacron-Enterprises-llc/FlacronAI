@@ -39,7 +39,7 @@ test('HTML export escapes hostile report fields and includes draft/sign-off cont
   assert.match(html, /&lt;script&gt;alert\(3\)&lt;\/script&gt;/);
   assert.match(html, /DRAFT - PENDING ADJUSTER REVIEW/);
   assert.match(html, /LIC-123/);
-  assert.match(html, /Report version:<\/strong> 3/);
+  assert.match(html, /Report version approved:<\/strong> Version 3 \(history entry #3\)/);
   assert.doesNotMatch(html, /localhost|\/api\//i);
 });
 

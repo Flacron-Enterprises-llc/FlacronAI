@@ -12,3 +12,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // offline.ts): its native event-emitter setup throws under Jest's Node environment without
 // this official mock, even for a test that only imports the module transitively.
 jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock'));
+
+// Brand components animate with Reanimated 4; Jest has no native worklet runtime, so use the libraries' own mocks.
+jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'));
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));

@@ -13,7 +13,7 @@
  */
 import { File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { reportsApi, type ExportFormat, type ExportOptions } from '@/services/api/reports';
 import { clearExportFiles, exportDirectory, safePathSegment } from '@/services/localData/fileCache';
@@ -66,8 +66,13 @@ export function useReportExport(reportId: string) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // State updates are async, so a quick double tap could start two exports (and two
+  // "Export ready" notices) before `exporting` re-renders. A ref blocks it synchronously.
+  const inFlight = useRef(false);
   const exportAndShare = useCallback(
     async (options: ExportOptions = { format: 'pdf' }): Promise<ExportOutcome> => {
+      if (inFlight.current) return { status: 'error', message: 'An export is already in progress.' };
+      inFlight.current = true;
       setExporting(true);
       setError(null);
       try {
@@ -109,6 +114,8 @@ export function useReportExport(reportId: string) {
         setError(message);
         setExporting(false);
         return { status: 'error', message };
+      } finally {
+        inFlight.current = false;
       }
     },
     [reportId]

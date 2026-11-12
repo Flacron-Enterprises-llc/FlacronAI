@@ -59,6 +59,17 @@ ${rows}
 // counted in TOTAL DUE exactly once. A 0% (or legacy, pre-fix) O&P still
 // renders its own "(0%)" row rather than being hidden -- never a misleading
 // omission.
+// QA POT-02: payments above the invoice total are an overpayment credit
+// owed back to the payer -- never a negative "amount due".
+const dueRows = (balanceDue) =>
+  Number(balanceDue) < 0
+    ? `| **TOTAL DUE** | **${formatMoney(0)}** |
+| **CREDIT BALANCE (OVERPAYMENT)** | **${formatMoney(Math.abs(balanceDue))}** |`
+    : `| **TOTAL DUE** | **${formatMoney(balanceDue)}** |`;
+
+const formatBalance = (balanceDue) =>
+  Number(balanceDue) < 0 ? `${formatMoney(Math.abs(balanceDue))} credit` : formatMoney(balanceDue);
+
 const totalsSection = ({ totals, taxRatePercent }) => `## INVOICE TOTALS
 | Description | Amount |
 |-------------|--------|
@@ -67,7 +78,7 @@ const totalsSection = ({ totals, taxRatePercent }) => `## INVOICE TOTALS
 | Combined Subtotal | ${formatMoney(totals.combinedSubtotal)} |
 | Sales Tax (${taxRatePercent}%) | ${formatMoney(totals.tax)} |
 | Payments Received (see history below) | (${formatMoney(totals.paymentsReceivedTotal)}) |
-| **TOTAL DUE** | **${formatMoney(totals.balanceDue)}** |
+${dueRows(totals.balanceDue)}
 
 *FlacronAI's Super Intelligence does not generate, calculate, or determine any dollar amount in this invoice -- every figure above is computed automatically, in code, from the linked Repair Estimate's reused line items and the payment/tax data entered above.*`;
 
@@ -125,7 +136,7 @@ Reviewed & approved by (licensed adjuster / authorized reviewer): ______________
 // are tracked by the route handler across create + revise calls.
 const revisionHistorySection = ({ revisionHistory }) => {
   const rows = revisionHistory
-    .map((rev) => `| Rev. ${rev.version} | ${rev.date} | ${rev.changeSummary} | ${formatMoney(rev.balanceDue)} |`)
+    .map((rev) => `| Rev. ${rev.version} | ${rev.date} | ${rev.changeSummary} | ${formatBalance(rev.balanceDue)} |`)
     .join('\n');
   return `## REVISION HISTORY
 | Version | Date | Change Summary | Balance Due |
@@ -147,6 +158,8 @@ const buildInvoiceContent = (reportData, computed, revision, revisionHistory) =>
 
 module.exports = {
   formatMoney,
+  dueRows,
+  formatBalance,
   billingSection,
   servicesSection,
   totalsSection,

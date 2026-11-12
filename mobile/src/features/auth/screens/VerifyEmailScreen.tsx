@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthShell } from '@/components/brand/AuthShell';
+import { Icon } from '@/components/ui/Icon';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { useAuth } from '../context/AuthProvider';
@@ -84,13 +85,10 @@ export function VerifyEmailScreen() {
   };
 
   return (
-    <ScreenContainer centered>
+    <AuthShell title="Verify your email" back={false}>
       <View style={[styles.iconCircle, { backgroundColor: theme.colors.primarySoft, borderRadius: 999 }]}>
-        <ThemedText variant="title">✉️</ThemedText>
+        <Icon name="mail" size={28} color={theme.colors.primary} />
       </View>
-      <ThemedText variant="title" style={styles.title}>
-        Verify your email
-      </ThemedText>
       <ThemedText variant="body" color="muted" style={styles.body}>
         We sent a verification link to{' '}
         <ThemedText variant="body" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
@@ -117,7 +115,7 @@ export function VerifyEmailScreen() {
       </View>
 
       <PrimaryButton variant="secondary" label="Sign out" onPress={() => logout()} />
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 

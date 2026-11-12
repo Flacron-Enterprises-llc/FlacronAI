@@ -1,47 +1,29 @@
 import { Tabs, useRouter } from 'expo-router';
-import type { ColorValue } from 'react-native';
 
-import { Icon, type IconName } from '@/components/ui/Icon';
-import { useTheme } from '@/theme';
-
-function tabIcon(name: IconName) {
-  function TabIcon({ color, size }: { color: ColorValue; size: number }) {
-    return <Icon name={name} color={color} size={size} />;
-  }
-  return TabIcon;
-}
+import { BrandTabBar } from '@/components/brand/BrandTabBar';
 
 /**
- * Bottom tabs = the web dashboard sidebar adapted for touch: Dashboard, My Reports, Generate Report (opens the wizard as
- * a stacked screen), and More (Templates, Analytics, Usage & Billing, Settings, Help, web-only tools). Settings stays a
- * routable tab screen (`/settings`) but is reached through More, like the web sidebar's lower section.
+ * Bottom tabs (reference design): Home (dashboard), Projects (every inspection report), the raised "+" (opens the
+ * generate wizard as a stacked screen), Reports (reviewed reports ready to export), and More. Settings stays a routable
+ * tab screen (`/settings`) but is reached through More and the side menu.
  *
  * `initialRouteName: 'dashboard'` (not `index`) is deliberate: an `index` route nested two groups deep —
  * `(app)/(tabs)/index` — would resolve to the same `/` pathname as the top-level anchor route `app/index.tsx`.
  */
 export default function TabsLayout() {
-  const theme = useTheme();
   const router = useRouter();
 
   return (
     <Tabs
       initialRouteName="dashboard"
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.muted,
-        tabBarLabelStyle: { fontFamily: theme.typography.fontFamily.bodyMedium, fontSize: 11 },
-        tabBarStyle: {
-          backgroundColor: theme.colors.background,
-          borderTopColor: theme.colors.border,
-        },
-      }}
+      tabBar={(props) => <BrandTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
-      <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarIcon: tabIcon('grid') }} />
-      <Tabs.Screen name="reports" options={{ title: 'My Reports', tabBarIcon: tabIcon('file-text') }} />
+      <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
+      <Tabs.Screen name="reports" options={{ title: 'Projects' }} />
       <Tabs.Screen
         name="generate"
-        options={{ title: 'Generate', tabBarIcon: tabIcon('zap'), tabBarAccessibilityLabel: 'Generate Report' }}
+        options={{ title: 'New Inspection', tabBarAccessibilityLabel: 'New Inspection' }}
         listeners={{
           tabPress: (e) => {
             e.preventDefault();
@@ -49,7 +31,8 @@ export default function TabsLayout() {
           },
         }}
       />
-      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: tabIcon('menu') }} />
+      <Tabs.Screen name="library" options={{ title: 'Reports' }} />
+      <Tabs.Screen name="more" options={{ title: 'More' }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', href: null }} />
     </Tabs>
   );

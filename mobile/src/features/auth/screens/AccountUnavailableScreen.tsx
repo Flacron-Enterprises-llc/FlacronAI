@@ -1,7 +1,5 @@
-import { StyleSheet } from 'react-native';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
-import { ThemedText } from '@/components/ThemedText';
+import { AuthShell } from '@/components/brand/AuthShell';
 import { useAuth } from '../context/AuthProvider';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { FormError } from '../components/FormError';
@@ -17,20 +15,11 @@ export function AccountUnavailableScreen() {
   const { profileError, retryProfile, logout } = useAuth();
 
   return (
-    <ScreenContainer centered>
-      <ThemedText variant="title" style={styles.title}>
-        Account data unavailable
-      </ThemedText>
+    <AuthShell title="Account data unavailable" back={false}>
       <FormError message={profileError || 'Your account data has not loaded yet.'} />
       <PrimaryButton label="Retry loading" onPress={() => retryProfile()} />
       <PrimaryButton variant="secondary" label="Sign out" onPress={() => logout()} />
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-});

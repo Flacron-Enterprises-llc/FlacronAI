@@ -55,8 +55,9 @@ function RootNavigator() {
         <Stack.Screen name="index" />
 
         <Stack.Protected guard={status === 'signed-out'}>
-          <Stack.Screen name="login" />
-          <Stack.Screen name="signup" />
+          <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
+          <Stack.Screen name="login" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="signup" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="forgot-password" />
         </Stack.Protected>
 
@@ -106,7 +107,6 @@ function SplashScreenController({ fontsLoaded }: { fontsLoaded: boolean }) {
 }
 
 export default function RootLayout() {
-  const theme = useTheme();
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -126,7 +126,8 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      {/* Every screen opens under navy chrome (app bar, welcome photo, auth hero). */}
+      <StatusBar style="light" />
       <AuthProvider>
         <SplashScreenController fontsLoaded={fontsLoaded} />
       </AuthProvider>

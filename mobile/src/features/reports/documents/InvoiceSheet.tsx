@@ -46,7 +46,8 @@ export function InvoiceSheet({ doc, mode, onClose, onSaved }: { doc: Report; mod
     invoiceNumber: str(inv?.invoiceNumber, `INV-${doc.claimNumber}-01`).slice(0, 40),
     invoiceDate: str(inv?.invoiceDate, todayIso()),
     jobNumber: str(inv?.jobNumber),
-    taxRatePercent: str(inv?.taxRatePercent, '0'),
+    // QA POT-01: a new invoice inherits the linked Repair Estimate's sales-tax rate (still editable).
+    taxRatePercent: str(inv?.taxRatePercent, str(doc.taxRatePercent, '0')),
     paymentTerms: str(inv?.paymentTerms, 'Net 30 days from invoice date.'),
     warrantyText: str(inv?.warrantyText),
     remitName: str(remitTo.name),
@@ -145,9 +146,14 @@ export function InvoiceSheet({ doc, mode, onClose, onSaved }: { doc: Report; mod
           ['Combined Subtotal', money(totals.combinedSubtotal)],
           ['Sales Tax', money(totals.tax)],
           ['Payments Received', `(${money(totals.paymentsReceivedTotal)})`],
-          ['Total Due', money(totals.balanceDue), true],
+          ...(totals.balanceDue < 0
+            ? ([
+                ['Total Due', money(0), true],
+                ['Credit balance (overpayment)', money(Math.abs(totals.balanceDue)), true],
+              ] as [string, string, boolean][])
+            : ([['Total Due', money(totals.balanceDue), true]] as [string, string, boolean][])),
         ]}
-        note="Preview only — the server recomputes every total."
+        note={totals.balanceDue < 0 ? 'Payments exceed the invoice total — the difference is shown as a credit owed back, not an amount due. Preview only; the server recomputes every total.' : 'Preview only — the server recomputes every total.'}
       />
 
       <SectionLabel>Payment history</SectionLabel>

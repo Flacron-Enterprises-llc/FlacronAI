@@ -9,7 +9,11 @@ const mockLogout = jest.fn(() => Promise.resolve());
 jest.mock('@/features/auth/context/AuthProvider', () => ({
   useAuth: () => ({ logout: mockLogout, firebaseUser: { email: 'a@example.com', providerData: [{ providerId: 'password' }] } }),
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: jest.fn(), canGoBack: () => true, replace: jest.fn() }),
+  useSegments: () => ['(app)', 'account', 'delete'],
+  useFocusEffect: jest.fn(),
+}));
 const mockBilling = {
   availability: 'blocked_store',
   platform: 'ios',

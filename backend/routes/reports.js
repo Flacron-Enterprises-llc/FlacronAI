@@ -88,6 +88,7 @@ const {
 const { buildSection7DetailMarkdown, injectSection7Detail } = require('../utils/canonicalEstimateContent');
 const { addWatermarkToPDF } = require('../services/watermarkService');
 const { resolveWatermarkPolicy, REVIEWED_STATUSES } = require('../utils/watermarkPolicy');
+const { prepareExportContent, approvedVersionLabel } = require('../utils/exportWording');
 const {
   reportDocumentObject,
   exportObject,
@@ -3893,7 +3894,12 @@ router.post(
       // use, never the raw pre-review AI batch output.
       const parentPhotos = Array.isArray(parent.photos) ? parent.photos : [];
       const imageAnalysis = buildEffectiveImageAnalysis(parent.imageAnalysis, parentPhotos);
-      const photoCount = imageAnalysis.totalImagesAnalyzed || 0;
+      // QA POT-13: reuse every reviewed, actually-stored photo (not only the
+      // ones that happened to get an AI observation), and report that count.
+      const reviewedPhotos = parentPhotos.filter(
+        (p) => p && p.review?.status !== 'excluded' && p.status !== 'failed' && (p.objectPath || p.status === 'uploaded')
+      );
+      const photoCount = reviewedPhotos.length;
 
       const newId = uuidv4();
       const claimNumber = `${parent.claimNumber || 'CLAIM'}-M`;
@@ -3928,7 +3934,6 @@ router.post(
       // Reference (not copy) the linked report's Storage objects -- read-only,
       // so the supplement's photo appendix/export renders identically to the
       // parent's reviewed photos without duplicating any Storage bytes.
-      const reviewedPhotos = parentPhotos.filter((p) => p.review?.status !== 'excluded');
       const now = new Date().toISOString();
       const newReport = {
         id: newId,
@@ -5711,9 +5716,13 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     // fields are ever rendered; a report with none gets
     // `section3Block === ''`, so injectSection3PropertyBlock is a no-op.
     const section3Block = buildSection3PropertyBlockMarkdown(report.propertyProfile);
-    const renderReport = section3Block
+    const withSection3 = section3Block
       ? { ...reportWithSection7, content: injectSection3PropertyBlock(reportWithSection7.content, section3Block) }
       : reportWithSection7;
+    // QA FAI-001/FAI-005: an approved document must not carry DRAFT/PENDING
+    // banners baked in at generation time, and Markdown the renderers don't
+    // draw (blockquotes, underscore emphasis) must not leak as raw syntax.
+    const renderReport = { ...withSection3, content: prepareExportContent(withSection3.content, { reviewed }) };
 
     let buffer;
     let ext;
@@ -5825,11 +5834,15 @@ router.post('/:id/export', authenticateAny, reportsExport, requireCanExport, asy
     // yet exposed in Settings' UI"). It's also a direct, immediate result of
     // the caller's own click, not a background/async surprise -- closer to a
     // receipt than an alert, so notification-spam risk is minimal.
-    notifyUser(db, req.user.uid, NOTIFICATION_TYPES.EXPORT_COMPLETED, {
-      reportId: req.params.id,
-      claimNumber: report.claimNumber || null,
-      format,
-    }).catch((err) => console.warn('[Notifications] export-completed notification failed:', err.message));
+    // QA POT-05: repeated exports of the same report+format within a short
+    // window (double tap, retry) produce one "Export ready" notice, not several.
+    notifyUser(
+      db,
+      req.user.uid,
+      NOTIFICATION_TYPES.EXPORT_COMPLETED,
+      { reportId: req.params.id, claimNumber: report.claimNumber || null, format },
+      { dedupeKey: `export_${req.user.uid}_${req.params.id}_${format}_${Math.floor(Date.now() / 120000)}` }
+    ).catch((err) => console.warn('[Notifications] export-completed notification failed:', err.message));
     return res.json({ success: true, downloadUrl, expiresAt, format, filename });
   } catch (err) {
     // Do not leak stack traces / internals / raw report data to the client or
@@ -6916,7 +6929,7 @@ const generateHTML = (report, options) => {
     <p><strong>License:</strong> ${escapeHtml(sig.licenseState)} ${escapeHtml(sig.licenseNumber)}</p>
     <p><strong>Company / Firm:</strong> ${escapeHtml(sig.company)}</p>
     <p><strong>Approved:</strong> ${escapeHtml(sig.confirmedAt ? new Date(sig.confirmedAt).toLocaleString() : '')}</p>
-    <p><strong>Report version:</strong> ${escapeHtml(report.versionApproved || '')}</p>
+    <p><strong>${report.revision != null && report.documentType ? 'Document revision approved' : 'Report version approved'}:</strong> ${escapeHtml(approvedVersionLabel(report))}</p>
   </section>`
     : '';
 

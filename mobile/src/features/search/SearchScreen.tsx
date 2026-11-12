@@ -19,6 +19,26 @@ const MAX_RECENT = 5;
 
 /** Web GlobalSearch (Ctrl+K): reports, photos and (for team admins) members, 300 ms debounce, stale responses
  * dropped, last five searches remembered per account on this device. */
+const DOC_LABEL: Record<string, string> = {
+  RepairEstimate: 'Repair Estimate',
+  Invoice: 'Invoice',
+  CoverageDeterminationLetter: 'Coverage Letter',
+  MoldSupplement: 'Mold Supplement',
+};
+
+/** QA POT-04: several records can share a claim number (copies, estimates, invoices), so each row also shows
+ * its document type, revision, last-updated date and a short report ID. */
+export function searchReportDetail(r: SearchResults['reports'][number]): string {
+  const kind = r.documentType ? DOC_LABEL[r.documentType] ?? r.documentType : 'Inspection report';
+  const rev = r.revision != null ? `Rev. ${r.revision}` : null;
+  let date: string | null = null;
+  if (r.updatedAt) {
+    const d = new Date(r.updatedAt);
+    if (!Number.isNaN(d.getTime())) date = `Updated ${d.toLocaleDateString()}`;
+  }
+  return [[kind, rev].filter(Boolean).join(' '), r.insuredName, date, `#${r.id.slice(0, 6)}`].filter(Boolean).join(' · ');
+}
+
 export function SearchScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -136,7 +156,7 @@ export function SearchScreen() {
                 key={r.id}
                 icon="file-text"
                 title={r.claimNumber || 'Report'}
-                detail={[r.insuredName, r.propertyAddress].filter(Boolean).join(' · ')}
+                detail={searchReportDetail(r)}
                 right={r.status ? <StatusBadge status={r.status} /> : null}
                 onPress={() => openReport(r.id)}
               />

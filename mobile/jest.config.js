@@ -28,4 +28,9 @@ module.exports = {
     '/node_modules/@react-native/babel-preset/',
   ],
   testPathIgnorePatterns: ['/node_modules/', '/.expo/'],
+  // tsconfig maps `@/assets/*` to ./assets (not ./src/assets); Jest needs that entry ahead of the generic `@/*` one.
+  moduleNameMapper: {
+    '^@/assets/(.*)$': '<rootDir>/assets/$1',
+    ...(jestExpoPreset.moduleNameMapper ?? {}),
+  },
 };

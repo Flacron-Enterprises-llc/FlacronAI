@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthShell } from '@/components/brand/AuthShell';
+import { Icon } from '@/components/ui/Icon';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { useAuth } from '../context/AuthProvider';
@@ -53,13 +54,10 @@ export function MfaScreen() {
   };
 
   return (
-    <ScreenContainer centered>
+    <AuthShell title="Two-factor authentication" back={false}>
       <View style={[styles.iconCircle, { backgroundColor: theme.colors.primarySoft }]}>
-        <ThemedText variant="title">🔐</ThemedText>
+        <Icon name="shield" size={28} color={theme.colors.primary} />
       </View>
-      <ThemedText variant="title" style={styles.title}>
-        Two-factor authentication
-      </ThemedText>
       <ThemedText variant="body" color="muted" style={styles.body}>
         Enter the 6-digit code from your authenticator app, or a recovery code.
       </ThemedText>
@@ -85,7 +83,7 @@ export function MfaScreen() {
       <PrimaryButton label="Verify" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
 
       <PrimaryButton variant="secondary" label="Sign in with a different account" onPress={() => logout()} />
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 

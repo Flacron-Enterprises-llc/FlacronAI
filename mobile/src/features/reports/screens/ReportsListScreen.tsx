@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { FilterTabs } from '@/components/brand/FilterTabs';
+import { SearchField } from '@/components/brand/Fields';
 import { ScreenContainer } from '@/components/ScreenContainer';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { ThemedText } from '@/components/ThemedText';
 import { Icon } from '@/components/ui/Icon';
 import { useTheme } from '@/theme';
@@ -13,6 +16,7 @@ import { ReportCard } from '../components/ReportCard';
 import { StateMessage } from '../components/StateMessage';
 import { ChoiceChips } from '../wizard/components/ChoiceChips';
 import { LOSS_TYPES, REPORT_TYPES } from '../wizard/constants';
+import { useStatusCounts } from '../hooks/useStatusCounts';
 import { notifyReportsChanged, useRefreshOnFocus } from '../reportsEvents';
 
 /** Label → the exact `status` value `GET /reports?status=` matches (an equality filter
@@ -28,14 +32,17 @@ export const STATUS_FILTERS: { label: string; value: string | undefined }[] = [
   { label: 'Approved', value: 'approved' },
   { label: 'Archived', value: 'archived' },
 ];
-const FILTER_LABELS = STATUS_FILTERS.map((f) => f.label);
+/** The Reports tab: reviewed reports only (the statuses the backend treats as human-approved). */
+const LIBRARY_FILTERS = STATUS_FILTERS.filter((f) => f.value === 'finalized' || f.value === 'completed' || f.value === 'approved');
 
 /** Web "My Reports" view: search (claim #, insured, address), status, loss type and report type filters, infinite
  * scroll. Archive / restore / delete / duplicate live in each report's ••• menu. */
-export function ReportsListScreen() {
+export function ReportsListScreen({ mode = 'projects' }: { mode?: 'projects' | 'library' } = {}) {
   const theme = useTheme();
   const router = useRouter();
-  const [filterLabel, setFilterLabel] = useState<string>('All');
+  const filters = mode === 'library' ? LIBRARY_FILTERS : STATUS_FILTERS;
+  const [filterLabel, setFilterLabel] = useState<string>(filters[0].label);
+  const counts = useStatusCounts(filters.map((f) => f.value));
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -44,7 +51,7 @@ export function ReportsListScreen() {
   const [selection, setSelection] = useState<Set<string> | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
-  const status = STATUS_FILTERS.find((f) => f.label === filterLabel)?.value;
+  const status = filters.find((f) => f.label === filterLabel)?.value;
 
   // Debounced so typing doesn't send one request per keystroke.
   useEffect(() => {
@@ -58,9 +65,12 @@ export function ReportsListScreen() {
     lossType: lossType || undefined,
     reportType: reportType || undefined,
   });
-  useRefreshOnFocus(list.refresh);
+  useRefreshOnFocus(() => {
+    list.refresh();
+    counts.refresh();
+  });
   const activeExtra = (lossType ? 1 : 0) + (reportType ? 1 : 0);
-  const filtered = !!(status || search || activeExtra);
+  const filtered = mode === 'library' ? !!(search || activeExtra) : !!(status || search || activeExtra);
 
   const toggle = (id: string) =>
     setSelection((prev) => {
@@ -112,20 +122,17 @@ export function ReportsListScreen() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <View style={styles.flex}>
-          <ThemedText variant="heading" accessibilityRole="header">
-            My Reports
-          </ThemedText>
-        </View>
-        {selection ? (
-          <Pressable onPress={() => setSelection(null)} accessibilityRole="button" hitSlop={8} style={styles.selectBtn}>
-            <ThemedText variant="body" color="primary">
-              Done
-            </ThemedText>
-          </Pressable>
-        ) : (
-          <>
+      <ScreenHeader
+        title={mode === 'library' ? 'Reports' : 'Projects'}
+        subtitle={mode === 'library' ? 'Reviewed reports, ready to download and share' : undefined}
+        right={
+          selection ? (
+            <Pressable onPress={() => setSelection(null)} accessibilityRole="button" hitSlop={8} style={styles.selectBtn}>
+              <ThemedText variant="body" color="primary">
+                Done
+              </ThemedText>
+            </Pressable>
+          ) : (
             <Pressable
               onPress={() => setSelection(new Set())}
               accessibilityRole="button"
@@ -133,14 +140,13 @@ export function ReportsListScreen() {
               hitSlop={8}
               style={styles.selectBtn}
             >
-              <ThemedText variant="body" color="primary">
+              <ThemedText variant="body" color="primary" style={{ fontFamily: theme.typography.fontFamily.bodySemiBold }}>
                 Select
               </ThemedText>
             </Pressable>
-            <PrimaryButton icon="zap" label="Generate" onPress={() => router.push('/report/new')} />
-          </>
-        )}
-      </View>
+          )
+        }
+      />
       {selection ? (
         <View style={[styles.bulkBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
           <ThemedText variant="body" style={styles.flex}>
@@ -173,46 +179,46 @@ export function ReportsListScreen() {
         </ThemedText>
       ) : null}
 
-      <View style={styles.searchRow}>
-        <View style={[styles.search, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-          <Icon name="search" color={theme.colors.muted} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search claim #, insured or address"
-            placeholderTextColor={theme.colors.muted}
-            accessibilityLabel="Search reports"
-            returnKeyType="search"
-            autoCorrect={false}
-            style={[styles.searchInput, { color: theme.colors.ink, fontFamily: theme.typography.fontFamily.body }]}
-          />
-          {query ? (
-            <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8}>
-              <Icon name="x-circle" color={theme.colors.muted} />
+      <SearchField
+        value={query}
+        onChangeText={setQuery}
+        placeholder={mode === 'library' ? 'Search reports...' : 'Search projects...'}
+        accessibilityLabel="Search reports"
+        trailing={
+          <>
+            {query ? (
+              <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8}>
+                <Icon name="x-circle" color={theme.colors.muted} />
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => setShowFilters((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filters${activeExtra ? `, ${activeExtra} active` : ''}`}
+              accessibilityState={{ expanded: showFilters }}
+              style={[
+                styles.filterBtn,
+                { borderColor: activeExtra ? theme.colors.primary : theme.colors.border, backgroundColor: activeExtra ? theme.colors.primarySoft : theme.colors.surface },
+              ]}
+            >
+              <Icon name="filter" color={activeExtra ? theme.colors.primary : theme.colors.ink} />
             </Pressable>
-          ) : null}
-        </View>
-        <Pressable
-          onPress={() => setShowFilters((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={`Filters${activeExtra ? `, ${activeExtra} active` : ''}`}
-          accessibilityState={{ expanded: showFilters }}
-          style={[
-            styles.filterBtn,
-            { borderColor: activeExtra ? theme.colors.primary : theme.colors.border, backgroundColor: activeExtra ? theme.colors.primarySoft : theme.colors.surface },
-          ]}
-        >
-          <Icon name="sliders" color={activeExtra ? theme.colors.primary : theme.colors.ink} />
-        </Pressable>
-      </View>
+          </>
+        }
+      />
 
-      <ChoiceChips label="Status" value={filterLabel} options={FILTER_LABELS} onChange={setFilterLabel} />
       {showFilters ? (
         <>
           <ChoiceChips label="Loss type" value={lossType} options={LOSS_TYPES} allowDeselect onChange={setLossType} />
           <ChoiceChips label="Report type" value={reportType} options={REPORT_TYPES} allowDeselect onChange={setReportType} />
         </>
       ) : null}
+
+      <FilterTabs
+        value={filterLabel}
+        onChange={setFilterLabel}
+        tabs={filters.map((f) => ({ key: f.label, label: f.label, count: counts.get(f.value) }))}
+      />
 
       {list.isOffline && (
         <ThemedText variant="caption" color="muted" style={styles.offline}>
@@ -240,15 +246,20 @@ export function ReportsListScreen() {
               <StateMessage title="No reports found" description="Try a different search or filter." />
             ) : (
               <StateMessage
-                title="No reports yet"
-                description="Generate your first inspection report to get started."
-                retryLabel="Generate Report"
+                title={mode === 'library' ? 'No reviewed reports yet' : 'No inspections yet'}
+                description={
+                  mode === 'library'
+                    ? 'Reports appear here after you review and approve a draft.'
+                    : 'Start a new inspection to create your first report.'
+                }
+                retryLabel="New Inspection"
                 onRetry={() => router.push('/report/new')}
               />
             )
           }
           ListFooterComponent={list.loadingMore ? <ActivityIndicator style={styles.footerLoader} color={theme.colors.primary} /> : null}
-          contentContainerStyle={list.reports.length === 0 ? styles.emptyContent : undefined}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={list.reports.length === 0 ? styles.emptyContent : styles.listContent}
         />
       )}
     </ScreenContainer>
@@ -256,15 +267,12 @@ export function ReportsListScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   flex: { flex: 1 },
-  searchRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, minHeight: 46 },
-  searchInput: { flex: 1, fontSize: 15, paddingVertical: 10 },
   selectBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   bulkBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 16, padding: 8, marginBottom: 12, flexWrap: 'wrap' },
   filterBtn: { width: 46, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   offline: { marginBottom: 8 },
   footerLoader: { marginVertical: 16 },
   emptyContent: { flexGrow: 1 },
+  listContent: { paddingTop: 8, paddingBottom: 24 },
 });

@@ -21,15 +21,20 @@ const QA_BUILD = process.env.FLACRON_BUILD_PROFILE === 'qa' ? assertQaBuildEnv(p
 // QA builds: 1.1.x = production-account sign-in (QA federation). The workflow passes an
 // ever-increasing QA_VERSION_CODE so each distributed APK has a distinct build number.
 const QA_VERSION_CODE = QA_BUILD ? Number(process.env.QA_VERSION_CODE) || 2 : undefined;
+// Production APK (eas.json profile `apk`, built by .github/workflows/android-apk.yml): live API + flacronai-c8dab, the
+// same accounts and data as flacronai.com. The workflow passes APK_VERSION_CODE so every distributed APK upgrades the last.
+const PROD_APK = process.env.FLACRON_BUILD_PROFILE === 'apk';
+const APK_VERSION_CODE = PROD_APK ? Number(process.env.APK_VERSION_CODE) || 2000 : undefined;
+const VERSION_CODE = QA_VERSION_CODE ?? APK_VERSION_CODE;
 
 const config: ExpoConfig = {
   name: 'FlacronAI',
   slug: 'flacronai',
   owner: 'flacron-enterprises-llc',
-  version: QA_BUILD ? '1.1.0' : '1.0.0',
+  version: QA_BUILD ? '1.1.0' : PROD_APK ? '1.2.0' : '1.0.0',
   scheme: 'flacronai',
   orientation: 'portrait',
-  userInterfaceStyle: 'automatic',
+  userInterfaceStyle: 'light',
   icon: './assets/images/icon.png',
 
   ios: {
@@ -52,7 +57,7 @@ const config: ExpoConfig = {
 
   android: {
     package: 'com.flacronenterprises.flacronai',
-    ...(QA_VERSION_CODE ? { versionCode: QA_VERSION_CODE } : {}),
+    ...(VERSION_CODE ? { versionCode: VERSION_CODE } : {}),
     adaptiveIcon: {
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundColor: '#FFFFFF',
@@ -65,7 +70,7 @@ const config: ExpoConfig = {
     // QA build only: FCM config for push (the native SDK needs it to issue the device token
     // behind the Expo push token). CI writes the staging file from an environment secret and
     // the QA guard verifies it is staging; nothing is committed to the repo.
-    ...(QA_BUILD && process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
+    ...((QA_BUILD || PROD_APK) && process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
   },
 
   web: {
@@ -78,9 +83,10 @@ const config: ExpoConfig = {
     [
       'expo-splash-screen',
       {
-        image: './assets/images/splash-icon.png',
-        imageWidth: 220,
-        backgroundColor: '#FFFFFF',
+        // Navy splash with the white-A mark, so launch flows straight into the navy welcome / app bar.
+        image: './assets/images/brand-mark-light.png',
+        imageWidth: 180,
+        backgroundColor: '#001A42',
       },
     ],
     // Sign in with Apple (Phase 3) — safe to enable now, see the ios.usesAppleSignIn

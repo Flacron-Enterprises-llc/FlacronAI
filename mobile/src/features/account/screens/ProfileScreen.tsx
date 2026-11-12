@@ -10,6 +10,7 @@ import { PrimaryButton } from '@/features/auth/components/PrimaryButton';
 import { useAuth } from '@/features/auth/context/AuthProvider';
 import { useProfile } from '@/features/settings/hooks/useProfile';
 import { AccountScaffold, Card, Notice } from '../components/AccountScaffold';
+import { AvatarEditor } from '../components/AvatarEditor';
 import { changedFields, PROFILE_LIMITS, validateProfile, type ProfileErrors, type ProfileValues } from '../profileValidation';
 
 const FIELDS: { key: keyof ProfileValues; label: string; props?: object }[] = [
@@ -60,6 +61,7 @@ export function ProfileScreen() {
 
   return (
     <AccountScaffold title="Profile">
+      <AvatarEditor />
       <Card>
         <ThemedText variant="caption" color="muted">
           Email

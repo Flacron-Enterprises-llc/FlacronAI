@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthShell } from '@/components/brand/AuthShell';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/theme';
 import { useAuth } from '../context/AuthProvider';
@@ -17,7 +17,6 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { FormError } from '../components/FormError';
 import { TermsCheckbox } from '../components/TermsCheckbox';
 import { SocialSignInButtons } from '../components/SocialSignInButtons';
-import { AuthFormScroll } from '../components/AuthFormScroll';
 
 /**
  * Sign up: first/last name, work email, optional company, password + confirm, Terms
@@ -117,14 +116,7 @@ export function SignUpScreen() {
   };
 
   return (
-    <ScreenContainer>
-    <AuthFormScroll>
-      <View style={styles.header}>
-        <ThemedText variant="heading">Create your account</ThemedText>
-        <ThemedText variant="body" color="muted" style={styles.subtitle}>
-          Start generating inspection reports with Super Intelligence
-        </ThemedText>
-      </View>
+    <AuthShell title="Create your account" subtitle="Start generating inspection reports with Super Intelligence">
 
       <FormError message={generalError} />
 
@@ -227,8 +219,7 @@ export function SignUpScreen() {
           </Pressable>
         </Link>
       </View>
-    </AuthFormScroll>
-    </ScreenContainer>
+    </AuthShell>
   );
 }
 

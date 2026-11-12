@@ -1,5 +1,3 @@
-import { useColorScheme } from 'react-native';
-
 import type { ColorScheme, Theme } from '@/types/theme';
 import { dark, light } from './colors';
 import { radii, spacing } from './spacing';
@@ -16,10 +14,11 @@ const buildTheme = (scheme: ColorScheme): Theme => ({
 export const lightTheme = buildTheme('light');
 export const darkTheme = buildTheme('dark');
 
-/** Resolves the active theme from the device color scheme, defaulting to light. */
+/** The app follows the reference design's light canvas + navy chrome on every device (2026-10-31 redesign); the dark
+ * palette stays defined for the web build and future use but is not applied. */
 export function useTheme(): Theme {
-  const scheme = useColorScheme();
-  return scheme === 'dark' ? darkTheme : lightTheme;
+  return lightTheme;
 }
 
 export * from '@/types/theme';
+export { brand, tones, lossTone, shadows, type ToneName } from './brand';

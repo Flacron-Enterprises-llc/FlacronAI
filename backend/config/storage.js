@@ -32,6 +32,7 @@ const reportThumbnailObject = (uid, reportId, filename) => `users/${uid}/reports
 const reportDocumentObject = (uid, reportId, filename) => `users/${uid}/reports/${reportId}/documents/${filename}`;
 const exportObject      = (uid, filename)            => `users/${uid}/exports/${filename}`;
 const logoObject        = (uid, filename)            => `users/${uid}/logos/${filename}`;
+const avatarObject      = (uid, filename)            => `users/${uid}/avatar/${filename}`;
 const whiteLabelObject  = (uid, filename)            => `users/${uid}/whitelabel/${filename}`;
 const templateLogoObject = (uid, templateId, filename) => `users/${uid}/templates/${templateId}/${filename}`;
 
@@ -107,6 +108,7 @@ module.exports = {
   reportDocumentObject,
   exportObject,
   logoObject,
+  avatarObject,
   whiteLabelObject,
   templateLogoObject,
   uploadBuffer,

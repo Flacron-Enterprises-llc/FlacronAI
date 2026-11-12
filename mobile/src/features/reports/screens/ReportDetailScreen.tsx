@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { HeaderButton } from '@/components/brand/AppHeader';
+import { LossPill } from '@/components/brand/Fields';
+import { FilterTabs } from '@/components/brand/FilterTabs';
+import { Reveal } from '@/components/brand/Reveal';
 import { ScreenContainer } from '@/components/ScreenContainer';
+import { AuthenticatedThumb } from '@/features/photos/components/AuthenticatedThumb';
+import { StatusBadge } from '../components/StatusBadge';
 import { ThemedText } from '@/components/ThemedText';
 import { Icon } from '@/components/ui/Icon';
 import { apiErrorMessage } from '@/hooks/useApiResource';
@@ -15,7 +21,6 @@ import { clearPendingReport } from '@/features/navigation/pendingDeepLink';
 import { useReportDetail } from '../hooks/useReportDetail';
 import { getReportActions } from '../reportActions';
 import { notifyReportsChanged } from '../reportsEvents';
-import { SegmentedControl } from '../components/SegmentedControl';
 import { LoadingState, StateMessage } from '../components/StateMessage';
 import { OverviewTab } from '../detail/OverviewTab';
 import { PhotosTab, reportPhotoCacheScope } from '../detail/PhotosTab';
@@ -67,6 +72,8 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
 
   // This screen's cached thumbnails are only useful while it's open.
   useEffect(() => () => clearPhotoCacheScope(reportPhotoCacheScope(reportId)), [reportId]);
+
+  const cover = (report?.photos ?? []).find((p) => p && p.id && p.status !== 'failed' && p.status !== 'duplicate')?.id ?? null;
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -153,32 +160,36 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
   };
 
   return (
-    <ScreenContainer>
-      <View style={styles.header}>
-        <Pressable onPress={goBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={styles.iconBtn}>
-          <Icon name="chevron-left" size={24} color={theme.colors.primary} />
-        </Pressable>
-        <View style={styles.headerTitle}>
-          <ThemedText variant="title" numberOfLines={1} accessibilityRole="header">
-            {report?.claimNumber || 'Report'}
-          </ThemedText>
-          {report?.insuredName ? (
-            <ThemedText variant="caption" color="muted" numberOfLines={1}>
-              {report.insuredName}
+    <ScreenContainer
+      headerLeft="back"
+      headerRight={report ? <HeaderButton icon="more-vertical" label="Report actions" onPress={openMenu} /> : undefined}
+    >
+      {report ? (
+        <Reveal style={[styles.summary, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={styles.cover}>
+            {cover ? (
+              <AuthenticatedThumb scope={reportPhotoCacheScope(reportId)} cacheKey={`cover-${cover}`} fetcher={() => reportsApi.getPhotoImage(reportId, cover, 'thumbnail')} />
+            ) : (
+              <View style={styles.coverEmpty}>
+                <Icon name="home" size={28} color={theme.colors.navy} />
+              </View>
+            )}
+          </View>
+          <View style={styles.headerTitle}>
+            <ThemedText variant="subtitle" numberOfLines={1} accessibilityRole="header" style={{ fontFamily: theme.typography.fontFamily.display }}>
+              {report.insuredName || `Claim ${report.claimNumber}`}
             </ThemedText>
-          ) : null}
-        </View>
-        <Pressable
-          onPress={openMenu}
-          disabled={!report}
-          accessibilityRole="button"
-          accessibilityLabel="Report actions"
-          hitSlop={8}
-          style={styles.iconBtn}
-        >
-          <Icon name="more-horizontal" size={22} />
-        </Pressable>
-      </View>
+            <ThemedText variant="caption" color="muted" numberOfLines={1}>
+              Claim {report.claimNumber}
+              {report.propertyAddress ? ` · ${report.propertyAddress}` : ''}
+            </ThemedText>
+            <View style={styles.tags}>
+              <LossPill lossType={report.lossType} />
+              <StatusBadge status={report.status} compact />
+            </View>
+          </View>
+        </Reveal>
+      ) : null}
       {!!menuError && (
         <ThemedText variant="caption" accessibilityRole="alert" style={[styles.menuError, { color: theme.colors.error }]}>
           {menuError}
@@ -205,7 +216,11 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
             </View>
           )}
 
-          <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} />
+          <FilterTabs
+            tabs={TAB_OPTIONS.map((o) => ({ key: o.value, label: o.label, count: o.value === 'photos' ? report.imageCount ?? null : undefined }))}
+            value={tab}
+            onChange={(k) => setTab(k as Tab)}
+          />
 
           <View style={styles.body}>
             {tab === 'overview' && (
@@ -309,22 +324,23 @@ export function ReportDetailScreen({ reportId }: { reportId: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: {
+  summary: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 10,
+    marginBottom: 8,
   },
+  cover: { width: 96, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E9EEF6' },
+  coverEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerTitle: {
     flex: 1,
-    alignItems: 'center',
+    minWidth: 0,
+    gap: 3,
   },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  tags: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 },
   menuError: {
     marginBottom: 8,
   },

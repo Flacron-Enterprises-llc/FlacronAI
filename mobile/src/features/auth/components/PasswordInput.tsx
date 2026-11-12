@@ -18,7 +18,7 @@ export function PasswordInput({ label, error, hint, style, ...rest }: PasswordIn
 
   return (
     <View style={styles.wrap}>
-      <ThemedText variant="caption" color="muted" style={styles.label}>
+      <ThemedText variant="caption" style={[styles.label, { fontFamily: theme.typography.fontFamily.bodySemiBold, color: theme.colors.ink }]}>
         {label}
       </ThemedText>
       <View style={styles.row}>
@@ -34,7 +34,7 @@ export function PasswordInput({ label, error, hint, style, ...rest }: PasswordIn
               borderColor: error ? theme.colors.error : theme.colors.border,
               backgroundColor: theme.colors.surface,
               color: theme.colors.ink,
-              borderRadius: theme.radii.btn,
+              borderRadius: 14,
               fontFamily: theme.typography.fontFamily.body,
               fontSize: theme.typography.size.body,
             },
@@ -80,9 +80,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   input: {
-    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderWidth: 1.5,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 50,
     paddingRight: 56,
   },
   toggle: {

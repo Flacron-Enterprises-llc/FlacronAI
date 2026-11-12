@@ -27,6 +27,8 @@ export interface UserProfile {
   company?: string;
   phone?: string;
   address?: string;
+  /** Uploaded profile picture (POST /users/profile/avatar); null/absent = none. */
+  avatarUrl?: string | null;
   tier?: 'starter' | 'professional' | 'agency' | 'enterprise';
   mfaEnabled?: boolean;
   onboardingCompleted?: boolean;
