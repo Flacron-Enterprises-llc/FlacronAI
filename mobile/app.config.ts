@@ -23,8 +23,16 @@ const QA_BUILD = process.env.FLACRON_BUILD_PROFILE === 'qa' ? assertQaBuildEnv(p
 const QA_VERSION_CODE = QA_BUILD ? Number(process.env.QA_VERSION_CODE) || 2 : undefined;
 // Production APK (eas.json profile `apk`, built by .github/workflows/android-apk.yml): live API + flacronai-c8dab, the
 // same accounts and data as flacronai.com. The workflow passes APK_VERSION_CODE so every distributed APK upgrades the last.
-const PROD_APK = process.env.FLACRON_BUILD_PROFILE === 'apk';
-const APK_VERSION_CODE = PROD_APK ? Number(process.env.APK_VERSION_CODE) || 2000 : undefined;
+// Google Play build (eas.json profile `play`, built by .github/workflows/android-play.yml): the same production config
+// as the APK, but no website checkout link (Play payments policy). PLAY_VERSION_CODE starts at 3000 + run, above every
+// APK build, so a tester's APK install upgrades to the Play build.
+const PLAY_BUILD = process.env.FLACRON_BUILD_PROFILE === 'play';
+const PROD_APK = process.env.FLACRON_BUILD_PROFILE === 'apk' || PLAY_BUILD;
+const APK_VERSION_CODE = PLAY_BUILD
+  ? Number(process.env.PLAY_VERSION_CODE) || 3000
+  : PROD_APK
+    ? Number(process.env.APK_VERSION_CODE) || 2000
+    : undefined;
 const VERSION_CODE = QA_VERSION_CODE ?? APK_VERSION_CODE;
 
 const config: ExpoConfig = {

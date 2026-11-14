@@ -1,0 +1,254 @@
+name: Android — Google Play (AAB)
+
+# Builds the signed Android App Bundle for Google Play against PRODUCTION (api.flacronai.com + Firebase flacronai-c8dab,
+# the same accounts and data as flacronai.com) and uploads it to Play with Fastlane `supply`.
+#
+# - Play build profile `play` (mobile/eas.json): no website checkout link in the app (Play payments policy).
+# - Signed with the company (EAS-managed) key = Play UPLOAD key; Google re-signs with the Play App Signing key.
+# - The repository is PUBLIC: the AAB is never attached as a workflow artifact; build and upload run in one job.
+# - A push to release/android-play uploads a DRAFT release to the internal track (nothing goes live by itself).
+#   Production uploads need workflow_dispatch + typed PUBLISH and are still uploaded as a draft to roll out in Console.
+on:
+  push:
+    branches:
+      - release/android-play
+    paths:
+      - "mobile/**"
+      - "!mobile/**/*.md"
+      - ".github/workflows/android-play.yml"
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track"
+        type: choice
+        options: [internal, production]
+        default: internal
+      release_status:
+        description: "internal only: draft (roll out in Console) or completed (testers get it immediately)"
+        type: choice
+        options: [draft, completed]
+        default: draft
+      confirm_production:
+        description: "Type PUBLISH to upload to the production track"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-play
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: com.flacronenterprises.flacronai
+  # SHA-256 of the company (EAS-managed) signing certificate = Play upload key.
+  EXPECTED_CERT_SHA256: 87974bb7f248213ed69f750248a89a1758f342c43e426cc8d337e3533f92a0b3
+
+jobs:
+  build-and-upload:
+    name: Build, verify and upload AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment: qa-android
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Resolve track and guard the branch
+        working-directory: .
+        env:
+          IN_TRACK: ${{ github.event.inputs.track }}
+          IN_STATUS: ${{ github.event.inputs.release_status }}
+          IN_CONFIRM: ${{ github.event.inputs.confirm_production }}
+        run: |
+          [ "$GITHUB_REF" = "refs/heads/release/android-play" ] || { echo "Play builds run only from release/android-play"; exit 1; }
+          TRACK="${IN_TRACK:-internal}"; STATUS="${IN_STATUS:-draft}"
+          if [ "$TRACK" = "production" ]; then
+            [ "$IN_CONFIRM" = "PUBLISH" ] || { echo "Production needs confirm_production=PUBLISH"; exit 1; }
+            STATUS=draft
+          fi
+          echo "PLAY_TRACK=$TRACK" >> "$GITHUB_ENV"
+          echo "PLAY_STATUS=$STATUS" >> "$GITHUB_ENV"
+          echo "Track: $TRACK, release status: $STATUS"
+
+      - name: Free runner disk space
+        working-directory: .
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android/sdk/system-images /usr/local/share/powershell /usr/local/share/chromium || true
+          df -h / | tail -1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Checks (types, lint, unit tests)
+        run: |
+          npx tsc --noEmit
+          npx expo lint
+          npx jest --ci
+
+      - name: Load the `play` profile env from eas.json (production, public identifiers only)
+        run: |
+          node -e '
+            const env = require("./eas.json").build.play.env;
+            if (env.EXPO_PUBLIC_WEB_BILLING) { console.error("Play builds must not enable web billing"); process.exit(1); }
+            const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
+            require("fs").appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("loaded:", Object.keys(env).join(", "));
+          '
+          # Above every APK build (2000 + run), and strictly increasing on Play.
+          echo "PLAY_VERSION_CODE=$((3000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Write production google-services.json (push notifications)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_PROD_B64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then echo "not configured: push stays off in this build"; exit 0; fi
+          umask 077
+          F="$RUNNER_TEMP/google-services.json"
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > "$F"
+          node -e 'const j=require(process.argv[1]); if (j.project_info.project_id!=="flacronai-c8dab") { console.error("google-services.json is not flacronai-c8dab"); process.exit(1); }' "$F"
+          echo "GOOGLE_SERVICES_JSON=$F" >> "$GITHUB_ENV"
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build signed release AAB
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NODE_ENV: production
+        run: |
+          umask 077
+          KS="$RUNNER_TEMP/signing.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          cd android
+          ./gradlew bundleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 \
+            -Pandroid.injected.signing.store.file="$KS" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f "$KS"
+          mkdir -p "$RUNNER_TEMP/dist"
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/dist/flacronai-play.aab"
+          echo "AAB=$RUNNER_TEMP/dist/flacronai-play.aab" >> "$GITHUB_ENV"
+
+      - name: Verify signature, manifest, 16 KB alignment, production config and absence of secrets
+        run: |
+          # Upload key must be the company certificate (never the debug key).
+          keytool -printcert -jarfile "$AAB" > "$RUNNER_TEMP/cert.txt"
+          if grep -q "CN=Android Debug" "$RUNNER_TEMP/cert.txt"; then echo "AAB is debug-signed"; exit 1; fi
+          SHA="$(grep -oE 'SHA256: [0-9A-F:]+' "$RUNNER_TEMP/cert.txt" | head -1 | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')"
+          [ "$SHA" = "$EXPECTED_CERT_SHA256" ] || { echo "AAB is not signed with the company upload key: ${SHA:-none}"; exit 1; }
+
+          # Package, version and permissions of the release manifest.
+          MAN="$(find android/app/build/intermediates -path '*release*' -name AndroidManifest.xml | xargs grep -l "package=\"$PACKAGE_NAME\"" | head -1)"
+          echo "Manifest: $MAN"
+          grep -oE 'android:versionCode="[0-9]+"|android:versionName="[^"]+"' "$MAN" | sort -u
+          grep -oE '<uses-permission[^>]*android:name="[^"]+"' "$MAN" | grep -oE 'android:name="[^"]+"' | sort -u
+          grep -q "android:versionCode=\"$PLAY_VERSION_CODE\"" "$MAN" || { echo "versionCode is not $PLAY_VERSION_CODE"; exit 1; }
+          for bad in REQUEST_INSTALL_PACKAGES com.google.android.gms.permission.AD_ID SYSTEM_ALERT_WINDOW READ_MEDIA_VIDEO; do
+            if grep -E '<uses-permission' "$MAN" | grep -v 'tools:node="remove"' | grep -q "$bad"; then echo "Restricted permission in the Play build: $bad"; exit 1; fi
+          done
+
+          # Google Play refuses 64-bit native code that is not 16 KB page-aligned.
+          python3 - "$AAB" <<'PY'
+          import struct, sys, zipfile
+          bad = []
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              for name in z.namelist():
+                  if not name.endswith(".so") or not ("/lib/arm64-v8a/" in name or "/lib/x86_64/" in name):
+                      continue
+                  b = z.read(name)
+                  phoff = struct.unpack_from("<Q", b, 0x20)[0]
+                  size, count = struct.unpack_from("<HH", b, 0x36)
+                  aligns = [struct.unpack_from("<Q", b, phoff + i * size + 0x30)[0]
+                            for i in range(count) if struct.unpack_from("<I", b, phoff + i * size)[0] == 1]
+                  if aligns and min(aligns) < 16384:
+                      bad.append(f"{name} (align 0x{min(aligns):x})")
+          if bad:
+              print("::error::Native libraries not 16 KB aligned: " + ", ".join(bad))
+              sys.exit(1)
+          print("All 64-bit native libraries are 16 KB aligned")
+          PY
+
+          # Production config only, and no server secrets / test material.
+          mkdir -p "$RUNNER_TEMP/aab" && unzip -q -o "$AAB" -d "$RUNNER_TEMP/aab"
+          BUNDLE="$(find "$RUNNER_TEMP/aab" -name 'index.android.bundle' | head -1)"
+          for must in api.flacronai.com flacronai-c8dab 773892679617-vfqpcld4aubfdi93rj0bod1uomev8hiu; do
+            grep -aq "$must" "$BUNDLE" || { echo "bundle is missing $must"; exit 1; }
+          done
+          if grep -aqE 'flacronai-staging-qa|staging-api|demo-flacronai-e2e' "$BUNDLE"; then echo "staging/test endpoints found in a Play build"; exit 1; fi
+          if grep -rlaE 'sk_live_|sk_test_[A-Za-z0-9]{10}|rk_(live|test)_[A-Za-z0-9]{10}|whsec_[A-Za-z0-9]{10}|sk-ant-[A-Za-z0-9_-]{10}|BEGIN (RSA |EC )?PRIVATE KEY|"private_key_id"|E2E_PASSWORD|trycloudflare|ngrok' "$RUNNER_TEMP/aab"; then
+            echo "Forbidden secret/test material found in the AAB"; exit 1
+          fi
+          rm -rf "$RUNNER_TEMP/aab"
+          SUM="$(sha256sum "$AAB" | cut -d' ' -f1)"; echo "AAB SHA-256: $SUM"; echo "AAB_SHA256=$SUM" >> "$GITHUB_ENV"
+
+      - name: Set up Ruby (Fastlane)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Upload to Google Play
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          [ -n "$PLAY_JSON" ] || { echo "Secret PLAY_STORE_SERVICE_ACCOUNT_JSON is not set"; exit 1; }
+          gem install fastlane -v "~> 2.228" --no-document > /dev/null
+          umask 077
+          KEY="$RUNNER_TEMP/play.json"
+          printf '%s' "$PLAY_JSON" > "$KEY"
+          set +e
+          fastlane run upload_to_play_store \
+            package_name:"$PACKAGE_NAME" \
+            json_key:"$KEY" \
+            aab:"$AAB" \
+            track:"$PLAY_TRACK" \
+            release_status:"$PLAY_STATUS" \
+            skip_upload_apk:true \
+            skip_upload_metadata:true \
+            skip_upload_changelogs:true \
+            skip_upload_images:true \
+            skip_upload_screenshots:true
+          RC=$?
+          rm -f "$KEY"
+          exit $RC
+
+      - name: Summary
+        if: always()
+        working-directory: .
+        run: |
+          {
+            echo "### Android — Google Play"
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Package: \`${PACKAGE_NAME}\` · version 1.2.0 (${PLAY_VERSION_CODE:-n/a})"
+            echo "- Track: ${PLAY_TRACK:-n/a} · release status: ${PLAY_STATUS:-n/a}"
+            echo "- AAB SHA-256: \`${AAB_SHA256:-not built}\` (not attached — public repo)"
+          } >> "$GITHUB_STEP_SUMMARY"
