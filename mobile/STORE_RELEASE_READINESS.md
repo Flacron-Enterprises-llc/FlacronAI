@@ -396,3 +396,24 @@ Stripe sandbox results (10.3) do **not** prove Play/Apple billing.
 | Apple Developer Program | Admin, or App Manager with access to Certificates, Identifiers & Profiles | Team owning `com.flacronenterprises.flacronai` | Apple Account Holder (Rodrigue) |
 | App Store Connect | App Manager + create an App Store Connect API key (App Manager role) for EAS | App `com.flacronenterprises.flacronai` | Account Holder / Admin |
 | App Store Connect | Sandbox tester + TestFlight internal tester for `yasirshaikh55888@gmail.com` | Same app | Same |
+
+## 11. App Store (iOS) — status 2026-11-27
+
+**Build pipeline:** `.github/workflows/ios-app-store.yml` (branch `release/ios-app-store`, environment `ios-app-store`).
+GitHub `macos-26` runner: `npm ci` → tsc/lint/jest → `expo prebuild --platform ios` → manual Apple Distribution signing
+(certificate `R7KHUMX3TR`, profile "FlacronAI App Store", team `YULB83U95Z`) on the app target → `xcodebuild archive` →
+checks (bundle id, CFBundleVersion, push + Sign in with Apple entitlements, distribution signature, production API/Firebase
+in `main.jsbundle`, no staging endpoints or secret material) → upload to App Store Connect with the API key. It never submits
+for review and does not answer export compliance. CFBundleVersion = 100 + run number; marketing version 1.2.0 (same as Play).
+
+**Build profile `appstore` (eas.json):** production API + Firebase `flacronai-c8dab`, iOS Google OAuth client, no
+`EXPO_PUBLIC_WEB_BILLING` (no website checkout). iPhone only (`supportsTablet: false`).
+
+**Purchases:** Apple In-App Purchase, mirroring Play Billing. App Store Connect group "FlacronAI Plans" (22629374):
+`com.flacronenterprises.flacronai.agency.monthly` ($99.99, level 1), `...agency.annual` ($959.99), `...professional.monthly`
+($39.99, level 2), `...professional.annual` ($384.99). The nearest Apple price points to the web's $959.88 / $383.88 are used.
+Until the backend has the Apple settings (`APPLE_IAP_*`, root CAs — PR #42) the Subscription screen shows
+"Subscriptions coming soon" and offers nothing to buy.
+
+**Info.plist (verified in build 101):** NSCameraUsageDescription, NSPhotoLibraryUsageDescription only; URL schemes
+`flacronai`, the bundle id and the Google iOS client. No local-network, location, microphone, tracking or Face ID keys.
