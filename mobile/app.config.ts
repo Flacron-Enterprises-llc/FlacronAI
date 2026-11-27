@@ -27,7 +27,12 @@ const QA_VERSION_CODE = QA_BUILD ? Number(process.env.QA_VERSION_CODE) || 2 : un
 // as the APK, but no website checkout link (Play payments policy). PLAY_VERSION_CODE starts at 3000 + run, above every
 // APK build, so a tester's APK install upgrades to the Play build.
 const PLAY_BUILD = process.env.FLACRON_BUILD_PROFILE === 'play';
-const PROD_APK = process.env.FLACRON_BUILD_PROFILE === 'apk' || PLAY_BUILD;
+// App Store build (eas.json profile `appstore`, built by .github/workflows/ios-app-store.yml on a macOS runner): the same
+// production config as the Play build — purchases only through Apple In-App Purchase, no website checkout link. The
+// workflow passes IOS_BUILD_NUMBER (CFBundleVersion), strictly increasing per upload to App Store Connect.
+const APPSTORE_BUILD = process.env.FLACRON_BUILD_PROFILE === 'appstore';
+const IOS_BUILD_NUMBER = APPSTORE_BUILD ? String(Number(process.env.IOS_BUILD_NUMBER) || 1) : undefined;
+const PROD_APK = process.env.FLACRON_BUILD_PROFILE === 'apk' || PLAY_BUILD || APPSTORE_BUILD;
 const APK_VERSION_CODE = PLAY_BUILD
   ? Number(process.env.PLAY_VERSION_CODE) || 3000
   : PROD_APK
@@ -47,7 +52,10 @@ const config: ExpoConfig = {
 
   ios: {
     bundleIdentifier: 'com.flacronenterprises.flacronai',
-    supportsTablet: true,
+    ...(IOS_BUILD_NUMBER ? { buildNumber: IOS_BUILD_NUMBER } : {}),
+    // iPhone only on the App Store (2026-11-27): the layouts are phone-first and iPad would need its own screenshots and
+    // review pass. iPads can still run the iPhone app in compatibility mode.
+    supportsTablet: false,
     // The default Expo template's newer "Icon Composer" (.icon bundle) format was
     // deliberately not used here — there is no real multi-layer icon source asset for
     // it yet. The classic universal `icon` field above is used for iOS as well as
