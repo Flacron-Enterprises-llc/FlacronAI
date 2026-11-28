@@ -71,11 +71,21 @@ const resolveStoreProduct = (platform, productId, basePlanId = null) => {
 
 const decodeMultiline = (v) => (v || '').replace(/\\n/g, '\n').trim();
 
+// Apple's public root certificates (https://www.apple.com/certificateauthority/), shipped in the image so the
+// App Store JWS chain can be verified without extra deployment files. SHA-256 fingerprints:
+//   AppleRootCA-G3.cer 63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79
+//   AppleRootCA-G2.cer C2:B9:B0:42:DD:57:83:0E:7D:11:7D:AC:55:AC:8A:E1:94:07:D3:8E:41:D8:8F:32:15:BC:3A:89:04:44:A0:50
+// APPLE_ROOT_CA_CERT_PATHS still overrides them.
+const BUNDLED_APPLE_ROOT_CERTS = ['AppleRootCA-G3.cer', 'AppleRootCA-G2.cer'].map((f) =>
+  require('path').join(__dirname, '..', 'certs', 'apple', f)
+);
+
 const loadAppleRootCerts = () => {
-  const paths = (process.env.APPLE_ROOT_CA_CERT_PATHS || '')
+  const configured = (process.env.APPLE_ROOT_CA_CERT_PATHS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const paths = configured.length ? configured : BUNDLED_APPLE_ROOT_CERTS;
   const certs = [];
   for (const p of paths) {
     try {
@@ -177,4 +187,5 @@ module.exports = {
   sandboxPolicy,
   isSandboxAllowedFor,
   isPlatformConfigured,
+  loadAppleRootCerts,
 };
