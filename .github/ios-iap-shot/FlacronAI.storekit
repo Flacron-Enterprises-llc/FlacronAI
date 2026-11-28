@@ -1,0 +1,115 @@
+{
+  "identifier": "6B1F2C8E",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_applicationInternalID": "6808749558",
+    "_developerTeamID": "YULB83U95Z",
+    "_failTransactionsEnabled": false,
+    "_lastSynchronizedDate": 0,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "22629374",
+      "localizations": [],
+      "name": "FlacronAI Plans",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "99.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6839982954",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "200 inspection reports per month for teams",
+              "displayName": "Agency (Monthly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.flacronenterprises.flacronai.agency.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Agency Monthly",
+          "subscriptionGroupID": "22629374",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "959.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6839983289",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "200 inspection reports per month for teams",
+              "displayName": "Agency (Annual)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.flacronenterprises.flacronai.agency.annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Agency Annual",
+          "subscriptionGroupID": "22629374",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "39.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6839983621",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "50 inspection reports per month",
+              "displayName": "Professional (Monthly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.flacronenterprises.flacronai.professional.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Professional Monthly",
+          "subscriptionGroupID": "22629374",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "384.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6839984229",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "50 inspection reports per month",
+              "displayName": "Professional (Annual)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.flacronenterprises.flacronai.professional.annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Professional Annual",
+          "subscriptionGroupID": "22629374",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

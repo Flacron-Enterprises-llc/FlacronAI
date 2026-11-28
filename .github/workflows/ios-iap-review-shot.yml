@@ -1,0 +1,108 @@
+name: iOS — subscription review screenshot (simulator)
+
+# Captures the real Subscription screen of the App Store build profile in the iOS simulator, for the App Store Connect
+# subscription review screenshot. StoreKit products come from a StoreKit test session (.github/ios-iap-shot/FlacronAI.storekit)
+# that mirrors the four App Store Connect subscriptions; the plan list comes from the production backend for the App Review
+# demo account (environment secrets REVIEW_EMAIL / REVIEW_PASSWORD). Nothing is signed or uploaded to Apple here.
+on:
+  push:
+    branches:
+      - release/ios-app-store
+    paths:
+      - ".github/ios-iap-shot/**"
+      - ".github/workflows/ios-iap-review-shot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-iap-review-shot
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: ios-app-store
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Select newest Xcode 26+
+        working-directory: .
+        run: |
+          set -euo pipefail
+          X=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          sudo xcode-select -s "$X/Contents/Developer"
+          xcodebuild -version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Load the `appstore` profile env from eas.json
+        run: |
+          node -e '
+            const env = require("./eas.json").build.appstore.env;
+            require("fs").appendFileSync(process.env.GITHUB_ENV, Object.entries(env).map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
+          '
+          echo "IOS_BUILD_NUMBER=1" >> "$GITHUB_ENV"
+
+      - name: Generate native iOS project
+        env:
+          NODE_ENV: production
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Add the UI test target + StoreKit configuration
+        run: |
+          set -euo pipefail
+          mkdir -p ios/IAPShotUITests
+          cp ../.github/ios-iap-shot/IAPReviewShot.swift ../.github/ios-iap-shot/FlacronAI.storekit ios/IAPShotUITests/
+          ruby -e 'require "xcodeproj"' 2>/dev/null || gem install xcodeproj --no-document
+          PROJ=$(ls -d ios/*.xcodeproj | grep -v Pods | head -1)
+          ruby ../.github/ios-iap-shot/add-uitest.rb "$PROJ"
+          echo "WS=ios/$(basename "$PROJ" .xcodeproj).xcworkspace" >> "$GITHUB_ENV"
+
+      - name: Pick the iPhone 6.9-inch simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available | grep -E "iPhone" | head -20
+          NAME=$(xcrun simctl list devices available | grep -oE "iPhone 1[6-9] Pro Max" | sort -V | tail -1)
+          [ -n "$NAME" ] || { echo "::error::no Pro Max simulator"; exit 1; }
+          echo "SIM=$NAME" >> "$GITHUB_ENV"
+          echo "Simulator: $NAME"
+
+      - name: Build and run the capture test (Release, bundled JS)
+        env:
+          TEST_RUNNER_REVIEW_EMAIL: ${{ secrets.REVIEW_EMAIL }}
+          TEST_RUNNER_REVIEW_PASSWORD: ${{ secrets.REVIEW_PASSWORD }}
+        run: |
+          set -o pipefail
+          xcodebuild test -workspace "$WS" -scheme IAPShot -configuration Release \
+            -destination "platform=iOS Simulator,name=$SIM" -resultBundlePath "$RUNNER_TEMP/IAPShot.xcresult" \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS= \
+            | tail -n 80
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/IAPShot.xcresult" --output-path "$RUNNER_TEMP/shots" || true
+          ls -la "$RUNNER_TEMP/shots"
+          for f in "$RUNNER_TEMP"/shots/*.png; do [ -f "$f" ] && sips -g pixelWidth -g pixelHeight "$f"; done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iap-review-shots
+          path: ${{ runner.temp }}/shots
+          retention-days: 3
+          if-no-files-found: warn
