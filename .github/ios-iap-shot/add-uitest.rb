@@ -11,6 +11,8 @@ t.add_dependency(app)
 t.build_configurations.each do |c|
   s = c.build_settings
   s["TEST_TARGET_NAME"] = app.name
+  s["PRODUCT_NAME"] = "IAPShotUITests"
+  s["ONLY_ACTIVE_ARCH"] = "YES"
   s["PRODUCT_BUNDLE_IDENTIFIER"] = "com.flacronenterprises.flacronai.iapshot"
   s["SWIFT_VERSION"] = "5.0"
   s["GENERATE_INFOPLIST_FILE"] = "YES"
